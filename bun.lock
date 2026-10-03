@@ -124,6 +124,7 @@
     "@privy-io/server-auth@1.32.5": "patches/@privy-io%2Fserver-auth@1.32.5.patch",
   },
   "overrides": {
+    "@modelcontextprotocol/server": "2.0.0-alpha.2",
     "viem": "2.45.1",
   },
   "packages": {
@@ -385,9 +386,7 @@
 
     "@layerzerolabs/oapp-evm": ["@layerzerolabs/oapp-evm@0.4.1", "", { "dependencies": { "ethers": "^5.7.2" }, "peerDependencies": { "@layerzerolabs/lz-evm-messagelib-v2": "^3.0.148", "@layerzerolabs/lz-evm-protocol-v2": "^3.0.148", "@layerzerolabs/lz-evm-v1-0.7": "^3.0.148", "@openzeppelin/contracts": "^4.8.1 || ^5.0.0", "@openzeppelin/contracts-upgradeable": "^4.8.1 || ^5.0.0" } }, "sha512-eOoDepVSrUlVNIlnkH0Vd5Vt4lXBkSBh6Bb16vsLbaN9AryBjy4GDpsE7K4c8iWTFL9BiBXGsV7nJTkgqi+xRQ=="],
 
-    "@modelcontextprotocol/core": ["@modelcontextprotocol/core@2.3.0", "", { "dependencies": { "zod": "^4.2.0" } }, "sha512-09BHFaNVBe5pB2AhzCfLj0cqmsKLERvZQ4FblzP90UMGLaXVqdZPByFjURwsUYCmxonUW2yAwgTTvle+8O2/8w=="],
-
-    "@modelcontextprotocol/server": ["@modelcontextprotocol/server@2.3.0", "", { "dependencies": { "@modelcontextprotocol/core": "2.3.0", "zod": "^4.2.0" } }, "sha512-+6b0LdsQLmHsvS7J6sQJ4weTpzUn61fU1JKS+321/+IyDYoHW5CR2Tgqcs6GgAAQvlesCo6yX3xttgmx+XGtJw=="],
+    "@modelcontextprotocol/server": ["@modelcontextprotocol/server@2.0.0-alpha.2", "", { "dependencies": { "zod": "^4.0" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-gmLgdHzlYM8L7Aw/+VE0kxjT25WKamtUSLNhdOgrJq5CrESvqVSoAfWSJJeNPUXNTluQ+dYDGFbKVitdsJtbPA=="],
 
     "@napi-rs/lzma-linux-x64-gnu": ["@napi-rs/lzma-linux-x64-gnu@1.5.1", "", { "os": "linux", "cpu": "x64" }, "sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ=="],
 

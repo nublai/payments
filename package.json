@@ -7,12 +7,16 @@
     "workspaces": [
         "packages/*"
     ],
+    "scripts": {
+        "e2e:local-payment": "bash scripts/e2e-local-payment.sh"
+    },
     "devDependencies": {
         "typescript": "~5.8.3",
         "@types/node": "^20.14.8"
     },
     "resolutions": {
-        "viem": "2.45.1"
+        "viem": "2.45.1",
+        "@modelcontextprotocol/server": "2.0.0-alpha.2"
     },
     "patchedDependencies": {
         "@privy-io/server-auth@1.32.5": "patches/@privy-io%2Fserver-auth@1.32.5.patch"
