@@ -4,7 +4,6 @@ import {
     resolveCliProcessExitCode,
     scheduleActiveHandleDumpIfRequested,
     updateCliProcessExitCode,
-    withSdkLogsSuppressedIfSilent,
 } from './cli-runtime'
 import { confirm, isCancel } from '@clack/prompts'
 
@@ -37,7 +36,6 @@ import {
     resolveAccountUpdatePasswords,
 } from './lib/account-update-password'
 import { executeSessionCreate, resolveSessionCreatePassword } from './lib/session-create'
-import { executeAgentInit } from './lib/agent-init'
 import {
     executeSessionExport,
     resolveSessionExportPasswords,
@@ -58,14 +56,8 @@ import { executePermissionsList } from './lib/permissions-list'
 import { executePermissionsRevoke } from './lib/permissions-revoke'
 import { executePermissionsShow } from './lib/permissions-show'
 import { parseSpendLimit } from './lib/session-common'
-import {
-    assertAgentPasswordAvailable,
-    parseAgentName,
-    resolveAgentName,
-} from './lib/agent-identifiers'
 import { AUTH_URLS, executeLogin, executeLogout, LoginError } from './lib/login'
 import { SessionDaemonClient } from './lib/session-daemon-client'
-import { resolveAgentSendInput } from './lib/agent-send-input'
 import { normalizeChainName, type ChainName } from './lib/network-config'
 import {
     getQuote as getRelayQuote,
@@ -104,10 +96,6 @@ const permissionTypeSchema = z.enum(['call', 'spend']).describe('Permission type
 
 const passwordEnv = z.object({
     TW_PASSWORD: z.string().optional().describe('Keystore password'),
-})
-
-const agentEnv = passwordEnv.extend({
-    TW_AGENT: z.string().optional().describe('Default agent name for --from'),
 })
 
 // ---------------------------------------------------------------------------
@@ -1082,7 +1070,6 @@ session.command('create', {
             .optional()
             .describe('Spend limit in raw base units (mutually exclusive with --spend-limit)'),
         spendPeriod: spendPeriodSchema,
-        agent: z.boolean().optional().describe('Initialize agent messaging for this session'),
         expiry: z
             .string()
             .optional()
@@ -1126,10 +1113,6 @@ session.command('create', {
             },
         )
 
-        if (options.agent) {
-            parseAgentName(args.sessionName)
-        }
-
         const result = await executeSessionCreate({
             env: options.env,
             chain: options.chain as ChainName | undefined,
@@ -1139,7 +1122,6 @@ session.command('create', {
             activate: options.activate,
             resume: options.resume,
             fullAccess: options.fullAccess,
-            noPermissions: options.agent,
             target: options.target as `0x${string}` | undefined,
             selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
             spendLimit: resolveSpendLimitInput({
@@ -1152,27 +1134,7 @@ session.command('create', {
             password,
         })
 
-        if (!options.agent) {
-            return result
-        }
-
-        await withSdkLogsSuppressedIfSilent(() =>
-            executeAgentInit({
-                env: options.env,
-                name: options.profile,
-                keystorePath: options.keystorePath,
-                agentName: args.sessionName,
-                password,
-            }),
-        )
-
-        return {
-            ...result,
-            session: {
-                ...result.session,
-                checkpoint: 'complete' as const,
-            },
-        }
+        return result
     },
 })
 
@@ -1576,365 +1538,6 @@ daemon.command('status', {
     }),
     async run() {
         return executeSessionStatus()
-    },
-})
-
-// ============================== CHAT GROUP ==============================
-
-const chat = Cli.create('chat', {
-    description: 'Towns messaging',
-})
-
-chat.command('init', {
-    description: 'Initialize agent messaging on an existing session',
-    args: z.object({
-        agentName: z.string().describe('Session name to initialize as an agent'),
-    }),
-    options: z.object({
-        env: envSchema,
-        profile: profileSchema,
-        keystorePath: keystorePathSchema,
-        chain: chainSchema,
-        passwordStdin: passwordStdinSchema,
-    }),
-    env: passwordEnv,
-    output: z.object({
-        type: z.string(),
-        status: z.enum(['complete', 'already_initialized']),
-        name: z.string(),
-        address: z.string(),
-    }),
-    async run({ args, options, env }) {
-        const password = await resolveSessionCreatePassword(
-            { passwordStdin: options.passwordStdin ?? false },
-            {
-                ...passwordDeps(env.TW_PASSWORD),
-                promptForExistingPassword: () =>
-                    handlePromptCancellation(
-                        readlineExistingPassword(
-                            'Enter your keystore password to initialize this agent:',
-                        ),
-                    ),
-            },
-        )
-
-        const result = await withSdkLogsSuppressedIfSilent(() =>
-            executeAgentInit({
-                env: options.env,
-                name: options.profile,
-                keystorePath: options.keystorePath,
-                agentName: args.agentName,
-                password,
-            }),
-        )
-        scheduleActiveHandleDumpIfRequested('chat init')
-        return result
-    },
-})
-
-chat.command('connect', {
-    description: 'Create or reuse a named GDM channel',
-    args: z.object({
-        targets: z.array(z.string()).optional().describe('Additional targets after --to'),
-    }),
-    options: z.object({
-        env: envSchema,
-        profile: profileSchema,
-        keystorePath: keystorePathSchema,
-        chain: chainSchema,
-        from: z.string().optional().describe('Source agent name (default: TW_AGENT env var)'),
-        channel: z.string().optional().describe('Channel name'),
-        secret: z.string().optional().describe('Shared channel secret'),
-        to: z.string().optional().describe('First target agent or address'),
-        join: z.string().optional().describe("Join token from another agent's connect output"),
-        passwordStdin: passwordStdinSchema,
-    }),
-    env: agentEnv,
-    output: z.object({
-        type: z.string(),
-        status: z.string(),
-        channel: z.string(),
-        streamId: z.string(),
-        from: z.object({
-            name: z.string(),
-            address: z.string(),
-        }),
-        to: z.array(z.string()),
-        memberCount: z.number(),
-        secret: z.string().optional(),
-        joinToken: z.string().optional(),
-    }),
-    async run({ args, options, env }) {
-        if (
-            options.join &&
-            (options.to ||
-                options.secret ||
-                options.channel ||
-                (args.targets !== undefined && args.targets.length > 0))
-        ) {
-            throw new Error(
-                '--join cannot be combined with --to, additional targets, --secret, or --channel',
-            )
-        }
-        if (!options.join && !options.to) {
-            throw new Error('Either --to or --join is required')
-        }
-        if (!options.join && !options.channel) {
-            throw new Error('--channel is required unless --join is provided')
-        }
-
-        const from = resolveAgentName(options, env)
-        assertAgentPasswordAvailable({
-            envPassword: env.TW_PASSWORD,
-            passwordStdin: options.passwordStdin ?? false,
-            isInteractive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-        })
-        const password = await resolveSessionCreatePassword(
-            { passwordStdin: options.passwordStdin ?? false },
-            {
-                ...passwordDeps(env.TW_PASSWORD),
-                promptForExistingPassword: () =>
-                    handlePromptCancellation(
-                        readlineExistingPassword(
-                            'Enter your keystore password to connect this agent:',
-                        ),
-                    ),
-            },
-        )
-
-        const { executeAgentConnect } = await import('./lib/agent-connect')
-        const result = await withSdkLogsSuppressedIfSilent(() =>
-            executeAgentConnect({
-                env: options.env,
-                chain: options.chain as ChainName | undefined,
-                name: options.profile,
-                keystorePath: options.keystorePath,
-                from,
-                channel: options.channel,
-                secret: options.secret,
-                to: options.to ? [options.to, ...(args.targets ?? [])] : [],
-                join: options.join,
-                password,
-            }),
-        )
-        scheduleActiveHandleDumpIfRequested('chat connect')
-        return result
-    },
-})
-
-chat.command('post', {
-    description: 'Send an encrypted message to a named channel or GDM stream',
-    args: z.object({
-        targetOrMessage: z
-            .string()
-            .describe('Target stream ID or message body when --channel is set'),
-        messageParts: z.array(z.string()).optional().describe('Remaining message parts'),
-    }),
-    options: z.object({
-        env: envSchema,
-        profile: profileSchema,
-        keystorePath: keystorePathSchema,
-        from: z.string().optional().describe('Source agent name (default: TW_AGENT env var)'),
-        channel: z.string().optional().describe('Named channel binding'),
-        replyTo: z.string().optional().describe('Event ID to reply to'),
-        passwordStdin: passwordStdinSchema,
-    }),
-    env: agentEnv,
-    output: z.object({
-        type: z.string(),
-        status: z.string(),
-        streamId: z.string(),
-        eventId: z.string(),
-    }),
-    async run({ args, options, env }) {
-        const { streamId, message } = resolveAgentSendInput({
-            channel: options.channel,
-            targetOrMessage: args.targetOrMessage,
-            messageParts: args.messageParts,
-        })
-        const from = resolveAgentName(options, env)
-        assertAgentPasswordAvailable({
-            envPassword: env.TW_PASSWORD,
-            passwordStdin: options.passwordStdin ?? false,
-            isInteractive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-        })
-
-        const password = await resolveSessionCreatePassword(
-            { passwordStdin: options.passwordStdin ?? false },
-            {
-                ...passwordDeps(env.TW_PASSWORD),
-                promptForExistingPassword: () =>
-                    handlePromptCancellation(
-                        readlineExistingPassword(
-                            'Enter your keystore password to send as this agent:',
-                        ),
-                    ),
-            },
-        )
-
-        const { executeAgentSend } = await import('./lib/agent-send')
-        const result = await withSdkLogsSuppressedIfSilent(() =>
-            executeAgentSend({
-                env: options.env,
-                name: options.profile,
-                keystorePath: options.keystorePath,
-                from,
-                channel: options.channel,
-                streamId,
-                replyTo: options.replyTo,
-                message,
-                password,
-            }),
-        )
-        scheduleActiveHandleDumpIfRequested('chat post')
-        return result
-    },
-})
-
-chat.command('listen', {
-    description: 'Listen for incoming encrypted messages as NDJSON',
-    options: z.object({
-        env: envSchema,
-        profile: profileSchema,
-        keystorePath: keystorePathSchema,
-        chain: chainSchema,
-        from: z.string().optional().describe('Source agent name (default: TW_AGENT env var)'),
-        channel: z.string().optional().describe('Filter output to a local named channel'),
-        stream: z.string().optional().describe('Filter output to a single stream ID'),
-        interactive: z.boolean().optional().describe('Accept outgoing messages on stdin'),
-        heartbeatInterval: z
-            .number()
-            .optional()
-            .describe('Heartbeat frequency in seconds (0 disables heartbeats)'),
-        passwordStdin: passwordStdinSchema,
-    }),
-    env: agentEnv,
-    async run({ options, env }) {
-        if (options.channel && options.stream) {
-            throw new Error('Use either --channel or --stream, not both.')
-        }
-        if (options.interactive && options.passwordStdin) {
-            throw new Error('Use TW_PASSWORD instead of --password-stdin with --interactive.')
-        }
-        const from = resolveAgentName(options, env)
-
-        const { executeAgentListen } = await import('./lib/agent-listen')
-        const stderrWrite = (line: string) => {
-            process.stderr.write(line)
-        }
-        await withSdkLogsSuppressedIfSilent(() =>
-            executeAgentListen(
-                {
-                    env: options.env,
-                    chain: options.chain as ChainName | undefined,
-                    name: options.profile,
-                    keystorePath: options.keystorePath,
-                    from,
-                    channel: options.channel,
-                    streamId: options.stream,
-                    interactive: options.interactive,
-                    heartbeatIntervalSeconds: options.heartbeatInterval,
-                    resolvePassword: (prompt) =>
-                        resolveSessionCreatePassword(
-                            { passwordStdin: options.passwordStdin ?? false },
-                            {
-                                ...passwordDeps(env.TW_PASSWORD),
-                                promptForExistingPassword: () =>
-                                    handlePromptCancellation(readlineExistingPassword(prompt)),
-                            },
-                        ),
-                },
-                {
-                    stdoutWrite: (line) => {
-                        process.stdout.write(line)
-                    },
-                    stderrWrite,
-                    getDaemonSessionSecrets: (sessionName) => {
-                        const client = new SessionDaemonClient({
-                            onRequestFailure: (method, reason, details) => {
-                                stderrWrite(
-                                    `${JSON.stringify({
-                                        type: 'warning',
-                                        message: 'Session daemon request failed',
-                                        method,
-                                        reason,
-                                        ...(details !== undefined ? { details } : {}),
-                                    })}\n`,
-                                )
-                            },
-                        })
-                        return client.getSessionSecrets(sessionName)
-                    },
-                },
-            ),
-        )
-    },
-})
-
-chat.command('list', {
-    description: 'List local named channel bindings and their live status',
-    options: z.object({
-        env: envSchema,
-        profile: profileSchema,
-        keystorePath: keystorePathSchema,
-        from: z.string().optional().describe('Source agent name (default: TW_AGENT env var)'),
-        passwordStdin: passwordStdinSchema,
-    }),
-    env: agentEnv,
-    output: z.object({
-        type: z.string(),
-        agent: z.object({
-            name: z.string(),
-            address: z.string(),
-        }),
-        channels: z.array(
-            z.object({
-                name: z.string(),
-                streamId: z.string(),
-                members: z.array(z.string()),
-                memberCount: z.number(),
-            }),
-        ),
-        staleChannels: z.array(
-            z.object({
-                name: z.string(),
-                streamId: z.string(),
-                reason: z.enum(['stream_missing']),
-            }),
-        ),
-    }),
-    async run({ options, env }) {
-        const from = resolveAgentName(options, env)
-        assertAgentPasswordAvailable({
-            envPassword: env.TW_PASSWORD,
-            passwordStdin: options.passwordStdin ?? false,
-            isInteractive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-        })
-        const password = await resolveSessionCreatePassword(
-            { passwordStdin: options.passwordStdin ?? false },
-            {
-                ...passwordDeps(env.TW_PASSWORD),
-                promptForExistingPassword: () =>
-                    handlePromptCancellation(
-                        readlineExistingPassword(
-                            'Enter your keystore password to inspect this agent channels:',
-                        ),
-                    ),
-            },
-        )
-
-        const { executeAgentChannels } = await import('./lib/agent-channels')
-        const result = await withSdkLogsSuppressedIfSilent(() =>
-            executeAgentChannels({
-                env: options.env,
-                name: options.profile,
-                keystorePath: options.keystorePath,
-                from,
-                password,
-            }),
-        )
-        scheduleActiveHandleDumpIfRequested('chat list')
-        return result
     },
 })
 
@@ -2653,7 +2256,6 @@ tw.command('logout', {
 tw.command(account)
 tw.command(session)
 tw.command(daemon)
-tw.command(chat)
 tw.command(permissions)
 tw.command(escrow)
 

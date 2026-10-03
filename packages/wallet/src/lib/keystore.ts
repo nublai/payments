@@ -802,10 +802,11 @@ export class KeystoreLockError extends Error {
 export async function withKeystoreLock<T>(
     rootKeystorePath: string,
     action: () => Promise<T>,
+    lock: typeof lockfile.lock = lockfile.lock,
 ): Promise<T> {
     let release: (() => Promise<void>) | undefined
     try {
-        release = await lockfile.lock(rootKeystorePath, {
+        release = await lock(rootKeystorePath, {
             lockfilePath: `${rootKeystorePath}.lock`,
             stale: 10_000,
             retries: {

@@ -1,1 +1,0 @@
-export const DEFAULT_MEMBERSHIP_LIMIT = 13_500

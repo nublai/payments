@@ -1,22 +1,14 @@
 # Agentic Payments
 
-Private copy of the payments surface from [giuseppecrj/chat](https://github.com/giuseppecrj/chat). Chat was not modified.
+Private copy of the onchain payments surface from [giuseppecrj/chat](https://github.com/giuseppecrj/chat). Chat was not modified.
 
-This is a source copy, not a rewrite. Package names, versions, and file contents that were copied are unchanged. Nothing here documents APIs that are not already in those files.
+This is a source copy of the payments packages, then slimmed to drop the Towns chat graph the wallet does not need. Package names and versions of what remains are unchanged. Nothing here documents APIs that are not already in those files.
 
 ## Packages
 
-Copied in full (every file tracked on `main` in chat):
-
-- `packages/wallet` — `@towns-labs/wallet`
+- `packages/wallet` — `@towns-labs/wallet` (onchain CLI: account, session, daemon, permissions, escrow, send, swap, bridge, address, login, logout). The `tw chat` command group and chat-only wallet modules are not included.
 - `packages/relayer-client` — `@towns-labs/relayer-client`
 - `packages/relayer` — `@towns-labs/relayer`
-- `packages/sdk` — `@towns-labs/sdk`
-- `packages/encryption` — `@towns-labs/encryption`
-- `packages/sdk-crypto` — `@towns-labs/sdk-crypto`
-- `packages/rpc-connector` — `@towns-labs/rpc-connector`
-- `packages/web3` — `@towns-labs/web3`
-- `packages/utils` — `@towns-labs/utils`
 - `packages/proto` — `@towns-labs/proto` (committed files only; see below)
 - `packages/contracts` — `@towns-labs/contracts` (full protocol copy: Solidity, Foundry, tests, scripts)
 
@@ -29,20 +21,26 @@ Shared config copied because included packages extend or import it:
 
 ## What was slimmed
 
-`packages/contracts` (`@towns-labs/contracts`) is the full protocol copy (Solidity, Foundry, tests, scripts). Wallet, relayer-client, and relayer import only:
+Removed, because they exist for the Towns chat / SDK graph and are not imported by the remaining payments code:
+
+- `packages/sdk`
+- `packages/encryption`
+- `packages/sdk-crypto`
+- `packages/rpc-connector`
+- `packages/web3`
+- `packages/utils`
+
+`packages/wallet` no longer depends on `@towns-labs/sdk` or `@towns-labs/utils`. The three dlog logger setters the CLI runtime used (`setDlogErrorLogger`, `setDlogInfoLogger`, `setDlogWarnLogger`) live in `packages/wallet/src/lib/dlog.ts`.
+
+`packages/contracts` (`@towns-labs/contracts`) is the full protocol copy (Solidity, Foundry, tests, scripts) and was not reduced. Wallet, relayer-client, and relayer import only:
 
 - `@towns-labs/contracts/abis`
 - `@towns-labs/contracts/deployments`
 
-`@towns-labs/web3` (pulled in by the SDK) also imports `@towns-labs/contracts/config/deployments.json`.
-
-`@towns-labs/utils` was not reduced to the three wallet loggers. Those loggers live in `src/dlog.ts`, which imports `src/binary.ts`, `src/utils.ts`, and `src/envUtils.ts`. The SDK types the wallet imports (`Client`, `SyncMode`, `SignerContext`, `StreamStateView`) also import `check`, `delegate`, and the rest of the utils barrel, so every source module under `packages/utils/src` is required. The package was copied in full.
-
-`@towns-labs/proto` was not reduced to the six wallet symbols. Those symbols are `ExportedDeviceSchema`, `ExportedDevice`, `MembershipOp`, `BearerTokenSchema`, `WalletSessionTokenSchema`, and `SnapshotCaseType`. `SnapshotCaseType` is declared in `packages/proto/src/types.ts`. The others are generated protobuf exports. `packages/proto/src/gen/` is gitignored in chat and was not in the clone, so those generated files were not copied and were not regenerated. The SDK, encryption, and sdk-crypto imports from `@towns-labs/proto` cover far more than those six symbols, and the package entry re-exports every generated module. The committed proto package (12 files) was copied as-is.
-
-`@towns-labs/sdk` was copied as-is. Wallet imports only types `Client`, `SyncMode`, `SignerContext`, and `StreamStateView` from the package root. Following local imports from `src/client.ts`, `src/signerContext.ts`, and `src/streamStateView.ts` reaches 78 of 114 non-test source files, and the generated barrel `src/index.ts` re-exports the rest (sync-agent, app registry, and others). Those files import `@towns-labs/encryption`, `@towns-labs/proto`, `@towns-labs/rpc-connector`, `@towns-labs/sdk-crypto`, `@towns-labs/utils`, and `@towns-labs/web3`, which were copied in full for the same reason.
+`@towns-labs/proto` is still required for login and for agent device material stored on session keystores. The package entry exports only `BearerTokenSchema`, `WalletSessionTokenSchema`, `ExportedDeviceSchema`, and the `ExportedDevice` type. Those messages were copied from chat `protocol/payloads.proto` (`BearerToken`, `WalletSessionToken`, `ExportedDevice`) into `packages/proto/schema/payments.proto` and generated with the repo's `buf` / `protoc-gen-es` (`target=ts`) into `packages/proto/src/gen/payments_pb.ts`. The rest of chat's generated proto tree is not included. `MembershipOp` and `SnapshotCaseType` are not exported; nothing in the slimmed wallet imports them.
 
 ## Not copied
 
-- `packages/proto/src/gen/**` (not in git)
+- The rest of `packages/proto/src/gen/**` (only `payments_pb.ts` is generated here)
 - Apps, bots, clients, servers, and other workspace packages (app-framework, stream-metadata, and the rest)
+- The Towns chat command surface (`tw chat`) and the wallet modules that only served it

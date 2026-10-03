@@ -21,7 +21,6 @@
         "dev": "bun ./src/cli.ts",
         "prepublishOnly": "bun run build",
         "fund:dev": "./scripts/fund-dev.sh",
-        "smoke:chat": "./scripts/chat-comms-smoke.sh",
         "fmt": "prettier --write .",
         "fmt:check": "prettier --check ."
     },
@@ -31,8 +30,6 @@
         "@towns-labs/contracts": "workspace:^",
         "@towns-labs/proto": "workspace:^",
         "@towns-labs/relayer-client": "workspace:^",
-        "@towns-labs/sdk": "workspace:^",
-        "@towns-labs/utils": "workspace:^",
         "argon2": "^0.44.0",
         "incur": "^0.3.1",
         "proper-lockfile": "^4.1.2",

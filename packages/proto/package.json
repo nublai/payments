@@ -2,12 +2,12 @@
     "name": "@towns-labs/proto",
     "version": "7.3.1",
     "type": "module",
-    "main": "dist/index.js",
-    "types": "dist/index.d.ts",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
     "scripts": {
         "buf:clean": "rm -rf ./src/gen/*",
-        "buf:generate": "cd ../.. && buf generate --template packages/proto/buf.gen.yaml --path protocol/protocol.proto --path protocol/payloads.proto --path packages/proto/internal.proto --path protocol/notifications.proto --path protocol/auth.proto --path protocol/apps.proto --path protocol/contacts.proto",
-        "buf:lint": "cd ../.. && buf lint --path protocol/protocol.proto --path protocol/payloads.proto --path packages/proto/internal.proto --path protocol/notifications.proto --path protocol/auth.proto --path protocol/apps.proto --path protocol/contacts.proto",
+        "buf:generate": "cd schema && PATH=\"$PWD/../node_modules/.bin:$PATH\" buf generate",
+        "buf:lint": "cd schema && PATH=\"$PWD/../node_modules/.bin:$PATH\" buf lint",
         "build": "bun run buf:generate && tsc",
         "cb": "bun run clean && bun run build",
         "clean": "bun run buf:clean && rm -rf ./dist",
@@ -23,7 +23,6 @@
     "devDependencies": {
         "@bufbuild/buf": "^1.57.2",
         "@bufbuild/protoc-gen-es": "^2.9.0",
-        "@towns-labs/proto-source": "workspace:^",
         "@types/node": "^20.14.8",
         "lodash.debounce": "^4.0.8",
         "ts-node": "^10.9.1",
@@ -35,5 +34,8 @@
     ],
     "publishConfig": {
         "access": "public"
+    },
+    "exports": {
+        ".": "./src/index.ts"
     }
 }

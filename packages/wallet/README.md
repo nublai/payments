@@ -49,7 +49,6 @@ For agents, the session daemon keeps decrypted keys in memory for a bounded dura
 ```text
 tw address
 tw bridge
-tw chat <connect|init|list|listen|post>
 tw daemon <lock|start|status|stop|unlock>
 tw login
 tw logout
@@ -240,99 +239,6 @@ tw escrow refund 0x<escrowId> --env prod --json
 ```
 
 `escrow create` requires `--oracle` and `--deadline`. Deadlines accept relative values like `1h`, `2d`, `30m`, `1w` or unix timestamps. Escrow flows support `--session-file` like `tw send`.
-
-### Chat
-
-Chat identities are session-key-backed Towns identities with their own encryption device and named channel bindings.
-
-```text
-~/.config/towns/tw/profiles/<env>/<profile>/sessions/<name>.json
-~/.config/towns/tw/profiles/<env>/<profile>/agent-channels.json
-```
-
-#### `session create --agent` / `chat init` / `session list`
-
-```bash
-TW_PASSWORD="my-password" tw session create alice --profile agent --agent
-TW_PASSWORD="my-password" tw session create bob --profile agent
-TW_PASSWORD="my-password" tw chat init bob --profile agent
-TW_PASSWORD="my-password" tw session list --profile agent --json
-```
-
-`tw session list` includes a `kind` field (`session` or `agent`). Revoke chat identities with `tw session revoke <name> --force`.
-
-Migration note: legacy `agent-<name>.json` files are no longer loaded. Rename them to `<name>.json` manually or recreate them with `tw session create` plus `tw chat init`.
-
-#### `chat connect`
-
-```bash
-TW_PASSWORD="my-password" tw chat connect --from alice --channel art --to bob --profile agent
-TW_PASSWORD="my-password" tw chat connect --from bob --channel art --secret "<shared-secret>" --to alice --profile agent
-```
-
-#### `chat post`
-
-```bash
-TW_PASSWORD="my-password" tw chat post --from alice --channel art "hello from alice" --profile agent
-TW_PASSWORD="my-password" tw chat post --from alice 77aaa... "debug message" --profile agent
-```
-
-#### `chat listen`
-
-```bash
-TW_PASSWORD="my-password" tw chat listen --from bob --channel art --profile agent
-TW_PASSWORD="my-password" tw chat listen --from bob --stream 77aaa... --profile agent
-```
-
-Messages arrive as NDJSON:
-
-```json
-{
-  "type": "message",
-  "streamId": "77...",
-  "senderId": "0x...",
-  "eventId": "0x...",
-  "timestamp": 1709654400,
-  "content": "hello from alice"
-}
-```
-
-#### `chat list`
-
-```bash
-TW_PASSWORD="my-password" tw chat list --from alice --profile agent --json
-```
-
-#### Chat Quickstart
-
-```bash
-# Create profile + two chat sessions
-tw account create --profile agent
-TW_PASSWORD="pw" tw session create alice --profile agent --agent
-TW_PASSWORD="pw" tw session create bob --profile agent
-TW_PASSWORD="pw" tw chat init bob --profile agent
-
-# Alice creates a channel -> copy the returned secret
-TW_PASSWORD="pw" tw chat connect --from alice --channel art --to bob --profile agent
-
-# Bob binds with that secret
-TW_PASSWORD="pw" tw chat connect --from bob --channel art --secret "<secret>" --to alice --profile agent
-
-# Terminal 1: listen
-TW_PASSWORD="pw" tw chat listen --from bob --channel art --profile agent
-
-# Terminal 2: send
-TW_PASSWORD="pw" tw chat post --from alice --channel art "hello" --profile agent
-```
-
-Smoke test:
-
-```bash
-cd packages/wallet
-TW_PASSWORD="my-password" bun run smoke:chat
-```
-
----
 
 ## Agent & Automation Integration
 

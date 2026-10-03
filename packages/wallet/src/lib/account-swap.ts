@@ -727,6 +727,9 @@ export async function executeAccountSwap(
 
         const slippage = options.slippage ?? DEFAULT_SLIPPAGE_PERCENT
         const parsedAmount = parseTokenAmount(fromToken, options.amount)
+        // Reject bad recipients before touching the keystore so library-boundary
+        // validation does not depend on a local profile existing.
+        const explicitRecipient = parseRecipient(options.recipient)
 
         const { sessionKeystore, sender, effectiveNetwork } = await resolveSessionContext(
             keystorePath,
@@ -734,7 +737,7 @@ export async function executeAccountSwap(
             network,
             deps,
         )
-        const recipient = parseRecipient(options.recipient) ?? sender
+        const recipient = explicitRecipient ?? sender
         const resolvedSigner = await resolveSessionSigner({
             sessionName: sessionKeystore.name ?? options.sessionName ?? 'default',
             sessionKeystore,

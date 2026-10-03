@@ -1,32 +1,5 @@
 import { constants } from 'node:fs'
 import { access, readFile, unlink, writeFile } from 'node:fs/promises'
-import type { Client, SignerContext, SyncMode } from '@towns-labs/sdk'
-import { privateKeyToAccount } from 'viem/accounts'
-import type { Hex } from 'viem'
-import type { EnvName } from './network-config'
-
-const TOWNS_NODE_URLS: Record<EnvName, string> = {
-    prod: 'https://chat1.nodes.prod.towns.com',
-    stage: 'https://chat1.nodes.staging.towns.com',
-    dev: 'https://localhost:5170',
-}
-
-export type AgentClient = Pick<
-    Client,
-    | 'createGDMChannel'
-    | 'getStream'
-    | 'initStream'
-    | 'initializeUser'
-    | 'off'
-    | 'on'
-    | 'sendChannelMessage_Text'
-    | 'sendMessage'
-    | 'startSync'
-    | 'stop'
-    | 'updateGDMChannelProperties'
-    | 'uploadDeviceKeys'
-    | 'cryptoBackend'
->
 
 export function isErrnoNotFound(error: unknown): boolean {
     return (
@@ -137,20 +110,4 @@ export async function claimAgentListenPid(sessionPath: string): Promise<{
     }
 
     throw new Error(`Failed to claim listen pid file for ${sessionPath}`)
-}
-
-export async function defaultCreateAgentClient(input: {
-    env: EnvName
-    sessionPrivateKey: Hex
-    options?: { syncMode?: SyncMode }
-}): Promise<AgentClient> {
-    const sdk = await import('@towns-labs/sdk')
-    const account = privateKeyToAccount(input.sessionPrivateKey)
-    const signerContext: SignerContext = {
-        signerPrivateKey: () => input.sessionPrivateKey.slice(2),
-        creatorAddress: Buffer.from(account.address.slice(2), 'hex'),
-    }
-    const rpcClient = sdk.makeStreamRpcClient(TOWNS_NODE_URLS[input.env])
-    const cryptoStore = sdk.RiverDbManager.getCryptoDb(account.address)
-    return new sdk.Client(signerContext, undefined, rpcClient, cryptoStore, input.options)
 }

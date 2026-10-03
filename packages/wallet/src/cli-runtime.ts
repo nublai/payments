@@ -1,4 +1,4 @@
-import { setDlogErrorLogger, setDlogInfoLogger, setDlogWarnLogger } from '@towns-labs/utils'
+import { setDlogErrorLogger, setDlogInfoLogger, setDlogWarnLogger } from './lib/dlog'
 
 export async function withSdkLogsSuppressedIfSilent<T>(action: () => Promise<T>): Promise<T> {
     if (process.env.DEBUG?.trim()) {

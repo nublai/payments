@@ -22,7 +22,7 @@ Built on the [incur](https://github.com/wevm/incur) CLI framework — all comman
 ```
 src/
   cli.ts                    # Entry point — all command definitions (incur Cli)
-  cli-runtime.ts            # CLI-only runtime helpers (SDK log suppression, handle dumps)
+  cli-runtime.ts            # CLI-only runtime helpers (log suppression, handle dumps)
   lib/
     account-address.ts      # executeAccountAddress
     account-balance.ts      # executeAccountBalance
@@ -35,12 +35,6 @@ src/
     account-swap.ts         # executeAccountSwap (swap/bridge via relay.link)
     account-update-password.ts  # executeAccountUpdatePassword
     agent-channel-registry.ts   # Shared named-channel rendezvous registry
-    agent-channels.ts       # executeAgentChannels
-    agent-common.ts         # Shared agent helpers (naming, device, PID, client factory)
-    agent-connect.ts        # executeAgentConnect
-    agent-init.ts           # executeAgentInit
-    agent-listen.ts         # executeAgentListen
-    agent-send.ts           # executeAgentSend
     address.ts              # executeAddress (funding address + QR/link)
     session-create.ts       # executeSessionCreate
     session-daemon.ts       # Session daemon server (runSessionDaemon, runSessionDaemonEntry)
@@ -320,7 +314,6 @@ tw.command(myGroup)
 - Root commands:
   - `tw address` — funding address with optional QR/link
   - `tw bridge`
-  - `tw chat ...`
   - `tw daemon ...`
   - `tw account ...`
   - `tw login`
@@ -336,8 +329,6 @@ tw.command(myGroup)
   - `tw --mcp` (incur MCP server mode)
 - Account subcommands:
   - `create`, `delegate`, `balance`, `nonce`, `history`, `status`, `export`, `change-password`
-- Chat subcommands:
-  - `init`, `connect`, `post`, `listen`, `list`
 - Session subcommands:
   - `create`, `list`, `rotate`, `revoke`, `export`, `import`
 - Daemon subcommands:

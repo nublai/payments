@@ -1,0 +1,41 @@
+syntax = "proto3";
+package river;
+option go_package = "github.com/towns-protocol/towns/core/node/protocol";
+
+// a client created with an bearer token cannot make blockchain transactions, but can add events to the river nodes
+message BearerToken {
+    string delegate_private_key = 1;
+    bytes delegate_sig = 2;
+    int64 expiry_epoch_ms = 3;
+}
+
+message WalletSessionToken {
+    bytes session_private_key = 1;
+    bytes account_address = 2;
+    int64 chain_id = 3;
+    int64 expiry_epoch_ms = 4;
+    BearerToken bearer_token = 5;
+    bytes delegate_sig = 6;
+    int64 delegate_expiry_epoch_ms = 7;
+}
+
+message ExportedDevice {
+    message GroupSession {
+        string session_id = 1;
+        string stream_id = 2;
+        string session = 3;
+    }
+
+    message HybridGroupSession {
+        string session_id = 1;
+        string stream_id = 2;
+        bytes session_key = 3;
+        int64 miniblock_num = 4;
+    }
+
+    string pickleKey = 1;
+    string pickledAccount = 2;
+    repeated GroupSession outboundSessions = 3;
+    repeated GroupSession inboundSessions = 4;
+    repeated HybridGroupSession hybridGroupSessions = 5;
+}
