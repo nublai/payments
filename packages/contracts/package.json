@@ -1,17 +1,45 @@
 {
     "name": "@towns-labs/contracts",
     "version": "7.3.1",
+    "author": "",
     "license": "MIT",
     "type": "module",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
-        "build": "tsc && cp deployments/addresses.json dist/ && cp -r deployments/config dist/"
+        "build:contracts": "forge build && wagmi generate && tsc && cp deployments/addresses.json dist/ && cp -r deployments/config dist/",
+        "build": "tsc && cp deployments/addresses.json dist/ && cp -r deployments/config dist/",
+        "coverage": "forge coverage --report summary",
+        "deploy:local": "./scripts/sh/deploy.sh local",
+        "deploy:dev": "./scripts/sh/deploy.sh dev",
+        "deploy:prod": "./scripts/sh/deploy.sh prod",
+        "deploy:stage": "./scripts/sh/deploy.sh stage",
+        "dev": "./scripts/sh/dev.sh",
+        "fmt": "prettier --write \"src/**/*.sol\" \"test/**/*.sol\" \"scripts/sol/**/*.sol\"",
+        "generate": "wagmi generate",
+        "lint": "prettier --check \"src/**/*.sol\" \"test/**/*.sol\" \"scripts/sol/**/*.sol\"",
+        "make-config": "node ./deployments/make-config.js",
+        "test": "forge test -vvv",
+        "test:gas": "forge test --gas-report",
+        "watch:deployments": "tsc --watch"
     },
     "dependencies": {
+        "@axelar-network/axelar-gmp-sdk-solidity": "^6.0.6",
+        "@layerzerolabs/lz-evm-protocol-v2": "^3.0.156",
+        "@layerzerolabs/oapp-evm": "^0.4.1",
+        "@openzeppelin/contracts": "^5.0.0",
+        "@towns-protocol/diamond": "^0.7.0",
+        "murky": "github:dmfxyz/murky",
+        "solady": "^0.1.26",
         "viem": "2.45.1"
     },
     "devDependencies": {
+        "@prb/test": "^0.6.4",
+        "@wagmi/cli": "^2.8.0",
+        "forge-std": "github:foundry-rs/forge-std",
+        "prettier": "^3.5.3",
+        "prettier-plugin-solidity": "^1.4.2",
+        "solhint": "^6.0.2",
         "typescript": "~5.8.3"
     },
     "exports": {
@@ -27,5 +55,12 @@
     },
     "files": [
         "dist"
+    ],
+    "keywords": [
+        "ethereum",
+        "foundry",
+        "smart-contracts",
+        "solidity",
+        "template"
     ]
 }

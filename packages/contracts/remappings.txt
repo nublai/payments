@@ -1,0 +1,8 @@
+forge-std/=node_modules/forge-std/src/
+@towns-protocol/diamond/=node_modules/@towns-protocol/diamond/
+solady/=node_modules/solady/src/
+@openzeppelin/=node_modules/@openzeppelin/
+@prb/test/=node_modules/@prb/test/src/
+murky/=node_modules/murky/src/
+@layerzerolabs/lz-evm-protocol-v2/=node_modules/@layerzerolabs/lz-evm-protocol-v2/
+@layerzerolabs/oapp-evm/=node_modules/@layerzerolabs/oapp-evm/

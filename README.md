@@ -18,10 +18,7 @@ Copied in full (every file tracked on `main` in chat):
 - `packages/web3` — `@towns-labs/web3`
 - `packages/utils` — `@towns-labs/utils`
 - `packages/proto` — `@towns-labs/proto` (committed files only; see below)
-
-Slimmed:
-
-- `packages/contracts` — `@towns-labs/contracts`
+- `packages/contracts` — `@towns-labs/contracts` (full protocol copy: Solidity, Foundry, tests, scripts)
 
 Shared config copied because included packages extend or import it:
 
@@ -32,23 +29,12 @@ Shared config copied because included packages extend or import it:
 
 ## What was slimmed
 
-`@towns-labs/contracts` is not the Foundry project. Wallet, relayer-client, and relayer import only:
+`packages/contracts` (`@towns-labs/contracts`) is the full protocol copy (Solidity, Foundry, tests, scripts). Wallet, relayer-client, and relayer import only:
 
 - `@towns-labs/contracts/abis`
 - `@towns-labs/contracts/deployments`
 
 `@towns-labs/web3` (pulled in by the SDK) also imports `@towns-labs/contracts/config/deployments.json`.
-
-Included:
-
-- `deployments/abis/index.ts` (single generated ABI module; not split)
-- `deployments/index.ts`
-- `deployments/addresses.json`
-- `deployments/config/deployments.json`
-- `tsconfig.json` (unchanged)
-- `package.json` keeping the name, version `7.3.1`, export map, and the existing `build` script (`tsc` plus the two `cp` steps). Dependency kept: `viem@2.45.1`. Dev dependency kept: `typescript@~5.8.3`. Forge, OpenZeppelin, and other Solidity dependencies were dropped because the slim files do not import them.
-
-Left out of contracts: Solidity sources, Foundry tests, deploy scripts, `foundry.toml`, `wagmi.config.ts`, and per-environment deployment JSON under `deployments/envs/`.
 
 `@towns-labs/utils` was not reduced to the three wallet loggers. Those loggers live in `src/dlog.ts`, which imports `src/binary.ts`, `src/utils.ts`, and `src/envUtils.ts`. The SDK types the wallet imports (`Client`, `SyncMode`, `SignerContext`, `StreamStateView`) also import `check`, `delegate`, and the rest of the utils barrel, so every source module under `packages/utils/src` is required. The package was copied in full.
 
@@ -59,5 +45,4 @@ Left out of contracts: Solidity sources, Foundry tests, deploy scripts, `foundry
 ## Not copied
 
 - `packages/proto/src/gen/**` (not in git)
-- Solidity and the rest of `@towns-labs/contracts` listed above
 - Apps, bots, clients, servers, and other workspace packages (app-framework, stream-metadata, and the rest)
