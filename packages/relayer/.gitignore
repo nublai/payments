@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.wrangler/
+
+# Environment files
+.dev.vars
+.dev.vars.stage
+.dev.vars.prod
+.env
+.env.local
+.env.*.local
+.ref
+
+# IDE
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# AI Files
+.codex/tasks

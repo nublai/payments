@@ -1,0 +1,31 @@
+{
+    "name": "@towns-labs/contracts",
+    "version": "7.3.1",
+    "license": "MIT",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc && cp deployments/addresses.json dist/ && cp -r deployments/config dist/"
+    },
+    "dependencies": {
+        "viem": "2.45.1"
+    },
+    "devDependencies": {
+        "typescript": "~5.8.3"
+    },
+    "exports": {
+        "./abis": {
+            "types": "./dist/abis/index.d.ts",
+            "default": "./dist/abis/index.js"
+        },
+        "./deployments": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./config/deployments.json": "./dist/config/deployments.json"
+    },
+    "files": [
+        "dist"
+    ]
+}

@@ -1,0 +1,116 @@
+{
+  "dev": {
+    "84532": {
+      "addresses": {
+        "accountProxy": "0x0e0F0B93B20692a26671bc6084D8EecAB5689cbb",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8",
+        "simpleFunder": "0x288C9db8aa7eD8b465d4Ec7791ac6F9C53A55744",
+        "simpleSettler": "0x90cacD85C1dc93af2D2D3e6c380162bBe07bb329",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x2eEBFfcFABEB8cE3AC016effFeC37dBBAccCff2a"
+      }
+    }
+  },
+  "prod": {
+    "137": {
+      "addresses": {
+        "accountProxy": "0xF42350E2c880fb325E9a42aa8695EBc354DEC5E8",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC",
+        "simpleFunder": "0x41D23D227C6D0F732D41eE5c203C48d96292A48B",
+        "simpleSettler": "0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6"
+      }
+    },
+    "8453": {
+      "addresses": {
+        "accountProxy": "0x3Be52867f8Dca2911f81076B37921c334dE29551",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8",
+        "simpleFunder": "0x41D23D227C6D0F732D41eE5c203C48d96292A48B",
+        "simpleSettler": "0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x2eEBFfcFABEB8cE3AC016effFeC37dBBAccCff2a"
+      }
+    },
+    "42161": {
+      "addresses": {
+        "accountProxy": "0x9172852305F32819469bf38A3772f29361d7b768",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC",
+        "simpleFunder": "0x41D23D227C6D0F732D41eE5c203C48d96292A48B",
+        "simpleSettler": "0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6"
+      }
+    },
+    "84532": {
+      "addresses": {
+        "accountProxy": "0xD48E1895cB18AE03Ee7D4817f73329760B954F25",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC",
+        "simpleFunder": "0x41D23D227C6D0F732D41eE5c203C48d96292A48B",
+        "simpleSettler": "0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6"
+      }
+    }
+  },
+  "stage": {
+    "137": {
+      "addresses": {
+        "accountProxy": "0x4c17F5EC755eAC6B5d663D770dF34C4dD659c82e",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC",
+        "simpleFunder": "0xf297614c45E3AfAAC849B7Cde4A20A8cF336D8bF",
+        "simpleSettler": "0x195424235453eC103082A9406AEE0Cc30E908b24",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6"
+      }
+    },
+    "8453": {
+      "addresses": {
+        "accountProxy": "0xeE06c19146427bDd5abb702579F3B0568b24Bf6F",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC",
+        "simpleFunder": "0xf297614c45E3AfAAC849B7Cde4A20A8cF336D8bF",
+        "simpleSettler": "0x195424235453eC103082A9406AEE0Cc30E908b24",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6"
+      }
+    },
+    "42161": {
+      "addresses": {
+        "accountProxy": "0xeE06c19146427bDd5abb702579F3B0568b24Bf6F",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC",
+        "simpleFunder": "0xf297614c45E3AfAAC849B7Cde4A20A8cF336D8bF",
+        "simpleSettler": "0x195424235453eC103082A9406AEE0Cc30E908b24",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6"
+      }
+    },
+    "84532": {
+      "addresses": {
+        "accountProxy": "0x0e0F0B93B20692a26671bc6084D8EecAB5689cbb",
+        "escrow": "0x05f9597eed844410b7c0746A1C584188d0644730",
+        "multiSigSigner": "0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3",
+        "orchestrator": "0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8",
+        "simpleFunder": "0x288C9db8aa7eD8b465d4Ec7791ac6F9C53A55744",
+        "simpleSettler": "0x90cacD85C1dc93af2D2D3e6c380162bBe07bb329",
+        "simulator": "0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65",
+        "townsAccount": "0x2eEBFfcFABEB8cE3AC016effFeC37dBBAccCff2a"
+      }
+    }
+  }
+}

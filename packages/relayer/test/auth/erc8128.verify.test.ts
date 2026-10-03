@@ -1,0 +1,261 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { privateKeyToAccount } from 'viem/accounts'
+import { bytesToHex } from 'viem'
+import { signRequest, type EthHttpSigner } from '@slicekit/erc8128'
+
+import { verifyErc8128Request, type NonceStore } from '../../src/auth/erc8128/verify'
+
+const account = privateKeyToAccount(
+    '0x59c6995e998f97a5a0044966f0945382db9f6c0b4b7f3adf8f13e9f5b5b6c5a5',
+)
+
+function createSigner(chainId: number): EthHttpSigner {
+    return {
+        chainId,
+        address: account.address,
+        signMessage: async (message) =>
+            account.signMessage({ message: { raw: bytesToHex(message) } }),
+    }
+}
+
+async function createSignedRequest(args?: {
+    method?: string
+    url?: string
+    body?: string
+    nonce?: string
+    created?: number
+    expires?: number
+    binding?: 'request-bound' | 'class-bound'
+    components?: string[]
+}): Promise<Request> {
+    const method = args?.method ?? 'POST'
+    const url = args?.url ?? 'https://relayer.example.com/'
+    const body = args?.body ?? '{"hello":"world"}'
+    const created = args?.created ?? Math.floor(Date.now() / 1000) - 5
+    const expires = args?.expires ?? created + 60
+    const nonce = args?.nonce ?? 'nonce-1'
+
+    const req = new Request(url, {
+        method,
+        body,
+        headers: { 'content-type': 'application/json' },
+    })
+
+    return signRequest(req, createSigner(8453), {
+        label: 'eth',
+        binding: args?.binding ?? 'request-bound',
+        components: args?.components,
+        replay: 'non-replayable',
+        created,
+        expires,
+        nonce,
+        contentDigest: 'auto',
+    })
+}
+
+describe('verifyErc8128Request', () => {
+    let nonceSeen: Set<string>
+    let nonceStore: NonceStore
+
+    beforeEach(() => {
+        nonceSeen = new Set<string>()
+        nonceStore = {
+            consumeNonce: vi.fn(async (replayKey: string) => {
+                if (nonceSeen.has(replayKey)) return false
+                nonceSeen.add(replayKey)
+                return true
+            }),
+        }
+    })
+
+    it('accepts valid request-bound, non-replayable EOA signature', async () => {
+        const req = await createSignedRequest()
+
+        const result = await verifyErc8128Request(
+            {
+                env: { CHAIN_IDS: '8453' },
+                request: req,
+                nowSeconds: Math.floor(Date.now() / 1000),
+            },
+            {
+                maxValiditySeconds: 120,
+                clockSkewSeconds: 30,
+                requireRequestBound: true,
+                requireNonReplayable: true,
+                nonceStore,
+            },
+        )
+
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+            expect(result.signerType).toBe('EOA')
+            expect(result.keyId.chainId).toBe(8453)
+            expect(result.keyId.address.toLowerCase()).toBe(account.address.toLowerCase())
+        }
+    })
+
+    it('rejects when required request-bound components are missing', async () => {
+        const req = await createSignedRequest({
+            url: 'https://relayer.example.com/?a=1',
+            binding: 'class-bound',
+            components: ['@authority'],
+        })
+
+        const result = await verifyErc8128Request(
+            {
+                env: { CHAIN_IDS: '8453' },
+                request: req,
+                nowSeconds: Math.floor(Date.now() / 1000),
+            },
+            {
+                maxValiditySeconds: 120,
+                clockSkewSeconds: 30,
+                requireRequestBound: true,
+                requireNonReplayable: true,
+                nonceStore,
+            },
+        )
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'INVALID_COVERAGE',
+            }),
+        )
+    })
+
+    it('rejects replayed nonce for same keyid', async () => {
+        const req = await createSignedRequest({ nonce: 'same-nonce' })
+
+        const first = await verifyErc8128Request(
+            {
+                env: { CHAIN_IDS: '8453' },
+                request: req.clone(),
+                nowSeconds: Math.floor(Date.now() / 1000),
+            },
+            {
+                maxValiditySeconds: 120,
+                clockSkewSeconds: 30,
+                requireRequestBound: true,
+                requireNonReplayable: true,
+                nonceStore,
+            },
+        )
+
+        const second = await verifyErc8128Request(
+            {
+                env: { CHAIN_IDS: '8453' },
+                request: req,
+                nowSeconds: Math.floor(Date.now() / 1000),
+            },
+            {
+                maxValiditySeconds: 120,
+                clockSkewSeconds: 30,
+                requireRequestBound: true,
+                requireNonReplayable: true,
+                nonceStore,
+            },
+        )
+
+        expect(first.ok).toBe(true)
+        expect(second).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'REPLAYED_NONCE',
+            }),
+        )
+    })
+
+    it('rejects expired signatures', async () => {
+        const now = Math.floor(Date.now() / 1000)
+        const req = await createSignedRequest({ created: now - 90, expires: now - 10 })
+
+        const result = await verifyErc8128Request(
+            {
+                env: { CHAIN_IDS: '8453' },
+                request: req,
+                nowSeconds: now,
+            },
+            {
+                maxValiditySeconds: 120,
+                clockSkewSeconds: 5,
+                requireRequestBound: true,
+                requireNonReplayable: true,
+                nonceStore,
+            },
+        )
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'INVALID_TIME',
+            }),
+        )
+    })
+
+    it('rejects tampered body when content-digest is covered', async () => {
+        const req = await createSignedRequest()
+        req.headers.set('content-digest', 'sha-256=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:')
+
+        const result = await verifyErc8128Request(
+            {
+                env: { CHAIN_IDS: '8453' },
+                request: req,
+                nowSeconds: Math.floor(Date.now() / 1000),
+            },
+            {
+                maxValiditySeconds: 120,
+                clockSkewSeconds: 30,
+                requireRequestBound: true,
+                requireNonReplayable: true,
+                nonceStore,
+            },
+        )
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'BAD_CONTENT_DIGEST',
+            }),
+        )
+    })
+
+    it('rejects unsupported chain in keyid', async () => {
+        const req = await signRequest(
+            new Request('https://relayer.example.com/', {
+                method: 'POST',
+                body: '{"hello":"world"}',
+                headers: { 'content-type': 'application/json' },
+            }),
+            createSigner(1),
+            {
+                replay: 'non-replayable',
+                nonce: 'nonce-chain',
+                binding: 'request-bound',
+                contentDigest: 'auto',
+            },
+        )
+
+        const result = await verifyErc8128Request(
+            {
+                env: { CHAIN_IDS: '8453' },
+                request: req,
+                nowSeconds: Math.floor(Date.now() / 1000),
+            },
+            {
+                maxValiditySeconds: 120,
+                clockSkewSeconds: 30,
+                requireRequestBound: true,
+                requireNonReplayable: true,
+                nonceStore,
+            },
+        )
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'UNSUPPORTED_CHAIN',
+            }),
+        )
+    })
+})

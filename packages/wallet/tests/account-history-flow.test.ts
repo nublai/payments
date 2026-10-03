@@ -1,0 +1,273 @@
+import { expect, mock, test } from 'bun:test'
+import { executeAccountHistory } from '../src/lib/account-history'
+
+test('executeAccountHistory uses root EOA from keystore when no address override', async () => {
+    const getCallsHistory = mock(async () => ({
+        success: true as const,
+        items: [{ id: 'bundle-1', chainId: 8453, createdAt: 1000 }],
+        total: 1,
+    }))
+
+    const result = await executeAccountHistory(
+        {
+            env: 'prod',
+            keystorePath: '/tmp/alice.json',
+        },
+        {
+            readKeystoreBundle: mock(async () => ({
+                root: { addresses: { root: '0x1111111111111111111111111111111111111111' } },
+            })),
+            getCallsHistory,
+        },
+    )
+
+    expect(result.type).toBe('account_history')
+    expect(result.status).toBe('complete')
+    expect(result.address).toBe('0x1111111111111111111111111111111111111111')
+    expect(result.keystorePath).toBe('/tmp/alice.json')
+    expect(result.items).toEqual([
+        {
+            id: 'bundle-1',
+            chainId: 8453,
+            chain: 'base',
+            createdAt: 1000,
+        },
+    ])
+
+    expect(getCallsHistory).toHaveBeenCalledWith({
+        env: 'prod',
+        address: '0x1111111111111111111111111111111111111111',
+        chainIds: undefined,
+        limit: 20,
+        offset: 0,
+    })
+})
+
+test('executeAccountHistory uses explicit address and skips keystore lookup', async () => {
+    const getCallsHistory = mock(async () => ({
+        success: true as const,
+        items: [],
+        total: 0,
+    }))
+    const readKeystoreBundle = mock(async () => {
+        throw new Error('should not be called')
+    })
+
+    const result = await executeAccountHistory(
+        {
+            env: 'stage',
+            address: '0x2222222222222222222222222222222222222222',
+        },
+        {
+            readKeystoreBundle,
+            getCallsHistory,
+        },
+    )
+
+    expect(result.address).toBe('0x2222222222222222222222222222222222222222')
+    expect(result.keystorePath).toBeUndefined()
+    expect(readKeystoreBundle).not.toHaveBeenCalled()
+})
+
+test('executeAccountHistory parses chain filter and maps to chain IDs', async () => {
+    const getCallsHistory = mock(async () => ({
+        success: true as const,
+        items: [],
+        total: 0,
+    }))
+
+    const result = await executeAccountHistory(
+        {
+            env: 'prod',
+            address: '0x3333333333333333333333333333333333333333',
+            chains: 'base,polygon',
+        },
+        {
+            getCallsHistory,
+        },
+    )
+
+    expect(result.networkScope.chainIds).toEqual([8453, 137])
+    expect(getCallsHistory).toHaveBeenCalledWith({
+        env: 'prod',
+        address: '0x3333333333333333333333333333333333333333',
+        chainIds: [8453, 137],
+        limit: 20,
+        offset: 0,
+    })
+})
+
+test('executeAccountHistory omits chainIds when chain filter is not provided', async () => {
+    const getCallsHistory = mock(async () => ({
+        success: true as const,
+        items: [],
+        total: 0,
+    }))
+
+    await executeAccountHistory(
+        {
+            env: 'prod',
+            address: '0x4444444444444444444444444444444444444444',
+        },
+        {
+            getCallsHistory,
+        },
+    )
+
+    expect(getCallsHistory).toHaveBeenCalledWith({
+        env: 'prod',
+        address: '0x4444444444444444444444444444444444444444',
+        chainIds: undefined,
+        limit: 20,
+        offset: 0,
+    })
+})
+
+test('executeAccountHistory rejects unsupported chain names', async () => {
+    await expect(
+        executeAccountHistory(
+            {
+                env: 'prod',
+                address: '0x5555555555555555555555555555555555555555',
+                chains: 'base,foo',
+            },
+            {
+                getCallsHistory: mock(async () => ({
+                    success: true as const,
+                    items: [],
+                    total: 0,
+                })),
+            },
+        ),
+    ).rejects.toMatchObject({
+        name: 'AccountHistoryError',
+        code: 'INVALID_ARGUMENT',
+    })
+})
+
+test('executeAccountHistory rejects invalid limit and offset', async () => {
+    await expect(
+        executeAccountHistory(
+            {
+                env: 'prod',
+                address: '0x6666666666666666666666666666666666666666',
+                limit: 0,
+            },
+            {
+                getCallsHistory: mock(async () => ({
+                    success: true as const,
+                    items: [],
+                    total: 0,
+                })),
+            },
+        ),
+    ).rejects.toMatchObject({
+        name: 'AccountHistoryError',
+        code: 'INVALID_ARGUMENT',
+    })
+
+    await expect(
+        executeAccountHistory(
+            {
+                env: 'prod',
+                address: '0x6666666666666666666666666666666666666666',
+                offset: -1,
+            },
+            {
+                getCallsHistory: mock(async () => ({
+                    success: true as const,
+                    items: [],
+                    total: 0,
+                })),
+            },
+        ),
+    ).rejects.toMatchObject({
+        name: 'AccountHistoryError',
+        code: 'INVALID_ARGUMENT',
+    })
+})
+
+test('executeAccountHistory rejects offset + limit above max target size', async () => {
+    await expect(
+        executeAccountHistory(
+            {
+                env: 'prod',
+                address: '0x7777777777777777777777777777777777777777',
+                limit: 100,
+                offset: 901,
+            },
+            {
+                getCallsHistory: mock(async () => ({
+                    success: true as const,
+                    items: [],
+                    total: 0,
+                })),
+            },
+        ),
+    ).rejects.toMatchObject({
+        name: 'AccountHistoryError',
+        code: 'INVALID_ARGUMENT',
+    })
+})
+
+test('executeAccountHistory maps relayer failures', async () => {
+    await expect(
+        executeAccountHistory(
+            {
+                env: 'prod',
+                address: '0x8888888888888888888888888888888888888888',
+            },
+            {
+                getCallsHistory: mock(async () => ({
+                    success: false as const,
+                    error: 'upstream timeout',
+                })),
+            },
+        ),
+    ).rejects.toMatchObject({
+        name: 'AccountHistoryError',
+        code: 'RELAYER_ERROR',
+    })
+})
+
+test('executeAccountHistory maps items and pagination metadata', async () => {
+    const result = await executeAccountHistory(
+        {
+            env: 'dev',
+            address: '0x9999999999999999999999999999999999999999',
+            limit: 2,
+            offset: 1,
+        },
+        {
+            getCallsHistory: mock(async () => ({
+                success: true as const,
+                items: [
+                    { id: 'bundle-a', chainId: 8453, createdAt: 2000 },
+                    { id: 'bundle-b', chainId: 10, createdAt: 1000 },
+                ],
+                total: 7,
+            })),
+        },
+    )
+
+    expect(result.page).toEqual({
+        limit: 2,
+        offset: 1,
+        returned: 2,
+        total: 7,
+    })
+    expect(result.items).toEqual([
+        {
+            id: 'bundle-a',
+            chainId: 8453,
+            chain: 'base',
+            createdAt: 2000,
+        },
+        {
+            id: 'bundle-b',
+            chainId: 10,
+            chain: null,
+            createdAt: 1000,
+        },
+    ])
+})

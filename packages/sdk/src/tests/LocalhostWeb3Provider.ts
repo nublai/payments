@@ -1,0 +1,60 @@
+import { ethers } from 'ethers'
+import { dlogger } from '@towns-labs/utils'
+
+const logger = dlogger('csb:LocalhostWeb3Provider')
+
+export class LocalhostWeb3Provider extends ethers.providers.JsonRpcProvider {
+    public wallet: ethers.Wallet
+
+    public get isMetaMask() {
+        return true
+    }
+
+    public get signer(): ethers.Signer {
+        return this.wallet
+    }
+
+    constructor(rpcUrl: string, wallet?: ethers.Wallet) {
+        super(rpcUrl)
+        this.wallet = (wallet ?? ethers.Wallet.createRandom()).connect(this)
+        logger.log('initializing web3 provider with wallet', this.wallet.address)
+    }
+
+    public async fundWallet(walletToFund: ethers.Wallet | string = this.wallet) {
+        const amountInWei = ethers.BigNumber.from(100).pow(18).toHexString()
+        const address = typeof walletToFund === 'string' ? walletToFund : walletToFund.address
+        const result = this.send('anvil_setBalance', [address, amountInWei])
+        logger.log('fundWallet tx', result, amountInWei, address)
+        const receipt = await result
+        logger.log('fundWallet receipt', receipt)
+        const balance = await this.getBalance(address)
+        logger.log('fundWallet balance', balance.toString())
+        return true
+    }
+
+    public async request({
+        method,
+        params = [] as unknown[],
+    }: {
+        method: string
+        params?: unknown[]
+    }) {
+        if (method === 'eth_requestAccounts') {
+            return [this.wallet.address]
+        } else if (method === 'eth_accounts') {
+            return [this.wallet.address]
+        } else if (method === 'personal_sign') {
+            const [message] = params as [string, string]
+            if (ethers.utils.isHexString(message)) {
+                const m1 = ethers.utils.arrayify(message)
+                const m2 = ethers.utils.toUtf8String(m1)
+                return this.wallet.signMessage(m2)
+            } else {
+                return this.wallet.signMessage(message)
+            }
+        } else {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+            return this.send(method, params)
+        }
+    }
+}

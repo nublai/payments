@@ -1,0 +1,56 @@
+{
+    "name": "@towns-labs/relayer",
+    "version": "7.3.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "exports": {
+        ".": "./dist/index.js",
+        "./rpc/schema/*": "./src/rpc/schema/*.ts"
+    },
+    "files": [
+        "dist",
+        "src/rpc/schema"
+    ],
+    "scripts": {
+        "build": "tsc --noEmit && wrangler build",
+        "deploy": "wrangler deploy",
+        "deploy:prod": "wrangler deploy --env prod",
+        "deploy:stage": "wrangler deploy --env stage",
+        "publish": "wrangler deploy --env $CF_ENV",
+        "dev": "./scripts/dev.sh",
+        "dev:prod": "wrangler dev --env prod",
+        "dev:stage": "wrangler dev --env stage",
+        "dev:wrangler": "wrangler dev",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint": "oxlint --deny-warnings",
+        "lint:fix": "oxlint --fix",
+        "logs:prod": "wrangler tail --env prod",
+        "logs:stage": "wrangler tail --env stage",
+        "telemetry:summary": "bun run scripts/telemetry-summary.ts",
+        "telemetry:summary:stage": "wrangler tail --env stage --format json | bun run scripts/telemetry-summary.ts",
+        "telemetry:summary:prod": "wrangler tail --env prod --format json | bun run scripts/telemetry-summary.ts",
+        "test": "vitest",
+        "test:run": "vitest run"
+    },
+    "dependencies": {
+        "@hono/zod-validator": "0.7.6",
+        "@scure/bip32": "2.0.1",
+        "@scure/bip39": "2.0.1",
+        "@slicekit/erc8128": "^0.1.0",
+        "@towns-labs/contracts": "workspace:^",
+        "hono": "^4.11.7",
+        "oxlint": "^1.41.0",
+        "pino": "^10.3.1",
+        "viem": "2.45.1",
+        "zod": "^4.3.6",
+        "@privy-io/server-auth": "^1.9.1"
+    },
+    "devDependencies": {
+        "@cloudflare/vitest-pool-workers": "^0.12.18",
+        "@cloudflare/workers-types": "^4.20250618.0",
+        "typescript": "~5.8.3",
+        "vitest": "^3.2.3",
+        "wrangler": "^4.69.0"
+    }
+}

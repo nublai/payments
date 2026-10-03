@@ -1,0 +1,42 @@
+{
+    "name": "@towns-labs/relayer-client",
+    "version": "7.3.1",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "cb": "bun run clean && bun run build",
+        "clean": "rm -rf dist",
+        "dev": "./scripts/dev.sh",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint": "oxlint --deny-warnings",
+        "lint:fix": "oxlint --fix",
+        "test": "vitest run",
+        "test:integration": "./scripts/dev.sh --test",
+        "test:integration:watch": "./scripts/dev.sh --watch",
+        "test:remote": "vitest run --project remote",
+        "test:stress": "./scripts/dev.sh --stress --test",
+        "watch": "tsc --watch -p tsconfig.build.json"
+    },
+    "dependencies": {
+        "@slicekit/erc8128": "^0.1.0",
+        "@towns-labs/contracts": "workspace:^",
+        "@towns-labs/relayer": "workspace:^"
+    },
+    "peerDependencies": {
+        "viem": "2.45.1"
+    },
+    "devDependencies": {
+        "@privy-io/server-auth": "^1.9.1",
+        "dotenv": "^16.4.5",
+        "oxlint": "^1.41.0",
+        "typescript": "~5.8.3",
+        "viem": "2.45.1",
+        "vitest": "^3.2.3"
+    },
+    "files": [
+        "dist"
+    ]
+}

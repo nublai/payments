@@ -1,0 +1,114 @@
+name = "relayer-worker"
+main = "src/index.ts"
+account_id = "9840f8a36a817b103e00e29a0e2bad6f"
+compatibility_date = "2025-06-18"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[observability]
+enabled = true
+head_sampling_rate = 0.5
+
+[observability.logs]
+enabled = true
+
+# Migrations
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignerDO", "SignerPoolDO", "IntentNonceDO", "BundleStatusDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["HttpAuthNonceDO"]
+
+# Local Development
+[dev]
+ip = "0.0.0.0"
+port = 8787
+local_protocol = "http"
+
+[[queues.producers]]
+queue = "relayer-monitor-queue-local"
+binding = "MONITOR_QUEUE"
+
+[[queues.consumers]]
+queue = "relayer-monitor-queue-local"
+max_batch_size = 16
+max_retries = 30
+
+[durable_objects]
+bindings = [
+  { name = "SIGNER", class_name = "SignerDO" },
+  { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
+  { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
+  { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+]
+
+# Stage
+[env.stage]
+routes = [{ pattern = "relayer-worker-stage.towns.com", custom_domain = true }]
+vars = { NODE_ENV = "production" }
+preview_urls = false
+
+[env.stage.observability]
+enabled = true
+head_sampling_rate = 0.5
+
+[env.stage.observability.logs]
+invocation_logs = true
+
+[env.stage.durable_objects]
+bindings = [
+  { name = "SIGNER", class_name = "SignerDO" },
+  { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
+  { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
+  { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+]
+
+[[env.stage.queues.producers]]
+queue = "relayer-monitor-queue-stage"
+binding = "MONITOR_QUEUE"
+
+[[env.stage.queues.consumers]]
+queue = "relayer-monitor-queue-stage"
+max_batch_size = 10
+max_retries = 30
+
+[env.stage.triggers]
+crons = ["*/5 * * * *"]
+
+# Prod
+[env.prod]
+routes = [{ pattern = "relayer-worker.towns.com", custom_domain = true }]
+vars = { NODE_ENV = "production" }
+preview_urls = false
+
+[env.prod.observability]
+enabled = true
+head_sampling_rate = 0.5
+
+[env.prod.observability.logs]
+invocation_logs = true
+
+[env.prod.durable_objects]
+bindings = [
+  { name = "SIGNER", class_name = "SignerDO" },
+  { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
+  { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
+  { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+]
+
+[[env.prod.queues.producers]]
+queue = "relayer-monitor-queue-prod"
+binding = "MONITOR_QUEUE"
+
+[[env.prod.queues.consumers]]
+queue = "relayer-monitor-queue-prod"
+max_batch_size = 10
+max_retries = 30
+
+[env.prod.triggers]
+crons = ["*/5 * * * *"]

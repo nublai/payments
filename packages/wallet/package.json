@@ -1,0 +1,49 @@
+{
+    "name": "@towns-labs/wallet",
+    "version": "7.3.1",
+    "bin": {
+        "wallet": "./dist/cli.js",
+        "tw": "./dist/cli.js"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "module": "src/cli.ts",
+    "scripts": {
+        "clear": "rimraf dist",
+        "test": "FORCE_COLOR=0 NODE_ENV=test bun test",
+        "build": "bun run clear && bun build src/cli.ts --outfile=./dist/cli.js --target=node --format=esm -e argon2 --banner='#!/usr/bin/env node' --minify && bun build src/session-daemon.ts --outfile=./dist/session-daemon.js --target=node --format=esm -e argon2 --minify",
+        "start": "node ./dist/cli.js",
+        "dev": "bun ./src/cli.ts",
+        "prepublishOnly": "bun run build",
+        "fund:dev": "./scripts/fund-dev.sh",
+        "smoke:chat": "./scripts/chat-comms-smoke.sh",
+        "fmt": "prettier --write .",
+        "fmt:check": "prettier --check ."
+    },
+    "dependencies": {
+        "@bufbuild/protobuf": "^2.9.0",
+        "@clack/prompts": "^1.0.1",
+        "@towns-labs/contracts": "workspace:^",
+        "@towns-labs/proto": "workspace:^",
+        "@towns-labs/relayer-client": "workspace:^",
+        "@towns-labs/sdk": "workspace:^",
+        "@towns-labs/utils": "workspace:^",
+        "argon2": "^0.44.0",
+        "incur": "^0.3.1",
+        "proper-lockfile": "^4.1.2",
+        "viem": "2.45.1"
+    },
+    "devDependencies": {
+        "@types/bun": "^1.3.1",
+        "oxlint": "^1.41.0",
+        "rimraf": "^6.0.1"
+    },
+    "peerDependencies": {
+        "typescript": "^5.0.0"
+    }
+}
