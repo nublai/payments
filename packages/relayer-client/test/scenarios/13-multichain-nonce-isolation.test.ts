@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { parseEther, type Address } from 'viem'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 
 import {
     ANVIL_RPC_URL,
@@ -43,7 +43,7 @@ describe('Multichain Nonce Isolation', () => {
     ): Promise<bigint> {
         return client.readContract({
             address: accountAddress,
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'getNonce',
             args: [seqKey],
         })

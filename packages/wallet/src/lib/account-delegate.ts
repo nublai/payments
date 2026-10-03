@@ -1,5 +1,5 @@
 import { getAddress, type Address, type Hex } from 'viem'
-import { encodeSecp256k1Key, type AuthorizeKey, type Permission } from '@towns-labs/relayer-client'
+import { encodeSecp256k1Key, type AuthorizeKey, type Permission } from '@agentic-payments/relayer-client'
 import {
     AccountCreateError,
     getDefaultSessionPermissions,

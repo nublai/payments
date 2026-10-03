@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {MultiSigSigner} from "../src/accounts/MultiSigSigner.sol";
-import {TownsAccount} from "../src/accounts/TownsAccount.sol";
+import {Account as AgenticAccount} from "../src/accounts/Account.sol";
 import "./Base.t.sol";
 import {ERC7821} from "solady/accounts/ERC7821.sol";
 
@@ -34,9 +34,9 @@ contract MultiSigSignerTest is BaseTest {
         t.owners[1] = _randomPassKey();
 
         // Create the multisig key configuration
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -118,9 +118,9 @@ contract MultiSigSignerTest is BaseTest {
         t.threshold = 2;
 
         // Create multisig key
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: false,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -151,9 +151,9 @@ contract MultiSigSignerTest is BaseTest {
         t.ownerKeyHashes[0] = _hash(t.owners[0].k);
         t.threshold = 1;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: false,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -178,9 +178,9 @@ contract MultiSigSignerTest is BaseTest {
             t.ownerKeyHashes[i] = _hash(t.owners[i].k);
         }
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: false,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -210,9 +210,9 @@ contract MultiSigSignerTest is BaseTest {
         }
         t.threshold = 2;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -250,9 +250,9 @@ contract MultiSigSignerTest is BaseTest {
         t.ownerKeyHashes = new bytes32[](1);
         t.ownerKeyHashes[0] = _hash(t.owners[0].k);
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -285,9 +285,9 @@ contract MultiSigSignerTest is BaseTest {
         }
         t.threshold = 2;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -323,9 +323,9 @@ contract MultiSigSignerTest is BaseTest {
             t.ownerKeyHashes[i] = _hash(t.owners[i].k);
         }
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -354,9 +354,9 @@ contract MultiSigSignerTest is BaseTest {
         }
         t.threshold = 2;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -385,9 +385,9 @@ contract MultiSigSignerTest is BaseTest {
         }
         t.threshold = 1;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -431,9 +431,9 @@ contract MultiSigSignerTest is BaseTest {
             t.ownerKeyHashes[i] = _hash(t.owners[i].k);
         }
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -470,9 +470,9 @@ contract MultiSigSignerTest is BaseTest {
 
         t.threshold = 2;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -516,9 +516,9 @@ contract MultiSigSignerTest is BaseTest {
 
         t.threshold = 2;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -561,9 +561,9 @@ contract MultiSigSignerTest is BaseTest {
 
         t.threshold = 2;
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(0))
         });
@@ -609,9 +609,9 @@ contract MultiSigSignerTest is BaseTest {
             t.ownerKeyHashes[i] = _hash(t.owners[i].k);
         }
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: false,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(uint96(_random())))
         });
@@ -648,9 +648,9 @@ contract MultiSigSignerTest is BaseTest {
             delegatedAccount.d.authorize(t.owners[i].k);
         }
 
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(address(multiSigSigner), bytes12(uint96(_random())))
         });

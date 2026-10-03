@@ -35,7 +35,7 @@ export async function checkHealth(client: RelayerPublicClient): Promise<HealthRe
             contracts: {
                 orchestrator: '0x0000000000000000000000000000000000000000',
                 simulator: '0x0000000000000000000000000000000000000000',
-                townsAccount: '0x0000000000000000000000000000000000000000',
+                account: '0x0000000000000000000000000000000000000000',
             },
             mode: 'pool',
         }
@@ -46,7 +46,7 @@ export async function checkHealth(client: RelayerPublicClient): Promise<HealthRe
             contracts: {
                 orchestrator: '0x0000000000000000000000000000000000000000',
                 simulator: '0x0000000000000000000000000000000000000000',
-                townsAccount: '0x0000000000000000000000000000000000000000',
+                account: '0x0000000000000000000000000000000000000000',
             },
             error: error instanceof Error ? error.message : 'Unknown error',
         }

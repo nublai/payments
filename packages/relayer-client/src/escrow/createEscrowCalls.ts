@@ -1,5 +1,5 @@
 import { encodeFunctionData, parseAbi } from 'viem'
-import { escrowAbi } from '@towns-labs/contracts/abis'
+import { escrowAbi } from '@agentic-payments/contracts/abis'
 import type { Call } from '../types.js'
 import type { CreateEscrowParams } from './types.js'
 import { buildEscrowStruct } from './buildEscrowStruct.js'
@@ -14,7 +14,7 @@ const ERC20_APPROVE_ABI = parseAbi([
  *   [1] Escrow.escrow([struct])
  *
  * Pass the returned Call[] directly to prepareCalls({ calls }).
- * The buyer's TownsAccount executes both atomically via the Orchestrator.
+ * The buyer's Account executes both atomically via the Orchestrator.
  */
 export function createEscrowCalls(params: CreateEscrowParams): Call[] {
     const escrowStruct = buildEscrowStruct(params)

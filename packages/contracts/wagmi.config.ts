@@ -8,7 +8,7 @@ export default defineConfig({
       project: ".",
       include: [
         "Orchestrator.sol/Orchestrator.json",
-        "TownsAccount.sol/TownsAccount.json",
+        "Account.sol/Account.json",
         "Simulator.sol/Simulator.json",
         "SimpleFunder.sol/SimpleFunder.json",
         "SimpleSettler.sol/SimpleSettler.json",

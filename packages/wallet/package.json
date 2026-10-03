@@ -1,5 +1,5 @@
 {
-    "name": "@towns-labs/wallet",
+    "name": "@agentic-payments/wallet",
     "version": "7.3.1",
     "bin": {
         "wallet": "./dist/cli.js",
@@ -27,9 +27,9 @@
     "dependencies": {
         "@bufbuild/protobuf": "^2.9.0",
         "@clack/prompts": "^1.0.1",
-        "@towns-labs/contracts": "workspace:^",
-        "@towns-labs/proto": "workspace:^",
-        "@towns-labs/relayer-client": "workspace:^",
+        "@agentic-payments/contracts": "workspace:^",
+        "@agentic-payments/proto": "workspace:^",
+        "@agentic-payments/relayer-client": "workspace:^",
         "argon2": "^0.44.0",
         "incur": "^0.3.1",
         "proper-lockfile": "^4.1.2",

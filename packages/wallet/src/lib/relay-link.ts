@@ -1,4 +1,4 @@
-import type { Call } from '@towns-labs/relayer-client'
+import type { Call } from '@agentic-payments/relayer-client'
 import { getAddress, type Address, type Hex } from 'viem'
 import { type EnvName } from './network-config'
 import { isRecord } from './type-guards'

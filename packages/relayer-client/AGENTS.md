@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-`@towns-labs/relayer-client` is a slim, viem-style SDK for interacting with the Towns Relayer. It enables gasless transactions through EIP-7702 account delegation and intent-based execution. It uses `viem` for client/runtime primitives and imports shared RPC schema types from `@towns-labs/relayer/rpc/schema/*` to keep contracts aligned.
+`@agentic-payments/relayer-client` is a slim, viem-style SDK for interacting with the Relayer. It enables gasless transactions through EIP-7702 account delegation and intent-based execution. It uses `viem` for client/runtime primitives and imports shared RPC schema types from `@agentic-payments/relayer/rpc/schema/*` to keep contracts aligned.
 
 ## Package Relationship
 
-This package is **tightly coupled** with `@towns-labs/relayer` (`packages/relayer/`):
+This package is **tightly coupled** with `@agentic-payments/relayer` (`packages/relayer/`):
 
 | Package                         | Role                                                        |
 | ------------------------------- | ----------------------------------------------------------- |
@@ -18,7 +18,7 @@ This package is **tightly coupled** with `@towns-labs/relayer` (`packages/relaye
 **Key dependencies:**
 
 - This package consumes RPC methods defined in `relayer/src/rpc/methods/`
-- This package imports shared RPC schema types from `relayer/src/rpc/schema/` (via `@towns-labs/relayer/rpc/schema/...`)
+- This package imports shared RPC schema types from `relayer/src/rpc/schema/` (via `@agentic-payments/relayer/rpc/schema/...`)
 - Both packages share identical EIP-712 type definitions for intent signing
 - Changes to relayer's request/response schemas require updates here
 
@@ -103,7 +103,7 @@ const client = createPublicClient({ chain, transport }).extend(
 
 ```typescript
 // Signature wrapping for authorized keys
-wrapSignature(signature, keyHash, prehash?)  // Wrap signature for TownsAccount validation
+wrapSignature(signature, keyHash, prehash?)  // Wrap signature for Account validation
 
 // ERC-1271 digest transform (for smart contract signers)
 computeErc1271Digest(digest, account)  // Transform digest for ERC-1271 signing

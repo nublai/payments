@@ -2,7 +2,7 @@ import { access, mkdir, readdir, rm } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fromBinary, toBinary } from '@bufbuild/protobuf'
-import { BearerTokenSchema, WalletSessionTokenSchema } from '@towns-labs/proto'
+import { BearerTokenSchema, WalletSessionTokenSchema } from '@agentic-payments/proto'
 import { getAddress, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { getDefaultKeystorePath } from './account-create'
@@ -321,7 +321,7 @@ export async function executeLogout(
             type: 'logout',
             status: 'complete',
             profile: options.profile,
-            warning: `WARNING: The session key is still authorized on-chain until ${expiryHint}. Revoke it in the Towns web app if this device may be compromised.`,
+            warning: `WARNING: The session key is still authorized on-chain until ${expiryHint}. Revoke it in the web app if this device may be compromised.`,
         }
     } catch (error) {
         if (error instanceof LoginError) {

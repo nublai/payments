@@ -1059,10 +1059,10 @@ export const simulatorAbi = [
 ] as const;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TownsAccount
+// Account
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export const townsAccountAbi = [
+export const accountAbi = [
   {
     type: "constructor",
     inputs: [
@@ -1154,13 +1154,13 @@ export const townsAccountAbi = [
     inputs: [
       {
         name: "key",
-        internalType: "struct TownsAccount.Key",
+        internalType: "struct Account.Key",
         type: "tuple",
         components: [
           { name: "expiry", internalType: "uint40", type: "uint40" },
           {
             name: "keyType",
-            internalType: "enum TownsAccount.KeyType",
+            internalType: "enum Account.KeyType",
             type: "uint8",
           },
           { name: "isSuperAdmin", internalType: "bool", type: "bool" },
@@ -1272,13 +1272,13 @@ export const townsAccountAbi = [
     outputs: [
       {
         name: "key",
-        internalType: "struct TownsAccount.Key",
+        internalType: "struct Account.Key",
         type: "tuple",
         components: [
           { name: "expiry", internalType: "uint40", type: "uint40" },
           {
             name: "keyType",
-            internalType: "enum TownsAccount.KeyType",
+            internalType: "enum Account.KeyType",
             type: "uint8",
           },
           { name: "isSuperAdmin", internalType: "bool", type: "bool" },
@@ -1295,13 +1295,13 @@ export const townsAccountAbi = [
     outputs: [
       {
         name: "keys",
-        internalType: "struct TownsAccount.Key[]",
+        internalType: "struct Account.Key[]",
         type: "tuple[]",
         components: [
           { name: "expiry", internalType: "uint40", type: "uint40" },
           {
             name: "keyType",
-            internalType: "enum TownsAccount.KeyType",
+            internalType: "enum Account.KeyType",
             type: "uint8",
           },
           { name: "isSuperAdmin", internalType: "bool", type: "bool" },
@@ -1324,13 +1324,13 @@ export const townsAccountAbi = [
     inputs: [
       {
         name: "key",
-        internalType: "struct TownsAccount.Key",
+        internalType: "struct Account.Key",
         type: "tuple",
         components: [
           { name: "expiry", internalType: "uint40", type: "uint40" },
           {
             name: "keyType",
-            internalType: "enum TownsAccount.KeyType",
+            internalType: "enum Account.KeyType",
             type: "uint8",
           },
           { name: "isSuperAdmin", internalType: "bool", type: "bool" },
@@ -1366,13 +1366,13 @@ export const townsAccountAbi = [
     outputs: [
       {
         name: "",
-        internalType: "struct TownsAccount.Key",
+        internalType: "struct Account.Key",
         type: "tuple",
         components: [
           { name: "expiry", internalType: "uint40", type: "uint40" },
           {
             name: "keyType",
-            internalType: "enum TownsAccount.KeyType",
+            internalType: "enum Account.KeyType",
             type: "uint8",
           },
           { name: "isSuperAdmin", internalType: "bool", type: "bool" },
@@ -1606,13 +1606,13 @@ export const townsAccountAbi = [
       },
       {
         name: "key",
-        internalType: "struct TownsAccount.Key",
+        internalType: "struct Account.Key",
         type: "tuple",
         components: [
           { name: "expiry", internalType: "uint40", type: "uint40" },
           {
             name: "keyType",
-            internalType: "enum TownsAccount.KeyType",
+            internalType: "enum Account.KeyType",
             type: "uint8",
           },
           { name: "isSuperAdmin", internalType: "bool", type: "bool" },

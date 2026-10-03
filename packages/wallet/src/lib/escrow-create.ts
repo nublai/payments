@@ -1,5 +1,5 @@
 import { getAddress, isHex, parseUnits, padHex, type Address, type Hex } from 'viem'
-import { createEscrowCalls, computeEscrowId } from '@towns-labs/relayer-client'
+import { createEscrowCalls, computeEscrowId } from '@agentic-payments/relayer-client'
 import { resolveKeystorePath } from './account-create'
 import type { ChainName, EnvName } from './network-config'
 import type { ExecuteSignedCallsDeps } from './execute-calls'

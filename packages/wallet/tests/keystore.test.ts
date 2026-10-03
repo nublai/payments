@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, expect } from 'bun:test'
 import { create, toBinary } from '@bufbuild/protobuf'
-import { ExportedDeviceSchema } from '@towns-labs/proto'
+import { ExportedDeviceSchema } from '@agentic-payments/proto'
 import { generatePrivateKey } from 'viem/accounts'
 import {
     LoginProfileError,

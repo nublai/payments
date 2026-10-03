@@ -6,7 +6,7 @@
  */
 
 import { decodeErrorResult, type Hex } from 'viem'
-import { orchestratorAbi } from '@towns-labs/contracts/abis'
+import { orchestratorAbi } from '@agentic-payments/contracts/abis'
 
 // =============================================================================
 // Standard JSON-RPC 2.0 Error Codes
@@ -58,7 +58,7 @@ export const INSUFFICIENT_FUNDS = -32007
 /** Intent expired */
 export const INTENT_EXPIRED = -32008
 
-/** Account not delegated to TownsAccount */
+/** Account not delegated to Account */
 export const ACCOUNT_NOT_DELEGATED = -32009
 
 /** Quote expired (TTL exceeded) */

@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import { decodeFunctionData, encodeAbiParameters, parseAbiParameters, type Hex } from 'viem'
 import {
     PermissionsError,
@@ -107,7 +107,7 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
     expect(capturedData).toBeDefined()
 
     const decoded = decodeFunctionData({
-        abi: townsAccountAbi,
+        abi: accountAbi,
         data: capturedData!,
     })
     expect(decoded.functionName).toBe('setCanExecute')
@@ -203,7 +203,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
 
     expect(result.ruleCount).toBe(1)
     const decoded = decodeFunctionData({
-        abi: townsAccountAbi,
+        abi: accountAbi,
         data: capturedData!,
     })
     expect(decoded.functionName).toBe('setCanExecute')
@@ -482,7 +482,7 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
     expect(capturedData).toBeDefined()
 
     const decoded = decodeFunctionData({
-        abi: townsAccountAbi,
+        abi: accountAbi,
         data: capturedData!,
     })
     expect(decoded.functionName).toBe('setSpendLimit')
@@ -629,8 +629,8 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
     expect(result.ruleCount).toBe(2)
     expect(capturedCalls).toHaveLength(2)
 
-    const decoded0 = decodeFunctionData({ abi: townsAccountAbi, data: capturedCalls[0]! })
-    const decoded1 = decodeFunctionData({ abi: townsAccountAbi, data: capturedCalls[1]! })
+    const decoded0 = decodeFunctionData({ abi: accountAbi, data: capturedCalls[0]! })
+    const decoded1 = decodeFunctionData({ abi: accountAbi, data: capturedCalls[1]! })
     expect(decoded0.functionName).toBe('setCanExecute')
     expect(decoded1.functionName).toBe('removeSpendLimit')
 })
@@ -752,7 +752,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
     )
 
     expect(result.ruleCount).toBe(1)
-    const decoded = decodeFunctionData({ abi: townsAccountAbi, data: capturedData! })
+    const decoded = decodeFunctionData({ abi: accountAbi, data: capturedData! })
     expect(decoded.functionName).toBe('removeSpendLimit')
 })
 

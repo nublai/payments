@@ -1,4 +1,4 @@
-# Towns Protocol Contracts
+# Agentic Payments Contracts
 
 Solidity smart contracts for EIP-7702 account abstraction, intent-based execution, and cross-chain settlement.
 
@@ -67,7 +67,7 @@ Each chain section includes:
 
 | Contract | Purpose |
 |----------|---------|
-| **TownsAccount** | EIP-7702 account with key management |
+| **Account** | EIP-7702 account with key management |
 | **Orchestrator** | Intent verification, gas compensation, execution |
 | **GuardedExecutor** | Execution guards and spend limits |
 | **Escrow** | Token escrow with cross-chain settlement |

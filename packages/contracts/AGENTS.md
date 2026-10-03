@@ -75,7 +75,7 @@ This is an EIP-7702 account abstraction system with intent-based execution.
 
 ### Core Flow
 
-1. **TownsAccount** (`src/accounts/TownsAccount.sol`) - EIP-7702 delegated account that EOAs point to. Manages keys (Secp256k1/External), handles 2D nonces (192-bit seqKey + 64-bit sequential), validates EIP-712 signatures.
+1. **Account** (`src/accounts/Account.sol`) - EIP-7702 delegated account that EOAs point to. Manages keys (Secp256k1/External), handles 2D nonces (192-bit seqKey + 64-bit sequential), validates EIP-712 signatures.
 
 2. **Orchestrator** (`src/accounts/Orchestrator.sol`) - Central execution coordinator. Verifies signed `Intent` structs, executes calls atomically, compensates relayers for gas, handles cross-chain fund transfers via settlers.
 
@@ -103,7 +103,7 @@ Tests extend `test/Base.t.sol` which sets up mock orchestrator, accounts, and pa
 
 ## Relayer-Contracts Gotchas
 
-- **TownsAccount bytecode limit**: must stay under 24KB; optimizer runs are tuned for this (`foundry.toml`).
+- **Account bytecode limit**: must stay under 24KB; optimizer runs are tuned for this (`foundry.toml`).
 - **Release profile differs**: deployments should use `forge build --profile release` (via IR, 200 runs).
 - **CREATE2 determinism**: most contracts use CREATE2; redeploys are skipped if address is already used.
 - **Local deploy preloads code**: `deploy.sh local` writes Multicall3 + MockUSDC bytecode via `anvil_setCode`.

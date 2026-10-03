@@ -1,10 +1,10 @@
-# Towns Relayer - Architecture Guide
+# Relayer - Architecture Guide
 
 ## 1. System Overview
 
 ### Purpose
 
-Towns Relayer is a Cloudflare Worker that processes signed blockchain intents and relays them for execution. It abstracts away gas management and nonce handling—users sign intents describing what they want, and the relayer handles how to execute it.
+Relayer is a Cloudflare Worker that processes signed blockchain intents and relays them for execution. It abstracts away gas management and nonce handling—users sign intents describing what they want, and the relayer handles how to execute it.
 
 ### Key Actors
 
@@ -12,7 +12,7 @@ Towns Relayer is a Cloudflare Worker that processes signed blockchain intents an
 | ------------------------------ | ----------------- | ---------------------------------------- |
 | **End Users**                  | Untrusted         | JSON-RPC endpoint (`POST /`)             |
 | **Relayer Signers**            | Fully Trusted     | HD-derived from `RELAYER_MNEMONIC`       |
-| **On-Chain Contracts**         | Partially Trusted | Orchestrator, TownsAccount, SimpleFunder |
+| **On-Chain Contracts**         | Partially Trusted | Orchestrator, Account, SimpleFunder |
 | **Cloudflare Workers Runtime** | Trusted           | Queue consumer, cron scheduler           |
 
 ### Technology Stack
@@ -291,7 +291,7 @@ const result = this.ctx.storage.transactionSync(() => {
 
 **Trust Assumptions**:
 
-- TownsAccount.unwrapAndValidateSignature is authoritative
+- Account.unwrapAndValidateSignature is authoritative
 - Only superAdmin keys are checked
 
 ---
@@ -318,7 +318,7 @@ const result = this.ctx.storage.transactionSync(() => {
 **Trusted**:
 
 - Orchestrator contract behavior
-- TownsAccount signature validation
+- Account signature validation
 - SimpleFunder gas refill mechanics
 
 **Potential issues**:
@@ -463,7 +463,7 @@ if (c.req.path === "/health") {
 - `execute(bytes[] encodedIntents)`: Batch execution
 - `executePreCalls(address, SignedCall[])`: Key initialization
 
-### TownsAccount
+### Account
 
 - `getNonce(seqKey)`: Read current intent nonce
 - `getKeys()`: Fetch authorized keys

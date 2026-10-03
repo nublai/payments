@@ -4,8 +4,8 @@ date: 2026-02-25
 problem_type: build_error
 component: tooling
 symptoms:
-  - "GitHub Actions checks Common_CI and Integration CI failed at @towns-labs/wallet-cli#build"
-  - "Bun bundling failed with: Could not resolve '@towns-labs/deployments/abis'"
+  - "GitHub Actions checks Common_CI and Integration CI failed at @agentic-payments/wallet-cli#build"
+  - "Bun bundling failed with: Could not resolve '@agentic-payments/deployments/abis'"
   - "Local relayer-cli build/tests also failed with unresolved ABI module imports"
 root_cause: missing_tooling
 resolution_type: dependency_update
@@ -18,11 +18,11 @@ tags:
 
 ## Problem
 
-`@towns-labs/wallet-cli` failed to build in CI because session command files imported an ABI module path that was no longer resolvable in the current workspace/package graph.
+`@agentic-payments/wallet-cli` failed to build in CI because session command files imported an ABI module path that was no longer resolvable in the current workspace/package graph.
 
 ## Environment
 
-- Module: `packages/wallet` (`@towns-labs/wallet-cli`)
+- Module: `packages/wallet` (`@agentic-payments/wallet-cli`)
 - Affected Component: Package/build tooling and workspace dependency wiring
 - Date: 2026-02-25
 
@@ -32,7 +32,7 @@ tags:
   - `Common_CI` (CI workflow)
   - `Integration CI` (CI workflow)
 - Error in logs:
-  - `Could not resolve: "@towns-labs/deployments/abis"`
+  - `Could not resolve: "@agentic-payments/deployments/abis"`
 - Affected files:
   - `src/lib/session-create.ts`
   - `src/lib/session-rotate.ts`
@@ -40,9 +40,9 @@ tags:
 
 ## What Didn't Work
 
-**Attempted Solution 1:** Switch imports from `@towns-labs/deployments/abis` to `@towns-labs/contracts/abis`.
+**Attempted Solution 1:** Switch imports from `@agentic-payments/deployments/abis` to `@agentic-payments/contracts/abis`.
 
-- **Why it failed:** `packages/wallet/package.json` did not declare `@towns-labs/contracts` as a dependency, so module resolution still failed at build time.
+- **Why it failed:** `packages/wallet/package.json` did not declare `@agentic-payments/contracts` as a dependency, so module resolution still failed at build time.
 
 ## Solution
 
@@ -52,10 +52,10 @@ Use the canonical ABI export path and ensure the package dependency graph includ
 
 ```ts
 // Before
-import { townsAccountAbi } from "@towns-labs/deployments/abis";
+import { accountAbi } from "@agentic-payments/deployments/abis";
 
 // After
-import { townsAccountAbi } from "@towns-labs/contracts/abis";
+import { accountAbi } from "@agentic-payments/contracts/abis";
 ```
 
 Applied in:
@@ -69,7 +69,7 @@ Applied in:
 ```json
 {
   "dependencies": {
-    "@towns-labs/contracts": "workspace:^"
+    "@agentic-payments/contracts": "workspace:^"
   }
 }
 ```
@@ -89,8 +89,8 @@ bun run --cwd packages/wallet test
 
 ## Why This Works
 
-1. ABI imports are now aligned with the canonical package export (`@towns-labs/contracts/abis`) used elsewhere in the repo.
-2. The consuming package (`@towns-labs/wallet-cli`) explicitly depends on `@towns-labs/contracts`, so Bun can resolve the module during bundling.
+1. ABI imports are now aligned with the canonical package export (`@agentic-payments/contracts/abis`) used elsewhere in the repo.
+2. The consuming package (`@agentic-payments/wallet-cli`) explicitly depends on `@agentic-payments/contracts`, so Bun can resolve the module during bundling.
 3. Lockfile regeneration ensures CI and local environments resolve the same graph.
 
 ## Prevention

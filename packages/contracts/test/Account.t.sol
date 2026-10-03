@@ -107,12 +107,12 @@ contract AccountTest is BaseTest {
         sig = _sig(k, replaySafeDigest);
 
         assertEq(
-            d.d.isValidSignature(digest, sig) == TownsAccount.isValidSignature.selector,
+            d.d.isValidSignature(digest, sig) == AgenticAccount.isValidSignature.selector,
             k.k.isSuperAdmin
         );
 
         vm.prank(checkers[_randomUniform() % checkers.length]);
-        assertEq(d.d.isValidSignature(digest, sig), TownsAccount.isValidSignature.selector);
+        assertEq(d.d.isValidSignature(digest, sig), AgenticAccount.isValidSignature.selector);
 
         vm.prank(d.eoa);
         d.d.revoke(_hash(k.k));
@@ -125,7 +125,7 @@ contract AccountTest is BaseTest {
         d.d.authorize(k.k);
 
         assertEq(
-            d.d.isValidSignature(digest, sig) == TownsAccount.isValidSignature.selector,
+            d.d.isValidSignature(digest, sig) == AgenticAccount.isValidSignature.selector,
             k.k.isSuperAdmin
         );
         assertEq(d.d.approvedSignatureCheckers(k.keyHash).length, 0);
@@ -185,16 +185,16 @@ contract AccountTest is BaseTest {
         t.opData = abi.encodePacked(t.nonce, signature);
         t.executionData = abi.encode(t.calls, t.opData);
 
-        vm.expectRevert(TownsAccount.NewImplementationIsZero.selector);
+        vm.expectRevert(AgenticAccount.NewImplementationIsZero.selector);
         d.d.execute(_ERC7821_BATCH_EXECUTION_MODE, t.executionData);
     }
 
     function testApproveAndRevokeKey(bytes32) public {
         DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
-        TownsAccount.Key memory k;
-        TownsAccount.Key memory kRetrieved;
+        AgenticAccount.Key memory k;
+        AgenticAccount.Key memory kRetrieved;
 
-        k.keyType = TownsAccount.KeyType(_randomUniform() & 1);
+        k.keyType = AgenticAccount.KeyType(_randomUniform() & 1);
         k.expiry = uint40(_bound(_random(), 0, 2 ** 40 - 1));
         k.publicKey = _truncateBytes(_randomBytes(), 0x1ff);
 
@@ -241,8 +241,8 @@ contract AccountTest is BaseTest {
 
     function testManyKeys() public {
         DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
-        TownsAccount.Key memory k;
-        k.keyType = TownsAccount.KeyType(_randomUniform() & 1);
+        AgenticAccount.Key memory k;
+        k.keyType = AgenticAccount.KeyType(_randomUniform() & 1);
 
         for (uint40 i = 0; i < 20; i++) {
             k.expiry = i;
@@ -253,7 +253,7 @@ contract AccountTest is BaseTest {
 
         vm.warp(5);
 
-        (TownsAccount.Key[] memory keys, bytes32[] memory keyHashes) = d.d.getKeys();
+        (AgenticAccount.Key[] memory keys, bytes32[] memory keyHashes) = d.d.getKeys();
 
         assert(keys.length == keyHashes.length);
         assert(keys.length == 16);
@@ -284,7 +284,7 @@ contract AccountTest is BaseTest {
         Orchestrator.SignedCall memory pInit;
         {
             ERC7821.Call[] memory initCalls = new ERC7821.Call[](1);
-            initCalls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, adminKey.k);
+            initCalls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, adminKey.k);
 
             pInit.eoa = eoaAddress;
             pInit.executionData = abi.encode(initCalls);
@@ -296,7 +296,7 @@ contract AccountTest is BaseTest {
         Orchestrator.SignedCall memory pAuth;
         {
             ERC7821.Call[] memory authCalls = new ERC7821.Call[](1);
-            authCalls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, newKey.k);
+            authCalls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, newKey.k);
 
             pAuth.eoa = eoaAddress;
             pAuth.executionData = abi.encode(authCalls);
@@ -337,7 +337,7 @@ contract AccountTest is BaseTest {
         assertEq(oc.execute(abi.encode(u1)), 0, "Execution should succeed on chain 1");
 
         // Verify keys were added on chain 1
-        uint256 keysCount1 = TownsAccount(eoaAddress).keyCount();
+        uint256 keysCount1 = AgenticAccount(eoaAddress).keyCount();
         assertEq(keysCount1, 2, "Both keys should be added on chain 1");
 
         // === Reset State and Switch to Chain 137 ===
@@ -353,7 +353,7 @@ contract AccountTest is BaseTest {
         assertEq(oc.execute(abi.encode(baseIntent)), 0, "Should succeed due to multichain nonce");
 
         // Verify keys were added on chain 137
-        uint256 keysCount137 = TownsAccount(eoaAddress).keyCount();
+        uint256 keysCount137 = AgenticAccount(eoaAddress).keyCount();
         assertEq(keysCount137, 2, "Keys should be added on chain 137");
     }
 

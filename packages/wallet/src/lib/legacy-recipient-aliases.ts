@@ -9,7 +9,7 @@ function normalizeLegacyAlias(alias: string): string {
 }
 
 function resolveLegacyRecipientAliasesPath(): string {
-    return join(homedir(), '.config', 'towns', 'tw', 'contacts.json')
+    return join(homedir(), '.config', 'agentic-payments', 'tw', 'contacts.json')
 }
 
 async function readLegacyRecipientAliasesContacts(): Promise<Record<string, unknown>> {

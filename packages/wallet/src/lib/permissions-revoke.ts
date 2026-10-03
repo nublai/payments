@@ -4,8 +4,8 @@ import type {
     Call,
     GetKeysResponse,
     PrepareCallsResponse,
-} from '@towns-labs/relayer-client'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+} from '@agentic-payments/relayer-client'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import { resolveKeystorePath } from './account-create'
 import {
     decryptRootKeystore,
@@ -141,7 +141,7 @@ function getDefaultDeps(): PermissionsRevokeDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
-            return (await import('@towns-labs/relayer-client')).waitForBundle(client, {
+            return (await import('@agentic-payments/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
             })
@@ -256,7 +256,7 @@ export async function executePermissionsRevoke(
                         target: accountAddress,
                         value: 0n,
                         data: encodeFunctionData({
-                            abi: townsAccountAbi,
+                            abi: accountAbi,
                             functionName: 'setCanExecute',
                             args: [selected.key.hash, target, selector, false],
                         }),
@@ -270,7 +270,7 @@ export async function executePermissionsRevoke(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'removeSpendLimit',
                         args: [selected.key.hash, token, periodToEnum(period)],
                     }),
@@ -285,7 +285,7 @@ export async function executePermissionsRevoke(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setCanExecute',
                         args: [selected.key.hash, parsed.target, parsed.selector, false],
                     }),
@@ -295,7 +295,7 @@ export async function executePermissionsRevoke(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'removeSpendLimit',
                         args: [selected.key.hash, parsed.token, periodToEnum(parsed.period)],
                     }),

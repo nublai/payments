@@ -29,7 +29,7 @@ tags:
 
 ## Problem
 
-We added `tw account swap` and `tw account bridge` on top of relay.link quotes plus Towns relayer execution. The happy path was straightforward, but real end-to-end validation exposed several cross-system failure modes:
+We added `tw account swap` and `tw account bridge` on top of relay.link quotes plus relayer execution. The happy path was straightforward, but real end-to-end validation exposed several cross-system failure modes:
 
 - relay.link quote routing had to match our environment and chain model
 - relayer HTTP auth had to be enabled for `wallet_sendPreparedCalls`
@@ -211,7 +211,7 @@ Before bridging to Polygon, account readiness checks showed the destination acco
 
 ### Why it happened
 
-Bridge fills still land into a Towns account on the destination chain. If that account does not exist or is not delegated there yet, the bridge flow is not actually ready end to end.
+Bridge fills still land into a account on the destination chain. If that account does not exist or is not delegated there yet, the bridge flow is not actually ready end to end.
 
 ### Fix
 

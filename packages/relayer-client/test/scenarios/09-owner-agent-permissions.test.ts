@@ -1,11 +1,11 @@
 /**
  * Test 9: Owner & Agent Permissions
  *
- * Tests verify different ways to authorize keys on TownsAccount and how
+ * Tests verify different ways to authorize keys on Account and how
  * signature verification works depending on whether the signer is an EOA or
  * a delegated account (smart contract).
  *
- * Background: When verifying signatures, TownsAccount checks if the signer
+ * Background: When verifying signatures, Account checks if the signer
  * has bytecode:
  *   - EOA signer (no bytecode): Standard ECDSA recovery
  *   - Delegated signer (has bytecode): ERC-1271 isValidSignature() call
@@ -30,7 +30,7 @@ import {
     type Hex,
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount, sign } from 'viem/accounts'
-import { townsAccountAbi, multiSigSignerAbi } from '@towns-labs/contracts/abis'
+import { accountAbi, multiSigSignerAbi } from '@agentic-payments/contracts/abis'
 
 import {
     waitForBundle,
@@ -151,14 +151,14 @@ describe('Owner & Agent Permissions', () => {
             // #then - verify owner key is registered as superadmin
             const keyCount = await client.readContract({
                 address: bot.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'keyCount',
             })
             expect(keyCount).toBe(1n)
 
             const [keys, keyHashes] = await client.readContract({
                 address: bot.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getKeys',
             })
             const ownerIndex = keyHashes.findIndex((hash) => hash === ownerKeyHash)
@@ -407,7 +407,7 @@ describe('Owner & Agent Permissions', () => {
     //
     // Flow:
     //   1. Delegate user and session key
-    //   2. User prepares an intent that calls TownsAccount.authorize(sessionKey)
+    //   2. User prepares an intent that calls Account.authorize(sessionKey)
     //   3. User signs and submits intent (regular EIP-712 signing)
     //   4. Verify key shows up on-chain
     //
@@ -442,7 +442,7 @@ describe('Owner & Agent Permissions', () => {
             const sessionKeyHash = computeKeyHash('secp256k1', encodedSessionPublicKey)
 
             const authorizeData = encodeFunctionData({
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'authorize',
                 args: [
                     {
@@ -484,14 +484,14 @@ describe('Owner & Agent Permissions', () => {
             // #then - verify session key is registered
             const keyCount = await client.readContract({
                 address: user.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'keyCount',
             })
             expect(keyCount).toBe(1n)
 
             const [keys, keyHashes] = await client.readContract({
                 address: user.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getKeys',
             })
             const sessionIndex = keyHashes.findIndex((hash) => hash === sessionKeyHash)
@@ -504,17 +504,17 @@ describe('Owner & Agent Permissions', () => {
     // TEST 5: Delegated Owner via MultiSigSigner
     //
     // Scenario: A "bot account" (botEoa) needs the owner added as a superadmin.
-    //           The owner is delegated, so TownsAccount calls ERC-1271 on the
-    //           owner's account — which itself is a TownsAccount. That creates
+    //           The owner is delegated, so Account calls ERC-1271 on the
+    //           owner's account — which itself is an Account. That creates
     //           infinite recursion because isValidSignature wraps the digest
     //           again and again.
     //
-    // Solution: Use MultiSigSigner as a wrapper around the owner's TownsAccount.
+    // Solution: Use MultiSigSigner as a wrapper around the owner's Account.
     //           MultiSigSigner.isValidSignature() verifies the inner signature
     //           directly without re-wrapping the digest.
     //
     // Nested signature structure (outer → inner):
-    //   ┌─ botEoa.TownsAccount.isValidSignature(botDigest, outerSig)
+    //   ┌─ botEoa.Account.isValidSignature(botDigest, outerSig)
     //   │    outerSig = abi.encode(ownerKeyHash, innerSig)
     //   │
     //   └─→ multiSigSigner.isValidSignature(botDigest, innerSig)
@@ -531,7 +531,7 @@ describe('Owner & Agent Permissions', () => {
     //   6. Submit and verify
     //
     // Key point: MultiSigSigner breaks the recursion by forwarding digest
-    //            verification without the double-wrapping that TownsAccount does.
+    //            verification without the double-wrapping that Account does.
     // ─────────────────────────────────────────────────────────────────────
     it(
         'should delegate owner then add owner as superadmin for a bot account',
@@ -689,7 +689,7 @@ describe('Owner & Agent Permissions', () => {
     //   5. Session key signs with ERC-1271 digest transform (has bytecode)
     //   6. Relayer executes; GuardedExecutor enforces spend + call limits
     //
-    // Why ERC-1271: Session key is delegated → has bytecode → TownsAccount
+    // Why ERC-1271: Session key is delegated → has bytecode → Account
     // calls sessionKey.isValidSignature() instead of ECDSA recovery.
     // computeErc1271Digest() transforms the digest to include the signer's
     // address for cross-account replay protection.
@@ -735,7 +735,7 @@ describe('Owner & Agent Permissions', () => {
                     target: user.address,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'authorize',
                         args: [
                             {
@@ -752,7 +752,7 @@ describe('Owner & Agent Permissions', () => {
                     target: user.address,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setSpendLimit',
                         args: [sessionKeyHash, USDC, SPEND_PERIOD_DAY, usdcAmount],
                     }),
@@ -762,7 +762,7 @@ describe('Owner & Agent Permissions', () => {
                     target: user.address,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setCanExecute',
                         args: [sessionKeyHash, USDC, ERC20_SELECTORS.TRANSFER, true],
                     }),
@@ -800,7 +800,7 @@ describe('Owner & Agent Permissions', () => {
             // Step 3: Verify session key is registered on-chain
             const [, keyHashes] = await client.readContract({
                 address: user.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getKeys',
             })
             expect(keyHashes).toContain(sessionKeyHash)
@@ -829,7 +829,7 @@ describe('Owner & Agent Permissions', () => {
                 ],
             })
 
-            // Session key is delegated (has bytecode) → TownsAccount verifies via
+            // Session key is delegated (has bytecode) → Account verifies via
             // ERC-1271 isValidSignature() instead of ECDSA. Must transform the digest
             // to include signer address, then wrap with keyHash for key lookup.
             const wrappedSignature = await signErc1271Intent(

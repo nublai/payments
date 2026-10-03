@@ -1,11 +1,11 @@
 /**
  * Keys RPC Method
  *
- * Returns authorized keys and their permissions for a TownsAccount.
+ * Returns authorized keys and their permissions for an Account.
  */
 
 import { type Address, type Hex, numberToHex } from 'viem'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
@@ -78,7 +78,7 @@ interface ContractSpendInfo {
 // =============================================================================
 
 /**
- * wallet_getKeys - Returns authorized keys and their permissions for a TownsAccount
+ * wallet_getKeys - Returns authorized keys and their permissions for an Account
  *
  * @param params - { address: Address, chainIds?: string[] }
  * @param ctx - RPC context
@@ -121,7 +121,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
             if (strictSingleChain) {
                 throw new RpcError(
                     ACCOUNT_NOT_DELEGATED,
-                    `Account ${address} is not delegated to a TownsAccount. Use wallet_prepareUpgradeAccount and wallet_upgradeAccount to upgrade first.`,
+                    `Account ${address} is not delegated to an Account. Use wallet_prepareUpgradeAccount and wallet_upgradeAccount to upgrade first.`,
                 )
             }
             results[hexChainId] = []
@@ -135,7 +135,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
         try {
             const result = await publicClient.readContract({
                 address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getKeys',
             })
             keys = result[0] as readonly ContractKey[]
@@ -145,7 +145,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
             if (strictSingleChain) {
                 throw new RpcError(
                     ACCOUNT_NOT_DELEGATED,
-                    `Account ${address} is not delegated to a TownsAccount. Use wallet_prepareUpgradeAccount and wallet_upgradeAccount to upgrade first.`,
+                    `Account ${address} is not delegated to an Account. Use wallet_prepareUpgradeAccount and wallet_upgradeAccount to upgrade first.`,
                 )
             }
             results[hexChainId] = []
@@ -165,7 +165,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
         try {
             const result = await publicClient.readContract({
                 address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'spendAndExecuteInfos',
                 args: [keyHashes as readonly `0x${string}`[]],
             })

@@ -10,7 +10,7 @@
       },
     },
     "packages/contracts": {
-      "name": "@towns-labs/contracts",
+      "name": "@agentic-payments/contracts",
       "version": "7.3.1",
       "dependencies": {
         "@axelar-network/axelar-gmp-sdk-solidity": "^6.0.6",
@@ -33,7 +33,7 @@
       },
     },
     "packages/proto": {
-      "name": "@towns-labs/proto",
+      "name": "@agentic-payments/proto",
       "version": "7.3.1",
       "dependencies": {
         "@bufbuild/protobuf": "^2.9.0",
@@ -49,7 +49,7 @@
       },
     },
     "packages/relayer": {
-      "name": "@towns-labs/relayer",
+      "name": "@agentic-payments/relayer",
       "version": "7.3.1",
       "dependencies": {
         "@hono/zod-validator": "0.7.6",
@@ -57,7 +57,7 @@
         "@scure/bip32": "2.0.1",
         "@scure/bip39": "2.0.1",
         "@slicekit/erc8128": "^0.1.0",
-        "@towns-labs/contracts": "workspace:^",
+        "@agentic-payments/contracts": "workspace:^",
         "hono": "^4.11.7",
         "oxlint": "^1.41.0",
         "pino": "^10.3.1",
@@ -73,12 +73,12 @@
       },
     },
     "packages/relayer-client": {
-      "name": "@towns-labs/relayer-client",
+      "name": "@agentic-payments/relayer-client",
       "version": "7.3.1",
       "dependencies": {
         "@slicekit/erc8128": "^0.1.0",
-        "@towns-labs/contracts": "workspace:^",
-        "@towns-labs/relayer": "workspace:^",
+        "@agentic-payments/contracts": "workspace:^",
+        "@agentic-payments/relayer": "workspace:^",
       },
       "devDependencies": {
         "@privy-io/server-auth": "^1.9.1",
@@ -93,7 +93,7 @@
       },
     },
     "packages/wallet": {
-      "name": "@towns-labs/wallet",
+      "name": "@agentic-payments/wallet",
       "version": "7.3.1",
       "bin": {
         "wallet": "./dist/cli.js",
@@ -102,9 +102,9 @@
       "dependencies": {
         "@bufbuild/protobuf": "^2.9.0",
         "@clack/prompts": "^1.0.1",
-        "@towns-labs/contracts": "workspace:^",
-        "@towns-labs/proto": "workspace:^",
-        "@towns-labs/relayer-client": "workspace:^",
+        "@agentic-payments/contracts": "workspace:^",
+        "@agentic-payments/proto": "workspace:^",
+        "@agentic-payments/relayer-client": "workspace:^",
         "argon2": "^0.44.0",
         "incur": "^0.3.1",
         "proper-lockfile": "^4.1.2",
@@ -548,15 +548,15 @@
 
     "@toon-format/toon": ["@toon-format/toon@2.3.1", "", {}, "sha512-sWqEMeAJGMda9qRrfPKrX3C4c33CO9SJuvJzzrcBEn5sbDB+k6pSLkDsfN0rVnLQwR97MV3sDgVbcxQNsq8xVw=="],
 
-    "@towns-labs/contracts": ["@towns-labs/contracts@workspace:packages/contracts"],
+    "@agentic-payments/contracts": ["@agentic-payments/contracts@workspace:packages/contracts"],
 
-    "@towns-labs/proto": ["@towns-labs/proto@workspace:packages/proto"],
+    "@agentic-payments/proto": ["@agentic-payments/proto@workspace:packages/proto"],
 
-    "@towns-labs/relayer": ["@towns-labs/relayer@workspace:packages/relayer"],
+    "@agentic-payments/relayer": ["@agentic-payments/relayer@workspace:packages/relayer"],
 
-    "@towns-labs/relayer-client": ["@towns-labs/relayer-client@workspace:packages/relayer-client"],
+    "@agentic-payments/relayer-client": ["@agentic-payments/relayer-client@workspace:packages/relayer-client"],
 
-    "@towns-labs/wallet": ["@towns-labs/wallet@workspace:packages/wallet"],
+    "@agentic-payments/wallet": ["@agentic-payments/wallet@workspace:packages/wallet"],
 
     "@towns-protocol/diamond": ["@towns-protocol/diamond@0.7.0", "", { "dependencies": { "@openzeppelin/contracts": "^5.4.0", "@prb/test": "^0.6.4", "forge-std": "github:foundry-rs/forge-std#v1.12.0", "solady": "^0.1.26" } }, "sha512-B+fPuRoDlDmp7mLf9n3BJsWAsY/e3Qph5/7V9+Cp7FjJIpFGw4H7jPCLapLZ6eGLVjbDSHjcuMQCAIlFSo7npQ=="],
 

@@ -2,11 +2,11 @@
  * Verify Signature RPC Method
  *
  * Verifies that a signature over a digest was produced by an authorized
- * superAdmin key on a Towns account, supporting EIP-7702 delegated accounts.
+ * superAdmin key on a account, supporting EIP-7702 delegated accounts.
  */
 
 import { type Hex } from 'viem'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
@@ -96,13 +96,13 @@ export async function handleVerifySignature(
     try {
         const result = await publicClient.readContract({
             address,
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'getKeys',
         })
         keys = result[0] as readonly ContractKey[]
         keyHashes = result[1] as readonly Hex[]
     } catch (error) {
-        // If getKeys fails, account might not be a valid TownsAccount
+        // If getKeys fails, account might not be a valid Account
         logger.warn({ error, address }, 'Failed to read account keys')
         return { valid: false, proof: null }
     }
@@ -133,7 +133,7 @@ export async function handleVerifySignature(
 
             const result = await publicClient.readContract({
                 address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'unwrapAndValidateSignature',
                 args: [erc1271Digest, wrappedSignature],
             })

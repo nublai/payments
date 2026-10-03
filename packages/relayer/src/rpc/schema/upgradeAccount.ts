@@ -80,7 +80,7 @@ export interface PrepareUpgradeParams {
     address: Address
     /** Target chain ID (hex), defaults to relayer's chain */
     chainId?: string
-    /** TownsAccount implementation address, defaults to config */
+    /** Account implementation address, defaults to config */
     delegation: Address
     /** Capabilities for the upgrade */
     capabilities: {

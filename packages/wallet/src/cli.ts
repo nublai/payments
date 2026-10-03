@@ -273,7 +273,7 @@ function resolveSpendLimitInput(input: {
 // ============================ ROOT CLI ====================================
 
 const tw = Cli.create('tw', {
-    description: 'Towns Wallet CLI — manage smart accounts, session keys, and permissions.',
+    description: 'Wallet CLI — manage smart accounts, session keys, and permissions.',
     version: readVersionSync(),
     sync: {
         suggestions: [

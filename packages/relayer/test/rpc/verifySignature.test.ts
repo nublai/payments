@@ -29,7 +29,7 @@ vi.mock('../../src/config', () => ({
         rpcUrl: 'https://example.com/rpc',
         chainId: 8453,
         contracts: {
-            townsAccount: '0x1234567890123456789012345678901234567890',
+            account: '0x1234567890123456789012345678901234567890',
             orchestrator: '0x3456789012345678901234567890123456789012',
         },
     }),

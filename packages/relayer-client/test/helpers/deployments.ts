@@ -2,15 +2,15 @@
  * Contract addresses for tests
  *
  * These are used for signing EIP-7702 authorizations and verifying contract state.
- * Addresses are loaded from @towns-labs/contracts, with fallback
+ * Addresses are loaded from @agentic-payments/contracts, with fallback
  * to environment variables for local development.
  */
 
 import type { Address } from 'viem'
-import { getAddressesWithFallback } from '@towns-labs/contracts/deployments'
+import { getAddressesWithFallback } from '@agentic-payments/contracts/deployments'
 
 export interface TestContracts {
-    townsAccount: Address
+    account: Address
     accountProxy: Address
     orchestrator: Address
     simpleFunder: Address
@@ -30,7 +30,7 @@ export function getTestContracts(context: string, chainId: number): TestContract
     }
 
     return {
-        townsAccount: addresses.townsAccount,
+        account: addresses.account,
         accountProxy: addresses.accountProxy,
         orchestrator: addresses.orchestrator,
         simpleFunder: addresses.simpleFunder,

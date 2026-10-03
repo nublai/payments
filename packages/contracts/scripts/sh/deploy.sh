@@ -486,7 +486,7 @@ deploy_to_chain() {
 # =============================================================================
 echo ""
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║           Towns Protocol Deployment Script                 ║${NC}"
+echo -e "${CYAN}║           Agentic Payments Deployment Script                 ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

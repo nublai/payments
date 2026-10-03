@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { encodeAbiParameters, encodeFunctionData, type Address, type Hex, zeroAddress } from 'viem'
-import { orchestratorAbi } from '@towns-labs/contracts/abis'
+import { orchestratorAbi } from '@agentic-payments/contracts/abis'
 import type { IntentStruct } from '../src/types/pool'
 
 /**

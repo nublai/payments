@@ -149,7 +149,7 @@ describe('Gas Refill Logic', () => {
     describe('SimpleFunder configuration', () => {
         it('skips refill when SimpleFunder is not configured', () => {
             const contracts = {
-                townsAccount: '0x1111111111111111111111111111111111111111' as Address,
+                account: '0x1111111111111111111111111111111111111111' as Address,
                 orchestrator: '0x2222222222222222222222222222222222222222' as Address,
                 simpleFunder: undefined, // Not configured
                 simulator: '0x4444444444444444444444444444444444444444' as Address,
@@ -162,7 +162,7 @@ describe('Gas Refill Logic', () => {
 
         it('attempts refill when SimpleFunder is configured', () => {
             const contracts = {
-                townsAccount: '0x1111111111111111111111111111111111111111' as Address,
+                account: '0x1111111111111111111111111111111111111111' as Address,
                 orchestrator: '0x2222222222222222222222222222222222222222' as Address,
                 simpleFunder: '0x3333333333333333333333333333333333333333' as Address,
                 simulator: '0x4444444444444444444444444444444444444444' as Address,

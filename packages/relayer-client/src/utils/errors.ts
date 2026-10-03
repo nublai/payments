@@ -7,7 +7,7 @@
 import type { Hex } from 'viem'
 
 /**
- * Known intent error selectors from the Orchestrator and TownsAccount contracts
+ * Known intent error selectors from the Orchestrator and Account contracts
  */
 export const INTENT_ERRORS = {
     // Orchestrator errors
@@ -27,7 +27,7 @@ export const INTENT_ERRORS = {
     '0x8baa579f': 'VerificationError',
     '0x9c5e7f5e': 'VerifiedCallError',
 
-    // GuardedExecutor errors (TownsAccount)
+    // GuardedExecutor errors (Account)
     '0x9054c912': 'ExceededSpendLimit',
     '0x82b42900': 'Unauthorized',
     '0x3d693ada': 'InvalidExecutor',

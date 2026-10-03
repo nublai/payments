@@ -19,7 +19,7 @@ import {
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
-} from '@towns-labs/relayer-client'
+} from '@agentic-payments/relayer-client'
 import { AccountCreateError, resolveKeystorePath } from './account-create'
 import {
     decryptSessionKeystore,

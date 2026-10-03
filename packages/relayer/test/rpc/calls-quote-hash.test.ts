@@ -13,7 +13,7 @@ describe('hashQuotes', () => {
         rpcUrl: 'https://example.com/rpc',
         chainId: 8453,
         contracts: {
-            townsAccount: '0x1234567890123456789012345678901234567890',
+            account: '0x1234567890123456789012345678901234567890',
             accountProxy: '0x2345678901234567890123456789012345678901',
             orchestrator: '0x3456789012345678901234567890123456789012',
             simpleFunder: '0x4567890123456789012345678901234567890123',

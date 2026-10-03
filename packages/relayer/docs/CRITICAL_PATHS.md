@@ -1,4 +1,4 @@
-# Towns Relayer - Critical Code Paths
+# Relayer - Critical Code Paths
 
 Deep analysis of security-critical functions, their invariants, and assumptions.
 

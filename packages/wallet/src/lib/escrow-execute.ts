@@ -7,7 +7,7 @@ import {
     getChain,
     waitForBundle as waitForBundleAction,
     type Call,
-} from '@towns-labs/relayer-client'
+} from '@agentic-payments/relayer-client'
 import {
     decryptSessionKeystore,
     isAgentKeystore,

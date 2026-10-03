@@ -1,6 +1,6 @@
 import type { Address, Hex, SignedAuthorization, PublicClient } from 'viem'
 import type { EthHttpSigner, SignOptions } from '@slicekit/erc8128'
-import { INTENT_TYPES as CANONICAL_INTENT_TYPES } from '@towns-labs/relayer/rpc/schema/intentTypes'
+import { INTENT_TYPES as CANONICAL_INTENT_TYPES } from '@agentic-payments/relayer/rpc/schema/intentTypes'
 
 // Re-export viem's SignedAuthorization for use across packages
 export type { SignedAuthorization }
@@ -278,7 +278,7 @@ export interface HealthResponse {
     contracts: {
         orchestrator: Address
         simulator: Address
-        townsAccount: Address
+        account: Address
         simpleFunder?: Address
     }
     error?: string

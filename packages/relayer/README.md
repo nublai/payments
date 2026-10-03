@@ -1,4 +1,4 @@
-# Towns Relayer
+# Relayer
 
 Cloudflare Worker that relays signed intents to the blockchain. Manages a pool of signers derived from an HD wallet mnemonic for high-throughput transaction processing.
 
@@ -63,13 +63,13 @@ See `src/config/chains.json` for supported chains and their metadata.
 
 ### Optional: Contract Addresses
 
-Auto-loaded from `@towns-labs/contracts` for known chains. Override for custom deployments.
-Names match `@towns-labs/contracts` env var keys (no `_ADDRESS` suffix):
+Auto-loaded from `@agentic-payments/contracts` for known chains. Override for custom deployments.
+Names match `@agentic-payments/contracts` env var keys (no `_ADDRESS` suffix):
 
 | Name            | Description                                                    |
 | --------------- | -------------------------------------------------------------- |
 | `ORCHESTRATOR`  | Required if chain not in deployments                           |
-| `TOWNS_ACCOUNT` | Towns Account contract                                         |
+| `ACCOUNT` | Account contract                                         |
 | `ACCOUNT_PROXY` | Account Proxy contract                                         |
 | `SIMPLE_FUNDER` | SimpleFunder contract                                          |
 | `SIMULATOR`     | Simulator contract                                             |

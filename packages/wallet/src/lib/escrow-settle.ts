@@ -1,6 +1,6 @@
 import { getAddress, isHex, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { writeSettlementCalls, signSettlement } from '@towns-labs/relayer-client'
+import { writeSettlementCalls, signSettlement } from '@agentic-payments/relayer-client'
 import { resolveKeystorePath } from './account-create'
 import type { ChainName, EnvName } from './network-config'
 import type { ExecuteSignedCallsDeps } from './execute-calls'

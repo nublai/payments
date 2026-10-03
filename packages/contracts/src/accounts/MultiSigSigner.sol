@@ -2,10 +2,10 @@
 pragma solidity ^0.8.23;
 
 import {ISigner} from "./interfaces/ISigner.sol";
-import {ITownsAccount} from "./interfaces/ITownsAccount.sol";
+import {IAccount} from "./interfaces/IAccount.sol";
 
 /// @title MultiSigSigner
-/// @notice A Signer contract, that extends multi-sig functionality to the Towns Account.
+/// @notice A Signer contract, that extends multi-sig functionality to the Account.
 contract MultiSigSigner is ISigner {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -65,7 +65,7 @@ contract MultiSigSigner is ISigner {
 
     /// @dev Checks the current context keyhash in the Account, against the requested keyHash.
     function _checkKeyHash(bytes32 expectedKeyHash) internal view {
-        bytes32 keyHash = ITownsAccount(msg.sender).getContextKeyHash();
+        bytes32 keyHash = IAccount(msg.sender).getContextKeyHash();
         if (keyHash != expectedKeyHash) revert InvalidKeyHash();
     }
 
@@ -174,7 +174,7 @@ contract MultiSigSigner is ISigner {
     // Signature Validation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev This function SHOULD only be called by valid Towns Accounts.
+    /// @dev This function SHOULD only be called by valid Accounts.
     /// - This will iteratively make a call to the address(msg.sender).unwrapAndValidateSignature
     ///   for each owner key hash in the config.
     /// - Signature of a multi-sig should be encoded as abi.encode(bytes[] memory ownerSignatures)
@@ -194,7 +194,7 @@ contract MultiSigSigner is ISigner {
         // Iterate over signatures, until threshold is met.
         for (uint256 i; i < signatures.length; ++i) {
             // Unwrap and validate the signature.
-            (bool isValid, bytes32 ownerKeyHash) = ITownsAccount(msg.sender)
+            (bool isValid, bytes32 ownerKeyHash) = IAccount(msg.sender)
                 .unwrapAndValidateSignature(digest, signatures[i]);
 
             if (!isValid) {

@@ -8,7 +8,7 @@ import {
     parseAbiParameters,
 } from 'viem'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import type { Env } from '../../../types/env'
 import type { AuthorizeKey, SpendPeriod } from '../../schema/upgradeAccount'
 import { INVALID_PARAMS, RpcError } from '../../errors'
@@ -179,7 +179,7 @@ export function buildKeyInitializationData(
 
     for (const key of keys) {
         const authorizeCallData = encodeFunctionData({
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'authorize',
             args: [
                 {
@@ -203,7 +203,7 @@ export function buildKeyInitializationData(
             for (const permission of key.permissions) {
                 if (permission.type === 'call') {
                     const setCanExecuteData = encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setCanExecute',
                         args: [keyHash, permission.to, permission.selector as `0x${string}`, true],
                     })
@@ -215,7 +215,7 @@ export function buildKeyInitializationData(
                     })
                 } else if (permission.type === 'spend') {
                     const setSpendLimitData = encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setSpendLimit',
                         args: [
                             keyHash,

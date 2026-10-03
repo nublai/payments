@@ -1,5 +1,5 @@
 import { fromBinary, toBinary } from '@bufbuild/protobuf'
-import { ExportedDeviceSchema, type ExportedDevice } from '@towns-labs/proto'
+import { ExportedDeviceSchema, type ExportedDevice } from '@agentic-payments/proto'
 import {
     type AnySessionKeystore,
     decryptBufferSecret,

@@ -1,6 +1,6 @@
 import { encodeFunctionData } from 'viem'
 import type { Address, Hex } from 'viem'
-import { escrowAbi, simpleSettlerAbi } from '@towns-labs/contracts/abis'
+import { escrowAbi, simpleSettlerAbi } from '@agentic-payments/contracts/abis'
 import type { Call } from '../types.js'
 
 /**
@@ -9,7 +9,7 @@ import type { Call } from '../types.js'
  *   [1] Escrow.settle([escrowId])
  *
  * Pass the returned Call[] directly to prepareCalls({ calls }).
- * The oracle bot's TownsAccount executes both atomically via the Orchestrator.
+ * The oracle bot's Account executes both atomically via the Orchestrator.
  */
 export function writeSettlementCalls(params: {
     escrowId: Hex

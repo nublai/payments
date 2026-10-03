@@ -1,14 +1,14 @@
-# Towns Relayer Security Audit - Vulnerability Report
+# Relayer Security Audit - Vulnerability Report
 
 **Date**: 2026-01-29
-**Scope**: Towns Relayer Cloudflare Worker
+**Scope**: Relayer Cloudflare Worker
 **Auditor**: Claude Code (audit-context-building skill)
 
 ---
 
 ## Executive Summary
 
-This report documents security findings from a deep audit of the Towns Relayer codebase. The relayer processes signed blockchain intents and relays them for execution, handling gas management, nonce allocation, and transaction broadcasting.
+This report documents security findings from a deep audit of the Relayer codebase. The relayer processes signed blockchain intents and relays them for execution, handling gas management, nonce allocation, and transaction broadcasting.
 
 **Finding Summary**:
 | Severity | Count | Fixed |

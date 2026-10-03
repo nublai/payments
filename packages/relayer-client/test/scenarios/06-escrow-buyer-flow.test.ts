@@ -4,7 +4,7 @@
  * Verifies the end-to-end escrow lifecycle using the escrow module:
  *
  * Happy path:
- *   1. Buyer creates a delegated TownsAccount
+ *   1. Buyer creates a delegated Account
  *   2. Buyer funds with USDC
  *   3. Bot prepares escrow intent (approve + escrow), buyer signs, bot submits
  *   4. Oracle signs EIP-712 SettlementWrite

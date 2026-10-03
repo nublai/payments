@@ -3,7 +3,8 @@ pragma solidity ^0.8.4;
 
 import {GuardedExecutor} from "../src/accounts/GuardedExecutor.sol";
 import "./utils/SoladyTest.sol";
-import {MockAccount, TownsAccount} from "./utils/mocks/MockAccount.sol";
+import {MockAccount} from "./utils/mocks/MockAccount.sol";
+import {Account as AgenticAccount} from "../src/accounts/Account.sol";
 import {MockOrchestrator, Orchestrator} from "./utils/mocks/MockOrchestrator.sol";
 import {ERC20, MockPaymentToken} from "./utils/mocks/MockPaymentToken.sol";
 import {EIP7702Proxy} from "solady/accounts/EIP7702Proxy.sol";
@@ -61,13 +62,13 @@ contract BaseTest is SoladyTest {
     address internal constant _ORIGIN_ADDRESS = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
 
     struct PassKey {
-        TownsAccount.Key k;
+        AgenticAccount.Key k;
         uint256 privateKey;
         bytes32 keyHash;
     }
 
     struct MultiSigKey {
-        TownsAccount.Key k;
+        AgenticAccount.Key k;
         uint256 threshold;
         PassKey[] owners;
     }
@@ -94,7 +95,7 @@ contract BaseTest is SoladyTest {
     }
 
     function targetFunctionContextKeyHash() public payable {
-        contextKeyHash = TownsAccount(payable(msg.sender)).getContextKeyHash();
+        contextKeyHash = AgenticAccount(payable(msg.sender)).getContextKeyHash();
     }
 
     function _setEIP7702Delegation(address eoa) internal {
@@ -107,7 +108,7 @@ contract BaseTest is SoladyTest {
         d.d = MockAccount(payable(d.eoa));
     }
 
-    function _hash(TownsAccount.Key memory k) internal pure returns (bytes32) {
+    function _hash(AgenticAccount.Key memory k) internal pure returns (bytes32) {
         return keccak256(abi.encode(uint8(k.keyType), keccak256(k.publicKey)));
     }
 
@@ -116,7 +117,7 @@ contract BaseTest is SoladyTest {
     }
 
     function _randomSecp256k1PassKey() internal returns (PassKey memory k) {
-        k.k.keyType = TownsAccount.KeyType.Secp256k1;
+        k.k.keyType = AgenticAccount.KeyType.Secp256k1;
         address addr;
         (addr, k.privateKey) = _randomUniqueSigner();
         k.k.publicKey = abi.encode(addr);
@@ -162,7 +163,7 @@ contract BaseTest is SoladyTest {
         bool prehash,
         bytes32 digest
     ) internal pure returns (bytes memory) {
-        if (k.k.keyType == TownsAccount.KeyType.Secp256k1) {
+        if (k.k.keyType == AgenticAccount.KeyType.Secp256k1) {
             return _secp256k1Sig(k.privateKey, k.keyHash, prehash, digest);
         }
         revert("Unsupported");
@@ -234,7 +235,7 @@ contract BaseTest is SoladyTest {
         PassKey memory k,
         Orchestrator.Intent memory i
     ) internal returns (uint256 gExecute, uint256 gCombined, uint256 gUsed) {
-        if (k.k.keyType == TownsAccount.KeyType.Secp256k1) {
+        if (k.k.keyType == AgenticAccount.KeyType.Secp256k1) {
             return _estimateGasForSecp256k1Key(k.keyHash, i);
         }
         revert("Unsupported");

@@ -8,27 +8,27 @@ export type {
     ChainCapabilities as RpcChainCapabilities,
     GetCapabilitiesParams as RpcGetCapabilitiesParams,
     GetCapabilitiesResult as RpcGetCapabilitiesResult,
-} from '@towns-labs/relayer/rpc/schema/getCapabilities'
+} from '@agentic-payments/relayer/rpc/schema/getCapabilities'
 export type {
     PrepareCallsContext as RpcPrepareCallsContext,
     PrepareCallsResult as RpcPrepareCallsResult,
-} from '@towns-labs/relayer/rpc/schema/prepareCalls'
+} from '@agentic-payments/relayer/rpc/schema/prepareCalls'
 export type {
     SendPreparedCallsParams as RpcSendPreparedCallsParams,
     SendPreparedCallsResult as RpcSendPreparedCallsResult,
-} from '@towns-labs/relayer/rpc/schema/sendPreparedCalls'
-export type { GetCallsStatusResult as RpcGetCallsStatusResult } from '@towns-labs/relayer/rpc/schema/getCallsStatus'
+} from '@agentic-payments/relayer/rpc/schema/sendPreparedCalls'
+export type { GetCallsStatusResult as RpcGetCallsStatusResult } from '@agentic-payments/relayer/rpc/schema/getCallsStatus'
 export type {
     GetCallsHistoryParams as RpcGetCallsHistoryParams,
     GetCallsHistoryResult as RpcGetCallsHistoryResult,
-} from '@towns-labs/relayer/rpc/schema/getCallsHistory'
+} from '@agentic-payments/relayer/rpc/schema/getCallsHistory'
 export type {
     AuthorizedKeyResponse as RpcAuthorizedKeyResponse,
     GetKeysParams as RpcGetKeysParams,
     GetKeysResult as RpcGetKeysResult,
     PermissionResponse as RpcPermissionResponse,
     SpendPermissionResponse as RpcSpendPermissionResponse,
-} from '@towns-labs/relayer/rpc/schema/getKeys'
+} from '@agentic-payments/relayer/rpc/schema/getKeys'
 export type {
     AuthorizeKey as RpcAuthorizeKey,
     CallPermission as RpcCallPermission,
@@ -39,9 +39,9 @@ export type {
     SpendPermission as RpcSpendPermission,
     UpgradeAccountContext as RpcUpgradeAccountContext,
     UpgradeAccountResult as RpcUpgradeAccountResult,
-} from '@towns-labs/relayer/rpc/schema/upgradeAccount'
+} from '@agentic-payments/relayer/rpc/schema/upgradeAccount'
 export type {
     ValidSignatureProof as RpcValidSignatureProof,
     VerifySignatureParams as RpcVerifySignatureParams,
     VerifySignatureResult as RpcVerifySignatureResult,
-} from '@towns-labs/relayer/rpc/schema/verifySignature'
+} from '@agentic-payments/relayer/rpc/schema/verifySignature'

@@ -11,7 +11,7 @@ usage() {
   cat << EOF
 Usage: $0 [options] [-- <test-filter>]
 
-Development environment for @towns/relayer-client integration tests.
+Development environment for @agentic-payments/relayer-client integration tests.
 Starts Anvil (multi-chain) and relayer services, optionally runs tests.
 
 Options:

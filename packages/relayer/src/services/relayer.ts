@@ -20,7 +20,7 @@ import {
     type Hex,
     type PublicClient,
 } from 'viem'
-import { townsAccountAbi, simulatorAbi } from '@towns-labs/contracts/abis'
+import { accountAbi, simulatorAbi } from '@agentic-payments/contracts/abis'
 import type { IntentNonceDO } from '../durable-objects/intent-nonce.do'
 import type { RelayerConfig, GasConfig } from '../types/env'
 import { createRelayerPublicClient, isEip7702Delegated } from '../lib/viem-utils'
@@ -467,7 +467,7 @@ export class RelayerService {
         try {
             const onChainNonce = (await this.publicClient.readContract({
                 address: eoa,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getNonce',
                 args: [seqKey],
             })) as bigint
@@ -545,7 +545,7 @@ export class RelayerService {
         try {
             const onChainNonce = (await this.publicClient.readContract({
                 address: eoa,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getNonce',
                 args: [seqKey],
             })) as bigint
@@ -560,7 +560,7 @@ export class RelayerService {
         try {
             return (await this.publicClient.readContract({
                 address: eoa,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getNonce',
                 args: [seqKey],
             })) as bigint

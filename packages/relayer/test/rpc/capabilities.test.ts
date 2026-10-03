@@ -15,7 +15,7 @@ const createMockEnv = () => ({
     RELAYER_COUNT: '3',
     MAX_PENDING_PER_SIGNER: '16',
     MAX_PENDING_TOTAL: '1000',
-    TOWNS_ACCOUNT: '0xTownsAccount',
+    ACCOUNT: '0xAccount',
     ACCOUNT_PROXY: '0xAccountProxy',
     ORCHESTRATOR: '0x3456789012345678901234567890123456789012',
     SIMPLE_FUNDER: '0xSimpleFunder',

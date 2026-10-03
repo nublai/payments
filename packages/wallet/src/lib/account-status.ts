@@ -13,7 +13,7 @@ import {
     encodeSecp256k1Key,
     getChain,
     type GetKeysResponse,
-} from '@towns-labs/relayer-client'
+} from '@agentic-payments/relayer-client'
 import {
     AccountCreateError,
     getDefaultSessionPermissions,

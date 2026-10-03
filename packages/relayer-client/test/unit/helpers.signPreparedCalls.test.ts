@@ -16,7 +16,7 @@ function makePrepared(eoa: Address = TARGET_ACCOUNT): PrepareCallsResponse {
         digest: `0x${'33'.repeat(32)}` as Hex,
         typedData: {
             domain: {
-                name: 'TownsRelayer',
+                name: 'Relayer',
                 version: '1',
                 chainId: 8453,
                 verifyingContract: '0x1111111111111111111111111111111111111111',

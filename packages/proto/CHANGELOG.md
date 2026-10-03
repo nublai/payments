@@ -1,4 +1,4 @@
-# @towns-labs/proto
+# @agentic-payments/proto
 
 ## 7.3.1
 
@@ -17,7 +17,7 @@
 - [#869](https://github.com/HereNotThere/chat/pull/869) [`961e84a`](https://github.com/HereNotThere/chat/commit/961e84a3c13740d5b20dfe9e079f30a37315059d) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Rename specialist invocation capability field from `capabilityName`/`capability_name` to `name`.
   - `SpecialistCapabilityInvocation` now uses `name` in protobuf/TS/Go generated types.
   - `GetBulkAgentProposals` request payloads now send invocation `name` and map it through backend fan-out.
-  - `@towns-labs/app-framework` proposal processing now reads `invocation.name`.
+  - `@agentic-payments/app-framework` proposal processing now reads `invocation.name`.
 
 ## 5.0.0
 
@@ -27,7 +27,7 @@
 
   `GetBulkAgentProposalsRequest` and `AppServiceRequest.ProposalsRequest` now include a `metadata` map so callers can forward tracing identifiers (for example `trace_id` and `parent_span_id`) to specialist handlers.
 
-  `@towns-labs/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
+  `@agentic-payments/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
 
 ## 4.1.2
 
@@ -37,7 +37,7 @@
 
   `GetBulkAgentProposalsRequest` and `AppServiceRequest.ProposalsRequest` now include a `metadata` map so callers can forward tracing identifiers (for example `trace_id` and `parent_span_id`) to specialist handlers.
 
-  `@towns-labs/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
+  `@agentic-payments/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
 
 ## 4.1.1
 
@@ -61,7 +61,7 @@
 
 ### Minor Changes
 
-- [#577](https://github.com/HereNotThere/chat/pull/577) [`b543e53`](https://github.com/HereNotThere/chat/commit/b543e53200f418cd51417d8a2a29cf13246346f2) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Embed JWT secret in APP_PRIVATE_DATA. `makeTownsAgent` no longer requires a separate `jwtSecretBase64` parameter — the JWT secret is resolved from `opts.jwtSecret`, `process.env.JWT_SECRET`, or the embedded value in APP_PRIVATE_DATA.
+- [#577](https://github.com/HereNotThere/chat/pull/577) [`b543e53`](https://github.com/HereNotThere/chat/commit/b543e53200f418cd51417d8a2a29cf13246346f2) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Embed JWT secret in APP_PRIVATE_DATA. `makeAgent` no longer requires a separate `jwtSecretBase64` parameter — the JWT secret is resolved from `opts.jwtSecret`, `process.env.JWT_SECRET`, or the embedded value in APP_PRIVATE_DATA.
 
 ## 2.1.1
 
@@ -71,7 +71,7 @@
 
 - [#536](https://github.com/HereNotThere/chat/pull/536) [`7e8cd3d`](https://github.com/HereNotThere/chat/commit/7e8cd3d20127f338d4271680280a8616f57d7d2f) Thanks [@texuf](https://github.com/texuf)! - Add positions support to the agent webhook flow and expose a new `agent.onPositions()` handler for serving `GetAppPositions` requests.
 
-  Add `UpdateAppSettings` RPC for partial settings updates, so changing one setting no longer requires fetching and rewriting all settings. Update `towns-agent setup` with `--features` (for example, `--features positions`) to use the new endpoint.
+  Add `UpdateAppSettings` RPC for partial settings updates, so changing one setting no longer requires fetching and rewriting all settings. Update `agentic-agent setup` with `--features` (for example, `--features positions`) to use the new endpoint.
 
 ## 2.0.13
 

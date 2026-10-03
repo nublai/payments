@@ -86,25 +86,25 @@ function makeSessionKeystore(
 
 test('getDefaultKeystorePath keeps prod path stable', () => {
     const path = getDefaultKeystorePath('prod')
-    expect(path).toContain('/.config/towns/tw/profiles/default/default.keystore.json')
+    expect(path).toContain('/.config/agentic-payments/tw/profiles/default/default.keystore.json')
     expect(path).not.toContain('/profiles/prod/')
 })
 
 test('getDefaultKeystorePath namespaces non-prod envs', () => {
     expect(getDefaultKeystorePath('stage')).toContain(
-        '/.config/towns/tw/profiles/stage/default/default.keystore.json',
+        '/.config/agentic-payments/tw/profiles/stage/default/default.keystore.json',
     )
     expect(getDefaultKeystorePath('dev')).toContain(
-        '/.config/towns/tw/profiles/dev/default/default.keystore.json',
+        '/.config/agentic-payments/tw/profiles/dev/default/default.keystore.json',
     )
 })
 
 test('getDefaultKeystorePath uses --profile for prod and non-prod', () => {
     expect(getDefaultKeystorePath('prod', 'alice')).toContain(
-        '/.config/towns/tw/profiles/alice/default.keystore.json',
+        '/.config/agentic-payments/tw/profiles/alice/default.keystore.json',
     )
     expect(getDefaultKeystorePath('stage', 'alice')).toContain(
-        '/.config/towns/tw/profiles/stage/alice/default.keystore.json',
+        '/.config/agentic-payments/tw/profiles/stage/alice/default.keystore.json',
     )
 })
 

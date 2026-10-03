@@ -581,7 +581,7 @@ export class LoginProfileError extends Error {
 
     constructor(options?: { sessionPath?: string; sessionKeystore?: AnySessionKeystore }) {
         super(
-            'This is a login profile. Root-key operations require the Towns web app, or use `tw account create` for a fully local profile.',
+            'This is a login profile. Root-key operations require the web app, or use `tw account create` for a fully local profile.',
         )
         this.name = 'LoginProfileError'
         this.sessionPath = options?.sessionPath

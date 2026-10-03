@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {IFunder} from "./interfaces/IFunder.sol";
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 import {ISettler} from "./interfaces/ISettler.sol";
-import {ITownsAccount} from "./interfaces/ITownsAccount.sol";
+import {IAccount} from "./interfaces/IAccount.sol";
 import {TokenTransferLib} from "./libraries/TokenTransferLib.sol";
 import {LibEIP7702} from "solady/accounts/LibEIP7702.sol";
 import {LibERC7579} from "solady/accounts/LibERC7579.sol";
@@ -625,7 +625,7 @@ contract Orchestrator is IOrchestrator, EIP712, CallContextChecker, ReentrancyGu
         );
 
         if (MerkleProofLib.verify(proof, root, digest)) {
-            (isValid, keyHash) = ITownsAccount(eoa).unwrapAndValidateSignature(root, rootSig);
+            (isValid, keyHash) = IAccount(eoa).unwrapAndValidateSignature(root, rootSig);
 
             return (isValid, keyHash);
         }
@@ -688,7 +688,7 @@ contract Orchestrator is IOrchestrator, EIP712, CallContextChecker, ReentrancyGu
 
         // Call the pay function on the account contract
         // Equivalent Solidity code:
-        // ITownsAccount(payer).pay(paymentAmount, keyHash, digest, abi.encode(i));
+        // IAccount(payer).pay(paymentAmount, keyHash, digest, abi.encode(i));
         // Gas Savings:
         // Saves ~2k gas for normal use cases, by avoiding abi.encode and solidity external call
         // overhead

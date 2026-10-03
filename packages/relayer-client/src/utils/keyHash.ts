@@ -5,9 +5,9 @@
 import { type Address, type Hex, keccak256, encodeAbiParameters, parseAbiParameters } from 'viem'
 
 /**
- * Key types supported by TownsAccount
+ * Key types supported by Account
  *
- * Maps to TownsAccount.KeyType enum:
+ * Maps to Account.KeyType enum:
  * - Secp256k1 = 0: Standard Ethereum EOA keys
  * - External = 1: Delegated to an external ISigner contract
  */
@@ -16,7 +16,7 @@ export type KeyType = 'secp256k1' | 'external'
 /**
  * Compute the key hash for an authorized key.
  *
- * This matches TownsAccount's key hash computation:
+ * This matches Account's key hash computation:
  * `keccak256(abi.encode(uint8(keyType), keccak256(publicKey)))`
  *
  * @param keyType - The type of key ('secp256k1' or 'external')
@@ -44,7 +44,7 @@ export function computeKeyHash(keyType: KeyType, publicKey: Hex): Hex {
 }
 
 /**
- * Encode an address as a secp256k1 public key for TownsAccount.
+ * Encode an address as a secp256k1 public key for Account.
  *
  * For secp256k1 keys, the "public key" is just the address ABI-encoded.
  * This is a convenience wrapper for the common pattern.

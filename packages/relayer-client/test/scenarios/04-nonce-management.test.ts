@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { createWalletClient, http, parseEther } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 
 import { waitForBundle } from '../../src'
 import { ANVIL_RPC_URL, RELAYER_URL, TEST_CONTRACTS, testChain } from '../setup'
@@ -34,7 +34,7 @@ describe('Nonce Management', () => {
         try {
             return await client.readContract({
                 address: accountAddress,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getNonce',
                 args: [seqKey],
             })

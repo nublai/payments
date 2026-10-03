@@ -7,8 +7,8 @@ import {
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
-} from '@towns-labs/relayer-client'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+} from '@agentic-payments/relayer-client'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import { resolveKeystorePath } from './account-create'
 import {
     createSessionKeystore,
@@ -319,7 +319,7 @@ function getDefaultDeps(): SessionRotateDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
-            return (await import('@towns-labs/relayer-client')).waitForBundle(client, {
+            return (await import('@agentic-payments/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
             })
@@ -441,7 +441,7 @@ export async function executeSessionRotate(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'authorize',
                         args: [
                             {
@@ -449,7 +449,7 @@ export async function executeSessionRotate(
                                 keyType: 0,
                                 isSuperAdmin: false,
                                 publicKey: (
-                                    await import('@towns-labs/relayer-client')
+                                    await import('@agentic-payments/relayer-client')
                                 ).encodeSecp256k1Key(newSessionAddress),
                             },
                         ],
@@ -459,7 +459,7 @@ export async function executeSessionRotate(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setSpendLimit',
                         args: [
                             newKeyHash,
@@ -473,7 +473,7 @@ export async function executeSessionRotate(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setCanExecute',
                         args: [newKeyHash, permissionDefaults.target, selector, true],
                     }),
@@ -482,7 +482,7 @@ export async function executeSessionRotate(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'revoke',
                         args: [oldKeyHash],
                     }),

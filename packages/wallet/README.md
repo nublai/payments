@@ -1,11 +1,11 @@
-# tw — Towns Wallet CLI
+# tw — Wallet CLI
 
 Your keys. Your account. No signup. No login. Just run it.
 
-`tw` is a local-first CLI for managing smart accounts, session keys, and on-chain permissions on Towns Protocol. It works for humans at the terminal and for agents over `--json` or `--mcp`.
+`tw` is a local-first CLI for managing smart accounts, session keys, and on-chain permissions on Agentic Payments. It works for humans at the terminal and for agents over `--json` or `--mcp`.
 
 ```bash
-bunx @towns-labs/wallet --help
+bunx @agentic-payments/wallet --help
 ```
 
 ---
@@ -31,11 +31,11 @@ No custody service. No API key. Everything runs locally with encrypted keystores
 
 ## How It Works
 
-`tw` manages a local keystore that holds your root key and session keys. Your root key creates and controls your on-chain smart account. Session keys are scoped signers — they can send transactions through the Towns relayer without exposing your root key.
+`tw` manages a local keystore that holds your root key and session keys. Your root key creates and controls your on-chain smart account. Session keys are scoped signers — they can send transactions through the relayer without exposing your root key.
 
 ```text
-~/.config/towns/tw/profiles/<env>/<profile>/default.keystore.json
-~/.config/towns/tw/profiles/<env>/<profile>/sessions/<session-name>.json
+~/.config/agentic-payments/tw/profiles/<env>/<profile>/default.keystore.json
+~/.config/agentic-payments/tw/profiles/<env>/<profile>/sessions/<session-name>.json
 ```
 
 For agents, the session daemon keeps decrypted keys in memory for a bounded duration so automated workflows can sign without prompting for a password on every call.
@@ -68,7 +68,7 @@ tw account <balance|change-password|create|delegate|export|history|nonce|status>
 tw account create --profile agent
 tw account create --resume --profile agent
 echo "my-password" | tw account create --password-stdin --json
-tw account create --keystore-path ~/.config/towns/tw/profiles/prod/team/default.keystore.json
+tw account create --keystore-path ~/.config/agentic-payments/tw/profiles/prod/team/default.keystore.json
 ```
 
 #### `account status` / `account balance` / `account nonce` / `account history`

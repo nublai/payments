@@ -82,7 +82,7 @@ describe('wallet_getKeys', () => {
         const botPrivateKey = generatePrivateKey()
         const botAccount = privateKeyToAccount(botPrivateKey)
 
-        // 2. Generate owner keypair / Can just be towns account key
+        // 2. Generate owner keypair / Can just be an account key
         const ownerPrivateKey = generatePrivateKey()
         const ownerAccount = privateKeyToAccount(ownerPrivateKey)
 
@@ -147,21 +147,21 @@ describe('wallet_getKeys', () => {
         { timeout: 30000 },
         async () => {
             // This test demonstrates:
-            // 1. A towns account allowing a bot account to spend on its behalf with a spend permission
+            // 1. An account allowing a bot account to spend on its behalf with a spend permission
             // 2. The bot account is granted a spend limit for native ETH
             // 3. Testing that the bot account CAN spend within the limit
             // 4. Testing that the bot account CANNOT spend more than the limit
 
             // 1. Generate owner keypair
-            const townsAccountPrivateKey = generatePrivateKey()
-            const townsAccount = privateKeyToAccount(townsAccountPrivateKey)
+            const accountPrivateKey = generatePrivateKey()
+            const account = privateKeyToAccount(accountPrivateKey)
 
             // 2. Generate a session key
             const botPrivateKey = generatePrivateKey()
             const botAccount = privateKeyToAccount(botPrivateKey)
 
             // 3. Fund the owner account
-            await setBalance(townsAccount.address, 1_000_000_000_000_000_000n)
+            await setBalance(account.address, 1_000_000_000_000_000_000n)
 
             // 4. Create delegated account with a normal key with spend permission
             const encodedSessionPublicKey = encodeAbiParameters(
@@ -172,8 +172,8 @@ describe('wallet_getKeys', () => {
             const spendLimit = '50000000000000000' // 0.05 ETH
 
             const result = await client.upgradeAccount({
-                accountAddress: townsAccount.address,
-                signerKey: townsAccountPrivateKey,
+                accountAddress: account.address,
+                signerKey: accountPrivateKey,
                 delegation: contracts.accountProxy,
                 authorizeKeys: [
                     {
@@ -200,7 +200,7 @@ describe('wallet_getKeys', () => {
 
             // 6. Call wallet_getKeys RPC method
             const keysResult = await transport.request<GetKeysResult>('wallet_getKeys', {
-                address: townsAccount.address,
+                address: account.address,
             })
 
             // Get the keys for our chain

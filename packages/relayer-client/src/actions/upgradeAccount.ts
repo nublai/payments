@@ -25,7 +25,7 @@ import type {
 interface UpgradeAccountBaseParams {
     /** The EOA address that will become a delegated account */
     accountAddress: Address
-    /** Delegation target address (TownsAccount implementation) */
+    /** Delegation target address (Account implementation) */
     delegation: Address
     /** Optional chain ID override */
     chainId?: number
@@ -53,7 +53,7 @@ export type UpgradeAccountParams = UpgradeAccountWithKeyParams | UpgradeAccountW
 /**
  * Key types supported for authorization
  *
- * Maps to TownsAccount.KeyType enum:
+ * Maps to Account.KeyType enum:
  * - Secp256k1 = 0: Standard Ethereum EOA keys
  * - External = 1: Delegated to an external ISigner contract
  */

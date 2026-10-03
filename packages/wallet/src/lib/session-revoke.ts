@@ -6,8 +6,8 @@ import {
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
-} from '@towns-labs/relayer-client'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+} from '@agentic-payments/relayer-client'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import { resolveKeystorePath } from './account-create'
 import { checkAgentListenPid } from './agent-runtime'
 import { readAgentChannelRegistry, writeAgentChannelRegistry } from './agent-channel-registry'
@@ -180,7 +180,7 @@ function getDefaultDeps(): SessionRevokeDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
-            return (await import('@towns-labs/relayer-client')).waitForBundle(client, {
+            return (await import('@agentic-payments/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
             })
@@ -359,7 +359,7 @@ export async function executeSessionRevoke(
                 target: accountAddress,
                 value: 0n,
                 data: encodeFunctionData({
-                    abi: townsAccountAbi,
+                    abi: accountAbi,
                     functionName: 'revoke',
                     args: [sessionKeyHash],
                 }),

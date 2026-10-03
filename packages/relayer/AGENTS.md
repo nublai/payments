@@ -4,7 +4,7 @@ This file provides guidance to agents when working with code in this repository.
 
 ## Overview
 
-Towns Relayer is a Cloudflare Worker that processes signed blockchain intents and relays them for execution. It abstracts away gas management, nonce handling, and cross-chain complexity—users sign intents describing what they want, and the relayer handles how to execute it.
+Relayer is a Cloudflare Worker that processes signed blockchain intents and relays them for execution. It abstracts away gas management, nonce handling, and cross-chain complexity—users sign intents describing what they want, and the relayer handles how to execute it.
 
 ## Quickstart (Local Dev)
 
@@ -45,7 +45,7 @@ bun run logs:prod              # Tail prod logs
 
 ## Package Relationship
 
-This package is **tightly coupled** with `@towns-labs/relayer-client` (`packages/relayer-client/`):
+This package is **tightly coupled** with `@agentic-payments/relayer-client` (`packages/relayer-client/`):
 
 | Package                  | Role                                                        |
 | ------------------------ | ----------------------------------------------------------- |
@@ -67,13 +67,13 @@ This package is **tightly coupled** with `@towns-labs/relayer-client` (`packages
 - `relayer-client` calls `wallet_prepareCalls` → relayer builds typed data + quote context.
 - `relayer-client` signs EIP-712 `Intent` and calls `wallet_sendPreparedCalls`.
 - relayer builds `IntentStruct`, sends to SignerPool DO, and tracks bundle status.
-- contracts `Orchestrator.execute` verifies signature + nonce via `TownsAccount`, then executes calls.
+- contracts `Orchestrator.execute` verifies signature + nonce via `Account`, then executes calls.
 
 **Key invariants (must stay in sync):**
 
 - EIP-712 `Intent` types/field order: `relayer/src/services/relayer.ts` ⇄ `relayer-client/src/types.ts` ⇄ `contracts/src/accounts/Orchestrator.sol`.
-- Signature wrapping for authorized keys: `relayer-client/src/actions/signIntent.ts` ⇄ `contracts/src/accounts/TownsAccount.sol`.
-- Nonce model (2D seqKey|seq): `relayer IntentNonceDO` ⇄ `contracts LibNonce` (enforced via `TownsAccount.checkAndIncrementNonce`).
+- Signature wrapping for authorized keys: `relayer-client/src/actions/signIntent.ts` ⇄ `contracts/src/accounts/Account.sol`.
+- Nonce model (2D seqKey|seq): `relayer IntentNonceDO` ⇄ `contracts LibNonce` (enforced via `Account.checkAndIncrementNonce`).
 - Payment fields (`payer`, `paymentToken`, `paymentMaxAmount`, `paymentAmount`): relayer quotes → client intent → Orchestrator `_pay`.
 
 **Quick file pointers:**
@@ -83,7 +83,7 @@ This package is **tightly coupled** with `@towns-labs/relayer-client` (`packages
 - `relayer-client/src/actions/{prepareIntent.ts,signIntent.ts,submitIntent.ts}`
 - `relayer-client/src/transport.ts` - JSON-RPC wire format.
 - `contracts/src/accounts/Orchestrator.sol` - Intent digest + execution path.
-- `contracts/src/accounts/TownsAccount.sol` - Signature unwrap + nonce/pay enforcement.
+- `contracts/src/accounts/Account.sol` - Signature unwrap + nonce/pay enforcement.
 
 ## Architecture
 
@@ -138,7 +138,7 @@ Required secrets (set via `wrangler secret put`):
 - `RELAYER_MNEMONIC` - HD wallet mnemonic
 - `CHAIN_ID` - Chain ID (31337=local, 84532=Base Sepolia, 8453=Base)
 
-Contract addresses are auto-loaded from `@towns-labs/contracts`. See README.md for full configuration options.
+Contract addresses are auto-loaded from `@agentic-payments/contracts`. See README.md for full configuration options.
 
 ## Relayer/Deploy Guardrails
 
@@ -218,7 +218,7 @@ See **`packages/relayer-client/CLAUDE.md`** for:
 - Adding new scenario tests
 - Detailed testing workflows
 
-## Towns Account & Signature Gotchas
+## Account & Signature Gotchas
 
 - **Delegated EOAs have code**: `getCode()` starts with `0xef0100` after EIP-7702 delegation.
 - **SignatureCheckerLib behavior**: if signer has code, it calls `isValidSignature()` (ERC-1271 path).
@@ -226,7 +226,7 @@ See **`packages/relayer-client/CLAUDE.md`** for:
 - **Fix**: use a distinct EOA for SuperAdmin signing (separate keypair from the delegated account).
 - **Key hash**: `keccak256(abi.encode(uint8(keyType), keccak256(publicKey)))` with `keyType` 0=secp256k1, 1=external.
 
-Contract references: `TownsAccount.sol:258-283`, `TownsAccount.sol:498-561`, `TownsAccount.sol:230-248`.
+Contract references: `Account.sol:258-283`, `Account.sol:498-561`, `Account.sol:230-248`.
 
 ## Price Oracle Integration Gotchas
 

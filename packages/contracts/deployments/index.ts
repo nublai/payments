@@ -14,7 +14,7 @@ export interface ContractAddresses {
   orchestrator: Address
   simpleFunder: Address
   simulator: Address
-  townsAccount: Address
+  account: Address
   accountProxy: Address
   simpleSettler: Address
   escrow: Address
@@ -25,7 +25,7 @@ const requiredAddressKeys = [
   'orchestrator',
   'simpleFunder',
   'simulator',
-  'townsAccount',
+  'account',
   'accountProxy',
   'simpleSettler',
   'escrow',
@@ -77,7 +77,7 @@ export function getAddresses(
     orchestrator: addresses.orchestrator,
     simpleFunder: addresses.simpleFunder,
     simulator: addresses.simulator,
-    townsAccount: addresses.townsAccount,
+    account: addresses.account,
     accountProxy: addresses.accountProxy,
     simpleSettler: addresses.simpleSettler,
     escrow: addresses.escrow,
@@ -106,7 +106,7 @@ const envKeys = {
   simpleFunder: 'SIMPLE_FUNDER',
   simpleSettler: 'SIMPLE_SETTLER',
   simulator: 'SIMULATOR',
-  townsAccount: 'TOWNS_ACCOUNT',
+  account: 'ACCOUNT',
   accountProxy: 'ACCOUNT_PROXY',
   escrow: 'ESCROW',
   multiSigSigner: 'MULTI_SIG_SIGNER',
@@ -132,7 +132,7 @@ export function getAddressesFromEnvForChain(
     orchestrator: get(envKeys.orchestrator),
     simpleFunder: get(envKeys.simpleFunder),
     simulator: get(envKeys.simulator),
-    townsAccount: get(envKeys.townsAccount),
+    account: get(envKeys.account),
     accountProxy: get(envKeys.accountProxy),
     simpleSettler: get(envKeys.simpleSettler),
     escrow: get(envKeys.escrow),
@@ -156,7 +156,7 @@ export function getAddressesFromEnv(opts?: EnvOpts): ContractAddresses | undefin
     orchestrator: get(envKeys.orchestrator),
     simpleFunder: get(envKeys.simpleFunder),
     simulator: get(envKeys.simulator),
-    townsAccount: get(envKeys.townsAccount),
+    account: get(envKeys.account),
     accountProxy: get(envKeys.accountProxy),
     simpleSettler: get(envKeys.simpleSettler),
     escrow: get(envKeys.escrow),

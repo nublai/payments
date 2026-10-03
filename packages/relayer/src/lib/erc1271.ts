@@ -1,7 +1,7 @@
 import { concat, encodeAbiParameters, keccak256, type Address, type Hex } from 'viem'
 
 /**
- * ERC-1271 SIGN_TYPEHASH from TownsAccount
+ * ERC-1271 SIGN_TYPEHASH from Account
  * keccak256("ERC1271Sign(bytes32 digest)")
  */
 export const ERC1271_SIGN_TYPEHASH = keccak256(
@@ -38,7 +38,7 @@ export function computeErc1271Digest(originalDigest: Hex, accountAddress: Addres
 }
 
 /**
- * Wrap a signature with keyHash and prehash flag for TownsAccount.
+ * Wrap a signature with keyHash and prehash flag for Account.
  */
 export function wrapSignature(innerSignature: Hex, keyHash: Hex, prehash: boolean = false): Hex {
     const prehashByte = prehash ? '0x01' : '0x00'

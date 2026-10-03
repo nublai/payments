@@ -149,7 +149,7 @@ contract LayerZeroSettler is OApp, ISettler, EIP712 {
     }
 
     /// @notice Check if a settlement has been attested
-    /// @dev In the case of TownsAccount interop, the sender will always be the orchestrator.
+    /// @dev In the case of Account interop, the sender will always be the orchestrator.
     function read(
         bytes32 settlementId,
         address sender,

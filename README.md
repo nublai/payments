@@ -1,46 +1,26 @@
 # Agentic Payments
 
-Private copy of the onchain payments surface from [giuseppecrj/chat](https://github.com/giuseppecrj/chat). Chat was not modified.
-
-This is a source copy of the payments packages, then slimmed to drop the Towns chat graph the wallet does not need. Package names and versions of what remains are unchanged. Nothing here documents APIs that are not already in those files.
+Smart accounts, a relayer, and a local wallet CLI for agent-initiated payments. Split out of a private repo. This tree is the payments surface only.
 
 ## Packages
 
-- `packages/wallet` — `@towns-labs/wallet` (onchain CLI: account, session, daemon, permissions, escrow, send, swap, bridge, address, login, logout). The `tw chat` command group and chat-only wallet modules are not included.
-- `packages/relayer-client` — `@towns-labs/relayer-client`
-- `packages/relayer` — `@towns-labs/relayer`
-- `packages/proto` — `@towns-labs/proto` (committed files only; see below)
-- `packages/contracts` — `@towns-labs/contracts` (full protocol copy: Solidity, Foundry, tests, scripts)
+- `packages/contracts` — `@agentic-payments/contracts`. Solidity, Foundry tests, and deploy scripts. The account contract is `Account` (EIP-7702), with Orchestrator, GuardedExecutor, Escrow, SimpleFunder, SimpleSettler, Simulator, and MultiSigSigner.
+- `packages/relayer` — `@agentic-payments/relayer`. Cloudflare Worker that submits signed intents. Local dev is `packages/relayer/scripts/dev.sh` (wrangler).
+- `packages/relayer-client` — `@agentic-payments/relayer-client`. viem-style client (`prepareCalls`, `sendPreparedCalls`, `upgradeAccount`, escrow helpers).
+- `packages/wallet` — `@agentic-payments/wallet`. CLI binary `tw` (`bun ./src/cli.ts`). Commands: `account`, `session`, `daemon`, `permissions`, `escrow`, `send`, `swap`, `bridge`, `address`, `login`, `logout`. `tw --mcp` serves those commands over MCP. `tw --json` prints structured output.
+- `packages/proto` — `@agentic-payments/proto`. Exports only `BearerTokenSchema`, `WalletSessionTokenSchema`, `ExportedDeviceSchema`, and the `ExportedDevice` type, from `schema/payments.proto`.
 
-Shared config copied because included packages extend or import it:
+Workspace manager is Bun `1.3.3`. Foundry `1.5.1` is what the contract tests use.
 
-- `packages/tsconfig.base.json`
-- `vitest.config.mts` (several package vitest configs import `../../vitest.config.mjs`; the file in chat is `vitest.config.mts`)
-- `.bun-version` (`1.3.3`) and `bunfig.toml`
-- Root `package.json` workspaces are bun workspaces (`packages/*`), matching chat. `packageManager` is `bun@1.3.3`. The `viem` resolution `2.45.1` is the pin from chat's root `resolutions`. Root `typescript` is `~5.8.3`, the version those packages declare.
+## Local payment
 
-## What was slimmed
+From the repo root, with Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH` (this environment's `/usr/bin/node` is 20; the script prepends `/tmp/node22/bin` when that binary exists):
 
-Removed, because they exist for the Towns chat / SDK graph and are not imported by the remaining payments code:
+```bash
+bun install
+bun run e2e:local-payment
+```
 
-- `packages/sdk`
-- `packages/encryption`
-- `packages/sdk-crypto`
-- `packages/rpc-connector`
-- `packages/web3`
-- `packages/utils`
+Ports 8545, 8546, and 8787 must be free. The script starts both Anvil chains, runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `tw account create --env dev`, mints MockUSDC, and sends 1 USDC with `tw send`. It stops the Anvil and wrangler processes it started.
 
-`packages/wallet` no longer depends on `@towns-labs/sdk` or `@towns-labs/utils`. The three dlog logger setters the CLI runtime used (`setDlogErrorLogger`, `setDlogInfoLogger`, `setDlogWarnLogger`) live in `packages/wallet/src/lib/dlog.ts`.
-
-`packages/contracts` (`@towns-labs/contracts`) is the full protocol copy (Solidity, Foundry, tests, scripts) and was not reduced. Wallet, relayer-client, and relayer import only:
-
-- `@towns-labs/contracts/abis`
-- `@towns-labs/contracts/deployments`
-
-`@towns-labs/proto` is still required for login and for agent device material stored on session keystores. The package entry exports only `BearerTokenSchema`, `WalletSessionTokenSchema`, `ExportedDeviceSchema`, and the `ExportedDevice` type. Those messages were copied from chat `protocol/payloads.proto` (`BearerToken`, `WalletSessionToken`, `ExportedDevice`) into `packages/proto/schema/payments.proto` and generated with the repo's `buf` / `protoc-gen-es` (`target=ts`) into `packages/proto/src/gen/payments_pb.ts`. The rest of chat's generated proto tree is not included. `MembershipOp` and `SnapshotCaseType` are not exported; nothing in the slimmed wallet imports them.
-
-## Not copied
-
-- The rest of `packages/proto/src/gen/**` (only `payments_pb.ts` is generated here)
-- Apps, bots, clients, servers, and other workspace packages (app-framework, stream-metadata, and the rest)
-- The Towns chat command surface (`tw chat`) and the wallet modules that only served it
+Prod and stage relayer URLs are the deployed hosts in `packages/wallet/src/lib/network-config.ts`. Login uses the hosts in `packages/wallet/src/lib/login.ts`.

@@ -1,5 +1,5 @@
 import { createPublicClient, http, type Address, type Hex } from 'viem'
-import { encodeSecp256k1Key, getChain, type AuthorizeKey } from '@towns-labs/relayer-client'
+import { encodeSecp256k1Key, getChain, type AuthorizeKey } from '@agentic-payments/relayer-client'
 import type { CliNetworkConfig } from './network-config'
 import { createCliRelayerClient, createEthHttpSigner } from './relayer-client-utils'
 

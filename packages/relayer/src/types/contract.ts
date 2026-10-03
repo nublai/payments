@@ -2,15 +2,15 @@
  * Contract Types
  *
  * TypeScript interfaces for smart contract return types.
- * These mirror the ABI output from @towns-labs/contracts.
+ * These mirror the ABI output from @agentic-payments/contracts.
  */
 
 import type { Hex } from 'viem'
 
 /**
- * Key struct from TownsAccount.getKeys()
+ * Key struct from Account.getKeys()
  *
- * Represents an authorized key registered on a TownsAccount.
+ * Represents an authorized key registered on an Account.
  */
 export interface ContractKey {
     expiry: number

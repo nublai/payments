@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Address, type Hex } from 'viem'
-import { getChain, getEscrowStatus } from '@towns-labs/relayer-client'
-import type { EscrowStatus } from '@towns-labs/relayer-client'
+import { getChain, getEscrowStatus } from '@agentic-payments/relayer-client'
+import type { EscrowStatus } from '@agentic-payments/relayer-client'
 import type { ChainName, EnvName } from './network-config'
 import {
     type EscrowChainNetworkContractsDeps,

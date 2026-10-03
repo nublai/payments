@@ -22,11 +22,11 @@ export type SessionDaemonPaths = {
 function resolveDefaultStateDir(): string {
     const customRuntimeDir = process.env.XDG_RUNTIME_DIR
     if (process.platform === 'linux' && customRuntimeDir) {
-        return resolve(customRuntimeDir, 'towns-tw')
+        return resolve(customRuntimeDir, 'agentic-payments-tw')
     }
 
     const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'unknown'
-    return resolve(tmpdir(), `towns-tw-${uid}`)
+    return resolve(tmpdir(), `agentic-payments-tw-${uid}`)
 }
 
 export function resolveSessionDaemonPaths(): SessionDaemonPaths {

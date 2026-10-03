@@ -1,5 +1,5 @@
 {
-    "name": "@towns-labs/relayer-client",
+    "name": "@agentic-payments/relayer-client",
     "version": "7.3.1",
     "type": "module",
     "main": "dist/index.js",
@@ -22,8 +22,8 @@
     },
     "dependencies": {
         "@slicekit/erc8128": "^0.1.0",
-        "@towns-labs/contracts": "workspace:^",
-        "@towns-labs/relayer": "workspace:^"
+        "@agentic-payments/contracts": "workspace:^",
+        "@agentic-payments/relayer": "workspace:^"
     },
     "peerDependencies": {
         "viem": "2.45.1"

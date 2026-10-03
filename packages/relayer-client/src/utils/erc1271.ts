@@ -1,14 +1,14 @@
 /**
  * ERC-1271 Signature Utilities
  *
- * Utilities for computing ERC-1271 replay-safe digests compatible with TownsAccount.
- * These match the implementation in TownsAccount._hashTypedDataOnlyVerifyingContract()
+ * Utilities for computing ERC-1271 replay-safe digests compatible with Account.
+ * These match the implementation in Account._hashTypedDataOnlyVerifyingContract()
  */
 
 import { keccak256, concat, encodeAbiParameters, type Address, type Hex } from 'viem'
 
 /**
- * ERC-1271 SIGN_TYPEHASH from TownsAccount
+ * ERC-1271 SIGN_TYPEHASH from Account
  * keccak256("ERC1271Sign(bytes32 digest)")
  */
 export const ERC1271_SIGN_TYPEHASH = keccak256(
@@ -26,19 +26,19 @@ export const DOMAIN_TYPEHASH_ONLY_VERIFYING_CONTRACT = keccak256(
 /**
  * Compute ERC-1271 replay-safe digest
  *
- * This matches TownsAccount._hashTypedDataOnlyVerifyingContract()
+ * This matches Account._hashTypedDataOnlyVerifyingContract()
  * The domain separator uses only verifyingContract (no name, version, chainId).
  *
  * When signing for wallet_verifySignature, you must sign the digest returned
  * by this function, NOT the original digest.
  *
  * @param originalDigest - The original message digest (32 bytes)
- * @param accountAddress - The TownsAccount address (used as verifyingContract)
+ * @param accountAddress - The Account address (used as verifyingContract)
  * @returns The ERC-1271 transformed digest to sign
  *
  * @example
  * ```typescript
- * import { computeErc1271Digest } from '@towns-labs/relayer-client'
+ * import { computeErc1271Digest } from '@agentic-payments/relayer-client'
  * import { keccak256 } from 'viem'
  * import { sign } from 'viem/accounts'
  *

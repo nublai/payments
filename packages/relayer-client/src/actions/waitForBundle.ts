@@ -37,7 +37,7 @@ const FINAL_STATUS_CODES = [200, 201, 300, 400, 500] as const
  *
  * @example
  * ```typescript
- * import { waitForBundle } from '@towns-labs/relayer-client'
+ * import { waitForBundle } from '@agentic-payments/relayer-client'
  *
  * const { id } = await client.sendPreparedCalls({ context, signature })
  * const status = await waitForBundle(client, {

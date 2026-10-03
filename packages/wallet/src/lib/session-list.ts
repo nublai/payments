@@ -1,5 +1,5 @@
 import { getAddress, type Address, type Hex } from 'viem'
-import type { GetKeysResponse } from '@towns-labs/relayer-client'
+import type { GetKeysResponse } from '@agentic-payments/relayer-client'
 import { resolveKeystorePath } from './account-create'
 import {
     readKeystoreBundle,

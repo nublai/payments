@@ -9,8 +9,8 @@ import {
     type BundleStatusResponse,
     type GetKeysResponse,
     type SpendPeriod,
-} from '@towns-labs/relayer-client'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+} from '@agentic-payments/relayer-client'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 import { resolveKeystorePath } from './account-create'
 import {
     createSessionKeystore,
@@ -255,7 +255,7 @@ function getDefaultDeps(): SessionCreateDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
-            return (await import('@towns-labs/relayer-client')).waitForBundle(client, {
+            return (await import('@agentic-payments/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
             })
@@ -433,14 +433,14 @@ export async function executeSessionCreate(
         const expiryTimestamp = options.expiry ? parseExpiry(options.expiry) : 0
 
         const authorizeCallData = encodeFunctionData({
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'authorize',
             args: [
                 {
                     expiry: expiryTimestamp,
                     keyType: 0,
                     isSuperAdmin: false,
-                    publicKey: (await import('@towns-labs/relayer-client')).encodeSecp256k1Key(
+                    publicKey: (await import('@agentic-payments/relayer-client')).encodeSecp256k1Key(
                         sessionAddress,
                     ),
                 },
@@ -459,7 +459,7 @@ export async function executeSessionCreate(
                 target: accountAddress,
                 value: 0n,
                 data: encodeFunctionData({
-                    abi: townsAccountAbi,
+                    abi: accountAbi,
                     functionName: 'setSpendLimit',
                     args: [
                         sessionKeyHash,
@@ -474,7 +474,7 @@ export async function executeSessionCreate(
                     target: accountAddress,
                     value: 0n,
                     data: encodeFunctionData({
-                        abi: townsAccountAbi,
+                        abi: accountAbi,
                         functionName: 'setCanExecute',
                         args: [sessionKeyHash, permissionDefaults.target, selector, true],
                     }),

@@ -1,5 +1,5 @@
 import { create, toBinary } from '@bufbuild/protobuf'
-import { BearerTokenSchema, WalletSessionTokenSchema } from '@towns-labs/proto'
+import { BearerTokenSchema, WalletSessionTokenSchema } from '@agentic-payments/proto'
 import { expect, mock, test } from 'bun:test'
 import { dirname, join } from 'node:path'
 import { privateKeyToAccount } from 'viem/accounts'

@@ -1,5 +1,5 @@
 {
-    "name": "@towns-labs/relayer",
+    "name": "@agentic-payments/relayer",
     "version": "7.3.1",
     "main": "dist/index.js",
     "type": "module",
@@ -38,7 +38,7 @@
         "@scure/bip32": "2.0.1",
         "@scure/bip39": "2.0.1",
         "@slicekit/erc8128": "^0.1.0",
-        "@towns-labs/contracts": "workspace:^",
+        "@agentic-payments/contracts": "workspace:^",
         "hono": "^4.11.7",
         "oxlint": "^1.41.0",
         "pino": "^10.3.1",

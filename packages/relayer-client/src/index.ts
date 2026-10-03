@@ -1,5 +1,5 @@
 /**
- * @towns-labs/relayer-client
+ * @agentic-payments/relayer-client
  *
  * Slim, Viem-style SDK for the EIP-7702 Relayer Orchestrator system.
  *
@@ -8,7 +8,7 @@
  * ```typescript
  * import { createPublicClient, http } from 'viem'
  * import { baseSepolia } from 'viem/chains'
- * import { relayerActions, waitForBundle } from '@towns-labs/relayer-client'
+ * import { relayerActions, waitForBundle } from '@agentic-payments/relayer-client'
  *
  * // Create client with relayer actions
  * const client = createPublicClient({

@@ -385,7 +385,7 @@ contract GuardedExecutorTest is BaseTest {
         {
             calls = new ERC7821.Call[](1);
             // Authorize the key.
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, k.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, k.k);
 
             u.executionData = abi.encode(calls);
             u.nonce = 0xc1d0 << 240;
@@ -449,7 +449,7 @@ contract GuardedExecutorTest is BaseTest {
         {
             calls = new ERC7821.Call[](4);
             // Authorize the key.
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, k.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, k.k);
             // As it's not a superAdmin, we shall just make it able to execute anything for testing
             // sake.
             calls[1].data = abi.encodeWithSelector(
@@ -639,7 +639,7 @@ contract GuardedExecutorTest is BaseTest {
         {
             calls = new ERC7821.Call[](6);
             // Authorize the key.
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, k.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, k.k);
             // As it's not a superAdmin, we shall just make it able to execute anything for testing
             // sake.
             calls[1].data = abi.encodeWithSelector(
@@ -706,7 +706,7 @@ contract GuardedExecutorTest is BaseTest {
         {
             ERC7821.Call[] memory calls = new ERC7821.Call[](2 + tokens.length);
             // Authorize the key.
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, k.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, k.k);
             // As it's not a superAdmin, we shall just make it able to execute anything for testing
             // sake.
             calls[1].data = abi.encodeWithSelector(
@@ -860,7 +860,7 @@ contract GuardedExecutorTest is BaseTest {
         {
             ERC7821.Call[] memory calls = new ERC7821.Call[](4);
             // Authorize the key.
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, k.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, k.k);
             // As it's not a superAdmin, we shall just make it able to execute anything for testing
             // sake.
             calls[1].data = abi.encodeWithSelector(

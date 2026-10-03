@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { createWalletClient, http, encodeAbiParameters, parseEther, zeroAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { townsAccountAbi } from '@towns-labs/contracts/abis'
+import { accountAbi } from '@agentic-payments/contracts/abis'
 
 import {
     waitForBundle,
@@ -77,12 +77,12 @@ describe('Account Delegation', () => {
         expect(codeAfter?.startsWith('0xef0100')).toBe(true) // EIP-7702 delegation designator
 
         // 7. Verify the account is functional by checking we can read contract state
-        // Note: In the new TownsAccount design, the EOA's native key is implicitly authorized
+        // Note: In the new Account design, the EOA's native key is implicitly authorized
         // via ECDSA recovery - it doesn't need to be stored as an explicit key.
         // keyCount() will be 0 until session keys are explicitly added.
         const keyCount = await client.readContract({
             address: account.address,
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'keyCount',
         })
         // Initially no explicit keys - the EOA key is implicit
@@ -91,7 +91,7 @@ describe('Account Delegation', () => {
         // 8. Verify the contract responds correctly (delegation worked)
         const label = await client.readContract({
             address: account.address,
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'label',
         })
         // Label starts empty
@@ -137,7 +137,7 @@ describe('Account Delegation', () => {
         // 8. Verify the account is functional by checking we can read contract state
         const keyCount = await client.readContract({
             address: account.address,
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'keyCount',
         })
         // Initially no explicit keys - the EOA key is implicit
@@ -146,7 +146,7 @@ describe('Account Delegation', () => {
         // 9. Verify the contract responds correctly (delegation worked)
         const label = await client.readContract({
             address: account.address,
-            abi: townsAccountAbi,
+            abi: accountAbi,
             functionName: 'label',
         })
         // Label starts empty
@@ -206,7 +206,7 @@ describe('Account Delegation', () => {
             // 8. Verify the additional key was authorized
             const keyCount = await client.readContract({
                 address: ownerAccount.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'keyCount',
             })
             expect(keyCount).toBe(1n)
@@ -214,7 +214,7 @@ describe('Account Delegation', () => {
             // 9. Verify the key details via getKeys()
             const keysResult = await client.readContract({
                 address: ownerAccount.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'getKeys',
             })
             const keys = keysResult[0]
@@ -389,7 +389,7 @@ describe('Account Delegation', () => {
 
             const keyCount = await client.readContract({
                 address: ownerAccount.address,
-                abi: townsAccountAbi,
+                abi: accountAbi,
                 functionName: 'keyCount',
             })
             expect(keyCount).toBe(1n)

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {GuardedExecutor} from "./GuardedExecutor.sol";
-import {ITownsAccount} from "./interfaces/ITownsAccount.sol";
+import {IAccount} from "./interfaces/IAccount.sol";
 import {LibNonce} from "./libraries/LibNonce.sol";
 import {LibTStack} from "./libraries/LibTStack.sol";
 import {TokenTransferLib} from "./libraries/TokenTransferLib.sol";
@@ -22,8 +22,8 @@ import {LibTransient} from "solady/utils/LibTransient.sol";
 import {SignatureCheckerLib} from "solady/utils/SignatureCheckerLib.sol";
 
 /// @title Account
-/// @notice A account contract for EOAs with EIP7702.
-contract TownsAccount is ITownsAccount, EIP712, GuardedExecutor {
+/// @notice An account contract for EOAs with EIP7702.
+contract Account is IAccount, EIP712, GuardedExecutor {
     using EfficientHashLib for bytes32[];
     using EnumerableSetLib for *;
     using LibBytes for LibBytes.BytesStorage;
@@ -736,7 +736,7 @@ contract TownsAccount is ITownsAccount, EIP712, GuardedExecutor {
         override
         returns (string memory name, string memory version)
     {
-        name = "TownsAccount";
+        name = "Account";
         version = "0.1.1";
     }
 }

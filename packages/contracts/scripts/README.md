@@ -1,6 +1,6 @@
 # Deployment Scripts
 
-This directory contains the deployment scripts for the Towns Account system.
+This directory contains the deployment scripts for the Account system.
 
 ## Quick Start
 
@@ -178,7 +178,7 @@ Deploy specific contracts only:
 ./scripts/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
 
 # Contract with dependencies (Orchestrator auto-deployed if missing)
-./scripts/deploy.sh local --contracts TownsAccount
+./scripts/deploy.sh local --contracts Account
 
 # Deploy SimpleSettler to Optimism
 ./scripts/deploy.sh --chain 10 --contracts SimpleSettler --account deployer
@@ -188,8 +188,8 @@ Deploy specific contracts only:
 - `Orchestrator` - No dependencies
 - `Simulator` - No dependencies
 - `Escrow` - No dependencies
-- `TownsAccount` - Requires Orchestrator
-- `AccountProxy` - Requires TownsAccount
+- `Account` - Requires Orchestrator
+- `AccountProxy` - Requires Account
 - `SimpleFunder` - Requires funder, owner
 - `SimpleSettler` - Requires owner
 - `LayerZeroSettler` - Requires endpoint, owner, signer
@@ -252,7 +252,7 @@ Deploy contracts without setting up relayers:
 Full deployment runs in 6 phases:
 
 1. **No-arg contracts** - Orchestrator, Simulator, Escrow (batched via CREATE2)
-2. **TownsAccount** - Depends on Orchestrator address
+2. **Account** - Depends on Orchestrator address
 3. **AccountProxy** - Uses LibEIP7702 (not CREATE2)
 4. **Config-driven** - SimpleFunder, SimpleSettler, LayerZeroSettler
 5. **Relayer setup** - Whitelist signers, fund on local
@@ -442,7 +442,7 @@ Each deployment file contains:
 
 ```
 No Dependencies (batched):
-  Orchestrator ─┬─► TownsAccount ──► AccountProxy
+  Orchestrator ─┬─► Account ──► AccountProxy
   Simulator    │
   Escrow       │
 

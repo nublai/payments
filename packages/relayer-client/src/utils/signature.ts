@@ -1,16 +1,16 @@
 /**
  * Signature Utilities
  *
- * Utilities for wrapping signatures for TownsAccount validation.
+ * Utilities for wrapping signatures for Account validation.
  */
 
 import type { Hex } from 'viem'
 import { concat } from 'viem'
 
 /**
- * Wrap a signature with keyHash and prehash flag for TownsAccount validation
+ * Wrap a signature with keyHash and prehash flag for Account validation
  *
- * This is the format expected by TownsAccount.unwrapAndValidateSignature:
+ * This is the format expected by Account.unwrapAndValidateSignature:
  * [signature (65 bytes)][keyHash (32 bytes)][prehash flag (1 byte)]
  *
  * The keyHash tells the contract which authorized key signed, so it can look up permissions.
@@ -21,7 +21,7 @@ import { concat } from 'viem'
  *
  * @example
  * ```typescript
- * import { wrapSignature, computeKeyHash } from '@towns-labs/relayer-client'
+ * import { wrapSignature, computeKeyHash } from '@agentic-payments/relayer-client'
  *
  * // Sign the typed data
  * const signature = await walletClient.signTypedData(prepared.typedData)

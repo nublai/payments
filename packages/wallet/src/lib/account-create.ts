@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { ANY_FUNCTION_SELECTOR, ANY_TARGET, encodeSecp256k1Key } from '@towns-labs/relayer-client'
+import { ANY_FUNCTION_SELECTOR, ANY_TARGET, encodeSecp256k1Key } from '@agentic-payments/relayer-client'
 import {
     createRootKeystore,
     createSessionKeystore,
@@ -146,7 +146,7 @@ function assertValidProfileName(name: string): void {
 
 export function getDefaultKeystorePath(env: EnvName, name = 'default'): string {
     assertValidProfileName(name)
-    const base = [homedir(), '.config', 'towns', 'tw', 'profiles']
+    const base = [homedir(), '.config', 'agentic-payments', 'tw', 'profiles']
     if (name === 'default') {
         if (env === 'prod') {
             return join(...base, 'default', 'default.keystore.json')

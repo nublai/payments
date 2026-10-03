@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'bun:test'
 import { create, toBinary } from '@bufbuild/protobuf'
-import { ExportedDeviceSchema } from '@towns-labs/proto'
+import { ExportedDeviceSchema } from '@agentic-payments/proto'
 import { privateKeyToAccount } from 'viem/accounts'
 import type {
     AgentSessionKeystoreV2,

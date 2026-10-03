@@ -5,11 +5,11 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@7.3.1
-  - @towns-labs/proto@7.3.1
-  - @towns-labs/relayer-client@7.3.1
-  - @towns-labs/sdk@7.3.1
-  - @towns-labs/utils@7.3.1
+  - @agentic-payments/contracts@7.3.1
+  - @agentic-payments/proto@7.3.1
+  - @agentic-payments/relayer-client@7.3.1
+  - @agentic-payments/sdk@7.3.1
+  - @agentic-payments/utils@7.3.1
 
 ## 7.3.0
 
@@ -20,11 +20,11 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@7.3.0
-  - @towns-labs/proto@7.3.0
-  - @towns-labs/relayer-client@7.3.0
-  - @towns-labs/sdk@7.3.0
-  - @towns-labs/utils@7.3.0
+  - @agentic-payments/contracts@7.3.0
+  - @agentic-payments/proto@7.3.0
+  - @agentic-payments/relayer-client@7.3.0
+  - @agentic-payments/sdk@7.3.0
+  - @agentic-payments/utils@7.3.0
 
 ## 7.2.0
 
@@ -35,11 +35,11 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@7.2.0
-  - @towns-labs/proto@7.2.0
-  - @towns-labs/relayer-client@7.2.0
-  - @towns-labs/sdk@7.2.0
-  - @towns-labs/utils@7.2.0
+  - @agentic-payments/contracts@7.2.0
+  - @agentic-payments/proto@7.2.0
+  - @agentic-payments/relayer-client@7.2.0
+  - @agentic-payments/sdk@7.2.0
+  - @agentic-payments/utils@7.2.0
 
 ## 7.1.0
 
@@ -82,80 +82,80 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@7.1.0
-  - @towns-labs/relayer-client@7.1.0
+  - @agentic-payments/contracts@7.1.0
+  - @agentic-payments/relayer-client@7.1.0
 
 ## 7.0.0
 
 ### Major Changes
 
-- [#885](https://github.com/HereNotThere/chat/pull/885) [`359ca49`](https://github.com/HereNotThere/chat/commit/359ca4943c915da168a11f4fca2c959a3d776777) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@towns-labs/wallet` and keep `towns-wallet`/`tw` binaries so Bun users can run it via `bunx @towns-labs/wallet`.
+- [#885](https://github.com/HereNotThere/chat/pull/885) [`359ca49`](https://github.com/HereNotThere/chat/commit/359ca4943c915da168a11f4fca2c959a3d776777) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@agentic-payments/wallet` and keep `agentic-payments-wallet`/`tw` binaries so Bun users can run it via `bunx @agentic-payments/wallet`.
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@7.0.0
-  - @towns-labs/relayer-client@7.0.0
+  - @agentic-payments/contracts@7.0.0
+  - @agentic-payments/relayer-client@7.0.0
 
 ## 6.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@6.0.0
-  - @towns-labs/relayer-client@6.0.0
+  - @agentic-payments/contracts@6.0.0
+  - @agentic-payments/relayer-client@6.0.0
 
 ## 5.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@5.0.0
-  - @towns-labs/relayer-client@5.0.0
+  - @agentic-payments/contracts@5.0.0
+  - @agentic-payments/relayer-client@5.0.0
 
 ## 4.1.2
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@4.1.2
-  - @towns-labs/relayer-client@4.1.2
+  - @agentic-payments/contracts@4.1.2
+  - @agentic-payments/relayer-client@4.1.2
 
 ## 4.1.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@4.1.1
-  - @towns-labs/relayer-client@4.1.1
+  - @agentic-payments/contracts@4.1.1
+  - @agentic-payments/relayer-client@4.1.1
 
 ## 4.1.0
 
 ### Minor Changes
 
-- [#794](https://github.com/HereNotThere/chat/pull/794) [`82926e9`](https://github.com/HereNotThere/chat/commit/82926e9951d7a1dff5204b549e17926817e9a501) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Towns Wallet CLI (`towns-wallet` / `tw`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
+- [#794](https://github.com/HereNotThere/chat/pull/794) [`82926e9`](https://github.com/HereNotThere/chat/commit/82926e9951d7a1dff5204b549e17926817e9a501) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Wallet CLI (`agentic-payments-wallet` / `tw`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@4.1.0
-  - @towns-labs/relayer-client@4.1.0
+  - @agentic-payments/contracts@4.1.0
+  - @agentic-payments/relayer-client@4.1.0
 
 ## 4.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@4.0.0
-  - @towns-labs/relayer-client@4.0.0
+  - @agentic-payments/contracts@4.0.0
+  - @agentic-payments/relayer-client@4.0.0
 
 ## 3.4.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @towns-labs/contracts@3.4.1
-  - @towns-labs/relayer-client@3.4.1
+  - @agentic-payments/contracts@3.4.1
+  - @agentic-payments/relayer-client@3.4.1
 
 ## 3.4.0
 
@@ -166,17 +166,17 @@
 ### Patch Changes
 
 - Updated dependencies [[`8594d4c`](https://github.com/HereNotThere/chat/commit/8594d4c5956b9a8c9bc5ec4dc6717b5a00f1431f)]:
-  - @towns-labs/contracts@3.4.0
-  - @towns-labs/relayer-client@3.4.0
+  - @agentic-payments/contracts@3.4.0
+  - @agentic-payments/relayer-client@3.4.0
 
 ## 0.1.0
 
 ### Minor Changes
 
-- [#670](https://github.com/HereNotThere/chat/pull/670) [`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @towns-labs/deployments, remove @towns-labs/generated, gut ethers v5 contract layer from @towns-labs/web3
+- [#670](https://github.com/HereNotThere/chat/pull/670) [`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
 
 ### Patch Changes
 
 - Updated dependencies [[`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08)]:
-  - @towns-labs/deployments@3.3.0
-  - @towns-labs/relayer-client@3.3.0
+  - @agentic-payments/deployments@3.3.0
+  - @agentic-payments/relayer-client@3.3.0

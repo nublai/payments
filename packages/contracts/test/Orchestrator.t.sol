@@ -6,7 +6,7 @@ import {SimpleFunder} from "../src/accounts/SimpleFunder.sol";
 import {SimpleSettler} from "../src/accounts/SimpleSettler.sol";
 import {ICommon} from "../src/accounts/interfaces/ICommon.sol";
 import {IOrchestrator} from "../src/accounts/interfaces/IOrchestrator.sol";
-import {ITownsAccount} from "../src/accounts/interfaces/ITownsAccount.sol";
+import {IAccount} from "../src/accounts/interfaces/IAccount.sol";
 import "./Base.t.sol";
 import "./utils/SoladyTest.sol";
 import {MockPayerWithSignature} from "./utils/mocks/MockPayerWithSignature.sol";
@@ -584,7 +584,7 @@ contract OrchestratorTest is BaseTest {
         preCall.eoa = address(0);
 
         ERC7821.Call[] memory calls = new ERC7821.Call[](1);
-        calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, kSession.k);
+        calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, kSession.k);
         preCall.executionData = abi.encode(calls);
         preCall.nonce = (0xc1d0 << 240);
         preCall.signature = _eoaSig(ephemeralPK, oc.computeDigest(preCall));
@@ -613,7 +613,7 @@ contract OrchestratorTest is BaseTest {
         preCall.eoa = payer.eoa;
 
         ERC7821.Call[] memory calls = new ERC7821.Call[](1);
-        calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, kSession.k);
+        calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, kSession.k);
         preCall.executionData = abi.encode(calls);
         preCall.nonce = (0xc1d0 << 240);
         preCall.signature = _eoaSig(payer.privateKey, oc.computeDigest(preCall));
@@ -698,7 +698,7 @@ contract OrchestratorTest is BaseTest {
             t.kInit.k.isSuperAdmin = true;
 
             ERC7821.Call[] memory initCalls = new ERC7821.Call[](1);
-            initCalls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, t.kInit.k);
+            initCalls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, t.kInit.k);
             pInit.eoa = t.eoa;
 
             pInit.executionData = abi.encode(initCalls);
@@ -727,7 +727,7 @@ contract OrchestratorTest is BaseTest {
         // Prepare session passkey authorization Intent.
         {
             ERC7821.Call[] memory calls = new ERC7821.Call[](5);
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, kSession.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, kSession.k);
             calls[1].data = abi.encodeWithSelector(
                 GuardedExecutor.setCanExecute.selector,
                 kSession.keyHash,
@@ -813,7 +813,7 @@ contract OrchestratorTest is BaseTest {
 
                 ERC7821.Call[] memory initCalls = new ERC7821.Call[](1);
                 initCalls[0].data = abi.encodeWithSelector(
-                    TownsAccount.authorize.selector,
+                    AgenticAccount.authorize.selector,
                     t.kInit.k
                 );
                 pInit.eoa = t.eoa;
@@ -864,7 +864,7 @@ contract OrchestratorTest is BaseTest {
         // Prepare super admin passkey authorization Intent.
         {
             ERC7821.Call[] memory calls = new ERC7821.Call[](1);
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, kSuperAdmin.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, kSuperAdmin.k);
 
             pSuperAdmin.executionData = abi.encode(calls);
             // Change this formula accordingly. We just need a non-colliding out-of-order nonce
@@ -885,7 +885,7 @@ contract OrchestratorTest is BaseTest {
         // Prepare session passkey authorization Intent.
         {
             ERC7821.Call[] memory calls = new ERC7821.Call[](3);
-            calls[0].data = abi.encodeWithSelector(TownsAccount.authorize.selector, kSession.k);
+            calls[0].data = abi.encodeWithSelector(AgenticAccount.authorize.selector, kSession.k);
             // As it's not a superAdmin, we shall just make it able to execute anything for testing
             // sake.
             calls[1].data = abi.encodeWithSelector(
@@ -990,8 +990,8 @@ contract OrchestratorTest is BaseTest {
         }
 
         assertEq(paymentToken.balanceOf(address(0xabcd)), 0.5 ether);
-        t.retrievedSessionNonce = ITownsAccount(t.eoa).getNonce(t.sessionNonceSeqKey);
-        t.retrievedSuperAdminNonce = ITownsAccount(t.eoa).getNonce(t.superAdminNonceSeqKey);
+        t.retrievedSessionNonce = IAccount(t.eoa).getNonce(t.sessionNonceSeqKey);
+        t.retrievedSuperAdminNonce = IAccount(t.eoa).getNonce(t.superAdminNonceSeqKey);
         if (t.testSkipNonce) {
             assertEq(t.retrievedSessionNonce, uint256(t.sessionNonceSeqKey) << 64);
             assertEq(t.retrievedSuperAdminNonce, uint256(t.superAdminNonceSeqKey) << 64);
@@ -1225,9 +1225,9 @@ contract OrchestratorTest is BaseTest {
         vm.deal(t.d.eoa, type(uint192).max);
 
         t.multiSigSigner = new MultiSigSigner();
-        t.multiSigKey.k = TownsAccount.Key({
+        t.multiSigKey.k = AgenticAccount.Key({
             expiry: 0,
-            keyType: TownsAccount.KeyType.External,
+            keyType: AgenticAccount.KeyType.External,
             isSuperAdmin: true,
             publicKey: abi.encodePacked(
                 address(t.multiSigSigner),

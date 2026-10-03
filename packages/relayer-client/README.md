@@ -1,4 +1,4 @@
-# @towns-labs/relayer-client
+# @agentic-payments/relayer-client
 
 A slim, viem-style SDK for EIP-7702 relayer workflows.
 
@@ -10,7 +10,7 @@ The package intentionally has two layers:
 ## Installation
 
 ```bash
-bun add @towns-labs/relayer-client viem
+bun add @agentic-payments/relayer-client viem
 ```
 
 ## Quick Start (Low-Level)
@@ -19,7 +19,7 @@ bun add @towns-labs/relayer-client viem
 import { createPublicClient, createWalletClient, http } from "viem";
 import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
-import { relayerActions, waitForBundle } from "@towns-labs/relayer-client";
+import { relayerActions, waitForBundle } from "@agentic-payments/relayer-client";
 
 const client = createPublicClient({
   chain: base,
@@ -83,7 +83,7 @@ if (finalStatus.status !== "confirmed") {
 import {
   createRelayerClient,
   executePreparedCalls,
-} from "@towns-labs/relayer-client";
+} from "@agentic-payments/relayer-client";
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -146,7 +146,7 @@ import {
   computeKeyHash,
   encodeSecp256k1Key,
   signPreparedCalls,
-} from "@towns-labs/relayer-client";
+} from "@agentic-payments/relayer-client";
 import { sign } from "viem/accounts";
 
 const signerAddress = "0x..." as const;
@@ -178,7 +178,7 @@ await client.sendPreparedCalls({
 Use chain-aware key helpers to avoid rewriting chain-id selection and key-hash lookups.
 
 ```ts
-import { getChainKeys, findAuthorizedKey } from "@towns-labs/relayer-client";
+import { getChainKeys, findAuthorizedKey } from "@agentic-payments/relayer-client";
 
 const keys = await client.getKeys({ address: accountAddress });
 const chainKeys = getChainKeys(keys, client.chain.id);
@@ -248,8 +248,8 @@ After updating permissions/keys, simulation can briefly lag behind on-chain conf
 
 ## Development Note (Monorepo)
 
-In this monorepo, `@towns-labs/relayer-client` imports shared RPC schema types from
-`@towns-labs/relayer/rpc/schema/*` to stay aligned with relayer endpoint contracts.
+In this monorepo, `@agentic-payments/relayer-client` imports shared RPC schema types from
+`@agentic-payments/relayer/rpc/schema/*` to stay aligned with relayer endpoint contracts.
 
 When changing relayer request/response shapes, update relayer schema files first and
 then verify relayer-client build/tests.

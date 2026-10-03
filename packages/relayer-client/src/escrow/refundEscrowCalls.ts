@@ -1,6 +1,6 @@
 import { encodeFunctionData } from 'viem'
 import type { Address, Hex } from 'viem'
-import { escrowAbi } from '@towns-labs/contracts/abis'
+import { escrowAbi } from '@agentic-payments/contracts/abis'
 import type { Call } from '../types.js'
 
 /**
@@ -8,7 +8,7 @@ import type { Call } from '../types.js'
  * refundTimestamp has passed. Both depositor and recipient receive their portions.
  *
  * Pass the returned Call[] directly to prepareCalls({ calls }).
- * Can be submitted by the oracle bot or the buyer's own TownsAccount.
+ * Can be submitted by the oracle bot or the buyer's own Account.
  */
 export function refundEscrowCalls(params: { escrowId: Hex; escrowAddress: Address }): Call[] {
     const { escrowId, escrowAddress } = params

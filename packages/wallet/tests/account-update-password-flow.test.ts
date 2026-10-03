@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { create } from '@bufbuild/protobuf'
-import { ExportedDeviceSchema } from '@towns-labs/proto'
+import { ExportedDeviceSchema } from '@agentic-payments/proto'
 import { generatePrivateKey } from 'viem/accounts'
 import {
     executeAccountUpdatePassword,

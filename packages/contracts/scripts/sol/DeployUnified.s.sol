@@ -13,7 +13,7 @@ import {Orchestrator} from "src/accounts/Orchestrator.sol";
 import {SimpleFunder} from "src/accounts/SimpleFunder.sol";
 
 /// @title DeployUnified
-/// @notice Unified deployment script for the Towns Account system
+/// @notice Unified deployment script for the Account system
 /// @dev Uses environment variables for all configuration
 contract DeployUnified is DeployBase, DeployHelper {
     using LibString for string;
@@ -68,21 +68,21 @@ contract DeployUnified is DeployBase, DeployHelper {
         console.log("  Orchestrator:", orchestrator);
 
         // =========================================================
-        // PHASE 2: TownsAccount (depends on Orchestrator)
+        // PHASE 2: Account (depends on Orchestrator)
         // =========================================================
-        console.log("\nPhase 2: Deploying TownsAccount...");
-        deployer.addWithArgs("TownsAccount", abi.encode(orchestrator));
+        console.log("\nPhase 2: Deploying Account...");
+        deployer.addWithArgs("Account", abi.encode(orchestrator));
         deployer.deployArgsQueue(deployerAddr);
 
-        address townsAccount = deployer.getDeployedAddressWithArgs("TownsAccount");
-        console.log("  TownsAccount:", townsAccount);
+        address account = deployer.getDeployedAddressWithArgs("Account");
+        console.log("  Account:", account);
 
         // =========================================================
         // PHASE 3: AccountProxy (LibEIP7702, not CREATE2)
         // =========================================================
         console.log("\nPhase 3: Deploying AccountProxy...");
         vm.startBroadcast(deployerAddr);
-        accountProxy = LibEIP7702.deployProxy(townsAccount, address(0));
+        accountProxy = LibEIP7702.deployProxy(account, address(0));
         vm.stopBroadcast();
         console.log("  AccountProxy:", accountProxy);
 
@@ -202,8 +202,8 @@ contract DeployUnified is DeployBase, DeployHelper {
         );
         _writeContractDeployment(
             chainId,
-            "townsAccount",
-            deployer.getDeployedAddressWithArgs("TownsAccount")
+            "account",
+            deployer.getDeployedAddressWithArgs("Account")
         );
         _writeContractDeployment(chainId, "accountProxy", accountProxy);
         _writeContractDeployment(chainId, "simulator", deployer.getDeployedAddress("Simulator"));
@@ -290,20 +290,20 @@ contract DeployUnified is DeployBase, DeployHelper {
             _writeContractDeployment(chainId, _toLowerFirst(name), deployed);
             console.log("  Deployed at:", deployed);
         }
-        // TownsAccount - needs Orchestrator
-        else if (name.eq("TownsAccount")) {
+        // Account - needs Orchestrator
+        else if (name.eq("Account")) {
             address orchestrator = _getExistingOrDeploy(chainId, "Orchestrator", deployerAddr);
-            deployer.addWithArgs("TownsAccount", abi.encode(orchestrator));
+            deployer.addWithArgs("Account", abi.encode(orchestrator));
             deployer.deployArgsQueue(deployerAddr);
-            address deployed = deployer.getDeployedAddressWithArgs("TownsAccount");
-            _writeContractDeployment(chainId, "townsAccount", deployed);
+            address deployed = deployer.getDeployedAddressWithArgs("Account");
+            _writeContractDeployment(chainId, "account", deployed);
             console.log("  Deployed at:", deployed);
         }
-        // AccountProxy - needs TownsAccount
+        // AccountProxy - needs Account
         else if (name.eq("AccountProxy")) {
-            address townsAccount = _getExistingOrDeploy(chainId, "TownsAccount", deployerAddr);
+            address account = _getExistingOrDeploy(chainId, "Account", deployerAddr);
             vm.startBroadcast(deployerAddr);
-            address proxy = LibEIP7702.deployProxy(townsAccount, address(0));
+            address proxy = LibEIP7702.deployProxy(account, address(0));
             vm.stopBroadcast();
             _writeContractDeployment(chainId, "accountProxy", proxy);
             console.log("  Deployed at:", proxy);

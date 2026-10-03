@@ -3,9 +3,9 @@ pragma solidity ^0.8.23;
 
 import {ICommon} from "../interfaces/ICommon.sol";
 
-/// @title ITownsAccount
+/// @title IAccount
 /// @notice Interface for the Account contract
-interface ITownsAccount is ICommon {
+interface IAccount is ICommon {
     /// @dev Pays `paymentAmount` of `paymentToken` to the `paymentRecipient`.
     /// @param keyHash The hash of the key used to authorize the operation
     /// @param encodedIntent The encoded user operation

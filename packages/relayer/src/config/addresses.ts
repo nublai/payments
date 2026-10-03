@@ -3,14 +3,14 @@ import {
     getAddressesFromEnv,
     getAddressesFromEnvForChain,
     type ContractAddresses,
-} from '@towns-labs/contracts/deployments'
+} from '@agentic-payments/contracts/deployments'
 
 /**
  * Environment variables that can override contract addresses.
  * Names match the contracts package env var keys (no _ADDRESS suffix).
  */
 interface AddressEnvOverrides {
-    TOWNS_ACCOUNT?: string
+    ACCOUNT?: string
     ORCHESTRATOR?: string
     SIMPLE_FUNDER?: string
     SIMULATOR?: string
@@ -24,7 +24,7 @@ interface AddressEnvOverrides {
 
 /**
  * Get contract addresses for a chain, with environment variable overrides.
- * Uses getAddressesWithFallback from @towns-labs/contracts which:
+ * Uses getAddressesWithFallback from @agentic-payments/contracts which:
  * 1. Tries bundled deployment JSON first
  * 2. Falls back to env vars for local contexts
  */

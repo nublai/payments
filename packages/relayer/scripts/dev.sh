@@ -173,12 +173,12 @@ wait_for_relayer() {
   return 1
 }
 
-# Build @towns-labs/contracts if dist is missing (needed for wrangler to resolve imports)
+# Build @agentic-payments/contracts if dist is missing (needed for wrangler to resolve imports)
 build_contracts() {
   local CONTRACTS_DIR="$RELAYER_DIR/../contracts"
   if [ ! -f "$CONTRACTS_DIR/dist/index.js" ]; then
-    log_info "Building @towns-labs/contracts..."
-    (cd "$REPO_ROOT" && bunx turbo build --filter=@towns-labs/contracts) >&2
+    log_info "Building @agentic-payments/contracts..."
+    (cd "$REPO_ROOT" && bunx turbo build --filter=@agentic-payments/contracts) >&2
     log_success "Contracts built"
   fi
 }

@@ -1,6 +1,6 @@
 import { getAddress } from 'viem'
 import { toBinary } from '@bufbuild/protobuf'
-import { ExportedDeviceSchema } from '@towns-labs/proto'
+import { ExportedDeviceSchema } from '@agentic-payments/proto'
 import { dirname, join } from 'node:path'
 import { resolveKeystorePath } from './account-create'
 import { decryptAgentDevice } from './agent-sessions'

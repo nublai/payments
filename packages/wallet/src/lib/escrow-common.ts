@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 import { isHex } from 'viem'
-import { getAddresses } from '@towns-labs/contracts/deployments'
+import { getAddresses } from '@agentic-payments/contracts/deployments'
 import type { EnvName, ChainName } from './network-config'
 import { resolveNetworkConfig, selectDefaultChain, getUsdcTokenConfig } from './network-config'
 import type { LoginSessionKeystoreV2, RelayerSessionKeystoreV2 } from './keystore'
@@ -38,7 +38,7 @@ export class EscrowError extends Error {
     }
 }
 
-/** Map CLI env name to deployment context used by @towns-labs/contracts */
+/** Map CLI env name to deployment context used by @agentic-payments/contracts */
 function envToDeploymentContext(env: EnvName): string {
     switch (env) {
         case 'prod':
