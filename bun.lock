@@ -120,6 +120,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@privy-io/server-auth@1.32.5": "patches/@privy-io%2Fserver-auth@1.32.5.patch",
+  },
   "overrides": {
     "viem": "2.45.1",
   },

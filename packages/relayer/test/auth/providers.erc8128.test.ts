@@ -44,7 +44,10 @@ describe('erc8128 auth provider', () => {
             { env, nowSeconds: 1_700_000_000 },
         )
 
-        expect(result).toEqual({ ok: true })
+        expect(result).toEqual({
+            ok: true,
+            userId: '0x1111111111111111111111111111111111111111',
+        })
     })
 
     it('returns mapped failure when ERC-8128 verification fails', async () => {

@@ -1,0 +1,17 @@
+diff --git a/dist/esm/viem.mjs b/dist/esm/createViemAccount.mjs
+similarity index 100%
+rename from dist/esm/viem.mjs
+rename to dist/esm/createViemAccount.mjs
+diff --git a/package.json b/package.json
+index fb878eb4d53b6d4e7af22923828042114349e008..4e0fafe9f4e8e6c82af4984beb28b6e49ebc64e6 100644
+--- a/package.json
++++ b/package.json
+@@ -45,7 +45,7 @@
+       },
+       "import": {
+         "types": "./dist/dts/viem.d.mts",
+-        "default": "./dist/esm/viem.mjs"
++        "default": "./dist/esm/createViemAccount.mjs"
+       }
+     },
+     "./wallet-api": {
