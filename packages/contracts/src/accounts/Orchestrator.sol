@@ -176,13 +176,16 @@ contract Orchestrator is IOrchestrator, EIP712, CallContextChecker, ReentrancyGu
                 abi.encode(keyHash) // `opData`.
             );
 
+            bool payloadOk;
             assembly ("memory-safe") {
                 mstore(0x00, 0) // Zeroize the return slot.
-                if iszero(call(gas(), eoa, 0, add(0x20, data), mload(data), 0x00, 0x20)) {
-                    if iszero(mload(0x00)) {
-                        mstore(0x00, shl(224, 0x2228d5db))
-                    } // `PreCallError()`.
-                    revert(0x00, 0x20) // Revert the `err` (NOT return).
+                payloadOk := call(gas(), eoa, 0, add(data, 0x20), mload(data), 0x00, 0x20)
+            }
+            if (!payloadOk) {
+                bytes4 payloadErr = _selectorFromReturnData(0, PreCallError.selector);
+                assembly ("memory-safe") {
+                    mstore(0x00, payloadErr)
+                    revert(0x00, 0x20)
                 }
             }
 
@@ -382,28 +385,19 @@ contract Orchestrator is IOrchestrator, EIP712, CallContextChecker, ReentrancyGu
                     0x00,
                     0x20
                 )
-                err := mload(0x00) // The self call will do another self call to execute.
-
-                if iszero(selfCallSuccess) {
-                    // Capture error selector for IntentExecuted event
-                    let rdSize := returndatasize()
-                    if gt(rdSize, 3) {
-                        returndatacopy(0x00, 0x00, 0x04)
-                        err := mload(0x00) // First 4 bytes left-aligned
-                    }
-
-                    // If it is a simulation, we simply revert with the full error.
-                    if eq(flags, _SIMULATION_MODE_FLAG) {
-                        returndatacopy(mload(0x40), 0x00, returndatasize())
-                        revert(mload(0x40), returndatasize())
-                    }
-
-                    // If we don't get an error selector, then we set this one.
-                    if iszero(err) {
-                        err := shl(224, 0xad4db224)
-                    } // `VerifiedCallError()`.
+                // Successful self-calls return the execution selector in the output word.
+                // Failures are normalized below. A failed call with empty returndata does
+                // not write this word, so it cannot be used as the failure selector.
+                if selfCallSuccess {
+                    err := mload(0x00)
                 }
             }
+        }
+        if (!selfCallSuccess && err == 0) {
+            // Keep this out of the assembly above. That block is large enough that the
+            // legacy codegen reads the wrong stack slot for `err`, so `iszero(err)` never
+            // stores `VerifiedCallError` and `execute` returns `bytes4(0)`.
+            err = _selectorFromReturnData(flags, VerifiedCallError.selector);
         }
 
         emit IntentExecuted(i.eoa, i.nonce, selfCallSuccess, err);
@@ -573,18 +567,21 @@ contract Orchestrator is IOrchestrator, EIP712, CallContextChecker, ReentrancyGu
                 abi.encode(keyHash) // `opData`.
             );
 
+            bool payloadOk;
+            uint256 sim;
             assembly ("memory-safe") {
                 mstore(0x00, 0) // Zeroize the return slot.
-                if iszero(call(gas(), eoa, 0, add(0x20, data), mload(data), 0x00, 0x20)) {
-                    // If this is a simulation via `simulateFailed`, bubble up the whole revert.
-                    if eq(flags, _SIMULATION_MODE_FLAG) {
-                        returndatacopy(mload(0x40), 0x00, returndatasize())
-                        revert(mload(0x40), returndatasize())
-                    }
-                    if iszero(mload(0x00)) {
-                        mstore(0x00, shl(224, 0x2228d5db))
-                    } // `PreCallError()`.
-                    revert(0x00, 0x20) // Revert the `err` (NOT return).
+                payloadOk := call(gas(), eoa, 0, add(data, 0x20), mload(data), 0x00, 0x20)
+                // Flags live at calldata offset 4 of the self-call frame. Reloading them
+                // here avoids the stale stack slot the legacy codegen uses for `flags`
+                // after this function is inlined into `selfCallPayVerifyCall537021665`.
+                sim := eq(calldataload(0x04), 1)
+            }
+            if (!payloadOk) {
+                bytes4 payloadErr = _selectorFromReturnData(sim, PreCallError.selector);
+                assembly ("memory-safe") {
+                    mstore(0x00, payloadErr)
+                    revert(0x00, 0x20)
                 }
             }
 
@@ -729,6 +726,31 @@ contract Orchestrator is IOrchestrator, EIP712, CallContextChecker, ReentrancyGu
 
         if (TokenTransferLib.balanceOf(i.paymentToken, i.paymentRecipient) < requiredBalanceAfter) {
             revert PaymentError();
+        }
+    }
+
+    /// @dev Reads the current revert data and returns a 4-byte selector.
+    /// Empty or selector-less failures use `fallbackSelector`.
+    /// Simulation mode (`sim != 0`) bubbles the original revert data.
+    function _selectorFromReturnData(
+        uint256 sim,
+        bytes4 fallbackSelector
+    ) internal pure returns (bytes4 sel) {
+        assembly ("memory-safe") {
+            if sim {
+                let m := mload(0x40)
+                returndatacopy(m, 0x00, returndatasize())
+                revert(m, returndatasize())
+            }
+            // Clear the whole word first. `returndatacopy` of 4 bytes does not.
+            mstore(0x00, 0)
+            if gt(returndatasize(), 3) {
+                returndatacopy(0x00, 0x00, 0x04)
+            }
+            sel := mload(0x00)
+            if iszero(shr(224, sel)) {
+                sel := fallbackSelector
+            }
         }
     }
 
