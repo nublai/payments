@@ -190,6 +190,7 @@ abstract contract GuardedExecutor is ERC7821 {
         bytes32 seed = keyHash == ANY_KEYHASH
             ? ANY_KEYHASH
             : _getGuardedExecutorKeyStorageSeed(keyHash);
+        // The TOWNS_ string is the slot seed; leave it.
         uint256 namespaceHash = uint72(bytes9(keccak256("TOWNS_GUARDED_EXECUTOR_KEY_STORAGE")));
         assembly ("memory-safe") {
             // Non-standard hashing scheme to reduce chance of conflict with regular Solidity.

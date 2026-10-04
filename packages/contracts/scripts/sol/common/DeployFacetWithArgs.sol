@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+// @towns-protocol/diamond is an upstream package, not this product's name.
 import {DeployFacet} from "@towns-protocol/diamond/scripts/common/DeployFacet.s.sol";
 import {LibDeploy} from "@towns-protocol/diamond/src/utils/LibDeploy.sol";
 import {LibClone} from "solady/utils/LibClone.sol";

@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {DeployFacetWithArgs} from "./common/DeployFacetWithArgs.sol";
 import {DeployHelper} from "./common/DeployHelper.s.sol";
+// @towns-protocol/diamond is an upstream package, not this product's name.
 import {DeployBase} from "@towns-protocol/diamond/scripts/common/DeployBase.s.sol";
 import {console} from "forge-std/console.sol";
 import {LibEIP7702} from "solady/accounts/LibEIP7702.sol";

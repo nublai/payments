@@ -10,6 +10,6 @@ Payments monorepo. Packages that exist:
 
 There is no `@agentic-payments/deployments`, `@agentic-payments/web3`, `@agentic-payments/sdk`, or `@agentic-payments/utils` package in this tree.
 
-Local payment: `bun run e2e:local-payment` from the root. Needs Node >= 22, Foundry, bun, Anvil, cast, forge, curl, python3, and bc. Ports 8545, 8546, and 8787 must be free.
+Local payment: `bun run e2e:local-payment` from the root. Needs Node >= 22, Foundry, bun, Anvil, cast, forge, curl, python3, and bc. Ports 8545, 8546, and 8787 must be free. Local escrow is `bun run e2e:local-escrow`. Swap, bridge, and login have no local end-to-end script: `tw swap` and `tw bridge` call relay.link, and `tw login` needs `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD`.
 
-Do not rename `TOWNS_ACCOUNT_STORAGE`, `TOWNS_ACCOUNT_UPGRADE_HOOK_ID`, `TOWNS_GUARDED_EXECUTOR_KEY_STORAGE`, or the `@towns-protocol/diamond` dependency. Relayer and login hosts are env vars (`RELAYER_URL_DEV`, `RELAYER_URL_STAGE`, `RELAYER_URL_PROD`, `AUTH_URL_DEV`, `AUTH_URL_STAGE`, `AUTH_URL_PROD`).
+Do not rename `TOWNS_ACCOUNT_STORAGE`, `TOWNS_ACCOUNT_UPGRADE_HOOK_ID`, or `TOWNS_GUARDED_EXECUTOR_KEY_STORAGE`. Those strings are keccak storage-slot seeds; changing them moves deployed storage. `@towns-protocol/diamond` is an upstream package, not this product's name; leave that import. Relayer and login hosts are env vars (`RELAYER_URL_DEV`, `RELAYER_URL_STAGE`, `RELAYER_URL_PROD`, `AUTH_URL_DEV`, `AUTH_URL_STAGE`, `AUTH_URL_PROD`).
