@@ -80,6 +80,7 @@ append_contract_addresses() {
   else
     log_error "Contract addresses not found: $env_file"
     log_error "Run 'bun deploy:local' first"
+    exit 1
   fi
 }
 
@@ -190,6 +191,11 @@ is_port_in_use() {
 
 # Main
 main() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    log_error "lsof is not on PATH"
+    exit 1
+  fi
+
   cd "$RELAYER_DIR"
 
   # Build contracts if needed

@@ -19,8 +19,9 @@ bun run dev
 
 ```bash
 bun run dev              # Start Anvil, deploy contracts, generate config
-bun run build            # Compile contracts and generate TypeScript ABIs
-bun run generate         # Generate TypeScript ABIs only
+bun run build            # Typecheck with tsc and copy addresses and config into dist
+bun run build:contracts  # forge build, wagmi generate, tsc, and copy addresses and config into dist
+bun run generate         # Generate TypeScript ABIs with wagmi
 bun run test             # Run tests with verbose output
 bun run test:gas         # Run tests with gas report
 bun run coverage         # Generate coverage report
@@ -88,7 +89,7 @@ RPC_8453=https://mainnet.base.org ./scripts/sh/deploy.sh prod --account deployer
 Then generate TypeScript ABIs:
 
 ```bash
-bun run build
+bun run generate
 ```
 
 Artifacts:

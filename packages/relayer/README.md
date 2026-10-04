@@ -79,11 +79,13 @@ Names match `@agentic-payments/contracts` env var keys (no `_ADDRESS` suffix):
 
 | Name                        | Default | Description                       |
 | --------------------------- | ------- | --------------------------------- |
-| `FEE_RECIPIENT`             | signer  | Address to receive fees           |
-| `INTENT_GAS_BUFFER_PERCENT` | `10`    | Gas estimate buffer %             |
-| `TX_GAS_OVERHEAD`           | `21000` | Fixed gas overhead per tx         |
-| `PRIORITY_FEE_PERCENTILE`   | `50`    | Fee percentile from block history |
-| `QUOTE_TTL_SECONDS`         | `300`   | Fee quote validity (seconds)      |
+| `FEE_RECIPIENT`             | signer   | Address to receive fees                                              |
+| `INTENT_GAS_BUFFER`         | `50000`  | Fixed buffer added to simulation gas for combinedGas                 |
+| `PAYMENT_GAS_BUFFER`        | `70000`  | Additional combinedGas buffer when payment reimbursement is enabled  |
+| `ORCHESTRATOR_OVERHEAD`     | `110000` | Gas for orchestrator work outside the self-call                      |
+| `TX_GAS_BUFFER`             | `0`      | Additional buffer for tx gas calculation                             |
+| `PRIORITY_FEE_PERCENTILE`   | `50`     | Fee percentile from block history                                    |
+| `QUOTE_TTL_SECONDS`         | `300`    | Fee quote validity (seconds)                                         |
 
 ### Optional: Validation
 

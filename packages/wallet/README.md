@@ -16,14 +16,16 @@ Create an account and send USDC in under a minute:
 
 ```bash
 # 1. Create a local account (interactive password prompt)
-tw account create --profile main
+tw account create --profile main --env dev
 
 # 2. Fund it
-tw address --qr --amount 100
+tw address --qr --amount 100 --env dev
 
 # 3. Send USDC
-tw send 10 vitalik.eth
+tw send 10 vitalik.eth --env dev
 ```
+
+Omitting `--env` selects prod and requires `RELAYER_URL_PROD`.
 
 No custody service. No API key. Everything runs locally with encrypted keystores.
 
