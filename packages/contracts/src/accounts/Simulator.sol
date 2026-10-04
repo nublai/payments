@@ -316,7 +316,9 @@ contract Simulator {
                     // the account not having enough funds, and cannot be recovered from,
                     // since the paymentAmount will keep increasing in this loop.
                     if eq(shr(224, mload(m)), 0xabab8fc9) {
-                        revert(m, 0x20)
+                        // PaymentError() selector is left-aligned. Revert with exactly 4 bytes.
+                        mstore(0x00, shl(224, 0xabab8fc9))
+                        revert(0x00, 0x04)
                     }
                 }
             }
@@ -458,18 +460,14 @@ contract Simulator {
                 // Layout: [length (32 bytes)][selector (4 bytes)][additional data...]
                 bytes4 errorSelector;
                 assembly ("memory-safe") {
-                    // Load 32 bytes starting from errorData+32
-                    // bytes4 values are already right-aligned, no shift needed
+                    // bytes4 is left-aligned: the selector occupies the top 4 bytes.
                     errorSelector := mload(add(errorData, 32))
                 }
                 if (errorSelector == 0xabab8fc9) {
-                    // PaymentError()
-
-                    // Revert with just the selector (0x20 bytes = 4 bytes selector + 28 bytes
-                    // padding)
+                    // PaymentError(). Revert with exactly the 4-byte selector.
                     assembly ("memory-safe") {
-                        mstore(0x00, errorSelector)
-                        revert(0x00, 0x20)
+                        mstore(0x00, shl(224, 0xabab8fc9))
+                        revert(0x00, 0x04)
                     }
                 }
             }

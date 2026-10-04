@@ -587,9 +587,18 @@ contract SimulateExecuteTest is BaseTest {
 
         vm.revertToStateAndDelete(snapshot);
 
-        i.combinedGas = t.gCombined;
+        // simulateMulticall3V1Logs runs setRandomness on gasBurner in the same transaction
+        // as the measured execute, so that account is warm. The real execute below is a
+        // separate transaction (Forge isolates top-level calls). EIP-2929 then charges a
+        // cold account access (2600 - 100) and a cold SSTORE (+2100) on gasBurner. Gross
+        // that fixed delta up through the three 63/64 stipends
+        // (self-call -> account delegatecall -> burn). Without it, burnGas runs out of
+        // gas and execute returns CallError().
+        uint256 coldGasBurnerDelta = (2600 - 100) + 2100;
+        i.combinedGas = t.gCombined
+            + Math.mulDiv(Math.mulDiv(Math.mulDiv(coldGasBurnerDelta, 64, 63), 64, 63), 64, 63);
         // gExecute > (100k + combinedGas) * 64/63
-        t.gExecute = Math.mulDiv(t.gCombined + 110_000, 64, 63);
+        t.gExecute = Math.mulDiv(i.combinedGas + 110_000, 64, 63);
 
         i.signature = _sig(d, i);
 
@@ -876,10 +885,15 @@ contract SimulateExecuteTest is BaseTest {
                 abi.encode(i)
             );
 
-        // Now execute through multicall3 with the calculated combinedGas and measure actual gas
+        // Now execute through multicall3 with the calculated combinedGas.
+        // Direct execute needs (combinedGas + 110_000) * 64/63 so that
+        // gasleft * 63/64 covers combinedGas + _INNER_GAS_OVERHEAD (100_000).
+        // aggregate3 adds another 63/64 hop plus its own frame. Without that,
+        // execute reverts InsufficientGas() before the inner call.
         i.combinedGas = combinedGas;
         i.signature = _sig(d, i);
-        t.gExecute = Math.mulDiv(combinedGas + 110_000, 64, 63);
+        uint256 directGas = Math.mulDiv(combinedGas + 110_000, 64, 63);
+        t.gExecute = Math.mulDiv(directGas + 30_000, 64, 63);
 
         // Build multicall3 calls array: empty preCalls + orchestrator execute call
         IMulticall3.Call3[] memory executeCalls = new IMulticall3.Call3[](1);

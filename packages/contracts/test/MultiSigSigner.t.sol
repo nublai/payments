@@ -85,11 +85,15 @@ contract MultiSigSignerTest is BaseTest {
         // Same owner should not be able to sign multiple times
         assertEq(result, bytes4(0xffffffff), "Duplicate signature should not be valid");
 
-        // Add the first owner twice in the owner key hash
-        vm.startPrank(address(delegatedAccount.eoa));
-        delegatedAccount.d.setContextKeyHash(_hash(t.multiSigKey.k));
-        multiSigSigner.addOwner(_hash(t.multiSigKey.k), _hash(t.owners[0].k));
-        vm.stopPrank();
+        // Context key hash is transient, and Forge isolates each top-level call.
+        // Set it and add the owner in one transaction.
+        this.addOwnerInContext(
+            delegatedAccount.d,
+            delegatedAccount.eoa,
+            _hash(t.multiSigKey.k),
+            _hash(t.multiSigKey.k),
+            _hash(t.owners[0].k)
+        );
 
         // Now it should be valid, because the first owner has 2 signer powers.
         vm.prank(address(delegatedAccount.d));
@@ -226,9 +230,16 @@ contract MultiSigSignerTest is BaseTest {
         PassKey memory newOwner = _randomPassKey();
         bytes32 newOwnerKeyHash = _hash(newOwner.k);
 
-        // Set context key hash
-        delegatedAccount.d.setContextKeyHash(_hash(t.multiSigKey.k));
-        multiSigSigner.addOwner(_hash(t.multiSigKey.k), newOwnerKeyHash);
+        vm.stopPrank();
+
+        // Context key hash is transient. Set it in the same transaction as addOwner.
+        this.addOwnerInContext(
+            delegatedAccount.d,
+            address(delegatedAccount.d),
+            _hash(t.multiSigKey.k),
+            _hash(t.multiSigKey.k),
+            newOwnerKeyHash
+        );
 
         // Verify owner was added
         (, bytes32[] memory storedOwners) = multiSigSigner.getConfig(
@@ -238,8 +249,6 @@ contract MultiSigSignerTest is BaseTest {
 
         assertEq(storedOwners.length, 3);
         assertEq(storedOwners[2], newOwnerKeyHash);
-
-        vm.stopPrank();
     }
 
     function test_AddOwner_InvalidKeyHash() public {
@@ -264,13 +273,17 @@ contract MultiSigSignerTest is BaseTest {
         // Try to add owner with wrong context key hash
         PassKey memory newOwner = _randomPassKey();
 
-        // Set wrong context key hash
-        delegatedAccount.d.setContextKeyHash(bytes32(uint256(123)));
-
-        vm.expectRevert(MultiSigSigner.InvalidKeyHash.selector);
-        multiSigSigner.addOwner(_hash(t.multiSigKey.k), _hash(newOwner.k));
-
         vm.stopPrank();
+
+        // Wrong context must be visible to addOwner, so both calls share one transaction.
+        vm.expectRevert(MultiSigSigner.InvalidKeyHash.selector);
+        this.addOwnerInContext(
+            delegatedAccount.d,
+            address(delegatedAccount.d),
+            bytes32(uint256(123)),
+            _hash(t.multiSigKey.k),
+            _hash(newOwner.k)
+        );
     }
 
     function test_RemoveOwner() public {
@@ -296,9 +309,15 @@ contract MultiSigSignerTest is BaseTest {
         delegatedAccount.d.authorize(t.multiSigKey.k);
         multiSigSigner.initConfig(_hash(t.multiSigKey.k), t.threshold, t.ownerKeyHashes);
 
-        // Remove the second owner
-        delegatedAccount.d.setContextKeyHash(_hash(t.multiSigKey.k));
-        multiSigSigner.removeOwner(_hash(t.multiSigKey.k), t.ownerKeyHashes[1]);
+        vm.stopPrank();
+
+        // Remove the second owner in the same transaction that sets the context key hash.
+        this.removeOwnerInContext(
+            delegatedAccount.d,
+            address(delegatedAccount.d),
+            _hash(t.multiSigKey.k),
+            t.ownerKeyHashes[1]
+        );
 
         // Verify owner was removed
         (, bytes32[] memory storedOwners) = multiSigSigner.getConfig(
@@ -309,8 +328,6 @@ contract MultiSigSignerTest is BaseTest {
         assertEq(storedOwners.length, 2);
         // The last owner should have replaced the removed one
         assertEq(storedOwners[1], t.ownerKeyHashes[2]);
-
-        vm.stopPrank();
     }
 
     function test_RemoveOwner_OwnerNotFound() public {
@@ -334,12 +351,15 @@ contract MultiSigSignerTest is BaseTest {
         delegatedAccount.d.authorize(t.multiSigKey.k);
         multiSigSigner.initConfig(_hash(t.multiSigKey.k), 1, t.ownerKeyHashes);
 
-        // Try to remove non-existent owner
-        delegatedAccount.d.setContextKeyHash(_hash(t.multiSigKey.k));
-        vm.expectRevert(MultiSigSigner.OwnerNotFound.selector);
-        multiSigSigner.removeOwner(_hash(t.multiSigKey.k), bytes32(uint256(999)));
-
         vm.stopPrank();
+
+        vm.expectRevert(MultiSigSigner.OwnerNotFound.selector);
+        this.removeOwnerInContext(
+            delegatedAccount.d,
+            address(delegatedAccount.d),
+            _hash(t.multiSigKey.k),
+            bytes32(uint256(999))
+        );
     }
 
     function test_RemoveOwner_ThresholdViolation() public {
@@ -365,12 +385,15 @@ contract MultiSigSignerTest is BaseTest {
         delegatedAccount.d.authorize(t.multiSigKey.k);
         multiSigSigner.initConfig(_hash(t.multiSigKey.k), t.threshold, t.ownerKeyHashes);
 
-        // Try to remove owner when it would violate threshold
-        delegatedAccount.d.setContextKeyHash(_hash(t.multiSigKey.k));
-        vm.expectRevert(MultiSigSigner.InvalidThreshold.selector);
-        multiSigSigner.removeOwner(_hash(t.multiSigKey.k), t.ownerKeyHashes[0]);
-
         vm.stopPrank();
+
+        vm.expectRevert(MultiSigSigner.InvalidThreshold.selector);
+        this.removeOwnerInContext(
+            delegatedAccount.d,
+            address(delegatedAccount.d),
+            _hash(t.multiSigKey.k),
+            t.ownerKeyHashes[0]
+        );
     }
 
     function test_SetThreshold() public {
@@ -396,29 +419,28 @@ contract MultiSigSignerTest is BaseTest {
         delegatedAccount.d.authorize(t.multiSigKey.k);
         multiSigSigner.initConfig(_hash(t.multiSigKey.k), t.threshold, t.ownerKeyHashes);
 
-        // Change threshold to 2
-        delegatedAccount.d.setContextKeyHash(_hash(t.multiSigKey.k));
-        multiSigSigner.setThreshold(_hash(t.multiSigKey.k), 2);
+        vm.stopPrank();
+
+        bytes32 keyHash = _hash(t.multiSigKey.k);
+
+        // Each update needs a fresh context: transient storage does not survive
+        // Forge's per-call transaction boundary.
+        this.setThresholdInContext(delegatedAccount.d, address(delegatedAccount.d), keyHash, 2);
 
         // Verify threshold was changed
         (uint256 storedThreshold, ) = multiSigSigner.getConfig(
             address(delegatedAccount.d),
-            _hash(t.multiSigKey.k)
+            keyHash
         );
 
         assertEq(storedThreshold, 2);
 
         // Change threshold to 3
-        multiSigSigner.setThreshold(_hash(t.multiSigKey.k), 3);
+        this.setThresholdInContext(delegatedAccount.d, address(delegatedAccount.d), keyHash, 3);
 
-        (storedThreshold, ) = multiSigSigner.getConfig(
-            address(delegatedAccount.d),
-            _hash(t.multiSigKey.k)
-        );
+        (storedThreshold, ) = multiSigSigner.getConfig(address(delegatedAccount.d), keyHash);
 
         assertEq(storedThreshold, 3);
-
-        vm.stopPrank();
     }
 
     function test_SetThreshold_Invalid() public {
@@ -441,17 +463,17 @@ contract MultiSigSignerTest is BaseTest {
         vm.startPrank(address(delegatedAccount.d));
         delegatedAccount.d.authorize(t.multiSigKey.k);
         multiSigSigner.initConfig(_hash(t.multiSigKey.k), 1, t.ownerKeyHashes);
-        delegatedAccount.d.setContextKeyHash(_hash(t.multiSigKey.k));
+        vm.stopPrank();
+
+        bytes32 keyHash = _hash(t.multiSigKey.k);
 
         // Test threshold = 0
         vm.expectRevert(MultiSigSigner.InvalidThreshold.selector);
-        multiSigSigner.setThreshold(_hash(t.multiSigKey.k), 0);
+        this.setThresholdInContext(delegatedAccount.d, address(delegatedAccount.d), keyHash, 0);
 
         // Test threshold > number of owners
         vm.expectRevert(MultiSigSigner.InvalidThreshold.selector);
-        multiSigSigner.setThreshold(_hash(t.multiSigKey.k), 3);
-
-        vm.stopPrank();
+        this.setThresholdInContext(delegatedAccount.d, address(delegatedAccount.d), keyHash, 3);
     }
 
     function test_ValidSignature_MeetsThreshold() public {
@@ -678,5 +700,44 @@ contract MultiSigSignerTest is BaseTest {
         } else {
             assertEq(result, bytes4(0xffffffff), "Should be invalid when signatures < threshold");
         }
+    }
+
+    /// @dev Forge 1.8 runs each top-level test call as its own transaction, which clears
+    /// transient storage. `setContextKeyHash` and the signer call must share one transaction.
+    function addOwnerInContext(
+        MockAccount account,
+        address accountOwner,
+        bytes32 contextKeyHash,
+        bytes32 configKeyHash,
+        bytes32 ownerKeyHash
+    ) external {
+        vm.prank(accountOwner);
+        account.setContextKeyHash(contextKeyHash);
+        vm.prank(accountOwner);
+        multiSigSigner.addOwner(configKeyHash, ownerKeyHash);
+    }
+
+    function removeOwnerInContext(
+        MockAccount account,
+        address accountOwner,
+        bytes32 keyHash,
+        bytes32 ownerKeyHash
+    ) external {
+        vm.prank(accountOwner);
+        account.setContextKeyHash(keyHash);
+        vm.prank(accountOwner);
+        multiSigSigner.removeOwner(keyHash, ownerKeyHash);
+    }
+
+    function setThresholdInContext(
+        MockAccount account,
+        address accountOwner,
+        bytes32 keyHash,
+        uint256 threshold
+    ) external {
+        vm.prank(accountOwner);
+        account.setContextKeyHash(keyHash);
+        vm.prank(accountOwner);
+        multiSigSigner.setThreshold(keyHash, threshold);
     }
 }
