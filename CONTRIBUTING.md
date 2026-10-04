@@ -40,4 +40,4 @@ Contract deploys use `packages/contracts/scripts/sh/deploy.sh`. See `packages/co
 
 ## Reporting vulnerabilities
 
-See `SECURITY.md`. Open a GitHub issue on [giuseppecrj/Agentic-Payments](https://github.com/giuseppecrj/Agentic-Payments).
+See `SECURITY.md`. Email [security@nubl.ai](mailto:security@nubl.ai).
