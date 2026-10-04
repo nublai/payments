@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 import { isHex } from 'viem'
-import { getAddresses } from '@agentic-payments/contracts/deployments'
+import { getAddressesWithFallback } from '@agentic-payments/contracts/deployments'
 import type { EnvName, ChainName } from './network-config'
 import { resolveNetworkConfig, selectDefaultChain, getUsdcTokenConfig } from './network-config'
 import type { LoginSessionKeystoreV2, RelayerSessionKeystoreV2 } from './keystore'
@@ -59,6 +59,9 @@ export interface EscrowContracts {
 
 /**
  * Resolve escrow, simpleSettler, and USDC addresses for the given env and chain.
+ * JSON deployments are checked first. Chain 31337/41337 then falls back to
+ * process.env (ESCROW_31337 and the other suffixed keys), because make-config
+ * strips local addresses out of addresses.json.
  * @throws EscrowError('CONTRACTS_NOT_DEPLOYED') when no deployment exists for the chain.
  */
 export function resolveEscrowContracts(
@@ -67,7 +70,7 @@ export function resolveEscrowContracts(
     chain: ChainName,
 ): EscrowContracts {
     const context = envToDeploymentContext(env)
-    const addresses = getAddresses(context, chainId)
+    const addresses = getAddressesWithFallback(context, chainId)
     if (!addresses) {
         throw new EscrowError(
             'CONTRACTS_NOT_DEPLOYED',
