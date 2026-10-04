@@ -25,7 +25,7 @@ tw address --qr --amount 100 --env dev
 tw send 10 vitalik.eth --env dev
 ```
 
-Omitting `--env` selects prod and requires `RELAYER_URL_PROD`.
+Omitting `--env` is an error. Pass `--env prod`, `--env stage`, or `--env dev`.
 
 No custody service. No API key. Everything runs locally with encrypted keystores.
 
@@ -69,22 +69,22 @@ tw account <balance|change-password|create|delegate|export|history|nonce|status>
 #### `account create`
 
 ```bash
-tw account create --profile agent
-tw account create --resume --profile agent
-echo "my-password" | tw account create --password-stdin --json
-tw account create --keystore-path ~/.config/agentic-payments/tw/profiles/prod/team/default.keystore.json
+tw account create --profile agent --env prod
+tw account create --resume --profile agent --env prod
+echo "my-password" | tw account create --password-stdin --json --env prod
+tw account create --keystore-path ~/.config/agentic-payments/tw/profiles/prod/team/default.keystore.json --env prod
 ```
 
 #### `account status` / `account balance` / `account nonce` / `account history`
 
 ```bash
-tw account status --profile agent --json
-tw account balance --profile agent
-tw account balance --profile agent --chain polygon
-tw account nonce --profile agent
-tw account history --profile agent
-tw account history --address 0x... --limit 10 --offset 20
-tw account history --chain base,polygon --json
+tw account status --profile agent --json --env prod
+tw account balance --profile agent --env prod
+tw account balance --profile agent --chain polygon --env prod
+tw account nonce --profile agent --env prod
+tw account history --profile agent --env prod
+tw account history --address 0x... --limit 10 --offset 20 --env prod
+tw account history --chain base,polygon --json --env prod
 ```
 
 `--limit` defaults to 20 (max 100). `offset + limit` must be <= 1000.
@@ -92,21 +92,21 @@ tw account history --chain base,polygon --json
 #### `account delegate`
 
 ```bash
-echo "my-password" | tw account delegate --chain polygon --profile agent --password-stdin
+echo "my-password" | tw account delegate --chain polygon --profile agent --password-stdin --env prod
 ```
 
 #### `account export`
 
 ```bash
-tw account export --profile agent --json
-tw account export --profile agent --show-private
+tw account export --profile agent --json --env prod
+tw account export --profile agent --show-private --env prod
 ```
 
 #### `account change-password`
 
 ```bash
-tw account change-password --profile agent
-printf "old\nnew\n" | tw account change-password --current-password-stdin --new-password-stdin --json
+tw account change-password --profile agent --env prod
+printf "old\nnew\n" | tw account change-password --current-password-stdin --new-password-stdin --json --env prod
 ```
 
 ### Address
@@ -114,10 +114,10 @@ printf "old\nnew\n" | tw account change-password --current-password-stdin --new-
 `tw address` is the top-level funding command and supersedes the old `account address` path.
 
 ```bash
-tw address
-tw address --link --amount 100
-tw address --qr --amount 100
-tw address --token 0x... --amount 1 --decimals 18 --link
+tw address --env prod
+tw address --link --amount 100 --env prod
+tw address --qr --amount 100 --env prod
+tw address --token 0x... --amount 1 --decimals 18 --link --env prod
 ```
 
 ### Transfers and Quotes
@@ -125,10 +125,10 @@ tw address --token 0x... --amount 1 --decimals 18 --link
 #### `send`
 
 ```bash
-tw send 1 0x1111111111111111111111111111111111111111
-tw send 2.5 vitalik.eth --chain base
-tw send 1 0x... --profile agent --session worker-2
-tw send 1 0x... --chain base --session-file ./worker-1.session.json
+tw send 1 0x1111111111111111111111111111111111111111 --env prod
+tw send 2.5 vitalik.eth --chain base --env prod
+tw send 1 0x... --profile agent --session worker-2 --env prod
+tw send 1 0x... --chain base --session-file ./worker-1.session.json --env prod
 ```
 
 `--session` and `--session-file` are mutually exclusive. Recipients must be an address or `.eth` ENS name; contact aliases are no longer supported.
@@ -138,15 +138,15 @@ tw send 1 0x... --chain base --session-file ./worker-1.session.json
 Powered by [relay.link](https://relay.link). Interactive confirmation by default.
 
 ```bash
-tw swap --from ETH --to USDC --amount 0.1 --chain base
-tw swap --from USDC --to ETH --amount 50 --chain base --yes --json
+tw swap --from ETH --to USDC --amount 0.1 --chain base --env prod
+tw swap --from USDC --to ETH --amount 50 --chain base --yes --json --env prod
 ```
 
 #### `bridge`
 
 ```bash
-tw bridge --token USDC --amount 100 --to-chain polygon
-tw bridge --token ETH --amount 0.5 --to-chain base --recipient 0x... --yes --json
+tw bridge --token USDC --amount 100 --to-chain polygon --env prod
+tw bridge --token ETH --amount 0.5 --to-chain base --recipient 0x... --yes --json --env prod
 ```
 
 ### Session Keys
@@ -156,11 +156,11 @@ Session keys are scoped signers that can act on behalf of your account without e
 #### `session create`
 
 ```bash
-echo "my-password" | tw session create worker-1 --profile agent --password-stdin --json
-echo "my-password" | tw session create worker-2 --profile agent --activate --password-stdin
-echo "my-password" | tw session create worker-admin --profile agent --full-access --password-stdin
-echo "my-password" | tw session create worker-1 --profile agent --resume --password-stdin --json
-echo "my-password" | tw session create alice --profile agent --agent --password-stdin
+echo "my-password" | tw session create worker-1 --profile agent --password-stdin --json --env prod
+echo "my-password" | tw session create worker-2 --profile agent --activate --password-stdin --env prod
+echo "my-password" | tw session create worker-admin --profile agent --full-access --password-stdin --env prod
+echo "my-password" | tw session create worker-1 --profile agent --resume --password-stdin --json --env prod
+echo "my-password" | tw session create alice --profile agent --agent --password-stdin --env prod
 ```
 
 `--full-access` is mutually exclusive with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, and `--spend-period`. Omitting both `--target` and `--selector` uses wildcard call permissions by default.
@@ -168,14 +168,14 @@ echo "my-password" | tw session create alice --profile agent --agent --password-
 #### `session list` / `session rotate` / `session revoke`
 
 ```bash
-tw session list --profile agent --json
-tw session list --profile agent --on-chain --json
-echo "my-password" | tw session rotate --profile agent --password-stdin --json
-echo "my-password" | tw session rotate --profile agent --new-name worker-3 --password-stdin
-echo "my-password" | tw session rotate --profile agent --resume --password-stdin --json
-echo "my-password" | tw session revoke worker-1 --profile agent --password-stdin --json
-echo "my-password" | tw session revoke worker-2 --profile agent --force --password-stdin
-echo "my-password" | tw session revoke worker-2 --profile agent --resume --password-stdin --json
+tw session list --profile agent --json --env prod
+tw session list --profile agent --on-chain --json --env prod
+echo "my-password" | tw session rotate --profile agent --password-stdin --json --env prod
+echo "my-password" | tw session rotate --profile agent --new-name worker-3 --password-stdin --env prod
+echo "my-password" | tw session rotate --profile agent --resume --password-stdin --json --env prod
+echo "my-password" | tw session revoke worker-1 --profile agent --password-stdin --json --env prod
+echo "my-password" | tw session revoke worker-2 --profile agent --force --password-stdin --env prod
+echo "my-password" | tw session revoke worker-2 --profile agent --resume --password-stdin --json --env prod
 ```
 
 Agent sessions require `--force` and clean up local channel bindings as part of revocation.
@@ -184,12 +184,12 @@ Agent sessions require `--force` and clean up local channel bindings as part of 
 
 ```bash
 TW_PASSWORD="my-password" TW_EXPORT_PASSWORD="export-password" \
-  tw session export worker-1 --profile agent --output ./worker-1.session.json
+  tw session export worker-1 --profile agent --output ./worker-1.session.json --env prod
 
 echo "export-password" | tw session export worker-1 --profile agent \
-  --output ./worker-1.session.json --export-password-stdin
+  --output ./worker-1.session.json --export-password-stdin --env prod
 
-tw session import ./worker-1.session.json --profile worker-1
+tw session import ./worker-1.session.json --profile worker-1 --env prod
 ```
 
 Session-only profiles can execute `tw send` but cannot run root-keystore management commands.
@@ -201,7 +201,7 @@ The daemon holds decrypted session keys in memory so automated workflows can sig
 ```bash
 tw daemon start --json
 tw daemon start --foreground --json
-echo "my-password" | tw daemon unlock worker-1 --profile agent --password-stdin --duration 15m --json
+echo "my-password" | tw daemon unlock worker-1 --profile agent --password-stdin --duration 15m --json --env prod
 tw daemon lock worker-1 --json
 tw daemon status --json
 tw daemon stop --json
@@ -214,13 +214,13 @@ tw daemon stop --json
 Fine-grained on-chain permission rules for session keys.
 
 ```bash
-tw permissions list --profile agent --json
-tw permissions show agent-key --profile agent --json
-tw permissions show --key-hash 0xaaa... --profile agent --json
-echo "my-password" | tw permissions grant agent-key --type call --target any --selector any --profile agent --password-stdin --json
-echo "my-password" | tw permissions grant agent-key --type spend --token USDC --spend-limit 100 --period day --profile agent --password-stdin --json
-echo "my-password" | tw permissions revoke agent-key --rule call:0x...:0xa9059cbb --profile agent --password-stdin --json
-echo "my-password" | tw permissions revoke agent-key --all --profile agent --password-stdin --json
+tw permissions list --profile agent --json --env prod
+tw permissions show agent-key --profile agent --json --env prod
+tw permissions show --key-hash 0xaaa... --profile agent --json --env prod
+echo "my-password" | tw permissions grant agent-key --type call --target any --selector any --profile agent --password-stdin --json --env prod
+echo "my-password" | tw permissions grant agent-key --type spend --token USDC --spend-limit 100 --period day --profile agent --password-stdin --json --env prod
+echo "my-password" | tw permissions revoke agent-key --rule call:0x...:0xa9059cbb --profile agent --password-stdin --json --env prod
+echo "my-password" | tw permissions revoke agent-key --all --profile agent --password-stdin --json --env prod
 ```
 
 Use `--spend-limit-raw` for base units instead of human amounts.
@@ -231,14 +231,14 @@ USDC escrow: lock funds as buyer with a seller and oracle; settle (oracle signs)
 
 ```bash
 tw escrow create 50 0x1111111111111111111111111111111111111111 \
-  --oracle 0x2222222222222222222222222222222222222222 --deadline 24h
+  --oracle 0x2222222222222222222222222222222222222222 --deadline 24h --env prod
 tw escrow create 100 0x... --oracle 0x... --deadline 2d --chain base --env prod --json
 tw escrow status 0x<64 hex chars> --env prod
-tw escrow status 0x... --chain base --json
+tw escrow status 0x... --chain base --json --env prod
 TW_ORACLE_PRIVATE_KEY=0x... tw escrow settle 0x<escrowId> \
-  --settlement-id 0x<orderId> --oracle 0x2222... --profile agent
-tw escrow settle 0x<escrowId> --settlement-id 0x... --oracle 0x... --signature 0x... --profile agent
-tw escrow refund 0x<escrowId> --profile agent
+  --settlement-id 0x<orderId> --oracle 0x2222... --profile agent --env prod
+tw escrow settle 0x<escrowId> --settlement-id 0x... --oracle 0x... --signature 0x... --profile agent --env prod
+tw escrow refund 0x<escrowId> --profile agent --env prod
 tw escrow refund 0x<escrowId> --env prod --json
 ```
 
@@ -249,7 +249,7 @@ tw escrow refund 0x<escrowId> --env prod --json
 Every command supports `--json` for machine-readable output. Treat JSON output schemas as the stable contract.
 
 ```bash
-tw <command> --json
+tw <command> --env prod --json
 ```
 
 ### Password Automation
@@ -257,13 +257,13 @@ tw <command> --json
 Use `TW_PASSWORD` to skip interactive prompts:
 
 ```bash
-TW_PASSWORD="my-password" tw session list --profile agent --json
+TW_PASSWORD="my-password" tw session list --profile agent --json --env prod
 ```
 
 Or pipe via stdin for commands that accept `--password-stdin`:
 
 ```bash
-echo "my-password" | tw session rotate --profile agent --password-stdin --json
+echo "my-password" | tw session rotate --profile agent --password-stdin --json --env prod
 ```
 
 ### Discovery

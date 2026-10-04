@@ -83,7 +83,13 @@ import { AccountPasskeyError, executeAccountPasskey } from './lib/account-passke
 // Shared schemas
 // ---------------------------------------------------------------------------
 
-const envSchema = z.enum(['prod', 'stage', 'dev']).default('prod').describe('Target environment')
+const ENV_REQUIRED_MESSAGE =
+    'Missing --env. Pass `--env prod`, `--env stage`, or `--env dev`.'
+
+// No default. Omitting --env must fail closed instead of selecting prod.
+const envSchema = z
+    .enum(['prod', 'stage', 'dev'], { error: ENV_REQUIRED_MESSAGE })
+    .describe(ENV_REQUIRED_MESSAGE)
 const profileSchema = z.string().optional().describe('Profile for default keystore resolution')
 const keystorePathSchema = z.string().optional().describe('Explicit keystore path')
 const chainSchema = z.string().optional().describe('Target chain (base, polygon, anvil)')
