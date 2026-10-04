@@ -3,7 +3,7 @@ import {
     getAddressesFromEnv,
     getAddressesFromEnvForChain,
     type ContractAddresses,
-} from '@agentic-payments/contracts/deployments'
+} from '@nubl/contracts/deployments'
 
 /**
  * Environment variables that can override contract addresses.
@@ -24,7 +24,7 @@ interface AddressEnvOverrides {
 
 /**
  * Get contract addresses for a chain, with environment variable overrides.
- * Uses getAddressesWithFallback from @agentic-payments/contracts which:
+ * Uses getAddressesWithFallback from @nubl/contracts which:
  * 1. Tries bundled deployment JSON first
  * 2. Falls back to env vars for local contexts
  */

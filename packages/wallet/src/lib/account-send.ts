@@ -19,7 +19,7 @@ import {
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 import { AccountCreateError, resolveKeystorePath } from './account-create'
 import {
     decryptSessionKeystore,

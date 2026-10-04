@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@agentic-payments/contracts",
+      "name": "@nubl/contracts",
       "dependencies": {
         "@axelar-network/axelar-gmp-sdk-solidity": "^6.0.6",
         "@layerzerolabs/lz-evm-protocol-v2": "^3.0.156",

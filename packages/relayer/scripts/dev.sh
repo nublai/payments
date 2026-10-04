@@ -174,11 +174,11 @@ wait_for_relayer() {
   return 1
 }
 
-# Build @agentic-payments/contracts if dist is missing (needed for wrangler to resolve imports)
+# Build @nubl/contracts if dist is missing (needed for wrangler to resolve imports)
 build_contracts() {
   local CONTRACTS_DIR="$RELAYER_DIR/../contracts"
   if [ ! -f "$CONTRACTS_DIR/dist/index.js" ]; then
-    log_info "Building @agentic-payments/contracts..."
+    log_info "Building @nubl/contracts..."
     (cd "$CONTRACTS_DIR" && bun run build) >&2
     log_success "Contracts built"
   fi

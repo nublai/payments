@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { parseEther, type Address } from 'viem'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+import { accountAbi } from '@nubl/contracts/abis'
 
 import {
     ANVIL_RPC_URL,

@@ -13,7 +13,7 @@ import {
     encodeSecp256k1Key,
     getChain,
     type GetKeysResponse,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 import {
     AccountCreateError,
     getDefaultSessionPermissions,

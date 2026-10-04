@@ -1,110 +1,110 @@
-# @agentic-payments/relayer-client
+# @nubl/relayer-client
 
 ## 7.3.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.3.1
-  - @agentic-payments/relayer@7.3.1
+  - @nubl/contracts@7.3.1
+  - @nubl/relayer@7.3.1
 
 ## 7.3.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.3.0
-  - @agentic-payments/relayer@7.3.0
+  - @nubl/contracts@7.3.0
+  - @nubl/relayer@7.3.0
 
 ## 7.2.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.2.0
-  - @agentic-payments/relayer@7.2.0
+  - @nubl/contracts@7.2.0
+  - @nubl/relayer@7.2.0
 
 ## 7.1.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.1.0
-  - @agentic-payments/relayer@7.1.0
+  - @nubl/contracts@7.1.0
+  - @nubl/relayer@7.1.0
 
 ## 7.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.0.0
-  - @agentic-payments/relayer@7.0.0
+  - @nubl/contracts@7.0.0
+  - @nubl/relayer@7.0.0
 
 ## 6.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@6.0.0
-  - @agentic-payments/relayer@6.0.0
+  - @nubl/contracts@6.0.0
+  - @nubl/relayer@6.0.0
 
 ## 5.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@5.0.0
-  - @agentic-payments/relayer@5.0.0
+  - @nubl/contracts@5.0.0
+  - @nubl/relayer@5.0.0
 
 ## 4.1.2
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.1.2
-  - @agentic-payments/relayer@4.1.2
+  - @nubl/contracts@4.1.2
+  - @nubl/relayer@4.1.2
 
 ## 4.1.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.1.1
-  - @agentic-payments/relayer@4.1.1
+  - @nubl/contracts@4.1.1
+  - @nubl/relayer@4.1.1
 
 ## 4.1.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.1.0
-  - @agentic-payments/relayer@4.1.0
+  - @nubl/contracts@4.1.0
+  - @nubl/relayer@4.1.0
 
 ## 4.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.0.0
-  - @agentic-payments/relayer@4.0.0
+  - @nubl/contracts@4.0.0
+  - @nubl/relayer@4.0.0
 
 ## 3.4.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@3.4.1
-  - @agentic-payments/relayer@3.4.1
+  - @nubl/contracts@3.4.1
+  - @nubl/relayer@3.4.1
 
 ## 3.4.0
 
 ### Patch Changes
 
-- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@agentic-payments/contracts/deployments` and `@agentic-payments/contracts/abis`. Add `./config/deployments.json` export to contracts.
+- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@nubl/contracts/deployments` and `@nubl/contracts/abis`. Add `./config/deployments.json` export to contracts.
 
 - Updated dependencies [`8594d4c`]:
-  - @agentic-payments/contracts@3.4.0
-  - @agentic-payments/relayer@3.4.0
+  - @nubl/contracts@3.4.0
+  - @nubl/relayer@3.4.0
 
 ## 3.3.1
 
@@ -112,7 +112,7 @@
 
 - Updated dependencies []:
   - @agentic-payments/deployments@3.3.1
-  - @agentic-payments/relayer@3.3.1
+  - @nubl/relayer@3.3.1
 
 ## 3.3.0
 
@@ -124,23 +124,23 @@
 
 - Updated dependencies [`03ff3f0`]:
   - @agentic-payments/deployments@3.3.0
-  - @agentic-payments/relayer@3.3.0
+  - @nubl/relayer@3.3.0
 
 ## 3.2.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@3.2.0
-  - @agentic-payments/relayer@3.2.0
+  - @nubl/contracts@3.2.0
+  - @nubl/relayer@3.2.0
 
 ## 3.1.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@3.1.0
-  - @agentic-payments/relayer@3.1.0
+  - @nubl/contracts@3.1.0
+  - @nubl/relayer@3.1.0
 
 ## 3.0.0
 
@@ -149,24 +149,24 @@
 - #571 `9f8ecea` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Default `prepareCalls` to fetch the latest on-chain nonce when no explicit nonce is provided. Added `noncePolicy: 'draft'` to opt into relayer draft nonce allocation/replay behavior for idempotent prepare flows.
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@3.0.0
-  - @agentic-payments/relayer@3.0.0
+  - @nubl/contracts@3.0.0
+  - @nubl/relayer@3.0.0
 
 ## 2.1.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@2.1.1
-  - @agentic-payments/relayer@2.1.1
+  - @nubl/contracts@2.1.1
+  - @nubl/relayer@2.1.1
 
 ## 2.1.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@2.1.0
-  - @agentic-payments/relayer@2.1.0
+  - @nubl/contracts@2.1.0
+  - @nubl/relayer@2.1.0
 
 ## 2.0.13
 
@@ -175,16 +175,16 @@
 - #443 `3c1654e` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add opt-in ERC-8128 HTTP authentication for relayer JSON-RPC and relayer-client request signing support, including nonce replay protection and integration tests.
 
 - Updated dependencies [`3c1654e`]:
-  - @agentic-payments/relayer@2.0.13
-  - @agentic-payments/contracts@2.0.13
+  - @nubl/relayer@2.0.13
+  - @nubl/contracts@2.0.13
 
 ## 2.0.12
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@2.0.12
-  - @agentic-payments/relayer@2.0.12
+  - @nubl/contracts@2.0.12
+  - @nubl/relayer@2.0.12
 
 ## 2.0.11
 

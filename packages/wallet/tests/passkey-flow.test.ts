@@ -16,7 +16,7 @@ import {
     encodeP256PublicKey,
     encodeSecp256k1Key,
     keyTypeToEnum,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 
 const PORT = 18545
 const RPC_URL = `http://127.0.0.1:${PORT}`

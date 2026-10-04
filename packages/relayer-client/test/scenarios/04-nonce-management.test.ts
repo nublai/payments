@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { createWalletClient, http, parseEther } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+import { accountAbi } from '@nubl/contracts/abis'
 
 import { waitForBundle } from '../../src'
 import { ANVIL_RPC_URL, RELAYER_URL, TEST_CONTRACTS, testChain } from '../setup'

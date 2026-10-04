@@ -6,7 +6,7 @@
  */
 
 import { decodeErrorResult, type Hex } from 'viem'
-import { orchestratorAbi } from '@agentic-payments/contracts/abis'
+import { orchestratorAbi } from '@nubl/contracts/abis'
 
 // =============================================================================
 // Standard JSON-RPC 2.0 Error Codes

@@ -1,5 +1,5 @@
 import { encodeFunctionData, parseAbi } from 'viem'
-import { escrowAbi } from '@agentic-payments/contracts/abis'
+import { escrowAbi } from '@nubl/contracts/abis'
 import type { Call } from '../types.js'
 import type { CreateEscrowParams } from './types.js'
 import { buildEscrowStruct } from './buildEscrowStruct.js'

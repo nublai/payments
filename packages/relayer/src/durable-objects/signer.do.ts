@@ -32,7 +32,7 @@ import {
     type SignedAuthorization,
 } from 'viem'
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
-import { orchestratorAbi, simpleFunderAbi } from '@agentic-payments/contracts/abis'
+import { orchestratorAbi, simpleFunderAbi } from '@nubl/contracts/abis'
 import { createChain } from '../lib/viem-utils'
 import { getChainRpcUrl } from '../lib/multi-chain-client'
 import { getErrorMessage } from '../lib/logger'

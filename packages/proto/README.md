@@ -1,4 +1,4 @@
-# @agentic-payments/proto
+# @nubl/proto
 
 Protobuf messages used by the wallet for login and session device material:
 

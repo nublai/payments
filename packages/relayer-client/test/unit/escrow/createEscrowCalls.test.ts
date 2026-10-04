@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { decodeFunctionData, padHex } from 'viem'
-import { escrowAbi } from '@agentic-payments/contracts/abis'
+import { escrowAbi } from '@nubl/contracts/abis'
 import { createEscrowCalls } from '../../../src/escrow/createEscrowCalls.js'
 import type { CreateEscrowParams } from '../../../src/escrow/types.js'
 

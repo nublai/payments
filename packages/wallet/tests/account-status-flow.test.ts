@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test'
-import { computeKeyHash, encodeSecp256k1Key } from '@agentic-payments/relayer-client'
+import { computeKeyHash, encodeSecp256k1Key } from '@nubl/relayer-client'
 import { AccountStatusError, executeAccountStatus } from '../src/lib/account-status'
 
 test('executeAccountStatus reports permission mismatches as warnings only', async () => {

@@ -1,4 +1,4 @@
-# @agentic-payments/contracts
+# @nubl/contracts
 
 ## 7.3.1
 
@@ -28,7 +28,7 @@
 
 ### Minor Changes
 
-- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@agentic-payments/contracts/deployments` and `@agentic-payments/contracts/abis`. Add `./config/deployments.json` export to contracts.
+- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@nubl/contracts/deployments` and `@nubl/contracts/abis`. Add `./config/deployments.json` export to contracts.
 
 ## 3.3.1
 

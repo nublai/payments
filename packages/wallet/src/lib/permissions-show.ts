@@ -1,5 +1,5 @@
 import { getAddress, type Address, type Hex } from 'viem'
-import type { GetKeysResponse, PermissionInfo } from '@agentic-payments/relayer-client'
+import type { GetKeysResponse, PermissionInfo } from '@nubl/relayer-client'
 import { resolveKeystorePath } from './account-create'
 import { readKeystoreBundle, readSessionKeystoreFile, resolveSessionKeystorePath } from './keystore'
 import {

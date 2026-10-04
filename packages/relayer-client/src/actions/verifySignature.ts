@@ -49,7 +49,7 @@ export interface VerifySignatureResponse {
  *
  * @example
  * ```typescript
- * import { computeErc1271Digest, keccak256 } from '@agentic-payments/relayer-client'
+ * import { computeErc1271Digest, keccak256 } from '@nubl/relayer-client'
  * import { sign, serializeSignature } from 'viem/accounts'
  *
  * // Sign the ERC-1271 transformed digest

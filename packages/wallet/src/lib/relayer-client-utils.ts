@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { getChain, relayerActions, type EthHttpSigner } from '@agentic-payments/relayer-client'
+import { getChain, relayerActions, type EthHttpSigner } from '@nubl/relayer-client'
 import type { CliNetworkConfig } from './network-config'
 export { readAccountNonce } from './nonce-utils'
 

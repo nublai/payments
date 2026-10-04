@@ -15,7 +15,7 @@ import {
     computeKeyHash,
     encodeP256Signature,
     keyTypeToEnum,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 
 const accountAbi = [
     {

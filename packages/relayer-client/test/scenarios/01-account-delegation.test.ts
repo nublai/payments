@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { createWalletClient, http, encodeAbiParameters, parseEther, zeroAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+import { accountAbi } from '@nubl/contracts/abis'
 
 import {
     waitForBundle,

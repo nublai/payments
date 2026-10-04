@@ -1,5 +1,5 @@
 {
-    "name": "@agentic-payments/proto",
+    "name": "@nubl/proto",
     "version": "7.3.1",
     "license": "MIT",
     "type": "module",

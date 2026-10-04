@@ -4,8 +4,8 @@ import type {
     Call,
     GetKeysResponse,
     PrepareCallsResponse,
-} from '@agentic-payments/relayer-client'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+} from '@nubl/relayer-client'
+import { accountAbi } from '@nubl/contracts/abis'
 import { resolveKeystorePath } from './account-create'
 import {
     decryptRootKeystore,
@@ -140,7 +140,7 @@ function getDefaultDeps(): PermissionsGrantDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
-            return (await import('@agentic-payments/relayer-client')).waitForBundle(client, {
+            return (await import('@nubl/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
             })

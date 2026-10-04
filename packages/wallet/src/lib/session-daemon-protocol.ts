@@ -1,4 +1,4 @@
-import type { PrepareCallsResponse } from '@agentic-payments/relayer-client'
+import type { PrepareCallsResponse } from '@nubl/relayer-client'
 import type { Address, Hex } from 'viem'
 import { isRecord } from './type-guards'
 

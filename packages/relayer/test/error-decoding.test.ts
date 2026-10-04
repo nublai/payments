@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { encodeErrorResult, type Hex } from 'viem'
-import { orchestratorAbi } from '@agentic-payments/contracts/abis'
+import { orchestratorAbi } from '@nubl/contracts/abis'
 
 import {
     INVALID_SIGNATURE,

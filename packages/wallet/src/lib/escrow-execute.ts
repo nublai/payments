@@ -7,7 +7,7 @@ import {
     getChain,
     waitForBundle as waitForBundleAction,
     type Call,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 import {
     decryptSessionKeystore,
     isAgentKeystore,

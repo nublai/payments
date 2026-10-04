@@ -1,5 +1,5 @@
 import type { PublicClient, Address, Hex } from 'viem'
-import { escrowAbi } from '@agentic-payments/contracts/abis'
+import { escrowAbi } from '@nubl/contracts/abis'
 import type { EscrowStatus } from './types.js'
 
 const STATUS_MAP: Record<number, EscrowStatus['status']> = {

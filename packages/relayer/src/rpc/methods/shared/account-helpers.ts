@@ -8,7 +8,7 @@ import {
     parseAbiParameters,
 } from 'viem'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+import { accountAbi } from '@nubl/contracts/abis'
 import type { Env } from '../../../types/env'
 import type { AuthorizeKey, SpendPeriod } from '../../schema/upgradeAccount'
 import { INVALID_PARAMS, RpcError } from '../../errors'
