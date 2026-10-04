@@ -287,7 +287,7 @@ deploy_contracts() {
   cd "$CONTRACTS_DIR"
 
   # Build contracts first (generates TypeScript ABIs needed by relayer)
-  bun run build
+  bun run build:contracts
 
   # Deploy contracts to local context (includes both 31337 + 41337)
   log_info "Deploying contracts to local context (chains 31337 + 41337)..."

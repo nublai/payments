@@ -19,15 +19,16 @@ From the repo root unless noted:
 
 ```bash
 # wallet
+bun run --cwd packages/contracts build:contracts
+bun run --cwd packages/relayer-client build
 bun run --cwd packages/wallet test
 
 # relayer
 bun run --cwd packages/relayer test:run
 
 # contracts
-forge test
-# or, from packages/contracts:
-# bun run test
+bun run --cwd packages/contracts test
+# forge test also works if your shell is already in packages/contracts
 
 # local payment (Anvil, deploy, wrangler, tw send)
 bun run e2e:local-payment
