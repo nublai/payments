@@ -1,6 +1,6 @@
 # Agentic Payments
 
-Smart accounts, a relayer, and a local wallet CLI for agent-initiated payments. Split out of a private repo. This tree is the payments surface only.
+Smart accounts, a relayer, and a local wallet CLI for agent-initiated payments. This tree is the payments surface only.
 
 ## Packages
 

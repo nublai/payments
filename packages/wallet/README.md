@@ -12,20 +12,16 @@ bunx @agentic-payments/wallet --help
 
 ## Quick Start
 
-Create an account and send USDC in under a minute:
+From the repo root, install dependencies and run the local payment script. That is the path that brings up Anvil and the local relayer, creates an account, and sends USDC. `--env dev` uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set.
 
 ```bash
-# 1. Create a local account (interactive password prompt)
-tw account create --profile main --env dev
-
-# 2. Fund it
-tw address --qr --amount 100 --env dev
-
-# 3. Send USDC
-tw send 10 vitalik.eth --env dev
+bun install
+bun run e2e:local-payment
 ```
 
-Omitting `--env` is an error. Pass `--env prod`, `--env stage`, or `--env dev`.
+Needs Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH`. Ports 8545, 8546, and 8787 must be free. The script starts both Anvil chains, runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `tw account create --env dev`, mints MockUSDC, and sends 1 USDC with `tw send`. It stops the Anvil and wrangler processes it started.
+
+Any `tw` command with `--env dev` needs that local relayer already running. The script above starts the stack and then stops it, so run the script itself rather than those commands on their own. Omitting `--env` is an error. Pass `--env prod`, `--env stage`, or `--env dev`.
 
 No custody service. No API key. Everything runs locally with encrypted keystores.
 
