@@ -3,10 +3,17 @@ pragma solidity ^0.8.4;
 
 import "./Base.t.sol";
 import {LibString} from "solady/utils/LibString.sol";
+import {P256Verifier} from "./utils/P256Verifier.sol";
 
-// Forge 1.8.4 only installs P256VERIFY (0x100) on Osaka, not Prague.
+// Foundry 1.5.1 does not install RIP-7212 P256VERIFY. setUp etches a compatible verifier at 0x100.
+// Newer Forge installs that precompile on Osaka only, so keep the hardfork as well.
 /// forge-config: default.hardfork = "osaka"
 contract PasskeyTest is BaseTest {
+    function setUp() public override {
+        super.setUp();
+        vm.etch(address(0x100), type(P256Verifier).runtimeCode);
+    }
+
     function testP256ValidSignature() public {
         DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
         bytes32 digest = keccak256("passkey");
