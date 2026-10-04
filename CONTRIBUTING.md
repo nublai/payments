@@ -34,10 +34,10 @@ bun run --cwd packages/contracts test
 bun run e2e:local-payment
 ```
 
-`e2e:local-payment` needs ports 8545, 8546, and 8787 free. It starts Anvil and the wrangler relayer and stops the processes it started. It does not need a Towns host or a login URL.
+`e2e:local-payment` needs ports 8545, 8546, and 8787 free. It starts Anvil and the wrangler relayer and stops the processes it started. Swap and bridge have no local end-to-end script: `tw swap` and `tw bridge` call relay.link (`https://api.testnets.relay.link` on dev, `https://api.relay.link` otherwise). Login has no local end-to-end script either: `tw login` needs `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD`.
 
 Contract deploys use `packages/contracts/scripts/sh/deploy.sh`. See `packages/contracts/README.md`. Do not look for a Makefile.
 
 ## Reporting vulnerabilities
 
-See `SECURITY.md`. Open a GitHub issue on [giuseppecrj/Agentic-Payments](https://github.com/giuseppecrj/Agentic-Payments).
+See `SECURITY.md`. Email [security@nubl.ai](mailto:security@nubl.ai).

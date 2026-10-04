@@ -480,7 +480,7 @@ When relayer mnemonic is configured:
 
 ### DeployFacetWithArgs.sol
 
-Extends `DeployFacet` from `@towns-protocol/diamond`:
+Extends `DeployFacet` from `@towns-protocol/diamond` (an upstream package, not this product's name):
 - `add(name)` - Queue no-arg contract
 - `addWithArgs(name, args)` - Queue contract with constructor args
 - `deployBatch(deployer)` - Deploy no-arg queue via Multicall3

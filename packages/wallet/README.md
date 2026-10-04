@@ -25,7 +25,7 @@ Any `tw` command with `--env dev` needs that local relayer already running. The 
 
 No custody service. No API key. Everything runs locally with encrypted keystores.
 
-Relayer and login hosts are environment variables, not source constants. `RELAYER_URL_DEV` overrides local `http://127.0.0.1:8787`. `RELAYER_URL_STAGE` and `RELAYER_URL_PROD` are required for those environments. `tw login` reads `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD` and errors when the one for the selected env is unset. Local sends do not use login.
+Relayer and login hosts are environment variables, not source constants. `RELAYER_URL_DEV` overrides local `http://127.0.0.1:8787`. `RELAYER_URL_STAGE` and `RELAYER_URL_PROD` are required for those environments. `tw login` reads `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD` and errors when the one for the selected env is unset. Local sends do not use login. Swap, bridge, and login have no local end-to-end script: `tw swap` and `tw bridge` call relay.link (`https://api.testnets.relay.link` on dev, `https://api.relay.link` otherwise), and login needs the `AUTH_URL_*` variable for the selected environment.
 
 ---
 
