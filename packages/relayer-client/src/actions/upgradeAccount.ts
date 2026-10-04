@@ -56,6 +56,7 @@ export type UpgradeAccountParams = UpgradeAccountWithKeyParams | UpgradeAccountW
  * Maps to Account.KeyType enum:
  * - Secp256k1 = 0: Standard Ethereum EOA keys
  * - External = 1: Delegated to an external ISigner contract
+ * - P256 = 2: WebAuthn passkey (public key is 64-byte x||y)
  */
 export type KeyType = RpcKeyType
 

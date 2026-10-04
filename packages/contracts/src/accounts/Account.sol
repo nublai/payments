@@ -39,8 +39,9 @@ contract Account is IAccount, EIP712, GuardedExecutor {
 
     /// @dev The type of key.
     enum KeyType {
-        Secp256k1,
-        External
+        Secp256k1, // 0
+        External,  // 1
+        P256       // 2
     }
 
     /// @dev A key that can be used to authorize call.
@@ -541,6 +542,89 @@ contract Account is IAccount, EIP712, GuardedExecutor {
                 // bytes4(keccak256("isValidSignatureWithKeyHash(bytes32,bytes32,bytes)")
                 if and(success, eq(shr(224, mload(0x00)), 0x8afc93b4)) {
                     isValid := true
+                }
+            }
+        } else if (key.keyType == KeyType.P256) {
+            isValid = _validateP256Signature(digest, signature, key.publicKey);
+        }
+    }
+
+    /// @dev WebAuthn/P-256 signature check.
+    /// Inner signature: `abi.encode(bytes authenticatorData, bytes clientDataJSON, uint256 r, uint256 s)`.
+    /// `publicKey` is `x (32) || y (32)`. The WebAuthn challenge is base64url(`digest`).
+    function _validateP256Signature(
+        bytes32 digest,
+        bytes calldata signature,
+        bytes memory publicKey
+    ) internal view returns (bool isValid) {
+        if (publicKey.length != 64) revert InvalidPublicKey();
+
+        (bytes memory authenticatorData, bytes memory clientDataJSON, uint256 r, uint256 s) =
+            abi.decode(signature, (bytes, bytes, uint256, uint256));
+
+        // authenticatorData: rpIdHash (32) || flags (1) || signCount (4) || ...
+        // Bit 0 of the flags byte is User Presence. Short-circuit so a short
+        // buffer returns false instead of an out-of-bounds revert.
+        if (authenticatorData.length < 37) return false;
+        if ((authenticatorData[32] & 0x01) == 0) return false;
+        if (!_clientDataHasChallenge(clientDataJSON, digest)) return false;
+
+        bytes32 messageHash = sha256(abi.encodePacked(authenticatorData, sha256(clientDataJSON)));
+
+        assembly ("memory-safe") {
+            let m := mload(0x40)
+            mstore(m, messageHash)
+            mstore(add(m, 0x20), r)
+            mstore(add(m, 0x40), s)
+            mstore(add(m, 0x60), mload(add(publicKey, 0x20)))
+            mstore(add(m, 0x80), mload(add(publicKey, 0x40)))
+            mstore(0x40, add(m, 0xc0))
+            // RIP-7212 P256VERIFY. Input is 160 bytes: hash || r || s || x || y.
+            pop(staticcall(gas(), 0x100, m, 0xa0, add(m, 0xa0), 0x20))
+            isValid := and(eq(returndatasize(), 0x20), eq(mload(add(m, 0xa0)), 1))
+        }
+    }
+
+    /// @dev Returns true if `clientDataJSON` contains `"challenge":"` followed by
+    /// the unpadded base64url encoding of `digest` (43 ASCII characters).
+    function _clientDataHasChallenge(
+        bytes memory clientDataJSON,
+        bytes32 digest
+    ) internal pure returns (bool found) {
+        assembly ("memory-safe") {
+            // 56-byte needle: 13-byte prefix `"challenge":"` || 43-char base64url(digest).
+            let p := mload(0x40)
+            mstore(0x40, add(p, 0x60))
+            mstore(p, 0x226368616c6c656e6765223a2200000000000000000000000000000000000000)
+
+            // "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef" / "ghijklmnopqrstuvwxyz0123456789-_".
+            let A0 := 0x4142434445464748494a4b4c4d4e4f505152535455565758595a616263646566
+            let A1 := 0x6768696a6b6c6d6e6f707172737475767778797a303132333435363738392d5f
+
+            for { let i := 0 } lt(i, 42) { i := add(i, 1) } {
+                let idx := and(shr(sub(250, mul(i, 6)), digest), 63)
+                let ch := byte(idx, A0)
+                if gt(idx, 31) { ch := byte(sub(idx, 32), A1) }
+                mstore8(add(add(p, 13), i), ch)
+            }
+            let last := shl(2, and(digest, 0xf))
+            let ch := byte(last, A0)
+            if gt(last, 31) { ch := byte(sub(last, 32), A1) }
+            mstore8(add(p, 55), ch)
+
+            let needleLen := 56
+            let jsonLen := mload(clientDataJSON)
+            if iszero(lt(jsonLen, needleLen)) {
+                let jsonStart := add(clientDataJSON, 0x20)
+                let end := add(jsonStart, sub(jsonLen, needleLen))
+                let h := keccak256(p, needleLen)
+                for { let j := jsonStart } 1 {} {
+                    if eq(keccak256(j, needleLen), h) {
+                        found := 1
+                        break
+                    }
+                    if eq(j, end) { break }
+                    j := add(j, 1)
                 }
             }
         }

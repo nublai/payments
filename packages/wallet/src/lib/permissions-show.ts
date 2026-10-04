@@ -44,7 +44,7 @@ export type PermissionsShowResult = {
         nameSource: 'local' | 'none'
         hash: Hex
         address: Address
-        type: 'secp256k1' | 'external'
+        type: 'secp256k1' | 'external' | 'p256'
         role: 'admin' | 'normal'
         expiryRaw: Hex
     }

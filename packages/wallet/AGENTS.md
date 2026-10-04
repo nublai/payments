@@ -328,7 +328,7 @@ tw.command(myGroup)
   - `tw --llms` (incur auto-generated manifest)
   - `tw --mcp` (incur MCP server mode)
 - Account subcommands:
-  - `create`, `delegate`, `balance`, `nonce`, `history`, `status`, `export`, `change-password`
+  - `create`, `delegate`, `balance`, `nonce`, `history`, `status`, `export`, `change-password`, `passkey`
 - Session subcommands:
   - `create`, `list`, `rotate`, `revoke`, `export`, `import`
 - Daemon subcommands:

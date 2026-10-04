@@ -120,8 +120,14 @@ export function computeAuthorizationDigest(chainId: number, address: Address, no
 /**
  * Compute hash for an authorized key.
  */
+function authorizeKeyType(type: AuthorizeKey['type']): number {
+    if (type === 'secp256k1') return 0
+    if (type === 'external') return 1
+    return 2
+}
+
 export function computeKeyHash(key: AuthorizeKey): Hex {
-    const keyType = key.type === 'secp256k1' ? 0 : 1
+    const keyType = authorizeKeyType(key.type)
     const publicKeyHash = keccak256(key.publicKey)
     const encoded = encodeAbiParameters(parseAbiParameters('uint8, bytes32'), [
         keyType,
@@ -184,7 +190,7 @@ export function buildKeyInitializationData(
             args: [
                 {
                     expiry: Number(key.expiry),
-                    keyType: key.type === 'secp256k1' ? 0 : 1,
+                    keyType: authorizeKeyType(key.type),
                     isSuperAdmin: key.role === 'admin',
                     publicKey: key.publicKey,
                 },
