@@ -5,7 +5,7 @@
  */
 
 import type { Hex } from 'viem'
-import { concat } from 'viem'
+import { concat, encodeAbiParameters, parseAbiParameters } from 'viem'
 
 /**
  * Wrap a signature with keyHash and prehash flag for Account validation
@@ -36,4 +36,44 @@ import { concat } from 'viem'
 export function wrapSignature(signature: Hex, keyHash: Hex, prehash: boolean = false): Hex {
     const prehashFlag = prehash ? '0x01' : '0x00'
     return concat([signature, keyHash, prehashFlag as Hex])
+}
+
+/**
+ * ABI-encode a WebAuthn assertion the way Account._validateP256Signature decodes it:
+ * `abi.encode(bytes authenticatorData, bytes clientDataJSON, uint256 r, uint256 s)`.
+ */
+export function encodeP256InnerSignature(params: {
+    authenticatorData: Hex
+    clientDataJSON: Hex
+    r: bigint
+    s: bigint
+}): Hex {
+    return encodeAbiParameters(parseAbiParameters('bytes, bytes, uint256, uint256'), [
+        params.authenticatorData,
+        params.clientDataJSON,
+        params.r,
+        params.s,
+    ])
+}
+
+/**
+ * Wrap a P-256 WebAuthn assertion for Account.unwrapAndValidateSignature.
+ *
+ * Layout matches secp256k1 wrapping: `abi.encodePacked(inner, bytes32 keyHash, uint8 prehash)`.
+ * `keyHash` is `computeKeyHash('p256', x || y)`. When `prehash` is set, the contract
+ * sha256s the digest before checking the clientDataJSON challenge.
+ */
+export function encodeP256Signature(params: {
+    authenticatorData: Hex
+    clientDataJSON: Hex
+    r: bigint
+    s: bigint
+    keyHash: Hex
+    prehash?: boolean
+}): Hex {
+    return wrapSignature(
+        encodeP256InnerSignature(params),
+        params.keyHash,
+        params.prehash ?? false,
+    )
 }

@@ -1,9 +1,11 @@
 import type { Address, Hex, TypedDataDomain } from 'viem'
 
 /**
- * Key types supported for authorization
+ * Key types supported for authorization.
+ *
+ * Maps to Account.KeyType: secp256k1 = 0, external = 1, p256 = 2.
  */
-export type KeyType = 'secp256k1' | 'external'
+export type KeyType = 'secp256k1' | 'external' | 'p256'
 
 /**
  * Spend period for spending limits

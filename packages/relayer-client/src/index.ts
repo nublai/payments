@@ -103,7 +103,7 @@ export {
 } from './transport'
 
 // Utils - Signature wrapping
-export { wrapSignature } from './utils'
+export { encodeP256InnerSignature, encodeP256Signature, wrapSignature } from './utils'
 
 // Utils - ERC-1271 digest transform
 export {
@@ -113,7 +113,13 @@ export {
 } from './utils'
 
 // Utils - Key computation
-export { computeKeyHash, encodeSecp256k1Key, type KeyType as KeyTypeUtil } from './utils'
+export {
+    computeKeyHash,
+    encodeP256PublicKey,
+    encodeSecp256k1Key,
+    keyTypeToEnum,
+    type KeyType as KeyTypeUtil,
+} from './utils'
 
 // Utils - Error decoding
 export { decodeIntentError, isKnownIntentError, INTENT_ERRORS, type IntentErrorName } from './utils'

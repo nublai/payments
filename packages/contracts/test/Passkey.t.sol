@@ -113,6 +113,66 @@ contract PasskeyTest is BaseTest {
         assertEq(got, keyHash);
     }
 
+
+    function testP256AuthenticatorDataTooShort() public {
+        DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
+        bytes32 digest = keccak256("short-auth-data");
+        // One byte under the 37-byte minimum, with the UP bit set at index 32
+        // so the length check is what rejects it.
+        bytes memory authenticatorData = new bytes(36);
+        authenticatorData[32] = 0x01;
+
+        (bytes memory publicKey, bytes memory clientDataJSON, uint256 r, uint256 s) =
+            _signWebAuthn(digest, authenticatorData);
+
+        vm.prank(d.eoa);
+        bytes32 keyHash = d.d.authorize(_p256Key(publicKey));
+
+        (bool isValid, bytes32 got) =
+            d.d.unwrapAndValidateSignature(digest, _wrap(authenticatorData, clientDataJSON, r, s, keyHash, 0));
+        assertFalse(isValid);
+        assertEq(got, keyHash);
+    }
+
+    function testP256WebAuthnRejectedForSecp256k1Key() public {
+        DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
+        bytes32 digest = keccak256("p256-as-secp256k1");
+        bytes memory authenticatorData = _authenticatorData(hex"01");
+
+        (bytes memory publicKey, bytes memory clientDataJSON, uint256 r, uint256 s) =
+            _signWebAuthn(digest, authenticatorData);
+
+        PassKey memory k = _randomSecp256k1PassKey();
+        vm.prank(d.eoa);
+        d.d.authorize(k.k);
+
+        (bool isValid, bytes32 got) =
+            d.d.unwrapAndValidateSignature(digest, _wrap(authenticatorData, clientDataJSON, r, s, k.keyHash, 0));
+        assertFalse(isValid);
+        assertEq(got, k.keyHash);
+    }
+
+    function testSecp256k1SignatureRejectedForP256Key() public {
+        DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
+        bytes32 digest = keccak256("secp-as-p256");
+        bytes memory authenticatorData = _authenticatorData(hex"01");
+
+        (bytes memory publicKey, bytes memory clientDataJSON, uint256 r, uint256 s) =
+            _signWebAuthn(digest, authenticatorData);
+
+        vm.prank(d.eoa);
+        bytes32 keyHash = d.d.authorize(_p256Key(publicKey));
+
+        PassKey memory secp = _randomSecp256k1PassKey();
+        (, bytes32 sr, bytes32 ss) = vm.sign(secp.privateKey, digest);
+
+        (bool isValid, bytes32 got) = d.d.unwrapAndValidateSignature(
+            digest, _wrap(authenticatorData, clientDataJSON, uint256(sr), uint256(ss), keyHash, 0)
+        );
+        assertFalse(isValid);
+        assertEq(got, keyHash);
+    }
+
     function _p256Key(bytes memory publicKey) internal pure returns (AgenticAccount.Key memory key) {
         key.keyType = AgenticAccount.KeyType.P256;
         key.publicKey = publicKey;

@@ -42,6 +42,7 @@ export type {
 const KEY_TYPE_MAP: Record<number, KeyType> = {
     0: 'secp256k1',
     1: 'external',
+    2: 'p256',
 }
 
 // =============================================================================

@@ -82,7 +82,7 @@ export type KeySelector = {
 export type OnChainPermissionKey = {
     hash: Hex
     expiry: Hex
-    type: 'secp256k1' | 'external'
+    type: 'secp256k1' | 'external' | 'p256'
     role: 'admin' | 'normal'
     publicKey: Hex
     permissions: PermissionInfo[]
@@ -240,6 +240,11 @@ export function deriveKeyAddress(key: Pick<OnChainPermissionKey, 'type' | 'publi
     if (key.type === 'secp256k1') {
         const [address] = decodeAbiParameters(parseAbiParameters('address'), key.publicKey)
         return getAddress(address)
+    }
+
+    if (key.type === 'p256') {
+        // x||y is not an address. Use the trailing 20 bytes of keccak256(publicKey) for display.
+        return getAddress(`0x${keccak256(key.publicKey).slice(-40)}`)
     }
 
     const raw = key.publicKey.startsWith('0x') ? key.publicKey.slice(2) : key.publicKey

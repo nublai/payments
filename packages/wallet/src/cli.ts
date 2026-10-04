@@ -77,6 +77,7 @@ import { EscrowError } from './lib/escrow-common'
 import { executeEscrowStatus } from './lib/escrow-status'
 import { executeEscrowSettle } from './lib/escrow-settle'
 import { executeEscrowRefund } from './lib/escrow-refund'
+import { AccountPasskeyError, executeAccountPasskey } from './lib/account-passkey'
 
 // ---------------------------------------------------------------------------
 // Shared schemas
@@ -1018,6 +1019,64 @@ account.command('change-password', {
             currentPassword: passwords.currentPassword,
             newPassword: passwords.newPassword,
         })
+    },
+})
+
+
+account.command('passkey', {
+    description:
+        'Authorize a P-256 WebAuthn key on a local Account and verify the wrapped signature',
+    options: z.object({
+        rpcUrl: z.string().describe('Anvil JSON-RPC URL (osaka hardfork, RIP-7212 at 0x100)'),
+        privateKey: z.string().describe('EOA private key that becomes the delegated account'),
+        publicKey: z.string().describe('P-256 public key, 64-byte x||y hex'),
+        digest: z.string().describe('32-byte digest the clientDataJSON challenge commits to'),
+        authenticatorData: z.string().describe('WebAuthn authenticatorData hex'),
+        clientDataJson: z.string().describe('clientDataJSON bytes as hex'),
+        r: z.string().describe('P-256 signature r'),
+        s: z.string().describe('P-256 signature s'),
+        prehash: z
+            .enum(['0', '1'])
+            .optional()
+            .describe('Prehash flag: 1 sha256s the digest before the challenge check'),
+    }),
+    output: z.object({
+        type: z.string(),
+        valid: z.boolean(),
+        keyHash: z.string(),
+        account: z.string(),
+        implementation: z.string(),
+    }),
+    examples: [
+        {
+            options: {
+                rpcUrl: 'http://127.0.0.1:18545',
+                publicKey: '0x' + '11'.repeat(64),
+                digest: '0x' + '22'.repeat(32),
+            },
+            description: 'Verify a passkey assertion against a local Account',
+        },
+    ],
+    async run({ options, error: reportError }) {
+        try {
+            return await executeAccountPasskey({
+                rpcUrl: options.rpcUrl,
+                privateKey: options.privateKey as `0x${string}`,
+                publicKey: options.publicKey as `0x${string}`,
+                digest: options.digest as `0x${string}`,
+                authenticatorData: options.authenticatorData as `0x${string}`,
+                clientDataJson: options.clientDataJson as `0x${string}`,
+                r: BigInt(options.r),
+                s: BigInt(options.s),
+                prehash: options.prehash === '1',
+            })
+        } catch (err) {
+            if (err instanceof AccountPasskeyError) {
+                return reportError({ code: err.code, message: err.message })
+            }
+            const message = err instanceof Error ? err.message : String(err)
+            return reportError({ code: 'PASSKEY_FAILED', message })
+        }
     },
 })
 
@@ -2265,6 +2324,9 @@ tw.command(escrow)
 
 async function main(): Promise<void> {
     let exitCode = 0
+    // incur's MCP server resolves once stdio is attached. process.exit here would
+    // tear that server down before a client can list or call tools.
+    const mcp = process.argv.includes('--mcp')
 
     await tw.serve(process.argv.slice(2), {
         exit: (code) => {
@@ -2273,6 +2335,7 @@ async function main(): Promise<void> {
         },
     })
 
+    if (mcp) return
     process.exit(resolveCliProcessExitCode(exitCode))
 }
 

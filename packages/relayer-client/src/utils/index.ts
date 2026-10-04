@@ -11,7 +11,7 @@ export {
 
 export { isDelegatedAccount } from './account'
 
-export { computeKeyHash, encodeSecp256k1Key, type KeyType } from './keyHash'
+export { computeKeyHash, encodeP256PublicKey, encodeSecp256k1Key, keyTypeToEnum, type KeyType } from './keyHash'
 
 export {
     decodeIntentError,
@@ -35,4 +35,4 @@ export {
     DOMAIN_TYPEHASH_ONLY_VERIFYING_CONTRACT,
 } from './erc1271'
 
-export { wrapSignature } from './signature'
+export { encodeP256InnerSignature, encodeP256Signature, wrapSignature } from './signature'
