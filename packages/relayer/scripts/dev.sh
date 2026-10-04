@@ -178,7 +178,7 @@ build_contracts() {
   local CONTRACTS_DIR="$RELAYER_DIR/../contracts"
   if [ ! -f "$CONTRACTS_DIR/dist/index.js" ]; then
     log_info "Building @agentic-payments/contracts..."
-    (cd "$REPO_ROOT" && bunx turbo build --filter=@agentic-payments/contracts) >&2
+    (cd "$CONTRACTS_DIR" && bun run build) >&2
     log_success "Contracts built"
   fi
 }
