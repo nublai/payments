@@ -100,6 +100,9 @@ RELAYER_PID="$(bash "$ROOT/packages/relayer/scripts/dev.sh" --background)"
 PIDS+=("$RELAYER_PID")
 echo "Relayer pid $RELAYER_PID"
 
+echo "Building @agentic-payments/relayer-client..."
+(cd "$ROOT/packages/relayer-client" && bun run build)
+
 WORKDIR="$(mktemp -d /tmp/agentic-payments-e2e.XXXXXX)"
 KEYSTORE="$WORKDIR/account.json"
 RECIPIENT="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
