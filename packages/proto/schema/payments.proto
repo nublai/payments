@@ -1,5 +1,5 @@
 syntax = "proto3";
-package river;
+package payments;
 option go_package = "github.com/giuseppecrj/Agentic-Payments/protocol";
 
 // a client created with an bearer token cannot make blockchain transactions, but can add events to the river nodes
