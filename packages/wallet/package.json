@@ -15,7 +15,7 @@
     "module": "src/cli.ts",
     "scripts": {
         "clear": "rimraf dist",
-        "test": "FORCE_COLOR=0 NODE_ENV=test bun test",
+        "test": "FORCE_COLOR=0 NODE_ENV=test RELAYER_URL_PROD=http://127.0.0.1:8787 RELAYER_URL_STAGE=http://127.0.0.1:8787 bun test",
         "build": "bun run clear && bun build src/cli.ts --outfile=./dist/cli.js --target=node --format=esm -e argon2 --banner='#!/usr/bin/env node' --minify && bun build src/session-daemon.ts --outfile=./dist/session-daemon.js --target=node --format=esm -e argon2 --minify",
         "start": "node ./dist/cli.js",
         "dev": "bun ./src/cli.ts",

@@ -91,7 +91,7 @@ export interface Env {
     // If not set, quote signature validation is skipped (not recommended for production)
     QUOTE_SIGNING_SECRET?: string
 
-    // CORS allowed origins (comma-separated list, e.g., "https://towns.app,https://staging.towns.app")
+    // CORS allowed origins. Comma-separated list. Unset or "*" allows every origin.
     // If not set or set to "*", allows all origins (permissive mode)
     CORS_ALLOWED_ORIGINS?: string
 

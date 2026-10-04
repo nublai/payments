@@ -71,7 +71,7 @@ test('encryptBufferSecret round-trips binary device payloads', async () => {
         sessionPrivateKey,
         network: {
             env: 'prod',
-            relayerUrl: 'https://relayer-worker.towns.com/',
+            relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         },
@@ -110,7 +110,7 @@ test('readSessionKeystoreFile accepts agent keystores with named channel maps', 
             sessionPrivateKey,
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -175,7 +175,7 @@ test('readSessionKeystoreFile rejects corrupt agent keystores', async () => {
             sessionPrivateKey,
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -221,7 +221,7 @@ test('readSessionKeystoreFile rejects session keystores missing session address'
             sessionPrivateKey,
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -261,7 +261,7 @@ test('readSessionKeystoreFile accepts login keystores with encrypted bearer toke
             sessionPrivateKey,
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -301,7 +301,7 @@ test('readKeystoreBundle loads split keystore and active session file', async ()
             password,
             rootPrivateKey,
             env: 'stage',
-            relayerUrl: 'https://relayer-worker-stage.towns.com/',
+            relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         })
@@ -450,7 +450,7 @@ test('writes split root and session files with 0600 permissions on posix', async
             password,
             rootPrivateKey,
             env: 'prod',
-            relayerUrl: 'https://relayer-worker.towns.com/',
+            relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         })

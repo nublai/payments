@@ -46,8 +46,11 @@ bindings = [
 ]
 
 # Stage
+# No custom_domain route is committed. Wrangler does not substitute env vars into
+# custom_domain routes. After `wrangler deploy --env stage`, attach the public
+# hostname in the Cloudflare dashboard (Workers → this worker → Domains).
+# Point the wallet at that origin with RELAYER_URL_STAGE.
 [env.stage]
-routes = [{ pattern = "relayer-worker-stage.towns.com", custom_domain = true }]
 vars = { NODE_ENV = "production" }
 preview_urls = false
 
@@ -80,8 +83,8 @@ max_retries = 30
 crons = ["*/5 * * * *"]
 
 # Prod
+# Same as stage: set the hostname in the Cloudflare dashboard, then RELAYER_URL_PROD.
 [env.prod]
-routes = [{ pattern = "relayer-worker.towns.com", custom_domain = true }]
 vars = { NODE_ENV = "production" }
 preview_urls = false
 

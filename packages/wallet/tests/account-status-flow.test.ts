@@ -109,7 +109,7 @@ test('executeAccountStatus returns readiness false on blocking failures', async 
                             },
                             network: {
                                 env: 'prod',
-                                relayerUrl: 'https://relayer-worker.towns.com/',
+                                relayerUrl: 'http://127.0.0.1:8787',
                                 rpcUrl: 'https://mainnet.base.org',
                                 chainId: 8453,
                             },
@@ -408,7 +408,7 @@ test('executeAccountStatus supports legacy polygon USDC.e override', async () =>
                             },
                             network: {
                                 env: 'prod',
-                                relayerUrl: 'https://relayer-worker.towns.com/',
+                                relayerUrl: 'http://127.0.0.1:8787',
                                 rpcUrl: 'https://polygon.drpc.org',
                                 chainId: 137,
                             },

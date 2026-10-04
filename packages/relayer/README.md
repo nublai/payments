@@ -164,6 +164,8 @@ wrangler deploy --env stage
 wrangler deploy --env prod
 ```
 
+`wrangler.toml` has no custom domain. After deploy, attach the hostname in the Cloudflare dashboard (Workers → this worker → Domains). Set the wallet `RELAYER_URL_STAGE` or `RELAYER_URL_PROD` to `https://<that-host>`.
+
 ### Updating
 
 ```bash
@@ -188,5 +190,11 @@ wrangler tail --env prod
 
 ## Endpoints
 
-- stage: https://relayer-worker-stage.towns.com/
-- prod: https://relayer-worker.towns.com/
+Local `wrangler dev` listens on `http://127.0.0.1:8787`.
+
+`wrangler deploy --env stage` and `wrangler deploy --env prod` do not attach a hostname. `wrangler.toml` cannot take a custom domain from an env var, so add the domain in the Cloudflare dashboard (Workers → this worker → Domains) after deploy. Set the wallet to that origin:
+
+- `RELAYER_URL_STAGE` for stage
+- `RELAYER_URL_PROD` for prod
+
+Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, and `CONTEXT` (`stage` or `prod`). Optional: `CORS_ALLOWED_ORIGINS`.

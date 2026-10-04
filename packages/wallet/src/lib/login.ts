@@ -15,10 +15,16 @@ import {
 import { isMissingFileError } from './fs-utils'
 import { getChainNameByChainId, resolveNetworkConfig, type EnvName } from './network-config'
 
-export const AUTH_URLS: Record<EnvName, string> = {
-    dev: 'http://localhost:3000/cli/auth?flow=wallet',
-    stage: 'https://rodeo.staging.towns.com/cli/auth?flow=wallet',
-    prod: 'https://rodeo.towns.com/cli/auth?flow=wallet',
+/** Browser login URL. Unset means `tw login` cannot open a page. Local payments do not use this. */
+export function getAuthUrl(env: EnvName): string | undefined {
+    const key = env === 'prod' ? 'AUTH_URL_PROD' : env === 'stage' ? 'AUTH_URL_STAGE' : 'AUTH_URL_DEV'
+    const value = process.env[key]?.trim()
+    return value || undefined
+}
+
+export function authUrlUnsetMessage(env: EnvName): string {
+    const key = env === 'prod' ? 'AUTH_URL_PROD' : env === 'stage' ? 'AUTH_URL_STAGE' : 'AUTH_URL_DEV'
+    return `Login URL is unset. Set ${key} to the browser auth URL for the ${env} environment.`
 }
 
 type LoginErrorCode =

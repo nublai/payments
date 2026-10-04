@@ -9,13 +9,13 @@ This directory contains the deployment scripts for the Account system.
 anvil
 
 # Deploy all contracts to local anvil
-./scripts/deploy.sh local
+./scripts/sh/deploy.sh local
 
 # Deploy to dev (Base Sepolia) with keystore account
-./scripts/deploy.sh dev --account deployer
+./scripts/sh/deploy.sh dev --account deployer
 
 # Deploy specific contracts
-./scripts/deploy.sh local --contracts SimpleFunder,SimpleSettler
+./scripts/sh/deploy.sh local --contracts SimpleFunder,SimpleSettler
 ```
 
 ## Scripts Overview
@@ -43,7 +43,7 @@ The bash deployment script is a powerful, chain-agnostic deployment tool support
 ### Usage
 
 ```
-Usage: ./scripts/deploy.sh [environment] [options]
+Usage: ./scripts/sh/deploy.sh [environment] [options]
 
 Environments (shortcuts):
   local          Deploy to local Anvil (chain 31337)
@@ -95,37 +95,37 @@ Other:
 
 ```bash
 # Local anvil
-./scripts/deploy.sh local
+./scripts/sh/deploy.sh local
 
 # Base Sepolia (dev) with keystore
-./scripts/deploy.sh dev --account deployer
+./scripts/sh/deploy.sh dev --account deployer
 
 # Base Mainnet (stage) with Ledger and verification
-./scripts/deploy.sh stage --ledger "m/44'/60'/0'/0/0" --verify
+./scripts/sh/deploy.sh stage --ledger "m/44'/60'/0'/0/0" --verify
 
 # Deploy to Optimism
-./scripts/deploy.sh --chain 10 --account deployer
+./scripts/sh/deploy.sh --chain 10 --account deployer
 
 # Deploy to multiple chains at once
-./scripts/deploy.sh --chain 10,42161 --account deployer
+./scripts/sh/deploy.sh --chain 10,42161 --account deployer
 
 # Selective deployment
-./scripts/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
 
 # Deploy without relayer setup
-./scripts/deploy.sh dev --skip-relayer --account deployer
+./scripts/sh/deploy.sh dev --skip-relayer --account deployer
 
 # Dry run to test deployment
-./scripts/deploy.sh prod --dry-run --account deployer
+./scripts/sh/deploy.sh prod --dry-run --account deployer
 
 # Resume a failed deployment
-./scripts/deploy.sh prod --resume --account deployer
+./scripts/sh/deploy.sh prod --resume --account deployer
 
 # Deploy with custom gas settings on congested network
-./scripts/deploy.sh --chain 137 --gas-price 100 --priority-fee 30 --account deployer
+./scripts/sh/deploy.sh --chain 137 --gas-price 100 --priority-fee 30 --account deployer
 
 # Deploy with custom funder/owner addresses
-./scripts/deploy.sh --chain 8453 --funder 0x123... --owner 0x456... --account deployer
+./scripts/sh/deploy.sh --chain 8453 --funder 0x123... --owner 0x456... --account deployer
 ```
 
 ### Chain-Agnostic Deployment
@@ -134,16 +134,16 @@ Deploy to any EVM chain using `--chain`:
 
 ```bash
 # Optimism Mainnet (chain 10)
-./scripts/deploy.sh --chain 10 --account deployer
+./scripts/sh/deploy.sh --chain 10 --account deployer
 
 # Arbitrum One (chain 42161)
-./scripts/deploy.sh --chain 42161 --account deployer
+./scripts/sh/deploy.sh --chain 42161 --account deployer
 
 # Polygon (chain 137)
-./scripts/deploy.sh --chain 137 --account deployer
+./scripts/sh/deploy.sh --chain 137 --account deployer
 
 # Custom chain with explicit RPC
-./scripts/deploy.sh --chain 999 --rpc https://rpc.example.com --account deployer
+./scripts/sh/deploy.sh --chain 999 --rpc https://rpc.example.com --account deployer
 ```
 
 **Built-in RPC defaults:**
@@ -160,10 +160,10 @@ Deploy to multiple chains in a single command:
 
 ```bash
 # Deploy Orchestrator to Optimism and Arbitrum
-./scripts/deploy.sh --chain 10,42161 --contracts Orchestrator --account deployer
+./scripts/sh/deploy.sh --chain 10,42161 --contracts Orchestrator --account deployer
 
 # Deploy full system to multiple L2s
-./scripts/deploy.sh --chain 10,42161,137 --account deployer --verify
+./scripts/sh/deploy.sh --chain 10,42161,137 --account deployer --verify
 ```
 
 ### Selective Deployment
@@ -172,16 +172,16 @@ Deploy specific contracts only:
 
 ```bash
 # Single contract
-./scripts/deploy.sh local --contracts Orchestrator
+./scripts/sh/deploy.sh local --contracts Orchestrator
 
 # Multiple contracts
-./scripts/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
 
 # Contract with dependencies (Orchestrator auto-deployed if missing)
-./scripts/deploy.sh local --contracts Account
+./scripts/sh/deploy.sh local --contracts Account
 
 # Deploy SimpleSettler to Optimism
-./scripts/deploy.sh --chain 10 --contracts SimpleSettler --account deployer
+./scripts/sh/deploy.sh --chain 10 --contracts SimpleSettler --account deployer
 ```
 
 **Supported contract names:**
@@ -200,10 +200,10 @@ If a deployment fails partway through, resume from where it left off:
 
 ```bash
 # Resume prod deployment
-./scripts/deploy.sh prod --resume --account deployer
+./scripts/sh/deploy.sh prod --resume --account deployer
 
 # Resume with same options as original deployment
-./scripts/deploy.sh --chain 10 --resume --account deployer
+./scripts/sh/deploy.sh --chain 10 --resume --account deployer
 ```
 
 The `--resume` flag skips contracts that are already deployed at their predicted CREATE2 addresses.
@@ -214,10 +214,10 @@ On congested networks, specify gas settings:
 
 ```bash
 # High gas price for fast confirmation
-./scripts/deploy.sh --chain 137 --gas-price 150 --account deployer
+./scripts/sh/deploy.sh --chain 137 --gas-price 150 --account deployer
 
 # EIP-1559 with priority fee
-./scripts/deploy.sh prod --gas-price 50 --priority-fee 2 --account deployer --verify
+./scripts/sh/deploy.sh prod --gas-price 50 --priority-fee 2 --account deployer --verify
 ```
 
 ### Custom Addresses
@@ -226,13 +226,13 @@ Override default funder/owner addresses:
 
 ```bash
 # Custom funder for SimpleFunder
-./scripts/deploy.sh stage --funder 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb --account deployer
+./scripts/sh/deploy.sh stage --funder 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb --account deployer
 
 # Custom owner for all contracts
-./scripts/deploy.sh prod --owner 0x123... --account deployer
+./scripts/sh/deploy.sh prod --owner 0x123... --account deployer
 
 # Both custom addresses
-./scripts/deploy.sh --chain 10 --funder 0x123... --owner 0x456... --account deployer
+./scripts/sh/deploy.sh --chain 10 --funder 0x123... --owner 0x456... --account deployer
 ```
 
 ### Skip Relayer Setup
@@ -241,10 +241,10 @@ Deploy contracts without setting up relayers:
 
 ```bash
 # Deploy without relayer configuration
-./scripts/deploy.sh dev --skip-relayer --account deployer
+./scripts/sh/deploy.sh dev --skip-relayer --account deployer
 
 # Useful when relayers will be configured later or manually
-./scripts/deploy.sh prod --skip-relayer --contracts SimpleFunder --account deployer
+./scripts/sh/deploy.sh prod --skip-relayer --contracts SimpleFunder --account deployer
 ```
 
 ## Deployment Phases
@@ -365,19 +365,19 @@ All configuration can be overridden via flags:
 
 ```bash
 # Override funder address
-./scripts/deploy.sh dev --funder 0x123... --account deployer
+./scripts/sh/deploy.sh dev --funder 0x123... --account deployer
 
 # Override owner address
-./scripts/deploy.sh prod --owner 0x456... --account deployer
+./scripts/sh/deploy.sh prod --owner 0x456... --account deployer
 
 # Override relayer config
-./scripts/deploy.sh --chain 10 --relayer-mnemonic "your mnemonic" --relayer-count 5 --account deployer
+./scripts/sh/deploy.sh --chain 10 --relayer-mnemonic "your mnemonic" --relayer-count 5 --account deployer
 
 # Override RPC URL
-./scripts/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
+./scripts/sh/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
 
 # Override Etherscan key
-./scripts/deploy.sh prod --verify --etherscan-key YOUR_KEY --account deployer
+./scripts/sh/deploy.sh prod --verify --etherscan-key YOUR_KEY --account deployer
 ```
 
 ### Priority Order
@@ -409,22 +409,22 @@ The deployment context (directory name) is determined by:
 Examples:
 ```
 # Environment shortcuts
-./scripts/deploy.sh local
+./scripts/sh/deploy.sh local
 → deployments/envs/local/31337/orchestrator.json
 
-./scripts/deploy.sh dev --account deployer
+./scripts/sh/deploy.sh dev --account deployer
 → deployments/envs/dev/84532/simpleFunder.json
 
 # Chain ID (auto-context)
-./scripts/deploy.sh --chain 10 --account deployer
+./scripts/sh/deploy.sh --chain 10 --account deployer
 → deployments/envs/chain_10/10/orchestrator.json
 
 # Custom context
-./scripts/deploy.sh --chain 10 --context optimism --account deployer
+./scripts/sh/deploy.sh --chain 10 --context optimism --account deployer
 → deployments/envs/optimism/10/orchestrator.json
 
 # Multi-chain deployment
-./scripts/deploy.sh --chain 10,42161 --context l2 --account deployer
+./scripts/sh/deploy.sh --chain 10,42161 --context l2 --account deployer
 → deployments/envs/l2/10/orchestrator.json
 → deployments/envs/l2/42161/orchestrator.json
 ```
@@ -513,7 +513,7 @@ For prod:
 
 Alternatively, skip relayer setup:
 ```bash
-./scripts/deploy.sh dev --skip-relayer --account deployer
+./scripts/sh/deploy.sh dev --skip-relayer --account deployer
 ```
 
 ### "RPC URL not found for chain"
@@ -521,10 +521,10 @@ For custom chains, provide RPC URL via:
 ```bash
 # Environment variable
 export RPC_999=https://custom-rpc.com
-./scripts/deploy.sh --chain 999 --account deployer
+./scripts/sh/deploy.sh --chain 999 --account deployer
 
 # Or command-line flag
-./scripts/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
+./scripts/sh/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
 ```
 
 ### Contract already deployed
@@ -533,13 +533,13 @@ CREATE2 ensures idempotency - if a contract exists at its predicted address, it'
 To redeploy anyway, manually remove the deployment JSON file:
 ```bash
 rm deployments/envs/dev/84532/orchestrator.json
-./scripts/deploy.sh dev --contracts Orchestrator --account deployer
+./scripts/sh/deploy.sh dev --contracts Orchestrator --account deployer
 ```
 
 ### Deployment failed partway through
 Use `--resume` to skip already-deployed contracts:
 ```bash
-./scripts/deploy.sh prod --resume --account deployer
+./scripts/sh/deploy.sh prod --resume --account deployer
 ```
 
 This is especially useful after network issues or gas price spikes.
@@ -548,20 +548,20 @@ This is especially useful after network issues or gas price spikes.
 On congested networks, specify higher gas settings:
 ```bash
 # Legacy gas pricing
-./scripts/deploy.sh --chain 137 --gas-price 150 --account deployer
+./scripts/sh/deploy.sh --chain 137 --gas-price 150 --account deployer
 
 # EIP-1559 pricing
-./scripts/deploy.sh prod --gas-price 50 --priority-fee 2 --account deployer
+./scripts/sh/deploy.sh prod --gas-price 50 --priority-fee 2 --account deployer
 ```
 
 ### Verification fails
 Ensure `ETHERSCAN_API_KEY` is set and the chain is supported by Etherscan/Basescan:
 ```bash
 export ETHERSCAN_API_KEY="your_api_key"
-./scripts/deploy.sh dev --verify --account deployer
+./scripts/sh/deploy.sh dev --verify --account deployer
 
 # Or override via flag
-./scripts/deploy.sh dev --verify --etherscan-key YOUR_KEY --account deployer
+./scripts/sh/deploy.sh dev --verify --etherscan-key YOUR_KEY --account deployer
 ```
 
 Supported chains for verification:
@@ -592,10 +592,10 @@ For prod with Ledger:
 Test deployment without broadcasting transactions:
 ```bash
 # Test dev deployment
-./scripts/deploy.sh dev --dry-run --account deployer
+./scripts/sh/deploy.sh dev --dry-run --account deployer
 
 # Test multi-chain deployment
-./scripts/deploy.sh --chain 10,42161 --dry-run --account deployer
+./scripts/sh/deploy.sh --chain 10,42161 --dry-run --account deployer
 ```
 
 ### Multi-chain deployment partially failed
@@ -605,10 +605,10 @@ When deploying to multiple chains, if one fails:
 ```bash
 # Original: --chain 10,42161,137
 # Chain 137 failed, so:
-./scripts/deploy.sh --chain 137 --account deployer
+./scripts/sh/deploy.sh --chain 137 --account deployer
 ```
 
 Or use `--resume` to automatically skip succeeded chains:
 ```bash
-./scripts/deploy.sh --chain 10,42161,137 --resume --account deployer
+./scripts/sh/deploy.sh --chain 10,42161,137 --resume --account deployer
 ```

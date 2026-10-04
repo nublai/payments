@@ -77,50 +77,33 @@ Each chain section includes:
 
 ## Deployment
 
-### First-time Setup
+From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` chooses the chain and RPC.
 
-1. Configure environment:
+| Command | Chain | Context | RPC |
+| --- | --- | --- | --- |
+| `./scripts/sh/deploy.sh local` | 31337 and 41337 | `local` | `http://localhost:8545` and `http://localhost:8546` |
+| `./scripts/sh/deploy.sh dev` | Base Sepolia 84532 | `dev` | `RPC_84532`, or `https://sepolia.base.org` if unset |
+| `./scripts/sh/deploy.sh stage` | Base 8453 | `stage` | `RPC_8453`, or `https://mainnet.base.org` if unset |
+| `./scripts/sh/deploy.sh prod` | Base 8453 | `prod` | `RPC_8453`, or `https://mainnet.base.org` if unset |
+
+`dev`, `stage`, and `prod` need one of `--account`, `--ledger`, `--private-key`, or `--sender`. Local uses the Anvil deployer key. The same script is `bun run deploy:local`, `deploy:dev`, `deploy:stage`, and `deploy:prod`.
+
+`--rpc` overrides the URL for every chain in that run. `--chain` overrides the shortcut's chain ids. `--context` overrides the deployment context. `--contracts` limits which contracts deploy. Other flags the script accepts: `--verify`, `--dry-run`, `--resume`, `--skip-relayer`, `--funder`, `--owner`, `--relayer-mnemonic`, `--relayer-count`. Run `./scripts/sh/deploy.sh --help` for the full list.
+
 ```bash
-cp .env.example .env
-# Edit .env with your RPC URLs and private keys
+./scripts/sh/deploy.sh local
+./scripts/sh/deploy.sh dev --account deployer
+RPC_8453=https://mainnet.base.org ./scripts/sh/deploy.sh prod --account deployer
+./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
 ```
 
-2. Configure deployment in `deployments/config.toml`:
-   - Set constructor arguments per chain
-   - Configure relayer mnemonic and count
+Then generate TypeScript ABIs:
 
-3. Deploy:
-```bash
-# Local development
-make deploy-local-unified
-
-# Dev (Base Sepolia)
-make deploy-dev-unified
-
-# Production (Base Mainnet)
-make deploy-unified CHAINS=8453 CONTEXT=prod
-```
-
-4. Generate TypeScript ABIs:
 ```bash
 bun run build
 ```
 
-### Updating Contracts
-
-```bash
-make deploy-dev-unified                     # Redeploy to dev
-make deploy-unified CHAINS=8453 CONTEXT=prod  # Redeploy to prod
-```
-
-### Selective Deployment
-
-Deploy specific contracts only:
-```bash
-make deploy-unified CHAINS=84532 CONTRACTS=SimpleFunder,SimpleSettler
-```
-
-### Deployment Artifacts
+Artifacts:
 
 - `deployments/envs/<context>/<chainId>/` - Contract addresses
 - `broadcast/` - Transaction records

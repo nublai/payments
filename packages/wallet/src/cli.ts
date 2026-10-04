@@ -56,7 +56,7 @@ import { executePermissionsList } from './lib/permissions-list'
 import { executePermissionsRevoke } from './lib/permissions-revoke'
 import { executePermissionsShow } from './lib/permissions-show'
 import { parseSpendLimit } from './lib/session-common'
-import { AUTH_URLS, executeLogin, executeLogout, LoginError } from './lib/login'
+import { authUrlUnsetMessage, executeLogin, executeLogout, getAuthUrl, LoginError } from './lib/login'
 import { SessionDaemonClient } from './lib/session-daemon-client'
 import { normalizeChainName, type ChainName } from './lib/network-config'
 import {
@@ -2185,8 +2185,12 @@ tw.command('login', {
                             'Token required in non-interactive mode. Use --token-stdin to pipe the login token.',
                         )
                     }
+                    const authUrl = getAuthUrl(options.env)
+                    if (!authUrl) {
+                        throw new Error(authUrlUnsetMessage(options.env))
+                    }
                     process.stderr.write(
-                        `Open this URL to authorize your session:\n  ${AUTH_URLS[options.env]}\n`,
+                        `Open this URL to authorize your session:\n  ${authUrl}\n`,
                     )
                     return handlePromptCancellation(readlineExistingPassword('Paste login token:'))
                 })())

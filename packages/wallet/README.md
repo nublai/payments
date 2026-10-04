@@ -27,6 +27,8 @@ tw send 10 vitalik.eth
 
 No custody service. No API key. Everything runs locally with encrypted keystores.
 
+Relayer and login hosts are environment variables, not source constants. `RELAYER_URL_DEV` overrides local `http://127.0.0.1:8787`. `RELAYER_URL_STAGE` and `RELAYER_URL_PROD` are required for those environments. `tw login` reads `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD` and errors when the one for the selected env is unset. Local sends do not use login.
+
 ---
 
 ## How It Works

@@ -21,7 +21,7 @@ function makeBaseSessionKeystore(): RelayerSessionKeystoreV2 {
         checkpoint: 'complete',
         network: {
             env: 'prod',
-            relayerUrl: 'https://relayer-worker.towns.com/',
+            relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         },
@@ -90,7 +90,7 @@ test('executeSessionUnlock --device sends encryption device + kind to daemon', a
             checkpoint: 'complete',
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -159,7 +159,7 @@ test('executeSessionUnlock --device rejects non-agent sessions', async () => {
             checkpoint: 'complete',
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },

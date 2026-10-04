@@ -51,5 +51,5 @@ TARGET_SIGNER_BALANCE=0.01
 # INTENT_EXPIRY_BUFFER_SECONDS=30
 # QUOTE_SIGNING_SECRET=your-secret-for-quote-signing
 
-# CORS (optional)
-# CORS_ALLOWED_ORIGINS=https://towns.app,https://staging.towns.app
+# CORS (optional). Comma-separated origins. Unset or "*" allows every origin.
+# CORS_ALLOWED_ORIGINS=

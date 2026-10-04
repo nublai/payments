@@ -37,7 +37,7 @@ const app = new Hono<{ Bindings: Env }>()
 
 // Configurable CORS via CORS_ALLOWED_ORIGINS env variable
 // If not set or set to "*", allows all origins (permissive mode for backward compatibility)
-// Set to comma-separated list of origins to restrict (e.g., "https://towns.app,https://staging.towns.app")
+// Set to a comma-separated origin list to restrict. Unset or "*" allows every origin.
 app.use('*', async (c, next) => {
     const allowedOrigins = c.env.CORS_ALLOWED_ORIGINS
 

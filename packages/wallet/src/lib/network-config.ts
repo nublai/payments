@@ -27,11 +27,17 @@ type CliChainConfig = {
 
 export const ETH_ADDRESS = zeroAddress
 
-const envRelayerUrls: Record<EnvName, string> = {
-    prod: 'https://relayer-worker.towns.com/',
-    stage: 'https://relayer-worker-stage.towns.com/',
-    dev: 'http://127.0.0.1:8787',
+const DEV_RELAYER_URL_DEFAULT = 'http://127.0.0.1:8787'
+
+function readEnv(name: string): string | undefined {
+    const value = process.env[name]?.trim()
+    return value ? value : undefined
 }
+
+/**
+ * Dev defaults to the local wrangler relayer. Prod and stage have no built-in host:
+ * set RELAYER_URL_PROD or RELAYER_URL_STAGE. RELAYER_URL_DEV overrides the dev default.
+ */
 
 const chainConfig: Record<ChainName, CliChainConfig> = {
     base: {
@@ -75,7 +81,17 @@ export function getChainNameByChainId(chainId: number): ChainName | undefined {
 }
 
 export function getEnvRelayerUrl(env: EnvName): string {
-    return envRelayerUrls[env]
+    if (env === 'dev') {
+        return readEnv('RELAYER_URL_DEV') ?? DEV_RELAYER_URL_DEFAULT
+    }
+    const key = env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE'
+    const value = readEnv(key)
+    if (!value) {
+        throw new Error(
+            `${key} is not set. Set it to the relayer base URL for the ${env} environment.`,
+        )
+    }
+    return value
 }
 
 export function getChainConfig(chain: ChainName): CliChainConfig {

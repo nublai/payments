@@ -12,9 +12,11 @@ import {
     selectDefaultChain,
 } from '../src/lib/network-config'
 
-test('resolveNetworkConfig returns expected defaults for prod/base', () => {
+test('resolveNetworkConfig returns chain defaults for prod/base and the relayer from RELAYER_URL_PROD', () => {
+    const prodUrl = process.env.RELAYER_URL_PROD
+    expect(prodUrl).toBeTruthy()
     const network = resolveNetworkConfig('prod', 'base')
-    expect(network.relayerUrl).toBe('https://relayer-worker.towns.com/')
+    expect(network.relayerUrl).toBe(prodUrl)
     expect(network.rpcUrl).toBe('https://mainnet.base.org')
     expect(network.chainId).toBe(8453)
 })
@@ -70,8 +72,53 @@ test('normalizeTokenSymbol is case insensitive for supported swap tokens', () =>
     expect(() => normalizeTokenSymbol('USDC.e')).toThrow('Unsupported token')
 })
 
-test('getEnvRelayerUrl returns stable endpoints', () => {
-    expect(getEnvRelayerUrl('prod')).toBe('https://relayer-worker.towns.com/')
-    expect(getEnvRelayerUrl('stage')).toBe('https://relayer-worker-stage.towns.com/')
-    expect(getEnvRelayerUrl('dev')).toBe('http://127.0.0.1:8787')
+test('getEnvRelayerUrl reads prod and stage from env and keeps the local dev default', () => {
+    expect(getEnvRelayerUrl('prod')).toBe(process.env.RELAYER_URL_PROD)
+    expect(getEnvRelayerUrl('stage')).toBe(process.env.RELAYER_URL_STAGE)
+    const previous = process.env.RELAYER_URL_DEV
+    delete process.env.RELAYER_URL_DEV
+    try {
+        expect(getEnvRelayerUrl('dev')).toBe('http://127.0.0.1:8787')
+        process.env.RELAYER_URL_DEV = 'http://127.0.0.1:9797'
+        expect(getEnvRelayerUrl('dev')).toBe('http://127.0.0.1:9797')
+    } finally {
+        if (previous === undefined) delete process.env.RELAYER_URL_DEV
+        else process.env.RELAYER_URL_DEV = previous
+    }
+})
+
+test('getEnvRelayerUrl throws when prod or stage is unset', () => {
+    const source = new URL('../src/lib/network-config.ts', import.meta.url).pathname
+    const script = `
+        const { getEnvRelayerUrl } = await import(${JSON.stringify(source)})
+        for (const [env, key] of [['prod', 'RELAYER_URL_PROD'], ['stage', 'RELAYER_URL_STAGE']]) {
+            let threw = false
+            try { getEnvRelayerUrl(env) } catch (error) {
+                threw = true
+                if (!String(error && error.message).includes(key)) {
+                    throw new Error('missing ' + key + ' in ' + error)
+                }
+            }
+            if (!threw) throw new Error(env + ' did not throw')
+        }
+        process.env.RELAYER_URL_PROD = 'https://relayer.example/prod'
+        process.env.RELAYER_URL_STAGE = 'https://relayer.example/stage'
+        if (getEnvRelayerUrl('prod') !== 'https://relayer.example/prod') throw new Error('prod override')
+        if (getEnvRelayerUrl('stage') !== 'https://relayer.example/stage') throw new Error('stage override')
+        if (getEnvRelayerUrl('dev') !== 'http://127.0.0.1:8787') throw new Error('dev default')
+    `
+    const result = Bun.spawnSync({
+        cmd: ['bun', '-e', script],
+        env: {
+            ...process.env,
+            RELAYER_URL_PROD: '',
+            RELAYER_URL_STAGE: '',
+            RELAYER_URL_DEV: '',
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+    })
+    if (result.exitCode !== 0) {
+        throw new Error(result.stderr.toString() || result.stdout.toString())
+    }
 })

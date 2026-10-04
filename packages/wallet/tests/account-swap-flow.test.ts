@@ -27,7 +27,7 @@ function makeKeystoreBundle() {
         session: {
             network: {
                 env: 'prod' as const,
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -43,7 +43,7 @@ function makeSessionKeystore(overrides?: Record<string, unknown>) {
     return {
         network: {
             env: 'prod' as const,
-            relayerUrl: 'https://relayer-worker.towns.com/',
+            relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         },
@@ -1174,7 +1174,7 @@ test('executeAccountSwap falls back to session.json when the root keystore is mi
             makeSessionKeystore({
                 network: {
                     env: 'prod',
-                    relayerUrl: 'https://relayer-worker.towns.com/',
+                    relayerUrl: 'http://127.0.0.1:8787',
                     rpcUrl: 'https://mainnet.base.org',
                     chainId: 8453,
                 },
@@ -1229,7 +1229,7 @@ test('executeAccountSwap falls back to session.json for login-profile root-key e
         makeSessionKeystore({
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer-worker.towns.com/',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -1301,7 +1301,7 @@ test('executeAccountSwap validates named session network against requested env a
                     makeSessionKeystore({
                         network: {
                             env: 'stage',
-                            relayerUrl: 'https://relayer-worker-stage.towns.com/',
+                            relayerUrl: 'http://127.0.0.1:8787',
                             rpcUrl: 'https://mainnet.base.org',
                             chainId: 8453,
                         },
@@ -1333,7 +1333,7 @@ test('executeAccountSwap rejects session files with a mismatched chainId', async
                     makeSessionKeystore({
                         network: {
                             env: 'prod',
-                            relayerUrl: 'https://relayer-worker.towns.com/',
+                            relayerUrl: 'http://127.0.0.1:8787',
                             rpcUrl: 'https://polygon-rpc.com',
                             chainId: 137,
                         },

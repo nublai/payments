@@ -21,8 +21,8 @@
  *   - All tests run including ERC20
  *
  * - Remote mode: Run against a deployed relayer
- *   - Example for Base Sepolia:
- *     RELAYER_URL=https://relayer-worker-stage.towns.com \
+ *   - RELAYER_URL is that worker's origin (same value as RELAYER_URL_STAGE or RELAYER_URL_PROD)
+ *     RELAYER_URL set to the deployed worker origin \
  *     RPC_URL=https://sepolia.base.org \
  *     TEST_CHAIN_ID=84532 \
  *     bun test test/scenarios/01-account-delegation.test.ts

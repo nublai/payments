@@ -251,7 +251,7 @@ Consider restricting origins to known clients:
 app.use(
   "*",
   cors({
-    origin: ["https://towns.app", "https://staging.towns.app"],
+    origin: ["https://app.example", "https://staging.example"],
   }),
 );
 ```

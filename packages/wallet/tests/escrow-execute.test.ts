@@ -46,7 +46,7 @@ test('loadEscrowSessionAndSender falls back to login session profile when root k
             sessionPrivateKey: generatePrivateKey(),
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer.towns.com',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },
@@ -88,7 +88,7 @@ test('loadEscrowSessionAndSender falls back to session-only profile when root ke
             sessionPrivateKey: generatePrivateKey(),
             network: {
                 env: 'prod',
-                relayerUrl: 'https://relayer.towns.com',
+                relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'https://mainnet.base.org',
                 chainId: 8453,
             },

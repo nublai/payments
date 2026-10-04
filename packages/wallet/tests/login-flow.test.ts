@@ -51,7 +51,7 @@ function makeRelayerSessionKeystore(): RelayerSessionKeystoreV2 {
         checkpoint: 'authorized',
         network: {
             env: 'prod',
-            relayerUrl: 'https://relayer-worker.towns.com/',
+            relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         },

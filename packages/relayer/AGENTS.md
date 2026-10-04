@@ -270,7 +270,7 @@ bun run --cwd packages/relayer-client test:remote
 
 Required environment variables for remote mode:
 
-- `RELAYER_URL` (for example, `https://relayer-worker-stage.towns.com`)
+- `RELAYER_URL` (the deployed worker origin; same value as `RELAYER_URL_STAGE` or `RELAYER_URL_PROD`)
 - `RPC_URL` (for example, `https://sepolia.base.org`)
 - `TEST_CHAIN_ID` (for example, `84532` for Base Sepolia)
 
@@ -281,7 +281,7 @@ Optional (enables remote top-up helpers in tests):
 Example:
 
 ```bash
-RELAYER_URL=https://relayer-worker-stage.towns.com \
+RELAYER_URL="$RELAYER_URL_STAGE" \
 RPC_URL=https://sepolia.base.org \
 TEST_CHAIN_ID=84532 \
 REMOTE_PRIVATE_KEY=0x... \

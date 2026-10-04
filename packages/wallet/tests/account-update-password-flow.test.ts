@@ -395,7 +395,7 @@ test('executeAccountUpdatePassword attempts rollback on write failure', async ()
                         password: 'old',
                         rootPrivateKey: generatePrivateKey(),
                         env: 'prod',
-                        relayerUrl: 'https://relayer-worker.towns.com/',
+                        relayerUrl: 'http://127.0.0.1:8787',
                         rpcUrl: 'https://mainnet.base.org',
                         chainId: 8453,
                     })
@@ -420,7 +420,7 @@ test('executeAccountUpdatePassword attempts rollback on write failure', async ()
                         sessionPrivateKey: generatePrivateKey(),
                         network: {
                             env: 'prod',
-                            relayerUrl: 'https://relayer-worker.towns.com/',
+                            relayerUrl: 'http://127.0.0.1:8787',
                             rpcUrl: 'https://mainnet.base.org',
                             chainId: 8453,
                         },
