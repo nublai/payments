@@ -49,19 +49,7 @@ Set in `.env` (copy from `.env.example`):
 
 ### Deployment Config
 
-Chain-specific settings live in `deployments/config.toml`:
-
-| Context | Chain | Description |
-|---------|-------|-------------|
-| `local` | anvil (31337) | Local Anvil development |
-| `dev` | base-sepolia (84532) | Base Sepolia testnet |
-| `stage` | base (8453) | Base Mainnet |
-| `prod` | base (8453) | Base Mainnet |
-
-Each chain section includes:
-- RPC endpoint URL
-- Constructor arguments for contracts
-- Relayer mnemonic and count
+There is no `deployments/config.toml`. Committed address snapshots are `deployments/config/deployments.json` (top-level keys `alpha`, `beta`, `gamma`, `delta`, `omega`). `./scripts/sh/deploy.sh` does not read that file. Chain ids and RPCs come from the script: local Anvil defaults, `RPC_84532` for dev, `RPC_8453` for stage and prod. Relayer mnemonic and funder addresses come from flags or env (`DEV_RELAYER_MNEMONIC`, `STAGE_RELAYER_MNEMONIC`, `PROD_RELAYER_MNEMONIC`, and the matching `*_FUNDER` / `*_DEPLOYER_ADDRESS` vars).
 
 ## Architecture
 
@@ -86,9 +74,9 @@ From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` choose
 | `./scripts/sh/deploy.sh stage` | Base 8453 | `stage` | `RPC_8453`, or `https://mainnet.base.org` if unset |
 | `./scripts/sh/deploy.sh prod` | Base 8453 | `prod` | `RPC_8453`, or `https://mainnet.base.org` if unset |
 
-`dev`, `stage`, and `prod` need one of `--account`, `--ledger`, `--private-key`, or `--sender`. Local uses the Anvil deployer key. The same script is `bun run deploy:local`, `deploy:dev`, `deploy:stage`, and `deploy:prod`.
+`dev`, `stage`, and `prod` need `--account`, `--ledger`, or `--private-key`. `--sender` only adds Forge's `--sender` after one of those is set; it is not enough on its own. Local uses the Anvil deployer key. The same script is `bun run deploy:local`, `deploy:dev`, `deploy:stage`, and `deploy:prod`.
 
-`--rpc` overrides the URL for every chain in that run. `--chain` overrides the shortcut's chain ids. `--context` overrides the deployment context. `--contracts` limits which contracts deploy. Other flags the script accepts: `--verify`, `--dry-run`, `--resume`, `--skip-relayer`, `--funder`, `--owner`, `--relayer-mnemonic`, `--relayer-count`. Run `./scripts/sh/deploy.sh --help` for the full list.
+Flags the script accepts: `--chain`, `--rpc`, `--contracts`, `--context`, `--account`, `--password`, `--ledger`, `--private-key`, `--sender`, `--funder`, `--owner`, `--relayer-mnemonic`, `--relayer-count`, `--skip-relayer`, `--lz-endpoint`, `--lz-signer`, `--gas-price`, `--priority-fee`, `--verify`, `--etherscan-key`, `--dry-run`, `--resume`, `--help`. Run `./scripts/sh/deploy.sh --help` for the same list.
 
 ```bash
 ./scripts/sh/deploy.sh local

@@ -25,15 +25,15 @@ No critical or high-severity vulnerabilities were identified. The codebase demon
 
 ## Findings
 
-### F-1: validatePaymentAmount Function Never Called
+### F-1: validatePaymentAmount Was Not Called
 
 **Severity**: Low
 **Status**: Fixed
-**Location**: `src/services/fees.ts:141-143`, `src/rpc/methods/prepareCalls.ts`
+**Location**: `src/services/fees.ts`, `src/rpc/methods/shared/calls-helpers.ts`
 
 #### Description
 
-The `validatePaymentAmount` function exists but is never invoked anywhere in the codebase:
+The `validatePaymentAmount` function used to be unused. It is now called from `src/rpc/methods/shared/calls-helpers.ts` when a signed quote has a non-zero payer, before that prepared call is accepted:
 
 ```typescript
 // src/services/fees.ts:141-143

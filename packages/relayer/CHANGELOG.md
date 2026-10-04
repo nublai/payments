@@ -88,7 +88,7 @@
 
 ### Patch Changes
 
-- Updated dependencies [[`8594d4c`](https://github.com/HereNotThere/chat/commit/8594d4c5956b9a8c9bc5ec4dc6717b5a00f1431f)]:
+- Updated dependencies [`8594d4c`]:
   - @agentic-payments/contracts@3.4.0
 
 ## 3.3.1
@@ -102,11 +102,11 @@
 
 ### Minor Changes
 
-- [#670](https://github.com/HereNotThere/chat/pull/670) [`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
+- #670 `03ff3f0` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
 
 ### Patch Changes
 
-- Updated dependencies [[`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08)]:
+- Updated dependencies [`03ff3f0`]:
   - @agentic-payments/deployments@3.3.0
 
 ## 3.2.0
@@ -148,7 +148,7 @@
 
 ### Patch Changes
 
-- [#443](https://github.com/HereNotThere/chat/pull/443) [`3c1654e`](https://github.com/HereNotThere/chat/commit/3c1654e816236ed1852a48f24a4b4dbadde592f9) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add opt-in ERC-8128 HTTP authentication for relayer JSON-RPC and relayer-client request signing support, including nonce replay protection and integration tests.
+- #443 `3c1654e` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add opt-in ERC-8128 HTTP authentication for relayer JSON-RPC and relayer-client request signing support, including nonce replay protection and integration tests.
 
 - Updated dependencies []:
   - @agentic-payments/contracts@2.0.13

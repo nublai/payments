@@ -28,7 +28,7 @@
 
 ### Minor Changes
 
-- [#722](https://github.com/HereNotThere/chat/pull/722) [`8594d4c`](https://github.com/HereNotThere/chat/commit/8594d4c5956b9a8c9bc5ec4dc6717b5a00f1431f) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@agentic-payments/contracts/deployments` and `@agentic-payments/contracts/abis`. Add `./config/deployments.json` export to contracts.
+- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@agentic-payments/contracts/deployments` and `@agentic-payments/contracts/abis`. Add `./config/deployments.json` export to contracts.
 
 ## 3.3.1
 

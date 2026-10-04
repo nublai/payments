@@ -1,6 +1,7 @@
 {
     "name": "@agentic-payments/wallet",
     "version": "7.3.1",
+    "license": "MIT",
     "bin": {
         "wallet": "./dist/cli.js",
         "tw": "./dist/cli.js"

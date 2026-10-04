@@ -46,7 +46,7 @@ The bash deployment script is a powerful, chain-agnostic deployment tool support
 Usage: ./scripts/sh/deploy.sh [environment] [options]
 
 Environments (shortcuts):
-  local          Deploy to local Anvil (chain 31337)
+  local          Deploy to local Anvil (chains 31337,41337)
   dev            Deploy to Base Sepolia (chain 84532)
   stage          Deploy to Base Mainnet (chain 8453)
   prod           Deploy to Base Mainnet (chain 8453)
@@ -62,9 +62,10 @@ Options:
 Authentication (one required for non-local):
   --account <name>         Use keystore account
   --password <pass>        Password for keystore account
-  --password-file <path>   File containing keystore password
   --ledger <path>          Use Ledger with HD path
   --private-key <key>      Use private key directly
+  --sender <addr>          Sender address (for simulations or with unlocked accounts).
+                           Does not replace --account, --ledger, or --private-key.
 
 Contract Configuration:
   --funder <addr>          SimpleFunder funder address

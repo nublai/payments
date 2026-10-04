@@ -15,7 +15,7 @@
 
 ### Minor Changes
 
-- [#964](https://github.com/HereNotThere/chat/pull/964) [`10c2121`](https://github.com/HereNotThere/chat/commit/10c21210057ad880216f0bd9cd7dc8199c12e86c) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add escrow commands for create, status, settle, and refund.
+- #964 `10c2121` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add escrow commands for create, status, settle, and refund.
 
 ### Patch Changes
 
@@ -30,7 +30,7 @@
 
 ### Minor Changes
 
-- [#941](https://github.com/HereNotThere/chat/pull/941) [`23ced48`](https://github.com/HereNotThere/chat/commit/23ced480bd8d70083f319be2b9c9636ee507d635) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add wallet agent-to-agent messaging with named channels, shared rendezvous, listen/send flows, and smoke-test tooling.
+- #941 `23ced48` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add wallet agent-to-agent messaging with named channels, shared rendezvous, listen/send flows, and smoke-test tooling.
 
 ### Patch Changes
 
@@ -45,7 +45,7 @@
 
 ### Minor Changes
 
-- [#896](https://github.com/HereNotThere/chat/pull/896) [`cd9a8ae`](https://github.com/HereNotThere/chat/commit/cd9a8ae7f4e03c0d01ded9a2a99d70cd665d6d24) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - 1. **Session-key ETH/USDC UX improvements**
+- #896 `cd9a8ae` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - 1. **Session-key ETH/USDC UX improvements**
   - Added `--session <name>` to `tw account send` (no need to activate/export first).
   - Preserved actionable errors for `--session` resolution failures.
   - Kept `--session` and `--session-file` mutually exclusive.
@@ -89,7 +89,7 @@
 
 ### Major Changes
 
-- [#885](https://github.com/HereNotThere/chat/pull/885) [`359ca49`](https://github.com/HereNotThere/chat/commit/359ca4943c915da168a11f4fca2c959a3d776777) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@agentic-payments/wallet` and keep `agentic-payments-wallet`/`tw` binaries so Bun users can run it via `bunx @agentic-payments/wallet`.
+- #885 `359ca49` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@agentic-payments/wallet` and keep `agentic-payments-wallet`/`tw` binaries so Bun users can run it via `bunx @agentic-payments/wallet`.
 
 ### Patch Changes
 
@@ -133,7 +133,7 @@
 
 ### Minor Changes
 
-- [#794](https://github.com/HereNotThere/chat/pull/794) [`82926e9`](https://github.com/HereNotThere/chat/commit/82926e9951d7a1dff5204b549e17926817e9a501) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Wallet CLI (`agentic-payments-wallet` / `tw`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
+- #794 `82926e9` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Wallet CLI (`agentic-payments-wallet` / `tw`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
 
 ### Patch Changes
 
@@ -161,11 +161,11 @@
 
 ### Minor Changes
 
-- [#759](https://github.com/HereNotThere/chat/pull/759) [`d1652ec`](https://github.com/HereNotThere/chat/commit/d1652ec501c2a629a74118bd532f2746d0c449f5) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add root `tw address` alias with funding-oriented output options, including `--link`, `--qr`, `--amount`, `--token`, and `--decimals`, plus schema/help/docs updates and regression coverage.
+- #759 `d1652ec` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add root `tw address` alias with funding-oriented output options, including `--link`, `--qr`, `--amount`, `--token`, and `--decimals`, plus schema/help/docs updates and regression coverage.
 
 ### Patch Changes
 
-- Updated dependencies [[`8594d4c`](https://github.com/HereNotThere/chat/commit/8594d4c5956b9a8c9bc5ec4dc6717b5a00f1431f)]:
+- Updated dependencies [`8594d4c`]:
   - @agentic-payments/contracts@3.4.0
   - @agentic-payments/relayer-client@3.4.0
 
@@ -173,10 +173,10 @@
 
 ### Minor Changes
 
-- [#670](https://github.com/HereNotThere/chat/pull/670) [`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
+- #670 `03ff3f0` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
 
 ### Patch Changes
 
-- Updated dependencies [[`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08)]:
+- Updated dependencies [`03ff3f0`]:
   - @agentic-payments/deployments@3.3.0
   - @agentic-payments/relayer-client@3.3.0

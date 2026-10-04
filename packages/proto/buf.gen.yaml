@@ -5,5 +5,4 @@ plugins:
       include_imports: true
       opt: target=ts
 inputs:
-    - directory: protocol
-    - directory: packages/proto
+    - directory: packages/proto/schema

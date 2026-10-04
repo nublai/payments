@@ -7,14 +7,14 @@ Smart accounts, a relayer, and a local wallet CLI for agent-initiated payments. 
 - `packages/contracts` — `@agentic-payments/contracts`. Solidity, Foundry tests, and deploy scripts. The account contract is `Account` (EIP-7702), with Orchestrator, GuardedExecutor, Escrow, SimpleFunder, SimpleSettler, Simulator, and MultiSigSigner.
 - `packages/relayer` — `@agentic-payments/relayer`. Cloudflare Worker that submits signed intents. Local dev is `packages/relayer/scripts/dev.sh` (wrangler).
 - `packages/relayer-client` — `@agentic-payments/relayer-client`. viem-style client (`prepareCalls`, `sendPreparedCalls`, `upgradeAccount`, escrow helpers).
-- `packages/wallet` — `@agentic-payments/wallet`. CLI binary `tw` (`bun ./src/cli.ts`). Commands: `account`, `session`, `daemon`, `permissions`, `escrow`, `send`, `swap`, `bridge`, `address`, `login`, `logout`. `tw --mcp` serves those commands over MCP. `tw --json` prints structured output.
+- `packages/wallet` — `@agentic-payments/wallet`. CLI binary `tw` (`bun ./src/cli.ts`). Commands: `account`, `session`, `daemon`, `permissions`, `escrow`, `send`, `swap`, `bridge`, `address`, `login`, `logout`. `tw --json` prints structured output. `tw --mcp` is an incur stdio server. Tool ids are the leaf names joined with `_`: `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
 - `packages/proto` — `@agentic-payments/proto`. Exports only `BearerTokenSchema`, `WalletSessionTokenSchema`, `ExportedDeviceSchema`, and the `ExportedDevice` type, from `schema/payments.proto`.
 
 Workspace manager is Bun `1.3.3`. Foundry `1.5.1` is what the contract tests use.
 
 ## Local payment
 
-From the repo root, with Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH` (this environment's `/usr/bin/node` is 20; the script prepends `/tmp/node22/bin` when that binary exists):
+From the repo root, with Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH`:
 
 ```bash
 bun install

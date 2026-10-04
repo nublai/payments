@@ -14,7 +14,7 @@
 
 ### Major Changes
 
-- [#869](https://github.com/HereNotThere/chat/pull/869) [`961e84a`](https://github.com/HereNotThere/chat/commit/961e84a3c13740d5b20dfe9e079f30a37315059d) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Rename specialist invocation capability field from `capabilityName`/`capability_name` to `name`.
+- #869 `961e84a` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Rename specialist invocation capability field from `capabilityName`/`capability_name` to `name`.
   - `SpecialistCapabilityInvocation` now uses `name` in protobuf/TS/Go generated types.
   - `GetBulkAgentProposals` request payloads now send invocation `name` and map it through backend fan-out.
   - `@agentic-payments/app-framework` proposal processing now reads `invocation.name`.
@@ -23,7 +23,7 @@
 
 ### Patch Changes
 
-- [#863](https://github.com/HereNotThere/chat/pull/863) [`d0cd833`](https://github.com/HereNotThere/chat/commit/d0cd83353528b42a342afe72854ceed59b9980a9) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add specialist proposal metadata propagation for concierge fan-out.
+- #863 `d0cd833` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add specialist proposal metadata propagation for concierge fan-out.
 
   `GetBulkAgentProposalsRequest` and `AppServiceRequest.ProposalsRequest` now include a `metadata` map so callers can forward tracing identifiers (for example `trace_id` and `parent_span_id`) to specialist handlers.
 
@@ -33,7 +33,7 @@
 
 ### Patch Changes
 
-- [#860](https://github.com/HereNotThere/chat/pull/860) [`f49a75f`](https://github.com/HereNotThere/chat/commit/f49a75fabccc2c5b2ee03a9d5a79d618b256c9ac) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Add specialist proposal metadata propagation for concierge fan-out.
+- #860 `f49a75f` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Add specialist proposal metadata propagation for concierge fan-out.
 
   `GetBulkAgentProposalsRequest` and `AppServiceRequest.ProposalsRequest` now include a `metadata` map so callers can forward tracing identifiers (for example `trace_id` and `parent_span_id`) to specialist handlers.
 
@@ -61,7 +61,7 @@
 
 ### Minor Changes
 
-- [#577](https://github.com/HereNotThere/chat/pull/577) [`b543e53`](https://github.com/HereNotThere/chat/commit/b543e53200f418cd51417d8a2a29cf13246346f2) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Embed JWT secret in APP_PRIVATE_DATA. `makeAgent` no longer requires a separate `jwtSecretBase64` parameter — the JWT secret is resolved from `opts.jwtSecret`, `process.env.JWT_SECRET`, or the embedded value in APP_PRIVATE_DATA.
+- #577 `b543e53` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Embed JWT secret in APP_PRIVATE_DATA. `makeAgent` no longer requires a separate `jwtSecretBase64` parameter — the JWT secret is resolved from `opts.jwtSecret`, `process.env.JWT_SECRET`, or the embedded value in APP_PRIVATE_DATA.
 
 ## 2.1.1
 
@@ -69,7 +69,7 @@
 
 ### Minor Changes
 
-- [#536](https://github.com/HereNotThere/chat/pull/536) [`7e8cd3d`](https://github.com/HereNotThere/chat/commit/7e8cd3d20127f338d4271680280a8616f57d7d2f) Thanks [@texuf](https://github.com/texuf)! - Add positions support to the agent webhook flow and expose a new `agent.onPositions()` handler for serving `GetAppPositions` requests.
+- #536 `7e8cd3d` Thanks [@texuf](https://github.com/texuf)! - Add positions support to the agent webhook flow and expose a new `agent.onPositions()` handler for serving `GetAppPositions` requests.
 
   Add `UpdateAppSettings` RPC for partial settings updates, so changing one setting no longer requires fetching and rewriting all settings. Update `agentic-agent setup` with `--features` (for example, `--features positions`) to use the new endpoint.
 
@@ -79,7 +79,7 @@
 
 ### Patch Changes
 
-- [#380](https://github.com/HereNotThere/chat/pull/380) [`4b24817`](https://github.com/HereNotThere/chat/commit/4b24817e846fffd66d8280dab9b7ac614bbb3da0) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Concierge required proto: Capabilities, ConversationSeed, ProposalRequest, and others
+- #380 `4b24817` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Concierge required proto: Capabilities, ConversationSeed, ProposalRequest, and others
 
 ## 2.0.11
 

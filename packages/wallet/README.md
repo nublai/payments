@@ -270,6 +270,8 @@ echo "my-password" | tw session rotate --profile agent --password-stdin --json
 tw --help              # All commands
 tw send --help         # Command-specific help
 tw --llms              # Machine-readable command manifest
-tw --mcp               # Run as MCP server
+tw --mcp               # Run as MCP server (tool ids below)
 tw --version           # Version
 ```
+
+`tw --mcp` registers one tool per leaf command. The ids are `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.

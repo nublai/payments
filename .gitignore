@@ -1,2 +1,17 @@
 node_modules/
 **/dist/
+
+# Secret env files. The committed address books under
+# packages/contracts/deployments/envs stay tracked.
+.env
+**/.env
+!**/.env.example
+!packages/contracts/deployments/envs/**/.env
+
+.dev.vars
+**/.dev.vars
+!**/.dev.vars.example
+
+broadcast/
+cache/
+out/

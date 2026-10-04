@@ -1,9 +1,10 @@
 const fs = require("fs");
 const { exec } = require("child_process");
 const debounce = require("lodash.debounce");
+const path = require("path");
 
 const currentDirectory = process.cwd();
-const protocolDirectory = process.cwd() + "/../../protocol";
+const schemaDirectory = path.join(currentDirectory, "schema");
 const buildCommand = "bun run build";
 
 const handleFileChange = debounce((eventType, filename) => {
@@ -20,21 +21,16 @@ const handleFileChange = debounce((eventType, filename) => {
   });
 }, 1000);
 
-const watcher = fs.watch(currentDirectory, (eventType, filename) => {
-  if (filename.endsWith(".proto")) {
-    handleFileChange(eventType, filename);
-  }
-});
+function watchProtoDir(dir) {
+  if (!fs.existsSync(dir)) return;
+  fs.watch(dir, (eventType, filename) => {
+    if (filename && filename.endsWith(".proto")) {
+      handleFileChange(eventType, filename);
+    }
+  });
+}
 
-const watcher2 = fs.watch(protocolDirectory, (eventType, filename) => {
-  if (filename.endsWith(".proto")) {
-    handleFileChange(eventType, filename);
-  }
-});
+watchProtoDir(currentDirectory);
+watchProtoDir(schemaDirectory);
 
-console.log(
-  `Watching ${currentDirectory} and ${protocolDirectory} for changes...`,
-);
-
-// To close the watcher when you're done
-// watcher.close();
+console.log(`Watching ${currentDirectory} and ${schemaDirectory} for changes...`);

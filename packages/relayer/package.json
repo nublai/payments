@@ -1,6 +1,7 @@
 {
     "name": "@agentic-payments/relayer",
     "version": "7.3.1",
+    "license": "MIT",
     "main": "dist/index.js",
     "type": "module",
     "exports": {

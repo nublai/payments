@@ -100,9 +100,9 @@
 
 ### Patch Changes
 
-- [#722](https://github.com/HereNotThere/chat/pull/722) [`8594d4c`](https://github.com/HereNotThere/chat/commit/8594d4c5956b9a8c9bc5ec4dc6717b5a00f1431f) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@agentic-payments/contracts/deployments` and `@agentic-payments/contracts/abis`. Add `./config/deployments.json` export to contracts.
+- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@agentic-payments/contracts/deployments` and `@agentic-payments/contracts/abis`. Add `./config/deployments.json` export to contracts.
 
-- Updated dependencies [[`8594d4c`](https://github.com/HereNotThere/chat/commit/8594d4c5956b9a8c9bc5ec4dc6717b5a00f1431f)]:
+- Updated dependencies [`8594d4c`]:
   - @agentic-payments/contracts@3.4.0
   - @agentic-payments/relayer@3.4.0
 
@@ -118,11 +118,11 @@
 
 ### Minor Changes
 
-- [#670](https://github.com/HereNotThere/chat/pull/670) [`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
+- #670 `03ff3f0` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
 
 ### Patch Changes
 
-- Updated dependencies [[`03ff3f0`](https://github.com/HereNotThere/chat/commit/03ff3f0b5b1af6558173758189df1d18affcfb08)]:
+- Updated dependencies [`03ff3f0`]:
   - @agentic-payments/deployments@3.3.0
   - @agentic-payments/relayer@3.3.0
 
@@ -146,7 +146,7 @@
 
 ### Patch Changes
 
-- [#571](https://github.com/HereNotThere/chat/pull/571) [`9f8ecea`](https://github.com/HereNotThere/chat/commit/9f8ecea92cd7910de7860e0b0508f56a60db4019) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Default `prepareCalls` to fetch the latest on-chain nonce when no explicit nonce is provided. Added `noncePolicy: 'draft'` to opt into relayer draft nonce allocation/replay behavior for idempotent prepare flows.
+- #571 `9f8ecea` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Default `prepareCalls` to fetch the latest on-chain nonce when no explicit nonce is provided. Added `noncePolicy: 'draft'` to opt into relayer draft nonce allocation/replay behavior for idempotent prepare flows.
 
 - Updated dependencies []:
   - @agentic-payments/contracts@3.0.0
@@ -172,9 +172,9 @@
 
 ### Patch Changes
 
-- [#443](https://github.com/HereNotThere/chat/pull/443) [`3c1654e`](https://github.com/HereNotThere/chat/commit/3c1654e816236ed1852a48f24a4b4dbadde592f9) Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add opt-in ERC-8128 HTTP authentication for relayer JSON-RPC and relayer-client request signing support, including nonce replay protection and integration tests.
+- #443 `3c1654e` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add opt-in ERC-8128 HTTP authentication for relayer JSON-RPC and relayer-client request signing support, including nonce replay protection and integration tests.
 
-- Updated dependencies [[`3c1654e`](https://github.com/HereNotThere/chat/commit/3c1654e816236ed1852a48f24a4b4dbadde592f9)]:
+- Updated dependencies [`3c1654e`]:
   - @agentic-payments/relayer@2.0.13
   - @agentic-payments/contracts@2.0.13
 
@@ -200,7 +200,7 @@
 
 ### Patch Changes
 
-- [#334](https://github.com/HereNotThere/chat/pull/334) [`56394e7`](https://github.com/HereNotThere/chat/commit/56394e745ef303cdc975970d189fe5831b050b02) Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Wait for upgrade account transaction receipt in createApp before proceeding and type txHash as Hex
+- #334 `56394e7` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Wait for upgrade account transaction receipt in createApp before proceeding and type txHash as Hex
 
 ## 2.0.5
 
