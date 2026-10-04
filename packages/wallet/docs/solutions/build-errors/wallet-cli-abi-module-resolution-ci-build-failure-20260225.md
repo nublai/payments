@@ -40,9 +40,9 @@ tags:
 
 ## What Didn't Work
 
-**Attempted Solution 1:** Switch imports from `@agentic-payments/deployments/abis` to `@agentic-payments/contracts/abis`.
+**Attempted Solution 1:** Switch imports from `@agentic-payments/deployments/abis` to `@nubl/contracts/abis`.
 
-- **Why it failed:** `packages/wallet/package.json` did not declare `@agentic-payments/contracts` as a dependency, so module resolution still failed at build time.
+- **Why it failed:** `packages/wallet/package.json` did not declare `@nubl/contracts` as a dependency, so module resolution still failed at build time.
 
 ## Solution
 
@@ -55,7 +55,7 @@ Use the canonical ABI export path and ensure the package dependency graph includ
 import { accountAbi } from "@agentic-payments/deployments/abis";
 
 // After
-import { accountAbi } from "@agentic-payments/contracts/abis";
+import { accountAbi } from "@nubl/contracts/abis";
 ```
 
 Applied in:
@@ -69,7 +69,7 @@ Applied in:
 ```json
 {
   "dependencies": {
-    "@agentic-payments/contracts": "workspace:^"
+    "@nubl/contracts": "workspace:^"
   }
 }
 ```
@@ -89,8 +89,8 @@ bun run --cwd packages/wallet test
 
 ## Why This Works
 
-1. ABI imports are now aligned with the canonical package export (`@agentic-payments/contracts/abis`) used elsewhere in the repo.
-2. The consuming package (`@agentic-payments/wallet-cli`) explicitly depends on `@agentic-payments/contracts`, so Bun can resolve the module during bundling.
+1. ABI imports are now aligned with the canonical package export (`@nubl/contracts/abis`) used elsewhere in the repo.
+2. The consuming package (`@agentic-payments/wallet-cli`) explicitly depends on `@nubl/contracts`, so Bun can resolve the module during bundling.
 3. Lockfile regeneration ensures CI and local environments resolve the same graph.
 
 ## Prevention

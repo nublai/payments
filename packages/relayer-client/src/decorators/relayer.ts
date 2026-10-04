@@ -74,7 +74,7 @@ export type RelayerActions = {
  * ```typescript
  * import { createPublicClient, http } from 'viem'
  * import { baseSepolia } from 'viem/chains'
- * import { relayerActions, waitForBundle, wrapSignature } from '@agentic-payments/relayer-client'
+ * import { relayerActions, waitForBundle, wrapSignature } from '@nubl/relayer-client'
  *
  * const client = createPublicClient({
  *   chain: baseSepolia,

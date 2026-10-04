@@ -13,7 +13,7 @@ import {
     parseExpiry,
     ANY_FUNCTION_SELECTOR,
 } from '../src/lib/session-common'
-import { ANY_TARGET, type GetKeysResponse } from '@agentic-payments/relayer-client'
+import { ANY_TARGET, type GetKeysResponse } from '@nubl/relayer-client'
 import { zeroAddress } from 'viem'
 
 // --- parseTargetAddress ---

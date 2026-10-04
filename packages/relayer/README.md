@@ -63,8 +63,8 @@ See `src/config/chains.json` for supported chains and their metadata.
 
 ### Optional: Contract Addresses
 
-Auto-loaded from `@agentic-payments/contracts` for known chains. Override for custom deployments.
-Names match `@agentic-payments/contracts` env var keys (no `_ADDRESS` suffix):
+Auto-loaded from `@nubl/contracts` for known chains. Override for custom deployments.
+Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 
 | Name            | Description                                                    |
 | --------------- | -------------------------------------------------------------- |

@@ -1,5 +1,5 @@
 {
-    "name": "@agentic-payments/wallet",
+    "name": "@nubl/wallet",
     "version": "7.3.1",
     "license": "MIT",
     "bin": {
@@ -28,9 +28,9 @@
     "dependencies": {
         "@bufbuild/protobuf": "^2.9.0",
         "@clack/prompts": "^1.0.1",
-        "@agentic-payments/contracts": "workspace:^",
-        "@agentic-payments/proto": "workspace:^",
-        "@agentic-payments/relayer-client": "workspace:^",
+        "@nubl/contracts": "workspace:^",
+        "@nubl/proto": "workspace:^",
+        "@nubl/relayer-client": "workspace:^",
         "argon2": "^0.44.0",
         "incur": "^0.3.1",
         "proper-lockfile": "^4.1.2",

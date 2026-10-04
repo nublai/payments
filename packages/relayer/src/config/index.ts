@@ -3,7 +3,7 @@
  */
 
 import type { Env, RelayerConfig } from '../types/env'
-import { hasDeployment } from '@agentic-payments/contracts/deployments'
+import { hasDeployment } from '@nubl/contracts/deployments'
 import { getContractAddresses } from './addresses'
 import type { SignerPoolConfig } from '../types/env'
 import { getChainRpcUrl } from '../lib/multi-chain-client'

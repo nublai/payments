@@ -21,7 +21,7 @@ import { concat, encodeAbiParameters, parseAbiParameters } from 'viem'
  *
  * @example
  * ```typescript
- * import { wrapSignature, computeKeyHash } from '@agentic-payments/relayer-client'
+ * import { wrapSignature, computeKeyHash } from '@nubl/relayer-client'
  *
  * // Sign the typed data
  * const signature = await walletClient.signTypedData(prepared.typedData)

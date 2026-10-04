@@ -1,6 +1,6 @@
 import { anvil, base, polygon } from 'viem/chains'
 import { zeroAddress, type Address } from 'viem'
-import type { EthHttpSigner } from '@agentic-payments/relayer-client'
+import type { EthHttpSigner } from '@nubl/relayer-client'
 
 export type EnvName = 'prod' | 'stage' | 'dev'
 export type ChainName = 'base' | 'polygon' | 'anvil'

@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test'
-import { JsonRpcClientError, type GetKeysResponse } from '@agentic-payments/relayer-client'
+import { JsonRpcClientError, type GetKeysResponse } from '@nubl/relayer-client'
 import { zeroAddress } from 'viem'
 import { executeAccountSwap, resolveAccountSwapPassword } from '../src/lib/account-swap'
 import { LoginProfileError } from '../src/lib/keystore'

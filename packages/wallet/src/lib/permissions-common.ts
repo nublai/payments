@@ -14,7 +14,7 @@ import {
     ANY_TARGET as RELAYER_ANY_TARGET,
     type PermissionInfo,
     type SpendPeriod,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 import { getUsdcTokenConfig, type ChainName } from './network-config'
 import {
     normalizeSpendPeriod,

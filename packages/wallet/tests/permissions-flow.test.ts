@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+import { accountAbi } from '@nubl/contracts/abis'
 import { decodeFunctionData, encodeAbiParameters, parseAbiParameters, type Hex } from 'viem'
 import {
     PermissionsError,

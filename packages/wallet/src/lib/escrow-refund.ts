@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem'
-import { refundEscrowCalls } from '@agentic-payments/relayer-client'
+import { refundEscrowCalls } from '@nubl/relayer-client'
 import { resolveKeystorePath } from './account-create'
 import type { ChainName, EnvName } from './network-config'
 import type { ExecuteSignedCallsDeps } from './execute-calls'

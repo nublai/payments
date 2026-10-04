@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { decodeFunctionData } from 'viem'
-import { escrowAbi, simpleSettlerAbi } from '@agentic-payments/contracts/abis'
+import { escrowAbi, simpleSettlerAbi } from '@nubl/contracts/abis'
 import { writeSettlementCalls } from '../../../src/escrow/writeSettlementCalls.js'
 import { refundEscrowCalls } from '../../../src/escrow/refundEscrowCalls.js'
 

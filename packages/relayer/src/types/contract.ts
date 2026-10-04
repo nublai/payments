@@ -2,7 +2,7 @@
  * Contract Types
  *
  * TypeScript interfaces for smart contract return types.
- * These mirror the ABI output from @agentic-payments/contracts.
+ * These mirror the ABI output from @nubl/contracts.
  */
 
 import type { Hex } from 'viem'

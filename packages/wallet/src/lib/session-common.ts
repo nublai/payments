@@ -9,7 +9,7 @@ import {
     encodeSecp256k1Key,
     type GetKeysResponse,
     type SpendPeriod,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 import { assertValidSessionName } from './keystore'
 import { getUsdcTokenConfig, type ChainName } from './network-config'
 

@@ -117,8 +117,8 @@ echo "Deploying contracts (bun run deploy:local && bun run make-config)..."
 
 
 # dev.sh skips `bun run build` when dist/index.js exists. Drop it so this run
-# recompiles @agentic-payments/contracts and exports getAddressesWithFallback.
-echo "Rebuilding @agentic-payments/contracts..."
+# recompiles @nubl/contracts and exports getAddressesWithFallback.
+echo "Rebuilding @nubl/contracts..."
 rm -rf "$ROOT/packages/contracts/dist"
 (
   cd "$ROOT/packages/contracts"
@@ -149,7 +149,7 @@ RELAYER_PID="$(bash "$ROOT/packages/relayer/scripts/dev.sh" --background)"
 PIDS+=("$RELAYER_PID")
 echo "Relayer pid $RELAYER_PID"
 
-echo "Building @agentic-payments/relayer-client..."
+echo "Building @nubl/relayer-client..."
 (cd "$ROOT/packages/relayer-client" && bun run build)
 
 WORKDIR="$(mktemp -d /tmp/agentic-payments-e2e-escrow.XXXXXX)"

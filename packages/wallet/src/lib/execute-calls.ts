@@ -3,7 +3,7 @@ import {
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
-} from '@agentic-payments/relayer-client'
+} from '@nubl/relayer-client'
 import type { Address, Hex } from 'viem'
 
 export type ExecuteSignedCallsParams = {

@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 import { isHex } from 'viem'
-import { getAddressesWithFallback } from '@agentic-payments/contracts/deployments'
+import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import type { EnvName, ChainName } from './network-config'
 import { resolveNetworkConfig, selectDefaultChain, getUsdcTokenConfig } from './network-config'
 import type { LoginSessionKeystoreV2, RelayerSessionKeystoreV2 } from './keystore'
@@ -38,7 +38,7 @@ export class EscrowError extends Error {
     }
 }
 
-/** Map CLI env name to deployment context used by @agentic-payments/contracts */
+/** Map CLI env name to deployment context used by @nubl/contracts */
 function envToDeploymentContext(env: EnvName): string {
     switch (env) {
         case 'prod':

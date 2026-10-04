@@ -5,7 +5,7 @@ Your keys. Your account. No signup. No login. Just run it.
 `tw` is a local-first CLI for managing smart accounts, session keys, and on-chain permissions on Agentic Payments. It works for humans at the terminal and for agents over `--json` or `--mcp`.
 
 ```bash
-bunx @agentic-payments/wallet --help
+bunx @nubl/wallet --help
 ```
 
 ---

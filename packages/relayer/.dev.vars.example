@@ -24,7 +24,7 @@ MIN_SIGNER_BALANCE=0.01
 TARGET_SIGNER_BALANCE=0.01
 
 # Contract addresses (optional)
-# Names match @agentic-payments/contracts env var keys (no _ADDRESS suffix)
+# Names match @nubl/contracts env var keys (no _ADDRESS suffix)
 # Use chain-suffixed keys when CHAIN_IDS is set
 # ORCHESTRATOR_31337=0x...
 # ACCOUNT_31337=0x...

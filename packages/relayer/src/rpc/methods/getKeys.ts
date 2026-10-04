@@ -5,7 +5,7 @@
  */
 
 import { type Address, type Hex, numberToHex } from 'viem'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+import { accountAbi } from '@nubl/contracts/abis'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'

@@ -45,7 +45,7 @@ bun run logs:prod              # Tail prod logs
 
 ## Package Relationship
 
-This package is **tightly coupled** with `@agentic-payments/relayer-client` (`packages/relayer-client/`):
+This package is **tightly coupled** with `@nubl/relayer-client` (`packages/relayer-client/`):
 
 | Package                  | Role                                                        |
 | ------------------------ | ----------------------------------------------------------- |
@@ -138,7 +138,7 @@ Required secrets (set via `wrangler secret put`):
 - `RELAYER_MNEMONIC` - HD wallet mnemonic
 - `CHAIN_ID` - Chain ID (31337=local, 84532=Base Sepolia, 8453=Base)
 
-Contract addresses are auto-loaded from `@agentic-payments/contracts`. See README.md for full configuration options.
+Contract addresses are auto-loaded from `@nubl/contracts`. See README.md for full configuration options.
 
 ## Relayer/Deploy Guardrails
 

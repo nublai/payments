@@ -1,6 +1,6 @@
 import { getAddress, toHex, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import type { EthHttpSigner } from '@agentic-payments/relayer-client'
+import type { EthHttpSigner } from '@nubl/relayer-client'
 import { createEthHttpSigner } from './relayer-client-utils'
 import type { SessionDaemonRpcResponse } from './session-daemon-client'
 import { SessionDaemonClient } from './session-daemon-client'

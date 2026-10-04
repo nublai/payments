@@ -26,7 +26,7 @@ bun run e2e:local-payment
 bun run e2e:local-escrow
 ```
 
-`bun run e2e:local-payment` is `bash scripts/e2e-local-payment.sh`. `bun run e2e:local-escrow` is `bash scripts/e2e-local-escrow.sh`. The scripts themselves start Anvil (31337 on 8545 and 41337 on 8546), run `bun run deploy:local` and `bun run make-config` in `packages/contracts`, start the wrangler relayer through `packages/relayer/scripts/dev.sh --background`, build `@agentic-payments/relayer-client`, drive the wallet CLI, and tear down the Anvil and relayer processes they started.
+`bun run e2e:local-payment` is `bash scripts/e2e-local-payment.sh`. `bun run e2e:local-escrow` is `bash scripts/e2e-local-escrow.sh`. The scripts themselves start Anvil (31337 on 8545 and 41337 on 8546), run `bun run deploy:local` and `bun run make-config` in `packages/contracts`, start the wrangler relayer through `packages/relayer/scripts/dev.sh --background`, build `@nubl/relayer-client`, drive the wallet CLI, and tear down the Anvil and relayer processes they started.
 
 Do not run `packages/contracts` `bun run dev` or start Anvil by hand for these proofs. That is a different entrypoint.
 

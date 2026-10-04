@@ -1,5 +1,5 @@
 {
-    "name": "@agentic-payments/relayer-client",
+    "name": "@nubl/relayer-client",
     "version": "7.3.1",
     "license": "MIT",
     "type": "module",
@@ -23,8 +23,8 @@
     },
     "dependencies": {
         "@slicekit/erc8128": "^0.1.0",
-        "@agentic-payments/contracts": "workspace:^",
-        "@agentic-payments/relayer": "workspace:^"
+        "@nubl/contracts": "workspace:^",
+        "@nubl/relayer": "workspace:^"
     },
     "peerDependencies": {
         "viem": "2.45.1"

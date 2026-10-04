@@ -9,8 +9,8 @@ import {
     type BundleStatusResponse,
     type GetKeysResponse,
     type SpendPeriod,
-} from '@agentic-payments/relayer-client'
-import { accountAbi } from '@agentic-payments/contracts/abis'
+} from '@nubl/relayer-client'
+import { accountAbi } from '@nubl/contracts/abis'
 import { resolveKeystorePath } from './account-create'
 import {
     createSessionKeystore,
@@ -255,7 +255,7 @@ function getDefaultDeps(): SessionCreateDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
-            return (await import('@agentic-payments/relayer-client')).waitForBundle(client, {
+            return (await import('@nubl/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
             })
@@ -440,7 +440,7 @@ export async function executeSessionCreate(
                     expiry: expiryTimestamp,
                     keyType: 0,
                     isSuperAdmin: false,
-                    publicKey: (await import('@agentic-payments/relayer-client')).encodeSecp256k1Key(
+                    publicKey: (await import('@nubl/relayer-client')).encodeSecp256k1Key(
                         sessionAddress,
                     ),
                 },

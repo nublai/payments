@@ -1,4 +1,4 @@
-import type { ContractAddresses } from '@agentic-payments/contracts/deployments'
+import type { ContractAddresses } from '@nubl/contracts/deployments'
 import type { BundleStatusDO } from '../durable-objects/bundle-status.do'
 import type { HttpAuthNonceDO } from '../durable-objects/http-auth-nonce.do'
 import type { IntentNonceDO } from '../durable-objects/intent-nonce.do'
@@ -60,7 +60,7 @@ export interface Env {
     BUNDLE_UNRESOLVED_SLA_MS?: string // Max age in ms for unresolved bundle mappings before terminal failure
 
     // Optional overrides (derived from deployment if not set)
-    // Names match @agentic-payments/contracts env var keys (no _ADDRESS suffix)
+    // Names match @nubl/contracts env var keys (no _ADDRESS suffix)
     ACCOUNT?: string
     ACCOUNT_PROXY?: string
     ORCHESTRATOR?: string

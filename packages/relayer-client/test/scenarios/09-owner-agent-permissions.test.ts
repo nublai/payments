@@ -30,7 +30,7 @@ import {
     type Hex,
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount, sign } from 'viem/accounts'
-import { accountAbi, multiSigSignerAbi } from '@agentic-payments/contracts/abis'
+import { accountAbi, multiSigSignerAbi } from '@nubl/contracts/abis'
 
 import {
     waitForBundle,

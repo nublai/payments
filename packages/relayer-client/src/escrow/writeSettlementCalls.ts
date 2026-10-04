@@ -1,6 +1,6 @@
 import { encodeFunctionData } from 'viem'
 import type { Address, Hex } from 'viem'
-import { escrowAbi, simpleSettlerAbi } from '@agentic-payments/contracts/abis'
+import { escrowAbi, simpleSettlerAbi } from '@nubl/contracts/abis'
 import type { Call } from '../types.js'
 
 /**

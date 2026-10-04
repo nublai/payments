@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { ANY_FUNCTION_SELECTOR, ANY_TARGET, encodeSecp256k1Key } from '@agentic-payments/relayer-client'
+import { ANY_FUNCTION_SELECTOR, ANY_TARGET, encodeSecp256k1Key } from '@nubl/relayer-client'
 import {
     createRootKeystore,
     createSessionKeystore,

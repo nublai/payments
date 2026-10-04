@@ -13,7 +13,7 @@
 
 import { DurableObject } from 'cloudflare:workers'
 import { decodeEventLog, type Address } from 'viem'
-import { orchestratorAbi } from '@agentic-payments/contracts/abis'
+import { orchestratorAbi } from '@nubl/contracts/abis'
 import type { Env } from '../types/env'
 import type { Hex } from 'viem'
 import { getErrorMessage, logger } from '../lib/logger'

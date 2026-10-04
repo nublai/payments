@@ -5,9 +5,9 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.3.1
-  - @agentic-payments/proto@7.3.1
-  - @agentic-payments/relayer-client@7.3.1
+  - @nubl/contracts@7.3.1
+  - @nubl/proto@7.3.1
+  - @nubl/relayer-client@7.3.1
   - @agentic-payments/sdk@7.3.1
   - @agentic-payments/utils@7.3.1
 
@@ -20,9 +20,9 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.3.0
-  - @agentic-payments/proto@7.3.0
-  - @agentic-payments/relayer-client@7.3.0
+  - @nubl/contracts@7.3.0
+  - @nubl/proto@7.3.0
+  - @nubl/relayer-client@7.3.0
   - @agentic-payments/sdk@7.3.0
   - @agentic-payments/utils@7.3.0
 
@@ -35,9 +35,9 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.2.0
-  - @agentic-payments/proto@7.2.0
-  - @agentic-payments/relayer-client@7.2.0
+  - @nubl/contracts@7.2.0
+  - @nubl/proto@7.2.0
+  - @nubl/relayer-client@7.2.0
   - @agentic-payments/sdk@7.2.0
   - @agentic-payments/utils@7.2.0
 
@@ -82,52 +82,52 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.1.0
-  - @agentic-payments/relayer-client@7.1.0
+  - @nubl/contracts@7.1.0
+  - @nubl/relayer-client@7.1.0
 
 ## 7.0.0
 
 ### Major Changes
 
-- #885 `359ca49` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@agentic-payments/wallet` and keep `agentic-payments-wallet`/`tw` binaries so Bun users can run it via `bunx @agentic-payments/wallet`.
+- #885 `359ca49` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@nubl/wallet` and keep `agentic-payments-wallet`/`tw` binaries so Bun users can run it via `bunx @nubl/wallet`.
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@7.0.0
-  - @agentic-payments/relayer-client@7.0.0
+  - @nubl/contracts@7.0.0
+  - @nubl/relayer-client@7.0.0
 
 ## 6.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@6.0.0
-  - @agentic-payments/relayer-client@6.0.0
+  - @nubl/contracts@6.0.0
+  - @nubl/relayer-client@6.0.0
 
 ## 5.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@5.0.0
-  - @agentic-payments/relayer-client@5.0.0
+  - @nubl/contracts@5.0.0
+  - @nubl/relayer-client@5.0.0
 
 ## 4.1.2
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.1.2
-  - @agentic-payments/relayer-client@4.1.2
+  - @nubl/contracts@4.1.2
+  - @nubl/relayer-client@4.1.2
 
 ## 4.1.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.1.1
-  - @agentic-payments/relayer-client@4.1.1
+  - @nubl/contracts@4.1.1
+  - @nubl/relayer-client@4.1.1
 
 ## 4.1.0
 
@@ -138,24 +138,24 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.1.0
-  - @agentic-payments/relayer-client@4.1.0
+  - @nubl/contracts@4.1.0
+  - @nubl/relayer-client@4.1.0
 
 ## 4.0.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@4.0.0
-  - @agentic-payments/relayer-client@4.0.0
+  - @nubl/contracts@4.0.0
+  - @nubl/relayer-client@4.0.0
 
 ## 3.4.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/contracts@3.4.1
-  - @agentic-payments/relayer-client@3.4.1
+  - @nubl/contracts@3.4.1
+  - @nubl/relayer-client@3.4.1
 
 ## 3.4.0
 
@@ -166,8 +166,8 @@
 ### Patch Changes
 
 - Updated dependencies [`8594d4c`]:
-  - @agentic-payments/contracts@3.4.0
-  - @agentic-payments/relayer-client@3.4.0
+  - @nubl/contracts@3.4.0
+  - @nubl/relayer-client@3.4.0
 
 ## 0.1.0
 
@@ -179,4 +179,4 @@
 
 - Updated dependencies [`03ff3f0`]:
   - @agentic-payments/deployments@3.3.0
-  - @agentic-payments/relayer-client@3.3.0
+  - @nubl/relayer-client@3.3.0

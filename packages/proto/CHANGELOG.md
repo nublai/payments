@@ -1,4 +1,4 @@
-# @agentic-payments/proto
+# @nubl/proto
 
 ## 7.3.1
 

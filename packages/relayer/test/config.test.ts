@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@agentic-payments/contracts/deployments', () => ({
+vi.mock('@nubl/contracts/deployments', () => ({
     hasDeployment: (context: string, chainId: number) => context === 'stage' && chainId === 84532,
 }))
 

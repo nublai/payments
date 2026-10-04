@@ -38,7 +38,7 @@ export const DOMAIN_TYPEHASH_ONLY_VERIFYING_CONTRACT = keccak256(
  *
  * @example
  * ```typescript
- * import { computeErc1271Digest } from '@agentic-payments/relayer-client'
+ * import { computeErc1271Digest } from '@nubl/relayer-client'
  * import { keccak256 } from 'viem'
  * import { sign } from 'viem/accounts'
  *

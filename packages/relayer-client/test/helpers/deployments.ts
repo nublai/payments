@@ -2,12 +2,12 @@
  * Contract addresses for tests
  *
  * These are used for signing EIP-7702 authorizations and verifying contract state.
- * Addresses are loaded from @agentic-payments/contracts, with fallback
+ * Addresses are loaded from @nubl/contracts, with fallback
  * to environment variables for local development.
  */
 
 import type { Address } from 'viem'
-import { getAddressesWithFallback } from '@agentic-payments/contracts/deployments'
+import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 
 export interface TestContracts {
     account: Address
