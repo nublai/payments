@@ -32,12 +32,5 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # passkey-flow.test.ts spawns this absolute path; it is not read from PATH.
-      - name: Link anvil for the passkey test
-        run: |
-          dest=/home/box/.foundry/versions/foundry-rs/foundry/v1.8.4/anvil
-          sudo mkdir -p "$(dirname "$dest")"
-          sudo ln -sfn "$(command -v anvil)" "$dest"
-
       - name: Test
         run: bun run --cwd packages/wallet test
