@@ -20,8 +20,15 @@ import {
 
 const PORT = 18545
 const RPC_URL = `http://127.0.0.1:${PORT}`
-const ANVIL = '/home/box/.foundry/versions/foundry-rs/foundry/v1.8.4/anvil'
 const walletDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+function resolveAnvilBin(): string {
+    const fromEnv = process.env.ANVIL?.trim()
+    if (fromEnv) return fromEnv
+    const found = Bun.which('anvil')
+    if (!found) throw new Error('anvil not found on PATH; set ANVIL to the anvil binary')
+    return found
+}
 
 let anvil: ChildProcess | undefined
 
@@ -172,12 +179,23 @@ function frame(message: unknown): string {
 }
 
 beforeAll(async () => {
+    const bin = resolveAnvilBin()
+    let startupError: Error | undefined
     anvil = spawn(
-        ANVIL,
+        bin,
         ['--hardfork', 'osaka', '--host', '127.0.0.1', '--port', String(PORT), '--silent'],
         { stdio: 'ignore' },
     )
-    await waitForRpc()
+    anvil.once('error', (error) => {
+        startupError = error
+    })
+    try {
+        await waitForRpc()
+    } catch (error) {
+        const cause = startupError ?? error
+        const detail = cause instanceof Error ? cause.message : String(cause)
+        throw new Error(`failed to start anvil (${bin}): ${detail}`)
+    }
 }, 20_000)
 
 afterAll(() => {
