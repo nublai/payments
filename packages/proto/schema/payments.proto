@@ -1,6 +1,6 @@
 syntax = "proto3";
 package payments;
-option go_package = "github.com/giuseppecrj/Agentic-Payments/protocol";
+option go_package = "github.com/nublai/payments/protocol";
 
 message BearerToken {
     string delegate_private_key = 1;
