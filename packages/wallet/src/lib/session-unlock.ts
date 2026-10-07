@@ -1,4 +1,4 @@
-import { getAddress } from 'viem'
+import { getAddress, type Address } from 'viem'
 import { toBinary } from '@bufbuild/protobuf'
 import { ExportedDeviceSchema } from '@nubl/proto'
 import { dirname, join } from 'node:path'
@@ -18,6 +18,7 @@ import {
 } from './keystore'
 import { isMissingFileError } from './fs-utils'
 import { parseDuration, parseSessionName } from './session-common'
+import { sessionOnChainRequiresPhrase } from './session-gates'
 import type { EnvName } from './network-config'
 
 const DEFAULT_DURATION_SECONDS = 60 * 60
@@ -53,6 +54,11 @@ type SessionUnlockDeps = {
     decryptSessionKeystore: typeof decryptSessionKeystore
     decryptAgentDevice: typeof decryptAgentDevice
     createDaemonClient: () => Pick<SessionDaemonClient, 'loadKey'>
+    sessionRequiresPhrase: (input: {
+        env: EnvName
+        account: Address
+        sessionAddress: Address
+    }) => Promise<boolean>
 }
 
 function getDefaultDeps(): SessionUnlockDeps {
@@ -62,6 +68,7 @@ function getDefaultDeps(): SessionUnlockDeps {
         decryptSessionKeystore,
         decryptAgentDevice,
         createDaemonClient: () => new SessionDaemonClient(),
+        sessionRequiresPhrase: (input) => sessionOnChainRequiresPhrase(input),
     }
 }
 
@@ -110,6 +117,8 @@ export async function executeSessionUnlock(
         duration?: string
         force?: boolean
         device?: boolean
+        /** Set only after the caller collected UNLOCK FULL ACCESS SESSION. */
+        humanConfirmed?: boolean
     },
     depsArg?: Partial<SessionUnlockDeps>,
 ): Promise<SessionUnlockResult> {
@@ -155,15 +164,33 @@ export async function executeSessionUnlock(
         }
     }
 
+    if (options.device && !isAgentKeystore(sessionKeystore)) {
+        throw new SessionUnlockError(
+            'INVALID_SESSION_KIND',
+            'Session is not an agent session. `--device` is only supported for agent sessions.',
+        )
+    }
+
+    if (!options.humanConfirmed) {
+        const delegated = sessionKeystore.addresses.delegated
+        const elevated = delegated
+            ? await deps.sessionRequiresPhrase({
+                  env: options.env,
+                  account: getAddress(delegated),
+                  sessionAddress: getAddress(sessionKeystore.addresses.session),
+              })
+            : true
+        if (elevated) {
+            throw new SessionUnlockError(
+                'SESSION_UNLOCK_FAILED',
+                'Unlocking a full-access session requires a human at an interactive terminal. Type "UNLOCK FULL ACCESS SESSION" when prompted.',
+            )
+        }
+    }
+
     const decrypted = await deps.decryptSessionKeystore(sessionKeystore, options.password)
     let encryptionDeviceHex: `0x${string}` | undefined
     if (options.device) {
-        if (!isAgentKeystore(sessionKeystore)) {
-            throw new SessionUnlockError(
-                'INVALID_SESSION_KIND',
-                'Session is not an agent session. `--device` is only supported for agent sessions.',
-            )
-        }
         const exportedDevice = await deps.decryptAgentDevice(sessionKeystore, options.password)
         encryptionDeviceHex = `0x${Buffer.from(toBinary(ExportedDeviceSchema, exportedDevice)).toString('hex')}`
     }
@@ -176,6 +203,8 @@ export async function executeSessionUnlock(
         durationSeconds,
         kind: options.device ? 'agent' : undefined,
         encryptionDevice: encryptionDeviceHex,
+        phraseConfirmed: options.humanConfirmed === true,
+        env: options.env,
     })
 
     if (response === null) {

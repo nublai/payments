@@ -173,11 +173,8 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
             spends = result[0] as readonly (readonly ContractSpendInfo[])[]
             executes = result[1] as readonly (readonly Hex[])[]
         } catch (error) {
-            logger.warn(
-                { error, address, chainId },
-                'Failed to read key permissions, returning keys without permissions',
-            )
-            // Continue without permissions - keys are still useful
+            logger.error({ error, address, chainId }, 'Failed to read key permissions')
+            throw new RpcError(CONTRACT_ERROR, 'Failed to read key permissions')
         }
 
         // Transform keys with permissions
