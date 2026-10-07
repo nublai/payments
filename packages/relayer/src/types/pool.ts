@@ -239,6 +239,8 @@ export type SignerErrorCode = (typeof SignerErrorCode)[keyof typeof SignerErrorC
 export interface SignerError {
     error: string
     code?: SignerErrorCode
+    /** False only when the signer returned before eth_sendRawTransaction. */
+    broadcastAttempted?: boolean
 }
 
 /**

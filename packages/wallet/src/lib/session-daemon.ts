@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { unlink, writeFile } from 'node:fs/promises'
+import { readFile, unlink, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import net from 'node:net'
 import { getAddress, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -18,6 +19,12 @@ import {
     resolveSessionDaemonPaths,
     type SessionDaemonPaths,
 } from './session-daemon-paths'
+import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
+import {
+    assessPhraseLessIntent,
+    PhraseLessSignError,
+} from './session-daemon-policy'
+import type { EnvName } from './network-config'
 
 const REQUEST_MAX_BYTES = 256 * 1024
 const KEY_SWEEP_INTERVAL_MS = 30_000
@@ -28,6 +35,69 @@ type StoredKey = {
     expiresAt: number
     kind?: string
     encryptionDevice?: Buffer
+    /** Set at unlock. Sign requests cannot change it. */
+    phraseConfirmed: boolean
+    env?: EnvName
+}
+
+type SpendBucket = { periodStart: number; spent: bigint }
+
+function dayStart(nowMs: number): number {
+    return Math.floor(nowMs / 1000 / 86_400) * 86_400
+}
+
+async function loadSpendLedger(path: string): Promise<Map<string, SpendBucket>> {
+    const map = new Map<string, SpendBucket>()
+    try {
+        const raw = JSON.parse(await readFile(path, 'utf8')) as unknown
+        if (!isRecord(raw)) return map
+        for (const [key, value] of Object.entries(raw)) {
+            if (!isRecord(value) || typeof value.periodStart !== 'number' || typeof value.spent !== 'string') {
+                continue
+            }
+            try {
+                map.set(key, { periodStart: value.periodStart, spent: BigInt(value.spent) })
+            } catch {
+                continue
+            }
+        }
+    } catch {
+        return map
+    }
+    return map
+}
+
+async function saveSpendLedger(path: string, ledger: Map<string, SpendBucket>): Promise<void> {
+    const body: Record<string, { periodStart: number; spent: string }> = {}
+    for (const [key, value] of ledger) {
+        body[key] = { periodStart: value.periodStart, spent: value.spent.toString() }
+    }
+    await writeFile(path, `${JSON.stringify(body)}\n`, { mode: 0o600 })
+}
+
+function reserveSpend(
+    ledger: Map<string, SpendBucket>,
+    address: Address,
+    chainId: number,
+    amount: bigint,
+    nowMs: number,
+): () => void {
+    if (amount === 0n) return () => {}
+    const key = `${address.toLowerCase()}:${chainId}`
+    const start = dayStart(nowMs)
+    const current = ledger.get(key)
+    const spent = current && current.periodStart === start ? current.spent : 0n
+    if (spent + amount > DEFAULT_SESSION_SPEND_LIMIT) {
+        throw new PhraseLessSignError('Phrase-less session exceeds the 10 USDC daily budget')
+    }
+    ledger.set(key, { periodStart: start, spent: spent + amount })
+    return () => {
+        const bucket = ledger.get(key)
+        if (!bucket || bucket.periodStart !== start) return
+        const next = bucket.spent - amount
+        if (next <= 0n) ledger.delete(key)
+        else ledger.set(key, { periodStart: start, spent: next })
+    }
 }
 
 export type RunningSessionDaemon = {
@@ -147,6 +217,8 @@ export async function runSessionDaemon(options?: {
     }
 
     const keyStore = new Map<string, StoredKey>()
+    const ledgerPath = join(paths.stateDir, 'spend-ledger.json')
+    const spendLedger = await loadSpendLedger(ledgerPath)
     const sockets = new Set<net.Socket>()
     const sweepTimer = setInterval(() => {
         const now = getNowMs()
@@ -333,6 +405,8 @@ export async function runSessionDaemon(options?: {
                                     expiresAt,
                                     kind: request.params.kind,
                                     encryptionDevice,
+                                    phraseConfirmed: request.params.phraseConfirmed === true,
+                                    env: request.params.env,
                                 })
 
                                 writeResponse({
@@ -346,32 +420,14 @@ export async function runSessionDaemon(options?: {
                                 return
                             }
                             case 'getSessionSecrets': {
-                                const sessionName = normalizeSessionName(request.params.sessionName)
-                                const now = getNowMs()
-                                const entry = getLiveSessionOrWriteError(
-                                    keyStore,
-                                    sessionName,
-                                    now,
-                                    request.id,
-                                    writeResponse,
+                                // Raw keys stay off this socket. sign and signMessage remain (H7).
+                                writeResponse(
+                                    buildError(
+                                        request.id,
+                                        DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                        'getSessionSecrets is not available. The daemon socket does not return raw session keys.',
+                                    ),
                                 )
-                                if (!entry) {
-                                    return
-                                }
-                                writeResponse({
-                                    id: request.id,
-                                    result: {
-                                        name: sessionName,
-                                        privateKey: `0x${entry.privateKey.toString('hex')}`,
-                                        address: entry.address,
-                                        expiresAt: entry.expiresAt,
-                                        ...(entry.encryptionDevice
-                                            ? {
-                                                  encryptionDevice: `0x${entry.encryptionDevice.toString('hex')}`,
-                                              }
-                                            : {}),
-                                    },
-                                })
                                 return
                             }
                             case 'remove': {
@@ -400,6 +456,46 @@ export async function runSessionDaemon(options?: {
                                 }
                                 const privateKey = `0x${entry.privateKey.toString('hex')}` as Hex
                                 const account = privateKeyToAccount(privateKey)
+                                if (!entry.phraseConfirmed) {
+                                    let rollback = () => {}
+                                    try {
+                                        const decision = assessPhraseLessIntent({
+                                            typedData: request.params.typedData,
+                                            env: entry.env,
+                                        })
+                                        rollback = reserveSpend(
+                                            spendLedger,
+                                            entry.address,
+                                            decision.chainId,
+                                            decision.usdc,
+                                            now,
+                                        )
+                                        await saveSpendLedger(ledgerPath, spendLedger)
+                                    } catch (error) {
+                                        rollback()
+                                        writeResponse(
+                                            buildError(
+                                                request.id,
+                                                DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                                error instanceof Error
+                                                    ? error.message
+                                                    : 'Phrase-less session refused this signature',
+                                            ),
+                                        )
+                                        return
+                                    }
+                                    try {
+                                        const signature = await account.signTypedData(
+                                            request.params.typedData,
+                                        )
+                                        writeResponse({ id: request.id, result: { signature } })
+                                    } catch (error) {
+                                        rollback()
+                                        await saveSpendLedger(ledgerPath, spendLedger)
+                                        throw error
+                                    }
+                                    return
+                                }
                                 const signature = await account.signTypedData(
                                     request.params.typedData,
                                 )
@@ -417,6 +513,16 @@ export async function runSessionDaemon(options?: {
                                     writeResponse,
                                 )
                                 if (!entry) {
+                                    return
+                                }
+                                if (!entry.phraseConfirmed) {
+                                    writeResponse(
+                                        buildError(
+                                            request.id,
+                                            DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                            'Phrase-less sessions cannot sign messages',
+                                        ),
+                                    )
                                     return
                                 }
                                 const privateKey = `0x${entry.privateKey.toString('hex')}` as Hex

@@ -1,3 +1,4 @@
+import { getAddress } from 'viem'
 import { Cli, z } from 'incur'
 import { readFileSync } from 'node:fs'
 import {
@@ -17,9 +18,11 @@ import {
 } from './lib/account-create'
 import { executeAccountDelegate, resolveAccountDelegatePassword } from './lib/account-delegate'
 import {
+    AccountExportError,
     executeAccountExport,
     assertCanExportPrivateKeys,
     resolveAccountExportPassword,
+    PRIVATE_EXPORT_CONFIRMATION_PHRASE,
 } from './lib/account-export'
 import { executeAccountNonce } from './lib/account-nonce'
 import { executeAccountHistory } from './lib/account-history'
@@ -53,12 +56,29 @@ import { executeSessionUnlock, resolveSessionUnlockPassword } from './lib/sessio
 import { executePermissionsGrant } from './lib/permissions-grant'
 import { parseSpendLimitUnits } from './lib/permissions-common'
 import { executePermissionsList } from './lib/permissions-list'
-import { executePermissionsRevoke } from './lib/permissions-revoke'
+import { executePermissionsRevoke, revokeLeavesElevated } from './lib/permissions-revoke'
 import { executePermissionsShow } from './lib/permissions-show'
-import { parseSpendLimit } from './lib/session-common'
+import {
+    DEFAULT_SESSION_SPEND_LIMIT,
+    normalizedDailyUsdcUnits,
+    parseSpendLimit,
+    permissionNeedsFullAccessConfirmation,
+} from './lib/session-common'
+import {
+    fullAccessSessionHowTo,
+    readActiveUsdcDaily,
+    sessionHasWildcardCall,
+    storedSessionRequiresPhrase,
+} from './lib/session-gates'
 import { authUrlUnsetMessage, executeLogin, executeLogout, getAuthUrl, LoginError } from './lib/login'
-import { SessionDaemonClient } from './lib/session-daemon-client'
-import { normalizeChainName, type ChainName } from './lib/network-config'
+import { readKeystoreBundle } from './lib/keystore'
+import {
+    getUsdcTokenConfig,
+    normalizeChainName,
+    resolveNetworkConfig,
+    selectDefaultChain,
+    type ChainName,
+} from './lib/network-config'
 import {
     getQuote as getRelayQuote,
     pollIntentStatus as pollRelayIntentStatus,
@@ -70,7 +90,6 @@ import {
     PromptCancelledError,
     readlineExistingPassword,
     readlineNewPassword,
-    readlineTypedConfirmation,
 } from './lib/password-readline'
 import { executeEscrowCreate } from './lib/escrow-create'
 import { EscrowError } from './lib/escrow-common'
@@ -78,6 +97,22 @@ import { executeEscrowStatus } from './lib/escrow-status'
 import { executeEscrowSettle } from './lib/escrow-settle'
 import { executeEscrowRefund } from './lib/escrow-refund'
 import { AccountPasskeyError, executeAccountPasskey } from './lib/account-passkey'
+import {
+    CONFIRM_FULL_ACCESS_PHRASE,
+    CONFIRM_ORACLE_SIGN_PHRASE,
+    CONFIRM_PASSKEY_PHRASE,
+    CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
+    CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+    CONFIRM_SEND_PHRASE,
+    CONFIRM_UNLOCK_FULL_ACCESS_PHRASE,
+    HumanConfirmationError,
+    isInteractiveTerminal,
+    isMcpCaller,
+    privateKeyMcpRefusal,
+    promptTerminalPhrase,
+    quoteConfirmationMessage,
+    requireHumanConfirmation,
+} from './lib/human-confirmation'
 
 // ---------------------------------------------------------------------------
 // Shared schemas
@@ -98,7 +133,9 @@ const legacySchema = z.boolean().optional().describe('Use legacy USDC.e on polyg
 const spendPeriodSchema = z
     .enum(['minute', 'hour', 'day', 'week', 'month', 'year', 'forever'])
     .optional()
-    .describe('Spend limit period (minute, hour, day, week, month, year, forever)')
+    .describe(
+        'Spend limit period (minute, hour, day, week, month, year, forever). minute and hour require the full-access phrase.',
+    )
 const permissionTypeSchema = z.enum(['call', 'spend']).describe('Permission type: call or spend')
 
 const passwordEnv = z.object({
@@ -229,6 +266,183 @@ async function withStderrSpinner<T>(
 
 function normalizeOptionalChain(value?: string): ChainName | undefined {
     return value ? normalizeChainName(value) : undefined
+}
+
+async function confirmHuman(
+    reportError: (options: { code: string; message: string }) => never,
+    operation: string,
+    phrase: string,
+): Promise<void> {
+    try {
+        await requireHumanConfirmation({
+            operation,
+            phrase,
+            prompt: (expected) => handlePromptCancellation(promptTerminalPhrase(expected)),
+        })
+    } catch (error) {
+        if (error instanceof HumanConfirmationError) {
+            reportError({ code: error.code, message: error.message })
+        }
+        throw error
+    }
+}
+
+function refuseQuoteWithoutHuman(kind: 'swap' | 'bridge'): void {
+    if (isMcpCaller() || !isInteractiveTerminal()) {
+        throw new AccountSwapError('CONFIRMATION_REQUIRED', quoteConfirmationMessage(kind))
+    }
+}
+
+async function refuseNarrowSessionForQuote(
+    kind: 'swap' | 'bridge',
+    options: {
+        env: 'dev' | 'stage' | 'prod'
+        chain?: string
+        profile?: string
+        keystorePath?: string
+        session?: string
+        sessionFile?: string
+    },
+): Promise<void> {
+    const allowed = await sessionHasWildcardCall({
+        env: options.env,
+        chain: options.chain,
+        name: options.profile,
+        keystorePath: options.keystorePath,
+        sessionName: options.session,
+        sessionFile: options.sessionFile,
+    })
+    if (!allowed) {
+        throw new AccountSwapError('CONFIRMATION_REQUIRED', fullAccessSessionHowTo(kind))
+    }
+}
+
+async function readPublicAccountAddresses(keystorePath: string): Promise<string[]> {
+    try {
+        const bundle = await readKeystoreBundle(keystorePath)
+        return [bundle.root.addresses.delegated, bundle.root.addresses.root].filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+        )
+    } catch {
+        return []
+    }
+}
+
+/** Full-access phrase before the root key is decrypted. */
+async function confirmElevatedPermission(
+    reportError: (options: { code: string; message: string }) => never,
+    operation: string,
+    phrase: string,
+    input: {
+        env: 'dev' | 'stage' | 'prod'
+        profile?: string
+        keystorePath?: string
+        fullAccess?: boolean
+        target?: string
+        selector?: string
+        spendLimit?: string
+        spendLimitRaw?: string
+        spendPeriod?: 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year' | 'forever'
+        token?: string
+        chain?: string
+        /** Session create/rotate install 10 USDC per day when amount and period are omitted. */
+        defaultUsdcSpend?: boolean
+        parseHumanAmount: (value: string) => bigint
+        /** Add this operation's USDC spend to the account's other active sessions. */
+        stack?: 'create' | 'rotate' | 'grant'
+        grantType?: 'call' | 'spend'
+        excludeSessionName?: string
+        excludeKeyHash?: string
+    },
+): Promise<boolean> {
+    const spendLimit = resolveSpendLimitInput({
+        spendLimit: input.spendLimit,
+        spendLimitRaw: input.spendLimitRaw,
+        parseHumanAmount: input.parseHumanAmount,
+    })
+    const chain = selectDefaultChain(input.env, input.chain)
+    const usdcAddress = getUsdcTokenConfig(chain).address
+    const accountAddresses = await readPublicAccountAddresses(
+        resolveKeystorePath({
+            env: input.env,
+            name: input.profile,
+            keystorePath: input.keystorePath,
+        }),
+    )
+    if (
+        permissionNeedsFullAccessConfirmation({
+            fullAccess: input.fullAccess,
+            target: input.target,
+            selectors: input.selector ? [input.selector] : undefined,
+            spendLimit,
+            spendPeriod: input.spendPeriod,
+            token: input.token,
+            usdcAddress,
+            defaultUsdcSpend: input.defaultUsdcSpend,
+            accountAddresses,
+        })
+    ) {
+        await confirmHuman(reportError, operation, phrase)
+        return true
+    }
+    if (!input.stack) return false
+    const proposed = proposedUsdcDaily({
+        stack: input.stack,
+        grantType: input.grantType,
+        defaultUsdcSpend: input.defaultUsdcSpend,
+        spendLimit,
+        spendPeriod: input.spendPeriod,
+        token: input.token,
+        usdcAddress,
+    })
+    if (proposed === null) return false
+    const existing = await readActiveUsdcDaily({
+        env: input.env,
+        chain: input.chain,
+        name: input.profile,
+        keystorePath: input.keystorePath,
+        excludeSessionName: input.stack === 'rotate' ? input.excludeSessionName : undefined,
+        excludeKeyHash: input.stack === 'grant' ? input.excludeKeyHash : undefined,
+    })
+    if (existing === 'unreadable' || existing + proposed > DEFAULT_SESSION_SPEND_LIMIT) {
+        await confirmHuman(reportError, operation, phrase)
+        return true
+    }
+    return false
+}
+
+function fullKeyHash(value?: string): string | undefined {
+    if (!value) return undefined
+    const normalized = value.startsWith('0x') || value.startsWith('0X') ? value : `0x${value}`
+    if (!/^0x[a-fA-F0-9]{64}$/.test(normalized)) return undefined
+    return normalized
+}
+
+function proposedUsdcDaily(input: {
+    stack: 'create' | 'rotate' | 'grant'
+    grantType?: 'call' | 'spend'
+    defaultUsdcSpend?: boolean
+    spendLimit?: bigint
+    spendPeriod?: 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year' | 'forever'
+    token?: string
+    usdcAddress: string
+}): bigint | null {
+    if (input.stack === 'grant' && input.grantType !== 'spend') return null
+    if (input.token) {
+        try {
+            if (input.token.toLowerCase() !== input.usdcAddress.toLowerCase()) return null
+        } catch {
+            return null
+        }
+    }
+    if (input.stack === 'grant') {
+        if (input.spendLimit === undefined || !input.spendPeriod) return null
+        return normalizedDailyUsdcUnits(input.spendLimit, input.spendPeriod)
+    }
+    if (!input.defaultUsdcSpend) return null
+    const period = input.spendPeriod ?? 'day'
+    const limit = input.spendLimit ?? DEFAULT_SESSION_SPEND_LIMIT
+    return normalizedDailyUsdcUnits(limit, period)
 }
 
 // ---------------------------------------------------------------------------
@@ -477,7 +691,8 @@ account.command('status', {
 })
 
 account.command('create', {
-    description: 'Create local account keystore and delegate account',
+    description:
+        'Create local account keystore and delegate account. The default session can transfer and approve this chain USDC, call escrow, refund, write a settlement, and settle, with a 10 USDC daily spend. It requires typing CREATE FULL ACCESS SESSION in an interactive terminal. A chain with no known USDC or Escrow address is refused. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,
@@ -500,7 +715,12 @@ account.command('create', {
         txHash: z.string().optional(),
     }),
     examples: [{ options: { env: 'prod', profile: 'agent' }, description: 'Create account' }],
-    async run({ options, env }) {
+    async run({ options, env, error: reportError }) {
+        await confirmHuman(
+            reportError,
+            'Creating an account installs a full-access session',
+            CONFIRM_FULL_ACCESS_PHRASE,
+        )
         const keystorePath = resolveKeystorePath({
             env: options.env,
             keystorePath: options.keystorePath,
@@ -532,7 +752,8 @@ account.command('create', {
 })
 
 account.command('delegate', {
-    description: 'Delegate existing account on one or more chains',
+    description:
+        'Delegate existing account on one or more chains. Installs the narrow default session (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day) and requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,
@@ -559,7 +780,12 @@ account.command('delegate', {
             description: 'Delegate on base',
         },
     ],
-    async run({ options, env }) {
+    async run({ options, env, error: reportError }) {
+        await confirmHuman(
+            reportError,
+            'Delegating an account installs a full-access session',
+            CONFIRM_FULL_ACCESS_PHRASE,
+        )
         const password = await resolveAccountDelegatePassword(
             {
                 env: options.env,
@@ -590,7 +816,8 @@ account.command('delegate', {
 })
 
 tw.command('send', {
-    description: 'Send USDC with session key through relayer',
+    description:
+        'Send USDC with the session key. An interactive terminal must type "SEND USDC". MCP and non-interactive callers cannot confirm.',
     args: z.object({
         amount: z.string().describe('Amount of USDC to send'),
         recipient: z.string().describe('Recipient address or ENS name'),
@@ -624,7 +851,8 @@ tw.command('send', {
             description: 'Send 1 USDC',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        await confirmHuman(reportError, 'Sending USDC', CONFIRM_SEND_PHRASE)
         return executeAccountSend({
             env: options.env,
             amount: args.amount,
@@ -674,7 +902,12 @@ tw.command('swap', {
             .number()
             .optional()
             .describe('Slippage tolerance as percentage (default: 0.5)'),
-        yes: z.boolean().optional().describe('Skip interactive confirmation'),
+        yes: z
+            .boolean()
+            .optional()
+            .describe(
+                'Skip the quote prompt in an interactive terminal. Refused for MCP and non-interactive callers.',
+            ),
         env: envSchema,
         profile: profileSchema,
         keystorePath: keystorePathSchema,
@@ -700,13 +933,8 @@ tw.command('swap', {
         txHash: z.string().optional(),
     }),
     async run({ options, env }) {
-        const isInteractive = Boolean(process.stdin.isTTY && process.stdout.isTTY)
-        if (!options.yes && !isInteractive) {
-            throw new AccountSwapError(
-                'CONFIRMATION_REQUIRED',
-                'Confirmation required. Re-run with --yes in non-interactive mode.',
-            )
-        }
+        refuseQuoteWithoutHuman('swap')
+        await refuseNarrowSessionForQuote('swap', options)
 
         return executeAccountSwap(
             {
@@ -781,7 +1009,12 @@ tw.command('bridge', {
             .number()
             .optional()
             .describe('Slippage tolerance as percentage (default: 0.5)'),
-        yes: z.boolean().optional().describe('Skip interactive confirmation'),
+        yes: z
+            .boolean()
+            .optional()
+            .describe(
+                'Skip the quote prompt in an interactive terminal. Refused for MCP and non-interactive callers.',
+            ),
         env: envSchema,
         profile: profileSchema,
         keystorePath: keystorePathSchema,
@@ -834,13 +1067,8 @@ tw.command('bridge', {
         txHash: z.string().optional(),
     }),
     async run({ options, env }) {
-        const isInteractive = Boolean(process.stdin.isTTY && process.stdout.isTTY)
-        if (!options.yes && !isInteractive) {
-            throw new AccountSwapError(
-                'CONFIRMATION_REQUIRED',
-                'Confirmation required. Re-run with --yes in non-interactive mode.',
-            )
-        }
+        refuseQuoteWithoutHuman('bridge')
+        await refuseNarrowSessionForQuote('bridge', options)
 
         return executeAccountSwap(
             {
@@ -911,7 +1139,12 @@ account.command('export', {
         env: envSchema,
         profile: profileSchema,
         keystorePath: keystorePathSchema,
-        showPrivate: z.boolean().optional().describe('Include private keys in output'),
+        showPrivate: z
+            .boolean()
+            .optional()
+            .describe(
+                'Include private keys. Requires typing EXPORT PRIVATE KEYS in an interactive terminal. TW_PASSWORD does not skip that prompt, and MCP cannot confirm it.',
+            ),
         passwordStdin: passwordStdinSchema,
     }),
     env: passwordEnv,
@@ -927,17 +1160,25 @@ account.command('export', {
     examples: [
         { options: { env: 'prod', profile: 'agent' }, description: 'Export account metadata' },
     ],
-    async run({ options, env }) {
-        const isInteractive = Boolean(process.stdin.isTTY && process.stdout.isTTY)
-        const hasNonInteractiveSource = Boolean(env.TW_PASSWORD || options.passwordStdin)
-
-        await assertCanExportPrivateKeys({
-            showPrivate: options.showPrivate ?? false,
-            isInteractive,
-            allowNonInteractive: hasNonInteractiveSource,
-            promptForTypedConfirmation: (expectedPhrase: string) =>
-                handlePromptCancellation(readlineTypedConfirmation(expectedPhrase)),
-        })
+    async run({ options, env, error: reportError }) {
+        try {
+            await assertCanExportPrivateKeys({
+                showPrivate: options.showPrivate ?? false,
+                isInteractive: isInteractiveTerminal(),
+                mcp: isMcpCaller(),
+                promptForTypedConfirmation: (expectedPhrase: string) =>
+                    handlePromptCancellation(promptTerminalPhrase(expectedPhrase)),
+            })
+        } catch (error) {
+            if (
+                error instanceof AccountExportError &&
+                (error.code === 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED' ||
+                    error.code === 'PRIVATE_EXPORT_CONFIRMATION_FAILED')
+            ) {
+                reportError({ code: error.code, message: error.message })
+            }
+            throw error
+        }
 
         const password = await resolveAccountExportPassword(
             {
@@ -1034,7 +1275,11 @@ account.command('passkey', {
         'Authorize a P-256 WebAuthn key on a local Account and verify the wrapped signature',
     options: z.object({
         rpcUrl: z.string().describe('Anvil JSON-RPC URL (osaka hardfork, RIP-7212 at 0x100)'),
-        privateKey: z.string().describe('EOA private key that becomes the delegated account'),
+        privateKey: z
+            .string()
+            .describe(
+                'EOA private key that becomes the delegated account. Not accepted over MCP. Run this command in an interactive terminal and type AUTHORIZE PASSKEY.',
+            ),
         publicKey: z.string().describe('P-256 public key, 64-byte x||y hex'),
         digest: z.string().describe('32-byte digest the clientDataJSON challenge commits to'),
         authenticatorData: z.string().describe('WebAuthn authenticatorData hex'),
@@ -1064,6 +1309,13 @@ account.command('passkey', {
         },
     ],
     async run({ options, error: reportError }) {
+        if (isMcpCaller()) {
+            return reportError({
+                code: 'HUMAN_CONFIRMATION_REQUIRED',
+                message: privateKeyMcpRefusal('account passkey', CONFIRM_PASSKEY_PHRASE),
+            })
+        }
+        await confirmHuman(reportError, 'Authorizing a passkey', CONFIRM_PASSKEY_PHRASE)
         try {
             return await executeAccountPasskey({
                 rpcUrl: options.rpcUrl,
@@ -1112,19 +1364,19 @@ session.command('create', {
             .boolean()
             .optional()
             .describe(
-                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period.',
+                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing CREATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for a period shorter than a day or a spend above 10 USDC. MCP cannot confirm it.',
             ),
         target: z
             .string()
             .optional()
             .describe(
-                'Target contract address for call permission. Omit with --selector to use wildcard call permissions.',
+                'Target contract for the call permission. Omit to allow USDC only. ANY_TARGET or the account address requires CREATE FULL ACCESS SESSION.',
             ),
         selector: z
             .string()
             .optional()
             .describe(
-                'Function selector for call permission. Omit with --target to use wildcard call permissions.',
+                'Function selector for the call permission. Omit to allow USDC transfer. ANY_FN_SEL or an account admin selector requires CREATE FULL ACCESS SESSION.',
             ),
         spendLimit: z
             .string()
@@ -1164,7 +1416,27 @@ session.command('create', {
             description: 'Create a session key',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        const phraseConfirmed = await confirmElevatedPermission(
+            reportError,
+            'Creating a full-access session',
+            CONFIRM_FULL_ACCESS_PHRASE,
+            {
+                env: options.env,
+                profile: options.profile,
+                keystorePath: options.keystorePath,
+                fullAccess: options.fullAccess,
+                target: options.target,
+                selector: options.selector,
+                spendLimit: options.spendLimit,
+                spendLimitRaw: options.spendLimitRaw,
+                spendPeriod: options.spendPeriod,
+                chain: options.chain,
+                defaultUsdcSpend: true,
+                stack: 'create',
+                parseHumanAmount: parseSpendLimit,
+            },
+        )
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1178,33 +1450,40 @@ session.command('create', {
             },
         )
 
-        const result = await executeSessionCreate({
-            env: options.env,
-            chain: options.chain as ChainName | undefined,
-            name: options.profile,
-            keystorePath: options.keystorePath,
-            sessionName: args.sessionName,
-            activate: options.activate,
-            resume: options.resume,
-            fullAccess: options.fullAccess,
-            target: options.target as `0x${string}` | undefined,
-            selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
-            spendLimit: resolveSpendLimitInput({
-                spendLimit: options.spendLimit,
-                spendLimitRaw: options.spendLimitRaw,
-                parseHumanAmount: parseSpendLimit,
-            }),
-            spendPeriod: options.spendPeriod,
-            expiry: options.expiry,
-            password,
-        })
-
-        return result
+        try {
+            return await executeSessionCreate({
+                env: options.env,
+                chain: options.chain as ChainName | undefined,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                sessionName: args.sessionName,
+                activate: options.activate,
+                resume: options.resume,
+                fullAccess: options.fullAccess,
+                target: options.target as `0x${string}` | undefined,
+                selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
+                spendLimit: resolveSpendLimitInput({
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    parseHumanAmount: parseSpendLimit,
+                }),
+                spendPeriod: options.spendPeriod,
+                expiry: options.expiry,
+                password,
+                fullAccessPhraseConfirmed: phraseConfirmed,
+            })
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            throw error
+        }
     },
 })
 
 session.command('export', {
-    description: 'Export a session keystore as a portable file',
+    description:
+        'Export a session keystore as a portable file. Requires typing EXPORT PRIVATE KEYS in an interactive terminal. TW_PASSWORD and TW_EXPORT_PASSWORD do not skip that phrase, and MCP cannot confirm it.',
     args: z.object({
         sessionName: z.string().describe('Session name to export'),
     }),
@@ -1227,7 +1506,12 @@ session.command('export', {
         output: z.string(),
         sessionName: z.string(),
     }),
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        await confirmHuman(
+            reportError,
+            'Exporting a session private key',
+            PRIVATE_EXPORT_CONFIRMATION_PHRASE,
+        )
         await assertSessionExportInputs({ output: options.output, overwrite: options.overwrite })
         const passwords = await resolveSessionExportPasswords(
             {
@@ -1337,19 +1621,19 @@ session.command('rotate', {
             .boolean()
             .optional()
             .describe(
-                'Grant full access. Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period.',
+                'Grant full access. Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing ROTATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for ANY_TARGET, the account, ANY_FN_SEL, an account admin selector, a period shorter than a day, a non-USDC token, or a spend limit above 10 USDC. MCP cannot confirm it.',
             ),
         target: z
             .string()
             .optional()
             .describe(
-                'Target contract address for call permission. Omit with --selector to use wildcard call permissions.',
+                'Target contract for the call permission. Omit to allow USDC only. ANY_TARGET or the account address requires ROTATE FULL ACCESS SESSION.',
             ),
         selector: z
             .string()
             .optional()
             .describe(
-                'Function selector for call permission. Omit with --target to use wildcard call permissions.',
+                'Function selector for the call permission. Omit to allow USDC transfer. ANY_FN_SEL or an account admin selector requires ROTATE FULL ACCESS SESSION.',
             ),
         spendLimit: z
             .string()
@@ -1360,6 +1644,12 @@ session.command('rotate', {
             .optional()
             .describe('Spend limit in raw base units (mutually exclusive with --spend-limit)'),
         spendPeriod: spendPeriodSchema,
+        narrow: z
+            .boolean()
+            .optional()
+            .describe(
+                'Replace the active session with the narrow default (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day) and revoke the old key. Requires typing ROTATE FULL ACCESS SESSION. Cannot be combined with --full-access, --target, --selector, or a custom spend.',
+            ),
         passwordStdin: passwordStdinSchema,
     }),
     env: passwordEnv,
@@ -1373,7 +1663,66 @@ session.command('rotate', {
     examples: [
         { options: { env: 'prod', profile: 'agent' }, description: 'Rotate active session' },
     ],
-    async run({ options, env }) {
+    async run({ options, env, error: reportError }) {
+        if (
+            options.narrow &&
+            (options.fullAccess ||
+                options.target ||
+                options.selector ||
+                options.spendLimit ||
+                options.spendLimitRaw ||
+                options.spendPeriod)
+        ) {
+            return reportError({
+                code: 'INVALID_REQUEST',
+                message:
+                    '--narrow cannot be combined with --full-access, --target, --selector, or a custom spend.',
+            })
+        }
+        let phraseConfirmed = false
+        if (options.narrow) {
+            await confirmHuman(
+                reportError,
+                'Rotating a legacy session onto the narrowed default',
+                CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+            )
+            phraseConfirmed = true
+        } else {
+            let excludeSessionName: string | undefined
+            try {
+                const bundle = await readKeystoreBundle(
+                    resolveKeystorePath({
+                        env: options.env,
+                        name: options.profile,
+                        keystorePath: options.keystorePath,
+                    }),
+                )
+                excludeSessionName = bundle.root.sessionRef.active
+            } catch {
+                excludeSessionName = undefined
+            }
+            phraseConfirmed = await confirmElevatedPermission(
+                reportError,
+                'Rotating to a full-access session',
+                CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+                {
+                    env: options.env,
+                    profile: options.profile,
+                    keystorePath: options.keystorePath,
+                    fullAccess: options.fullAccess,
+                    target: options.target,
+                    selector: options.selector,
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    spendPeriod: options.spendPeriod,
+                    chain: options.chain,
+                    defaultUsdcSpend: true,
+                    stack: 'rotate',
+                    excludeSessionName,
+                    parseHumanAmount: parseSpendLimit,
+                },
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1403,6 +1752,8 @@ session.command('rotate', {
                 parseHumanAmount: parseSpendLimit,
             }),
             spendPeriod: options.spendPeriod,
+            narrow: options.narrow,
+            fullAccessPhraseConfirmed: phraseConfirmed,
             password,
         })
     },
@@ -1437,7 +1788,22 @@ session.command('revoke', {
             description: 'Revoke a session',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        if (
+            await storedSessionRequiresPhrase({
+                env: options.env,
+                chain: options.chain,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                sessionName: args.sessionName,
+            })
+        ) {
+            await confirmHuman(
+                reportError,
+                'Revoking a full-access session',
+                CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1538,7 +1904,20 @@ daemon.command('unlock', {
         address: z.string(),
         expiresAt: z.number(),
     }),
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        const requiresPhrase = await storedSessionRequiresPhrase({
+            env: options.env,
+            name: options.profile,
+            keystorePath: options.keystorePath,
+            sessionName: args.sessionName,
+        })
+        if (requiresPhrase) {
+            await confirmHuman(
+                reportError,
+                'Unlocking a full-access session',
+                CONFIRM_UNLOCK_FULL_ACCESS_PHRASE,
+            )
+        }
         const password = await resolveSessionUnlockPassword(
             {
                 passwordStdin: options.passwordStdin ?? false,
@@ -1562,6 +1941,7 @@ daemon.command('unlock', {
             duration: options.duration,
             force: options.force,
             device: options.device,
+            humanConfirmed: requiresPhrase,
         })
     },
 })
@@ -1716,9 +2096,24 @@ permissions.command('grant', {
         keyName: z.string().optional().describe('Key name'),
         keyHash: z.string().optional().describe('Key hash'),
         type: permissionTypeSchema,
-        target: z.string().optional().describe('Target contract address'),
-        selector: z.string().optional().describe('Function selector'),
-        token: z.string().optional().describe('Spend token address'),
+        target: z
+            .string()
+            .optional()
+            .describe(
+                'Target contract address. ANY_TARGET or the account requires CREATE FULL ACCESS SESSION.',
+            ),
+        selector: z
+            .string()
+            .optional()
+            .describe(
+                'Function selector. ANY_FN_SEL or an account admin selector requires CREATE FULL ACCESS SESSION.',
+            ),
+        token: z
+            .string()
+            .optional()
+            .describe(
+                'Spend token address. Any token other than this chain USDC requires CREATE FULL ACCESS SESSION.',
+            ),
         spendLimit: z
             .string()
             .optional()
@@ -1743,7 +2138,28 @@ permissions.command('grant', {
             description: 'Grant a call permission',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        const phraseConfirmed = await confirmElevatedPermission(
+            reportError,
+            'Granting a full-access permission',
+            CONFIRM_FULL_ACCESS_PHRASE,
+            {
+                env: options.env,
+                profile: options.profile,
+                keystorePath: options.keystorePath,
+                target: options.target,
+                selector: options.selector,
+                spendLimit: options.spendLimit,
+                spendLimitRaw: options.spendLimitRaw,
+                spendPeriod: options.period,
+                token: options.token,
+                chain: options.chain,
+                stack: 'grant',
+                grantType: options.type,
+                excludeKeyHash: fullKeyHash(options.keyHash) ?? fullKeyHash(args.keyRef),
+                parseHumanAmount: parseSpendLimitUnits,
+            },
+        )
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1757,26 +2173,34 @@ permissions.command('grant', {
             },
         )
 
-        return executePermissionsGrant({
-            env: options.env,
-            chain: options.chain as ChainName | undefined,
-            name: options.profile,
-            keystorePath: options.keystorePath,
-            keyRef: args.keyRef,
-            keyName: options.keyName,
-            keyHash: options.keyHash as `0x${string}` | undefined,
-            grantType: options.type,
-            target: options.target as `0x${string}` | undefined,
-            selector: options.selector as `0x${string}` | undefined,
-            token: options.token as `0x${string}` | undefined,
-            spendLimit: resolveSpendLimitInput({
-                spendLimit: options.spendLimit,
-                spendLimitRaw: options.spendLimitRaw,
-                parseHumanAmount: parseSpendLimitUnits,
-            }),
-            period: options.period,
-            password,
-        })
+        try {
+            return await executePermissionsGrant({
+                env: options.env,
+                chain: options.chain as ChainName | undefined,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                keyRef: args.keyRef,
+                keyName: options.keyName,
+                keyHash: options.keyHash as `0x${string}` | undefined,
+                grantType: options.type,
+                target: options.target as `0x${string}` | undefined,
+                selector: options.selector as `0x${string}` | undefined,
+                token: options.token as `0x${string}` | undefined,
+                spendLimit: resolveSpendLimitInput({
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    parseHumanAmount: parseSpendLimitUnits,
+                }),
+                period: options.period,
+                password,
+                fullAccessPhraseConfirmed: phraseConfirmed,
+            })
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            throw error
+        }
     },
 })
 
@@ -1809,7 +2233,78 @@ permissions.command('revoke', {
             description: 'Revoke all rules for a key',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        const chain = selectDefaultChain(options.env, options.chain)
+        const network = resolveNetworkConfig(options.env, chain)
+        const keystorePath = resolveKeystorePath({
+            env: options.env,
+            name: options.profile,
+            keystorePath: options.keystorePath,
+        })
+        let phraseConfirmed = false
+        try {
+            const bundle = await readKeystoreBundle(keystorePath)
+            const accountAddress = getAddress(
+                bundle.root.addresses.delegated ?? bundle.root.addresses.root,
+            )
+            const { readSessionChainGuard } = await import('./lib/session-chain-permissions')
+            const { computeSessionKeyHash, getChainKeys, listSessionNames, parseSessionName } =
+                await import('./lib/session-common')
+            const { readSessionKeystoreFile, resolveSessionKeystorePath } = await import(
+                './lib/keystore'
+            )
+            const { createCliRelayerClient } = await import('./lib/relayer-client-utils')
+            const client = createCliRelayerClient(network)
+            const keysResponse = await client.getKeys({
+                address: accountAddress,
+                chainIds: [network.chainId],
+            })
+            const localNames = await listSessionNames(keystorePath, bundle.root.sessionRef.dir)
+            const localKeys = []
+            for (const rawName of localNames) {
+                const name = parseSessionName(rawName)
+                const session = await readSessionKeystoreFile(
+                    resolveSessionKeystorePath(keystorePath, name, bundle.root.sessionRef.dir),
+                )
+                const address = getAddress(session.addresses.session)
+                localKeys.push({ name, address, hash: computeSessionKeyHash(address) })
+            }
+            const { resolveSelectedKey } = await import('./lib/permissions-common')
+            const selected = resolveSelectedKey({
+                selector: {
+                    positional: args.keyRef,
+                    keyName: options.keyName,
+                    keyHash: options.keyHash as `0x${string}` | undefined,
+                },
+                keys: getChainKeys(keysResponse, network.chainId),
+                localKeys,
+            })
+            if (options.rule || options.all) {
+                phraseConfirmed = await revokeLeavesElevated({
+                    env: options.env,
+                    chain,
+                    chainId: network.chainId,
+                    account: accountAddress,
+                    keyHash: selected.key.hash,
+                    all: options.all,
+                    rule: options.rule,
+                    readSessionChainGuard,
+                })
+            }
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            // Key resolution failures are reported by executePermissionsRevoke.
+            phraseConfirmed = false
+        }
+        if (phraseConfirmed) {
+            await confirmHuman(
+                reportError,
+                'Revoking this permission leaves the key with full access',
+                CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1823,18 +2318,26 @@ permissions.command('revoke', {
             },
         )
 
-        return executePermissionsRevoke({
-            env: options.env,
-            chain: options.chain as ChainName | undefined,
-            name: options.profile,
-            keystorePath: options.keystorePath,
-            keyRef: args.keyRef,
-            keyName: options.keyName,
-            keyHash: options.keyHash as `0x${string}` | undefined,
-            rule: options.rule,
-            all: options.all,
-            password,
-        })
+        try {
+            return await executePermissionsRevoke({
+                env: options.env,
+                chain: options.chain as ChainName | undefined,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                keyRef: args.keyRef,
+                keyName: options.keyName,
+                keyHash: options.keyHash as `0x${string}` | undefined,
+                rule: options.rule,
+                all: options.all,
+                password,
+                phraseConfirmed,
+            })
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            throw error
+        }
     },
 })
 
@@ -1899,6 +2402,7 @@ escrow.command('create', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
+        await confirmHuman(reportError, 'Creating an escrow locks USDC', CONFIRM_SEND_PHRASE)
         try {
             return await executeEscrowCreate({
                 env: options.env,
@@ -1999,7 +2503,7 @@ escrow.command('settle', {
             .string()
             .optional()
             .describe(
-                'Oracle private key to sign settlement. Prefer TW_ORACLE_PRIVATE_KEY env var to avoid leaking in process list.',
+                'Oracle private key to sign settlement. Not accepted as an MCP argument. A human must type SIGN ESCROW SETTLEMENT in an interactive terminal. Prefer TW_ORACLE_PRIVATE_KEY so the key is not in the process list.',
             ),
         signature: z
             .string()
@@ -2035,20 +2539,34 @@ escrow.command('settle', {
             options: {
                 settlementId: '0x1234...',
                 oracle: '0x2222222222222222222222222222222222222222',
-                oraclePrivateKey: '0x...',
-                env: 'prod',
+                env: 'dev',
             },
-            description: 'Settle escrow as the oracle',
+            description:
+                'Settle from a terminal with TW_ORACLE_PRIVATE_KEY. Type SIGN ESCROW SETTLEMENT. MCP cannot pass the oracle key.',
         },
     ],
     async run({ args, options, env, error: reportError }) {
+        if (isMcpCaller() && options.oraclePrivateKey) {
+            return reportError({
+                code: 'HUMAN_CONFIRMATION_REQUIRED',
+                message: privateKeyMcpRefusal('escrow settle', CONFIRM_ORACLE_SIGN_PHRASE),
+            })
+        }
+        const oracleKey = options.oraclePrivateKey ?? env.TW_ORACLE_PRIVATE_KEY
+        if (oracleKey && !options.signature) {
+            await confirmHuman(
+                reportError,
+                'Signing an escrow settlement with the oracle private key',
+                CONFIRM_ORACLE_SIGN_PHRASE,
+            )
+        }
         try {
             return await executeEscrowSettle({
                 env: options.env,
                 escrowId: args.escrowId,
                 settlementId: options.settlementId,
                 oracle: options.oracle,
-                oraclePrivateKey: options.oraclePrivateKey ?? env.TW_ORACLE_PRIVATE_KEY,
+                oraclePrivateKey: oracleKey,
                 signature: options.signature,
                 chain: options.chain as ChainName | undefined,
                 name: options.profile,
@@ -2119,6 +2637,7 @@ escrow.command('refund', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
+        await confirmHuman(reportError, 'Refunding an escrow moves USDC', CONFIRM_SEND_PHRASE)
         try {
             return await executeEscrowRefund({
                 env: options.env,

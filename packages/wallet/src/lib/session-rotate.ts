@@ -1,6 +1,6 @@
 import { readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { encodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import { encodeFunctionData, getAddress, zeroAddress, type Address, type Hex } from 'viem'
 import {
     decodeIntentError,
     type GetKeysResponse,
@@ -9,7 +9,12 @@ import {
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
-import { resolveKeystorePath } from './account-create'
+import {
+    CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+    HumanConfirmationError,
+    humanConfirmationMessage,
+} from './human-confirmation'
+import { getDefaultSessionPermissions, resolveKeystorePath } from './account-create'
 import {
     createSessionKeystore,
     decryptRootKeystore,
@@ -21,12 +26,17 @@ import {
     writeSessionKeystoreFile,
 } from './keystore'
 import {
+    chainsForEnv,
+    getChainConfig,
+    getUsdcTokenConfig,
     resolveNetworkConfig,
+    rpcUrlForChain,
     selectDefaultChain,
     type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
+import { ANY_KEYHASH, readGuardCleanup, type GuardCleanup } from './session-chain-permissions'
 import {
     createCliRelayerClient,
     createEthHttpSigner,
@@ -37,10 +47,13 @@ import {
     type ExecuteSignedCallsDeps,
     type ExecuteSignedCallsParams,
 } from './execute-calls'
+import { readActiveUsdcDaily } from './session-gates'
 import {
     buildPermissionDefaults,
     computeSessionKeyHash,
+    DEFAULT_SESSION_SPEND_LIMIT,
     getChainKeys,
+    normalizedDailyUsdcUnits,
     parseSessionName,
     toSpendPeriodEnum,
 } from './session-common'
@@ -174,6 +187,8 @@ type SessionRotateDeps = {
         id: string
     }) => Promise<BundleStatusResponse>
     withKeystoreLock: typeof withKeystoreLock
+    readGuardCleanup: typeof readGuardCleanup
+    readActiveUsdcDaily: typeof readActiveUsdcDaily
 }
 
 function rotationDir(rootKeystorePath: string, sessionsDir: string): string {
@@ -330,7 +345,36 @@ function getDefaultDeps(): SessionRotateDeps {
             })
         },
         withKeystoreLock,
+        readGuardCleanup,
+        readActiveUsdcDaily,
     }
+}
+
+function guardCleanupCalls(account: Address, cleanup: GuardCleanup): Call[] {
+    const calls: Call[] = []
+    for (const call of cleanup.anyCalls) {
+        calls.push({
+            target: account,
+            value: 0n,
+            data: encodeFunctionData({
+                abi: accountAbi,
+                functionName: 'setCanExecute',
+                args: [ANY_KEYHASH, call.target, call.selector, false],
+            }),
+        })
+    }
+    for (const checker of cleanup.checkers) {
+        calls.push({
+            target: account,
+            value: 0n,
+            data: encodeFunctionData({
+                abi: accountAbi,
+                functionName: 'setCallChecker',
+                args: [checker.keyHash, checker.target, zeroAddress],
+            }),
+        })
+    }
+    return calls
 }
 
 export async function executeSessionRotate(
@@ -342,6 +386,9 @@ export async function executeSessionRotate(
         newName?: string
         resume?: boolean
         fullAccess?: boolean
+        narrow?: boolean
+        /** Set only after ROTATE FULL ACCESS SESSION was typed. */
+        fullAccessPhraseConfirmed?: boolean
         target?: Address
         selectors?: Hex[]
         spendLimit?: bigint
@@ -432,67 +479,199 @@ export async function executeSessionRotate(
         let finalStatus: BundleStatusResponse | null = null
 
         if (intent.status === 'pending') {
-            const permissionDefaults = buildPermissionDefaults({
-                fullAccess: options.fullAccess ?? false,
-                chain,
-                target: options.target,
-                selectors: options.selectors,
-                spendLimit: options.spendLimit,
-                spendPeriod: options.spendPeriod,
-            })
+            if (options.narrow && options.fullAccess) {
+                throw new SessionRotateError(
+                    'ROTATION_FAILED',
+                    '--narrow cannot be combined with full access.',
+                )
+            }
+            const { encodeSecp256k1Key } = await import('@nubl/relayer-client')
+            const authorizeCall: Call = {
+                target: accountAddress,
+                value: 0n,
+                data: encodeFunctionData({
+                    abi: accountAbi,
+                    functionName: 'authorize',
+                    args: [
+                        {
+                            expiry: 0,
+                            keyType: 0,
+                            isSuperAdmin: false,
+                            publicKey: encodeSecp256k1Key(newSessionAddress),
+                        },
+                    ],
+                }),
+            }
+            const revokeCall: Call = {
+                target: accountAddress,
+                value: 0n,
+                data: encodeFunctionData({
+                    abi: accountAbi,
+                    functionName: 'revoke',
+                    args: [oldKeyHash],
+                }),
+            }
+            const narrowPermissions = options.narrow
+                ? getDefaultSessionPermissions(network.chainId, { env: options.env })
+                : undefined
+            const permissionDefaults = options.narrow
+                ? undefined
+                : buildPermissionDefaults({
+                      fullAccess: options.fullAccess ?? false,
+                      chain,
+                      target: options.target,
+                      selectors: options.selectors,
+                      spendLimit: options.spendLimit,
+                      spendPeriod: options.spendPeriod,
+                  })
+            if (!options.fullAccessPhraseConfirmed) {
+                const usdc = getUsdcTokenConfig(chain).address
+                const spendToken = narrowPermissions
+                    ? narrowPermissions.find((permission) => permission.type === 'spend')?.token
+                    : permissionDefaults?.spendToken
+                const spendLimit = narrowPermissions
+                    ? BigInt(
+                          narrowPermissions.find((permission) => permission.type === 'spend')
+                              ?.limit ?? '0',
+                      )
+                    : permissionDefaults?.spendLimit
+                const spendPeriod = narrowPermissions
+                    ? narrowPermissions.find((permission) => permission.type === 'spend')?.period
+                    : permissionDefaults?.spendPeriod
+                if (
+                    spendToken &&
+                    spendLimit !== undefined &&
+                    spendPeriod &&
+                    spendToken.toLowerCase() === usdc.toLowerCase()
+                ) {
+                    const proposed = normalizedDailyUsdcUnits(spendLimit, spendPeriod)
+                    const existing = await deps.readActiveUsdcDaily({
+                        env: options.env,
+                        chain,
+                        name: options.name,
+                        keystorePath,
+                        excludeSessionName: activeSessionName,
+                    })
+                    if (
+                        existing === 'unreadable' ||
+                        existing + proposed > DEFAULT_SESSION_SPEND_LIMIT
+                    ) {
+                        throw new HumanConfirmationError(
+                            humanConfirmationMessage(
+                                'Rotating to a full-access session',
+                                CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+                            ),
+                        )
+                    }
+                }
+            }
 
-            const calls: Call[] = [
-                {
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'authorize',
-                        args: [
-                            {
-                                expiry: 0,
-                                keyType: 0,
-                                isSuperAdmin: false,
-                                publicKey: (
-                                    await import('@nubl/relayer-client')
-                                ).encodeSecp256k1Key(newSessionAddress),
-                            },
-                        ],
-                    }),
-                },
-                {
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'setSpendLimit',
-                        args: [
-                            newKeyHash,
-                            permissionDefaults.spendToken,
-                            toSpendPeriodEnum(permissionDefaults.spendPeriod),
-                            permissionDefaults.spendLimit,
-                        ],
-                    }),
-                },
-                ...permissionDefaults.selectors.map((selector) => ({
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'setCanExecute',
-                        args: [newKeyHash, permissionDefaults.target, selector, true],
-                    }),
-                })),
-                {
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'revoke',
-                        args: [oldKeyHash],
-                    }),
-                },
-            ]
+            let selectedCleanup: Call[] = []
+            const extraCleanups: { chainName: ChainName; calls: Call[] }[] = []
+            for (const chainName of chainsForEnv(options.env)) {
+                let cleanup: GuardCleanup
+                try {
+                    cleanup = await deps.readGuardCleanup({
+                        rpcUrl: rpcUrlForChain(chainName),
+                        chainId: getChainConfig(chainName).chainId,
+                        account: accountAddress,
+                        keyHashes: [oldKeyHash, newKeyHash],
+                    })
+                } catch (error) {
+                    throw new SessionRotateError(
+                        'ROTATION_FAILED',
+                        'Could not read ANY_KEYHASH permissions before rotating.',
+                        { cause: error },
+                    )
+                }
+                const cleanupCalls = guardCleanupCalls(accountAddress, cleanup)
+                if (chainName === chain) selectedCleanup = cleanupCalls
+                else if (cleanupCalls.length > 0) extraCleanups.push({ chainName, calls: cleanupCalls })
+            }
+
+            let calls: Call[]
+            if (options.narrow) {
+                const permissions = narrowPermissions ?? []
+                const spend = permissions.find((permission) => permission.type === 'spend')
+                if (!spend || spend.type !== 'spend') {
+                    throw new SessionRotateError(
+                        'ROTATION_FAILED',
+                        'Narrow default session is missing a USDC spend limit.',
+                    )
+                }
+                calls = [
+                    ...selectedCleanup,
+                    authorizeCall,
+                    {
+                        target: accountAddress,
+                        value: 0n,
+                        data: encodeFunctionData({
+                            abi: accountAbi,
+                            functionName: 'setSpendLimit',
+                            args: [
+                                newKeyHash,
+                                spend.token,
+                                toSpendPeriodEnum(spend.period),
+                                BigInt(spend.limit),
+                            ],
+                        }),
+                    },
+                    ...permissions
+                        .filter((permission) => permission.type === 'call')
+                        .map((permission) => ({
+                            target: accountAddress,
+                            value: 0n,
+                            data: encodeFunctionData({
+                                abi: accountAbi,
+                                functionName: 'setCanExecute' as const,
+                                args: [newKeyHash, permission.to, permission.selector, true] as [
+                                    Hex,
+                                    Address,
+                                    Hex,
+                                    boolean,
+                                ],
+                            }),
+                        })),
+                    revokeCall,
+                ]
+            } else {
+                if (!permissionDefaults) {
+                    throw new SessionRotateError('ROTATION_FAILED', 'Missing rotation permissions.')
+                }
+                calls = [
+                    ...selectedCleanup,
+                    authorizeCall,
+                    {
+                        target: accountAddress,
+                        value: 0n,
+                        data: encodeFunctionData({
+                            abi: accountAbi,
+                            functionName: 'setSpendLimit',
+                            args: [
+                                newKeyHash,
+                                permissionDefaults.spendToken,
+                                toSpendPeriodEnum(permissionDefaults.spendPeriod),
+                                permissionDefaults.spendLimit,
+                            ],
+                        }),
+                    },
+                    ...permissionDefaults.selectors.map((selector) => ({
+                        target: accountAddress,
+                        value: 0n,
+                        data: encodeFunctionData({
+                            abi: accountAbi,
+                            functionName: 'setCanExecute' as const,
+                            args: [newKeyHash, permissionDefaults.target, selector, true] as [
+                                Hex,
+                                Address,
+                                Hex,
+                                boolean,
+                            ],
+                        }),
+                    })),
+                    revokeCall,
+                ]
+            }
 
             const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
 
@@ -533,6 +712,46 @@ export async function executeSessionRotate(
                 )
                 bundleId = submission.id
                 finalStatus = submission.finalStatus
+                for (const extra of extraCleanups) {
+                    const extraNetwork = {
+                        ...resolveNetworkConfig(options.env, extra.chainName),
+                        authSigner: createEthHttpSigner(
+                            decryptedRoot.rootPrivateKey,
+                            getChainConfig(extra.chainName).chainId,
+                        ),
+                    }
+                    const extraNonce = await deps.readNonce({
+                        network: extraNetwork,
+                        account: accountAddress,
+                    })
+                    await deps.executeSignedCalls(
+                        {
+                            prepareCalls: (input) =>
+                                deps.prepareCalls({
+                                    network: extraNetwork,
+                                    from: input.from,
+                                    calls: input.calls,
+                                    nonce: input.nonce,
+                                    sessionKey: input.sessionKey,
+                                }),
+                            signTypedData: deps.signTypedData,
+                            sendPreparedCalls: (input) =>
+                                deps.sendPreparedCalls({
+                                    network: extraNetwork,
+                                    context: input.context,
+                                    signature: input.signature,
+                                }),
+                            waitForBundle: (input) =>
+                                deps.waitForBundle({ network: extraNetwork, id: input.id }),
+                        },
+                        {
+                            from: accountAddress,
+                            calls: extra.calls,
+                            nonce: extraNonce,
+                            signerPrivateKey: decryptedRoot.rootPrivateKey,
+                        },
+                    )
+                }
                 intent = await deps.writeRotationIntent(
                     keystorePath,
                     bundle.root.sessionRef.dir,

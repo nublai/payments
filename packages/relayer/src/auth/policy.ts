@@ -1,5 +1,14 @@
 export const DEFAULT_AUTH_PROTECTED_METHODS = ['wallet_sendPreparedCalls'] as const
 
+/**
+ * These methods make the relayer sign and pay for gas. They stay authenticated
+ * even when AUTH_PROTECTED_METHODS omits them or is "none".
+ */
+export const ALWAYS_AUTH_PROTECTED_METHODS = [
+    'wallet_prepareUpgradeAccount',
+    'wallet_upgradeAccount',
+] as const
+
 export type JsonRpcId = string | number | null
 
 interface JsonRpcLike {
@@ -29,6 +38,14 @@ export function parseAuthProtectedMethods(value: string | undefined): Set<string
         .filter((method) => method.length > 0)
 
     return new Set(methods.length > 0 ? methods : DEFAULT_AUTH_PROTECTED_METHODS)
+}
+
+export function resolveAuthProtectedMethods(value: string | undefined): Set<string> {
+    const methods = parseAuthProtectedMethods(value)
+    for (const method of ALWAYS_AUTH_PROTECTED_METHODS) {
+        methods.add(method)
+    }
+    return methods
 }
 
 export function extractAuthRequirement(

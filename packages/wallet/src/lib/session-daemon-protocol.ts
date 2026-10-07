@@ -1,5 +1,6 @@
 import type { PrepareCallsResponse } from '@nubl/relayer-client'
 import type { Address, Hex } from 'viem'
+import type { EnvName } from './network-config'
 import { isRecord } from './type-guards'
 
 export const DAEMON_ERROR_CODES = {
@@ -44,6 +45,9 @@ export type DaemonRequest =
               durationSeconds: number
               kind?: string
               encryptionDevice?: Hex
+              /** Recorded by unlock. Sign requests cannot change it. */
+              phraseConfirmed?: boolean
+              env?: EnvName
           }
       }
     | {
@@ -199,7 +203,13 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 typeof parsed.params.durationSeconds !== 'number' ||
                 (parsed.params.kind !== undefined && typeof parsed.params.kind !== 'string') ||
                 (parsed.params.encryptionDevice !== undefined &&
-                    typeof parsed.params.encryptionDevice !== 'string')
+                    typeof parsed.params.encryptionDevice !== 'string') ||
+                (parsed.params.phraseConfirmed !== undefined &&
+                    typeof parsed.params.phraseConfirmed !== 'boolean') ||
+                (parsed.params.env !== undefined &&
+                    parsed.params.env !== 'dev' &&
+                    parsed.params.env !== 'stage' &&
+                    parsed.params.env !== 'prod')
             ) {
                 throw new Error('Invalid loadKey params')
             }
@@ -213,6 +223,8 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                     durationSeconds: parsed.params.durationSeconds,
                     kind: parsed.params.kind,
                     encryptionDevice: parsed.params.encryptionDevice as Hex | undefined,
+                    phraseConfirmed: parsed.params.phraseConfirmed,
+                    env: parsed.params.env,
                 },
             }
         }

@@ -1,3 +1,5 @@
+import { getAddress, isAddress, type Address } from 'viem'
+
 import type { Env } from '../../types/env'
 import type { AuthProvider, AuthResult } from '../types'
 import { PrivyClient } from '@privy-io/server-auth'
@@ -42,6 +44,84 @@ function classifyPrivyError(error: unknown): {
     return { code: 'INVALID_TOKEN' as const }
 }
 
+const UPGRADE_METHODS = new Set(['wallet_prepareUpgradeAccount', 'wallet_upgradeAccount'])
+
+function upgradeAccountAddress(method: string, params: unknown): Address | 'invalid' | undefined {
+    const first = Array.isArray(params) ? params[0] : params
+    if (!first || typeof first !== 'object') return 'invalid'
+    const record = first as Record<string, unknown>
+    const raw =
+        method === 'wallet_upgradeAccount'
+            ? (record.context as { address?: unknown } | undefined)?.address
+            : record.address
+    if (typeof raw !== 'string' || !isAddress(raw)) return 'invalid'
+    return getAddress(raw)
+}
+
+async function upgradeAccountsFromRequest(
+    request: Request,
+): Promise<{ accounts: Address[]; invalid: boolean }> {
+    const body = await request
+        .clone()
+        .json()
+        .catch(() => undefined)
+    const items = Array.isArray(body) ? body : body == null ? [] : [body]
+    const accounts: Address[] = []
+    let invalid = false
+
+    for (const item of items) {
+        if (!item || typeof item !== 'object') continue
+        const method = (item as { method?: unknown }).method
+        if (typeof method !== 'string' || !UPGRADE_METHODS.has(method)) continue
+        const address = upgradeAccountAddress(method, (item as { params?: unknown }).params)
+        if (address === 'invalid' || address === undefined) {
+            invalid = true
+            continue
+        }
+        if (!accounts.includes(address)) accounts.push(address)
+    }
+
+    return { accounts, invalid }
+}
+
+function linkedWalletMatches(
+    user: {
+        wallet?: { address?: string }
+        linkedAccounts?: Array<{ type?: string; address?: string }>
+    },
+    account: Address,
+): boolean {
+    const target = getAddress(account)
+    const candidates: string[] = []
+    for (const linked of user.linkedAccounts ?? []) {
+        if (linked.type === 'wallet' && typeof linked.address === 'string') {
+            candidates.push(linked.address)
+        }
+    }
+    return candidates.some((candidate) => isAddress(candidate) && getAddress(candidate) === target)
+}
+
+async function bindPrivyAccounts(
+    client: PrivyClient,
+    userId: string,
+    accounts: Address[],
+): Promise<
+    { ok: true; accounts: Address[] } | { ok: false; code: 'NO_LINKED_WALLET'; message: string }
+> {
+    for (const account of accounts) {
+        const user = await client.getUserByWalletAddress(account)
+        if (!user || user.id !== userId || !linkedWalletMatches(user, account)) {
+            return {
+                ok: false,
+                code: 'NO_LINKED_WALLET',
+                message: 'Privy user is not bound to the account',
+            }
+        }
+    }
+
+    return { ok: true, accounts }
+}
+
 export function createPrivyProvider(): AuthProvider {
     let client: PrivyClient | undefined
 
@@ -83,6 +163,29 @@ export function createPrivyProvider(): AuthProvider {
                         ok: false,
                         code: 'INVALID_TOKEN',
                         message: 'Token appId mismatch',
+                    }
+                }
+
+                const upgradeAccounts = await upgradeAccountsFromRequest(request)
+                if (upgradeAccounts.invalid) {
+                    return {
+                        ok: false,
+                        code: 'NO_LINKED_WALLET',
+                        message: 'Privy user is not bound to the account',
+                    }
+                }
+
+                if (upgradeAccounts.accounts.length > 0) {
+                    const linked = await bindPrivyAccounts(
+                        getClient(ctx.env),
+                        claims.userId,
+                        upgradeAccounts.accounts,
+                    )
+                    if (!linked.ok) return linked
+                    return {
+                        ok: true,
+                        userId: claims.userId,
+                        boundAccounts: linked.accounts,
                     }
                 }
 

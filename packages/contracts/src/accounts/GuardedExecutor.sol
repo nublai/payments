@@ -8,7 +8,6 @@ import {DynamicArrayLib} from "solady/utils/DynamicArrayLib.sol";
 import {EnumerableMapLib} from "solady/utils/EnumerableMapLib.sol";
 import {EnumerableSetLib} from "solady/utils/EnumerableSetLib.sol";
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
-import {LibBit} from "solady/utils/LibBit.sol";
 import {LibBytes} from "solady/utils/LibBytes.sol";
 import {LibSort} from "solady/utils/LibSort.sol";
 import {LibZip} from "solady/utils/LibZip.sol";
@@ -21,6 +20,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 /// - Execution guards are implemented on a whitelist basis.
 ///   With the exception of the EOA itself and super admin keys,
 ///   execution targets and function selectors has to be approved for each new key.
+/// - `onlyThis` admin selectors on this account cannot be approved for any other key.
 /// - Spend limits are implemented on a whitelist basis.
 ///   With the exception of the EOA itself and super admin keys,
 ///   a key cannot spend tokens (ERC20s and native) until spend permissions have been added.
@@ -83,7 +83,8 @@ abstract contract GuardedExecutor is ERC7821 {
     /// @dev Cannot set or get the permissions if the `keyHash` is `bytes32(0)`.
     error KeyHashIsZero();
 
-    /// @dev Only the EOA itself and super admin keys can self execute.
+    /// @dev Only the EOA itself and super admin keys may call `execute` or any
+    /// other `onlyThis` admin selector on this account.
     error CannotSelfExecute();
 
     /// @dev Unauthorized to perform the action.
@@ -380,12 +381,11 @@ abstract contract GuardedExecutor is ERC7821 {
             if (_isSuperAdmin(keyHash)) revert SuperAdminCanExecuteEverything();
         }
 
-        // All calls not from the EOA itself has to go through the single `execute` function.
-        // For security, only EOA key and super admin keys can call into `execute`.
-        // Otherwise any low-stakes app key can call super admin functions
-        // such as like `authorize` and `revoke`.
-        // This check is for sanity. We will still validate this in `canExecute`.
-        if (_isSelfExecute(target, fnSel)) revert CannotSelfExecute();
+        // Non-super-admin keys cannot be granted `execute` or any other onlyThis
+        // admin selector on this account, including via `ANY_TARGET` or `ANY_FN_SEL`.
+        // `(ANY_TARGET, ANY_FN_SEL)` is still stored: `canExecute` rejects those
+        // selectors, so the wildcard cannot install or manage keys.
+        if (_grantsPrivilegedSelfCall(target, fnSel)) revert CannotSelfExecute();
 
         // Impose a max capacity of 2048 for set enumeration, which should be more than enough.
         _getGuardedExecutorKeyStorage(keyHash).canExecute.update(
@@ -410,8 +410,7 @@ abstract contract GuardedExecutor is ERC7821 {
             if (_isSuperAdmin(keyHash)) revert SuperAdminCanSpendAnything();
         }
 
-        // It is ok even if we don't check for `_isSelfExecute` here, as we will still
-        // check it in `canExecute` before any custom call checker.
+        // Privileged self-calls are rejected in `canExecute` before any checker.
 
         EnumerableMapLib.AddressToAddressMap storage checkers = _getGuardedExecutorKeyStorage(
             keyHash
@@ -493,9 +492,9 @@ abstract contract GuardedExecutor is ERC7821 {
         // If the calldata is empty, make sure that the empty calldata has been authorized.
         if (data.length == uint256(0)) fnSel = EMPTY_CALLDATA_FN_SEL;
 
-        // This check is required to ensure that authorizing any function selector
-        // or any target will still NOT allow for self execution.
-        if (_isSelfExecute(target, fnSel)) return false;
+        // `ANY_TARGET`, `ANY_FN_SEL`, and call checkers cannot grant an onlyThis
+        // admin selector on this account. Must run before the permission lookup.
+        if (target == address(this) && _isPrivilegedFnSel(fnSel)) return false;
 
         EnumerableSetLib.Bytes32Set storage c = _getGuardedExecutorKeyStorage(keyHash).canExecute;
         if (c.length() != 0) {
@@ -511,7 +510,7 @@ abstract contract GuardedExecutor is ERC7821 {
             if (c.contains(_packCanExecute(ANY_TARGET, fnSel))) return true;
             if (c.contains(_packCanExecute(ANY_TARGET, ANY_FN_SEL))) return true;
         }
-        // Note that these checks have to be placed after the `_isSelfExecute` check.
+        // Note that these checks have to be placed after the privileged-selector check.
         if (_checkCall(keyHash, keyHash, target, target, data)) return true;
         if (_checkCall(keyHash, keyHash, ANY_TARGET, target, data)) return true;
         if (_checkCall(ANY_KEYHASH, keyHash, target, target, data)) return true;
@@ -625,9 +624,23 @@ abstract contract GuardedExecutor is ERC7821 {
         return false;
     }
 
-    /// @dev Returns whether the call is a self execute.
-    function _isSelfExecute(address target, bytes4 fnSel) internal view returns (bool) {
-        return LibBit.and(target == address(this), fnSel == ERC7821.execute.selector);
+    /// @dev Selectors that `onlyThis` (or `execute`) reserves for the EOA and super admins.
+    /// Account adds its own admin selectors. New `onlyThis` functions must be added here.
+    function _isPrivilegedFnSel(bytes4 fnSel) internal pure virtual returns (bool) {
+        return
+            fnSel == ERC7821.execute.selector ||
+            fnSel == this.setCanExecute.selector ||
+            fnSel == this.setCallChecker.selector ||
+            fnSel == this.setSpendLimit.selector ||
+            fnSel == this.removeSpendLimit.selector;
+    }
+
+    /// @dev Whether storing `(target, fnSel)` would let a non-super-admin key call an
+    /// admin selector on this account. `(ANY_TARGET, ANY_FN_SEL)` is excluded on purpose.
+    function _grantsPrivilegedSelfCall(address target, bytes4 fnSel) internal view returns (bool) {
+        if (target != address(this) && target != ANY_TARGET) return false;
+        if (fnSel == ANY_FN_SEL) return target == address(this);
+        return _isPrivilegedFnSel(fnSel);
     }
 
     /// @dev Returns a bytes32 value that contains `target` and `fnSel`.

@@ -5,6 +5,7 @@ export type AuthFailureCode =
     | 'MISSING_HEADERS'
     | 'BAD_FORMAT'
     | 'BAD_KEYID'
+    | 'SIGNER_NOT_ALLOWED'
     | 'UNSUPPORTED_CHAIN'
     | 'INVALID_TIME'
     | 'INVALID_COVERAGE'
@@ -27,6 +28,8 @@ export interface AuthSuccess {
     ok: true
     userId?: Address | string
     provider?: string
+    /** Accounts this identity may upgrade. Set for Privy after the wallet link check. */
+    boundAccounts?: Address[]
 }
 
 export type AuthResult = AuthSuccess | AuthFailure

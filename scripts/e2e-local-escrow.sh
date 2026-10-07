@@ -164,9 +164,11 @@ export TW_PASSWORD="e2e-local-payment"
 export TW_ORACLE_PRIVATE_KEY="$ORACLE_KEY"
 
 echo "Creating and delegating account..."
+# account create installs the narrow default session and still requires the phrase.
 CREATE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out bun ./src/cli.ts account create \
+  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
+    bun ./src/cli.ts account create \
     --env dev \
     --keystore-path "$KEYSTORE" \
     --format json
@@ -187,9 +189,11 @@ BEFORE_BUYER="$(balance_of "$BUYER")"
 BEFORE_SELLER="$(balance_of "$SELLER")"
 
 echo "Creating 1 USDC escrow..."
+# escrow create locks USDC and requires SEND USDC on a TTY.
 ESCROW_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out bun ./src/cli.ts escrow create 1 "$SELLER" \
+  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SEND USDC" \
+    bun ./src/cli.ts escrow create 1 "$SELLER" \
     --oracle "$ORACLE" \
     --deadline 1h \
     --env dev \
@@ -241,9 +245,12 @@ print(f"escrow status {status}")
 PY
 
 echo "Settling escrow..."
+# Oracle-key settle requires a human to type SIGN ESCROW SETTLEMENT on a TTY.
+# This script is the operator: it allocates a terminal and types the phrase.
 SETTLE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out bun ./src/cli.ts escrow settle "$ESCROW_ID" \
+  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SIGN ESCROW SETTLEMENT" \
+    bun ./src/cli.ts escrow settle "$ESCROW_ID" \
     --settlement-id "$ORDER_ID" \
     --oracle "$ORACLE" \
     --env dev \

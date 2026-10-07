@@ -11,6 +11,7 @@ const FAILURE_PRIORITY: AuthFailureCode[] = [
     'BAD_CONTENT_DIGEST',
     'INVALID_COVERAGE',
     'BAD_KEYID',
+    'SIGNER_NOT_ALLOWED',
     'BAD_FORMAT',
     'MISSING_HEADERS',
     'UNSUPPORTED_CHAIN',
@@ -50,6 +51,7 @@ export async function authorizeRequest(args: AuthorizeRequestArgs): Promise<Auth
                     ok: true,
                     provider: provider.name,
                     userId: result.userId,
+                    boundAccounts: result.boundAccounts,
                 }
             }
 

@@ -24,6 +24,7 @@ import {
     type AnySessionKeystore,
 } from './keystore'
 import {
+    getUsdcTokenConfig,
     resolveNetworkConfig,
     selectDefaultChain,
     type ChainName,
@@ -41,10 +42,18 @@ import {
     type ExecuteSignedCallsParams,
 } from './execute-calls'
 import {
+    CONFIRM_FULL_ACCESS_PHRASE,
+    HumanConfirmationError,
+    humanConfirmationMessage,
+} from './human-confirmation'
+import { readActiveUsdcDaily } from './session-gates'
+import {
     buildPermissionDefaults,
     computeSessionKeyHash,
+    DEFAULT_SESSION_SPEND_LIMIT,
     parseSessionName,
     getChainKeys,
+    normalizedDailyUsdcUnits,
     toSpendPeriodEnum,
     parseExpiry,
 } from './session-common'
@@ -116,6 +125,8 @@ export type SessionCreateOptions = {
     spendPeriod?: SpendPeriod
     expiry?: string
     password: string
+    /** Set only after the caller collected CREATE FULL ACCESS SESSION. */
+    fullAccessPhraseConfirmed?: boolean
 }
 
 export type SessionCreateResult = {
@@ -431,6 +442,33 @@ export async function executeSessionCreate(
                         status: 'confirmed',
                         statusCode: 200,
                     },
+                }
+            }
+        }
+
+        if (permissionDefaults && !options.fullAccessPhraseConfirmed) {
+            const usdc = getUsdcTokenConfig(chain).address
+            if (permissionDefaults.spendToken.toLowerCase() === usdc.toLowerCase()) {
+                const proposed = normalizedDailyUsdcUnits(
+                    permissionDefaults.spendLimit,
+                    permissionDefaults.spendPeriod,
+                )
+                const existing = await readActiveUsdcDaily({
+                    env: options.env,
+                    chain,
+                    name: options.name,
+                    keystorePath,
+                })
+                if (
+                    existing === 'unreadable' ||
+                    existing + proposed > DEFAULT_SESSION_SPEND_LIMIT
+                ) {
+                    throw new HumanConfirmationError(
+                        humanConfirmationMessage(
+                            'Creating a full-access session',
+                            CONFIRM_FULL_ACCESS_PHRASE,
+                        ),
+                    )
                 }
             }
         }

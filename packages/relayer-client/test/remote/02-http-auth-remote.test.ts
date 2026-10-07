@@ -296,7 +296,18 @@ async function createDelegatedErc8128Context() {
             rpcUrls: { default: { http: [rpcUrl] } },
         },
         transport: http(rpcUrl),
-    }).extend(relayerActions({ relayerUrl, chainId }))
+    }).extend(
+        relayerActions({
+            relayerUrl,
+            chainId,
+            authSigner: {
+                address: account.address,
+                chainId,
+                signMessage: (message: Uint8Array) =>
+                    account.signMessage({ message: { raw: message } }),
+            },
+        }),
+    )
 
     const upgraded = await client.upgradeAccount({
         accountAddress: account.address,

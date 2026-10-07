@@ -126,14 +126,26 @@ async function waitForRpc(): Promise<void> {
 
 function runTw(args: string[], timeoutMs = 90_000): Promise<{ code: number; stdout: string; stderr: string }> {
     return new Promise((resolvePromise, reject) => {
-        const child = spawn('bun', ['src/cli.ts', ...args], {
-            cwd: walletDir,
-            env: {
-                ...process.env,
-                PATH: `/tmp/node22/bin:${process.env.PATH ?? ''}`,
+        // account passkey now requires the AUTHORIZE PASSKEY phrase on a TTY.
+        // The assertions below are unchanged; this only supplies that phrase.
+        const child = spawn(
+            'python3',
+            [
+                resolve(walletDir, '../../scripts/tw-tty-confirm.py'),
+                'AUTHORIZE PASSKEY',
+                'bun',
+                'src/cli.ts',
+                ...args,
+            ],
+            {
+                cwd: walletDir,
+                env: {
+                    ...process.env,
+                    PATH: `/tmp/node22/bin:${process.env.PATH ?? ''}`,
+                },
+                stdio: ['ignore', 'pipe', 'pipe'],
             },
-            stdio: ['ignore', 'pipe', 'pipe'],
-        })
+        )
         let stdout = ''
         let stderr = ''
         const timer = setTimeout(() => {

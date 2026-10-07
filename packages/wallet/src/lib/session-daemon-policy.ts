@@ -1,0 +1,238 @@
+import { decodeFunctionData, getAddress, parseAbi, type Address, type Hex } from 'viem'
+import { getAddressesWithFallback } from '@nubl/contracts/deployments'
+import { INTENT_TYPES } from '@nubl/relayer-client'
+import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
+import { narrowCallAllowlist } from './session-chain-permissions'
+import {
+    chainsForEnv,
+    getChainConfig,
+    getChainNameByChainId,
+    getUsdcTokenConfig,
+    type EnvName,
+} from './network-config'
+import { isRecord } from './type-guards'
+
+export const ORCHESTRATOR_DOMAIN_NAME = 'Orchestrator'
+export const ORCHESTRATOR_DOMAIN_VERSION = '0.5.5'
+
+const erc20Abi = parseAbi([
+    'function transfer(address to, uint256 amount)',
+    'function approve(address spender, uint256 amount)',
+])
+
+const escrowAbi = parseAbi([
+    'function escrow((bytes12 salt, address depositor, address recipient, address token, uint256 escrowAmount, uint256 refundAmount, uint256 refundTimestamp, address settler, address sender, bytes32 settlementId, uint256 senderChainId)[] escrows)',
+    'function refund(bytes32[] escrowIds)',
+    'function settle(bytes32[] escrowIds)',
+])
+
+const settlerAbi = parseAbi([
+    'function write(address sender, bytes32 settlementId, uint256 chainId, bytes signature)',
+])
+
+export class PhraseLessSignError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'PhraseLessSignError'
+    }
+}
+
+function fail(message: string): never {
+    throw new PhraseLessSignError(message)
+}
+
+function asBigint(value: unknown, label: string): bigint {
+    if (typeof value === 'bigint') return value
+    if (typeof value === 'number' && Number.isFinite(value)) return BigInt(Math.trunc(value))
+    if (typeof value === 'string' && /^-?\d+$/.test(value)) return BigInt(value)
+    fail(`Phrase-less session refused an Orchestrator intent with an unreadable ${label}`)
+}
+
+function asAddress(value: unknown, label: string): Address {
+    if (typeof value !== 'string') {
+        fail(`Phrase-less session refused an Orchestrator intent with an unreadable ${label}`)
+    }
+    try {
+        return getAddress(value)
+    } catch {
+        fail(`Phrase-less session refused an Orchestrator intent with an unreadable ${label}`)
+    }
+}
+
+function asHex(value: unknown, label: string): Hex {
+    if (typeof value !== 'string' || !/^0x[0-9a-fA-F]*$/.test(value) || value.length % 2 !== 0) {
+        fail(`Phrase-less session refused an Orchestrator intent with an unreadable ${label}`)
+    }
+    return value as Hex
+}
+
+function typesMatch(types: unknown): boolean {
+    if (!isRecord(types)) return false
+    return (
+        JSON.stringify(types.Intent) === JSON.stringify(INTENT_TYPES.Intent) &&
+        JSON.stringify(types.Call) === JSON.stringify(INTENT_TYPES.Call)
+    )
+}
+
+function selectorOf(data: Hex): string {
+    return data.length >= 10 ? data.slice(0, 10).toLowerCase() : '0x'
+}
+
+/**
+ * USDC a narrow call moves or approves. Escrow pulls are the escrow amounts
+ * when the calldata decodes; anything else that is not a plain narrow call is refused.
+ */
+function usdcMovedByCall(input: {
+    to: Address
+    value: bigint
+    data: Hex
+    usdc: Address
+    allowed: ReadonlySet<string>
+}): bigint {
+    if (input.value !== 0n) {
+        fail('Phrase-less session refused a call that sends native value')
+    }
+    const selector = selectorOf(input.data)
+    const key = `${input.to.toLowerCase()}:${selector}`
+    if (!input.allowed.has(key)) {
+        fail(
+            `Phrase-less session refused a call outside the narrow set (${input.to} ${selector})`,
+        )
+    }
+    const usdc = input.usdc.toLowerCase()
+    if (input.to.toLowerCase() === usdc && selector === '0xa9059cbb') {
+        const decoded = decodeFunctionData({ abi: erc20Abi, data: input.data })
+        return decoded.args[1]
+    }
+    if (input.to.toLowerCase() === usdc && selector === '0x095ea7b3') {
+        const decoded = decodeFunctionData({ abi: erc20Abi, data: input.data })
+        return decoded.args[1]
+    }
+    if (selector === '0x657061bf') {
+        let decoded: ReturnType<typeof decodeFunctionData<typeof escrowAbi>>
+        try {
+            decoded = decodeFunctionData({ abi: escrowAbi, data: input.data })
+        } catch {
+            fail('Phrase-less session refused an escrow call whose pull amount could not be read')
+        }
+        let total = 0n
+        const rows = decoded.args[0]
+        for (const row of rows) {
+            const amount = row.escrowAmount
+            if (amount === 0n) continue
+            if (getAddress(row.token).toLowerCase() !== usdc) {
+                fail('Phrase-less session refused an escrow pull of a non-USDC token')
+            }
+            total += amount
+        }
+        return total
+    }
+    if (selector === '0x6023fda5' || selector === '0xe7f921a2') {
+        try {
+            decodeFunctionData({ abi: escrowAbi, data: input.data })
+        } catch {
+            fail('Phrase-less session refused an escrow call with unreadable calldata')
+        }
+        return 0n
+    }
+    if (selector === '0x84523a30') {
+        try {
+            decodeFunctionData({ abi: settlerAbi, data: input.data })
+        } catch {
+            fail('Phrase-less session refused a settler write with unreadable calldata')
+        }
+        return 0n
+    }
+    fail(`Phrase-less session refused a call outside the narrow set (${input.to} ${selector})`)
+}
+
+export type PhraseLessIntentDecision = {
+    chainId: number
+    usdc: bigint
+}
+
+/**
+ * Phrase-less sessions may sign only an Orchestrator 0.5.5 intent whose calls
+ * stay inside the narrow set, and only up to the 10 USDC/day budget.
+ * `calls` is the EIP-712 form of the intent's executionData.
+ */
+export function assessPhraseLessIntent(input: {
+    typedData: unknown
+    env: EnvName | undefined
+}): PhraseLessIntentDecision {
+    if (!input.env) {
+        fail('Phrase-less session cannot sign because unlock did not record an environment')
+    }
+    if (!isRecord(input.typedData)) {
+        fail('Phrase-less sessions can only sign Orchestrator intents')
+    }
+    const domain = input.typedData.domain
+    if (!isRecord(domain)) {
+        fail('Phrase-less sessions can only sign Orchestrator intents')
+    }
+    if (domain.name !== ORCHESTRATOR_DOMAIN_NAME || domain.version !== ORCHESTRATOR_DOMAIN_VERSION) {
+        fail('Phrase-less sessions can only sign Orchestrator intents')
+    }
+    if (input.typedData.primaryType !== 'Intent' || !typesMatch(input.typedData.types)) {
+        fail('Phrase-less sessions can only sign Orchestrator intents')
+    }
+    const chainId = Number(asBigint(domain.chainId, 'chainId'))
+    const chainName = getChainNameByChainId(chainId)
+    const allowedChains = new Set(chainsForEnv(input.env).map((name) => getChainConfig(name).chainId))
+    if (!chainName || !allowedChains.has(chainId)) {
+        fail('Phrase-less session refused an Orchestrator intent for an unconfigured chain')
+    }
+    const orchestrator = getAddressesWithFallback(input.env, chainId)?.orchestrator
+    if (!orchestrator) {
+        fail('Phrase-less session refused an Orchestrator intent because the orchestrator is not configured')
+    }
+    const verifyingContract = asAddress(domain.verifyingContract, 'verifyingContract')
+    if (verifyingContract.toLowerCase() !== orchestrator.toLowerCase()) {
+        fail('Phrase-less session refused an Orchestrator intent for a different verifying contract')
+    }
+    const message = input.typedData.message
+    if (!isRecord(message)) {
+        fail('Phrase-less sessions can only sign Orchestrator intents')
+    }
+    if (message.multichain !== false) {
+        fail('Phrase-less session refused a multichain Orchestrator intent')
+    }
+    const preCalls = message.encodedPreCalls
+    const fundTransfers = message.encodedFundTransfers
+    if (!Array.isArray(preCalls) || preCalls.length !== 0) {
+        fail('Phrase-less session refused an intent with pre-calls')
+    }
+    if (!Array.isArray(fundTransfers) || fundTransfers.length !== 0) {
+        fail('Phrase-less session refused an intent with fund transfers')
+    }
+    if (!Array.isArray(message.calls)) {
+        fail('Phrase-less session refused an intent whose calls could not be read')
+    }
+    const usdc = getUsdcTokenConfig(chainName).address
+    const allowed = narrowCallAllowlist(input.env, chainId)
+    let usdcMoved = 0n
+    for (const call of message.calls) {
+        if (!isRecord(call)) {
+            fail('Phrase-less session refused an intent whose calls could not be read')
+        }
+        usdcMoved += usdcMovedByCall({
+            to: asAddress(call.to, 'call.to'),
+            value: asBigint(call.value, 'call.value'),
+            data: asHex(call.data, 'call.data'),
+            usdc,
+            allowed,
+        })
+    }
+    const paymentToken = asAddress(message.paymentToken, 'paymentToken')
+    const paymentMax = asBigint(message.paymentMaxAmount, 'paymentMaxAmount')
+    if (paymentMax !== 0n) {
+        if (paymentToken.toLowerCase() !== usdc.toLowerCase()) {
+            fail('Phrase-less session refused a non-USDC payment')
+        }
+        usdcMoved += paymentMax
+    }
+    if (usdcMoved > DEFAULT_SESSION_SPEND_LIMIT) {
+        fail('Phrase-less session exceeds the 10 USDC daily budget')
+    }
+    return { chainId, usdc: usdcMoved }
+}

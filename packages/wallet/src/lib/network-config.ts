@@ -100,6 +100,24 @@ export function getChainConfig(chain: ChainName): CliChainConfig {
     return chainConfig[chain]
 }
 
+/** Chains a session unlock must read. Dev is local Anvil; stage and prod are Base and Polygon. */
+export function chainsForEnv(env: EnvName): ChainName[] {
+    if (env === 'dev') return ['anvil']
+    return ['base', 'polygon']
+}
+
+/**
+ * RPC used for permission reads.
+ * `TW_TEST_RPC_<chain>` redirects a chain only when NODE_ENV is test.
+ */
+export function rpcUrlForChain(chain: ChainName): string {
+    if (process.env.NODE_ENV === 'test') {
+        const override = process.env[`TW_TEST_RPC_${chain}`]?.trim()
+        if (override) return override
+    }
+    return getChainConfig(chain).rpcUrl
+}
+
 export function getUsdcTokenConfig(
     chain: ChainName,
     options?: { legacy?: boolean },
