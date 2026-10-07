@@ -110,9 +110,10 @@ function quoteWithCall(input: {
                 ],
             },
         ],
-        details: input.currencyInAmount
-            ? { currencyIn: { amount: input.currencyInAmount } }
-            : undefined,
+        details: {
+            currencyIn: { amount: input.currencyInAmount ?? '5000000' },
+            currencyOut: { amount: '1000', minimumAmount: '1000' },
+        },
     }
 }
 
@@ -168,6 +169,8 @@ function runQuote(input: {
             signTypedData: signTypedData as any,
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
             simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
+            installQuoteSpendLimit: async () => async () => {},
+            readAllowance: async () => 0n,
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',

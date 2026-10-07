@@ -1,17 +1,32 @@
-import { spawn } from 'node:child_process'
-import { encodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import {
+    encodeAbiParameters,
+    encodeFunctionData,
+    getAddress,
+    zeroAddress,
+    type Address,
+    type Hex,
+} from 'viem'
+import { wrapSignature } from '@nubl/relayer-client'
 
 /**
- * Simulate the exact calls we would sign, on the wallet's own chain RPC.
- * `eth_simulateV1` (validation off, so the account does not need to be an
- * EOA and gas is not bought from its ETH). If that method is missing, fork
- * the same RPC with anvil and run `eth_simulateV1` there. If neither works,
- * refuse.
+ * Simulate the quote as the relayer's EIP-7702 execution: Orchestrator
+ * `simulateExecute` calls the account, whose code is overridden to the
+ * 7702 designator `0xef0100 || accountProxy`. `from` is a non-user origin
+ * so `tx.origin` is not the user.
+ *
+ * This is defense in depth. A hostile Relay API, or a router that branches
+ * on the real relayer signer (chosen only at broadcast), is not fully
+ * excluded here. The per-quote spend limit is what caps the loss.
  *
  * Base `https://mainnet.base.org` and Polygon `https://polygon.drpc.org`
- * both answered `eth_simulateV1` on 2026-10-07. The result's `calls[].returnData`
- * and `calls[].status` are what we read.
+ * both answer `eth_simulateV1`. There is no anvil fallback.
  */
+
+/** Stand-in origin. The relayer's signer is selected when the bundle is broadcast. */
+export const RELAY_SIMULATION_ORIGIN: Address = '0x9999999999999999999999999999999999999999'
+
+const SIM_GAS = 12_000_000n
+const COMBINED_GAS = 5_000_000n
 
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11' as Address
 const BALANCE_OF = '0x70a08231'
@@ -33,6 +48,16 @@ export type SimulatedWatch =
     | { kind: 'native'; role: 'origin' | 'output' | 'other' }
     | { kind: 'erc20'; token: Address; role: 'origin' | 'output' | 'other' }
 
+export type RelayExecutionContext = {
+    orchestrator: Address
+    /** Account proxy the 7702 designator points at. */
+    delegation: Address
+    /** Transaction origin. Not the user. */
+    origin: Address
+    keyHash: Hex
+    nonce: bigint
+}
+
 export type SimulateRelayQuoteInput = {
     rpcUrl: string
     chainId: number
@@ -42,6 +67,7 @@ export type SimulateRelayQuoteInput = {
     cap: bigint
     sameChain: boolean
     minimumOutput?: bigint
+    execution: RelayExecutionContext
     request?: (method: string, params: unknown[]) => Promise<unknown>
 }
 
@@ -88,15 +114,6 @@ function decodeWord(data: unknown): bigint {
         )
     }
     return BigInt(data)
-}
-
-function isMethodMissing(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error)
-    return (
-        message.includes('-32601') ||
-        /method .*not found/i.test(message) ||
-        /does not exist/i.test(message)
-    )
 }
 
 async function defaultRequest(rpcUrl: string, method: string, params: unknown[]): Promise<unknown> {
@@ -181,7 +198,7 @@ export function assertBalanceDeltas(input: {
         }
         if (watch.role === 'output' && input.sameChain) {
             sawOutput = true
-            if (input.minimumOutput === undefined) {
+            if (input.minimumOutput === undefined || input.minimumOutput <= 0n) {
                 throw new RelaySimulationRejected(
                     'relay.link quote did not include an output minimum. Refusing to sign.',
                 )
@@ -211,7 +228,7 @@ export function assertBalanceDeltas(input: {
     }
 }
 
-type RpcCall = { from: Address; to: Address; data: Hex; value: string }
+type RpcCall = { from: Address; to: Address; data: Hex; value: string; gas?: string }
 
 function probeCalls(user: Address, watches: SimulatedWatch[]): RpcCall[] {
     const probes: RpcCall[] = []
@@ -286,7 +303,7 @@ function parseSimulateResult(result: unknown, userCallCount: number): bigint[] {
     for (const call of calls) {
         const row = call as { status?: string; error?: unknown }
         const status = row?.status
-        const ok = status === '0x1' || status === '0x01' || status === '1'
+        const ok = status === '0x1' || status === '0x01' || status === '1' || status === 1
         if (!ok || row.error) {
             throw new RelaySimulationRejected(
                 'relay.link quote simulation reverted. Refusing to sign.',
@@ -299,27 +316,135 @@ function parseSimulateResult(result: unknown, userCallCount: number): bigint[] {
     })
 }
 
+const intentTuple = {
+    type: 'tuple',
+    components: [
+        { name: 'eoa', type: 'address' },
+        { name: 'executionData', type: 'bytes' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'payer', type: 'address' },
+        { name: 'paymentToken', type: 'address' },
+        { name: 'paymentMaxAmount', type: 'uint256' },
+        { name: 'combinedGas', type: 'uint256' },
+        { name: 'encodedPreCalls', type: 'bytes[]' },
+        { name: 'encodedFundTransfers', type: 'bytes[]' },
+        { name: 'settler', type: 'address' },
+        { name: 'expiry', type: 'uint256' },
+        { name: 'isMultichain', type: 'bool' },
+        { name: 'funder', type: 'address' },
+        { name: 'funderSignature', type: 'bytes' },
+        { name: 'settlerContext', type: 'bytes' },
+        { name: 'paymentAmount', type: 'uint256' },
+        { name: 'paymentRecipient', type: 'address' },
+        { name: 'signature', type: 'bytes' },
+        { name: 'paymentSignature', type: 'bytes' },
+        { name: 'supportedAccountImplementation', type: 'address' },
+    ],
+} as const
+
+const callTuple = {
+    type: 'tuple[]',
+    components: [
+        { name: 'to', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'data', type: 'bytes' },
+    ],
+} as const
+
+function delegationCode(target: Address): Hex {
+    return `0xef0100${target.slice(2).toLowerCase()}` as Hex
+}
+
+function encodeOrchestratorCall(input: SimulateRelayQuoteInput): Hex {
+    const executionData = encodeAbiParameters([callTuple], [
+        input.calls.map((call) => ({
+            to: call.to,
+            value: call.value,
+            data: call.data,
+        })),
+    ])
+    // 65-byte placeholder. simulateExecute forces validity and still reads keyHash.
+    const inner = `0x${'11'.repeat(64)}1b` as Hex
+    const signature = wrapSignature(inner, input.execution.keyHash, false)
+    const encodedIntent = encodeAbiParameters([intentTuple], [
+        {
+            eoa: input.user,
+            executionData,
+            nonce: input.execution.nonce,
+            payer: zeroAddress,
+            paymentToken: zeroAddress,
+            paymentMaxAmount: 0n,
+            combinedGas: COMBINED_GAS,
+            encodedPreCalls: [],
+            encodedFundTransfers: [],
+            settler: zeroAddress,
+            expiry: 0n,
+            isMultichain: false,
+            funder: zeroAddress,
+            funderSignature: '0x',
+            settlerContext: '0x',
+            paymentAmount: 0n,
+            paymentRecipient: zeroAddress,
+            signature,
+            paymentSignature: '0x',
+            supportedAccountImplementation: zeroAddress,
+        },
+    ])
+    return encodeFunctionData({
+        abi: [
+            {
+                name: 'simulateExecute',
+                type: 'function',
+                stateMutability: 'payable',
+                inputs: [
+                    { name: 'isStateOverride', type: 'bool' },
+                    { name: 'combinedGasOverride', type: 'uint256' },
+                    { name: 'encodedIntent', type: 'bytes' },
+                ],
+                outputs: [{ type: 'uint256' }],
+            },
+        ],
+        functionName: 'simulateExecute',
+        args: [true, COMBINED_GAS, encodedIntent],
+    })
+}
+
 async function simulateOnce(
     input: SimulateRelayQuoteInput,
     watches: SimulatedWatch[],
     request: (method: string, params: unknown[]) => Promise<unknown>,
 ): Promise<BalanceBook> {
-    const userCalls: RpcCall[] = input.calls.map((call) => ({
-        from: input.user,
-        to: call.to,
-        data: call.data,
-        value: `0x${call.value.toString(16)}`,
-    }))
+    const origin = getAddress(input.execution.origin)
+    if (origin.toLowerCase() === input.user.toLowerCase()) {
+        throw new RelaySimulationRejected(
+            'relay.link quote could not be simulated. Refusing to sign.',
+        )
+    }
     const probes = probeCalls(input.user, watches)
+    const orchestratorCall: RpcCall = {
+        from: origin,
+        to: getAddress(input.execution.orchestrator),
+        data: encodeOrchestratorCall(input),
+        value: '0x0',
+        gas: `0x${SIM_GAS.toString(16)}`,
+    }
+    const userCode = delegationCode(getAddress(input.execution.delegation))
     const result = await request('eth_simulateV1', [
         {
-            blockStateCalls: [{ calls: [...userCalls, ...probes] }],
+            blockStateCalls: [
+                {
+                    calls: [orchestratorCall, ...probes],
+                    stateOverrides: {
+                        [input.user]: { code: userCode },
+                        [origin]: { balance: `0x${(1n << 192n).toString(16)}` },
+                    },
+                },
+            ],
             validation: false,
-            traceTransfers: true,
         },
         'latest',
     ])
-    const words = parseSimulateResult(result, userCalls.length)
+    const words = parseSimulateResult(result, 1)
     if (words.length !== watches.length) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
@@ -328,91 +453,13 @@ async function simulateOnce(
     return readBook(watches, words)
 }
 
-function forkAndSimulate(
-    input: SimulateRelayQuoteInput,
-    watches: SimulatedWatch[],
-): Promise<BalanceBook> {
-    return new Promise((resolve, reject) => {
-        const port = 18000 + Math.floor(Math.random() * 20000)
-        let settled = false
-        const child = spawn(
-            'anvil',
-            [
-                '--fork-url',
-                input.rpcUrl,
-                '--port',
-                String(port),
-                '--chain-id',
-                String(input.chainId),
-                '--silent',
-            ],
-            { stdio: ['ignore', 'pipe', 'pipe'] },
-        )
-        const finish = (error?: Error, book?: BalanceBook) => {
-            if (settled) return
-            settled = true
-            child.kill('SIGKILL')
-            if (error) reject(error)
-            else if (book) resolve(book)
-            else
-                reject(
-                    new RelaySimulationRejected(
-                        'relay.link quote could not be simulated. Refusing to sign.',
-                    ),
-                )
-        }
-        const timer = setTimeout(() => {
-            finish(
-                new RelaySimulationRejected(
-                    'relay.link quote could not be simulated. Refusing to sign.',
-                ),
-            )
-        }, 20_000)
-        child.on('error', () => {
-            clearTimeout(timer)
-            finish(
-                new RelaySimulationRejected(
-                    'relay.link quote could not be simulated. Refusing to sign.',
-                ),
-            )
-        })
-        const started = Date.now()
-        const poll = async () => {
-            if (settled) return
-            if (Date.now() - started > 15_000) return
-            const request = (method: string, params: unknown[]) =>
-                defaultRequest(`http://127.0.0.1:${port}`, method, params)
-            try {
-                await request('eth_chainId', [])
-            } catch {
-                setTimeout(() => {
-                    void poll()
-                }, 200)
-                return
-            }
-            try {
-                const after = await simulateOnce(input, watches, request)
-                clearTimeout(timer)
-                finish(undefined, after)
-            } catch (error) {
-                clearTimeout(timer)
-                finish(
-                    error instanceof RelaySimulationRejected
-                        ? error
-                        : new RelaySimulationRejected(
-                              'relay.link quote could not be simulated. Refusing to sign.',
-                          ),
-                )
-            }
-        }
-        setTimeout(() => {
-            void poll()
-        }, 200)
-    })
-}
-
 export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promise<void> {
-    if (input.sameChain && input.minimumOutput === undefined) {
+    if (!input.execution?.orchestrator || !input.execution.delegation || !input.execution.keyHash) {
+        throw new RelaySimulationRejected(
+            'relay.link quote could not be simulated. Refusing to sign.',
+        )
+    }
+    if (input.sameChain && (input.minimumOutput === undefined || input.minimumOutput <= 0n)) {
         throw new RelaySimulationRejected(
             'relay.link quote did not include an output minimum. Refusing to sign.',
         )
@@ -437,23 +484,10 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
     try {
         after = await simulateOnce(input, watches, request)
     } catch (error) {
-        if (error instanceof RelaySimulationRejected && !isMethodMissing(error)) throw error
-        if (input.request) {
-            throw error instanceof RelaySimulationRejected
-                ? error
-                : new RelaySimulationRejected(
-                      'relay.link quote could not be simulated. Refusing to sign.',
-                  )
-        }
-        if (!isMethodMissing(error) && error instanceof RelaySimulationRejected) throw error
-        try {
-            after = await forkAndSimulate(input, watches)
-        } catch (forkError) {
-            if (forkError instanceof RelaySimulationRejected) throw forkError
-            throw new RelaySimulationRejected(
-                'relay.link quote could not be simulated. Refusing to sign.',
-            )
-        }
+        if (error instanceof RelaySimulationRejected) throw error
+        throw new RelaySimulationRejected(
+            'relay.link quote could not be simulated. Refusing to sign.',
+        )
     }
     assertBalanceDeltas({
         watches,

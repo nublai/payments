@@ -1,4 +1,4 @@
-import { hashStruct, type Hex } from 'viem'
+import { getAddress, hashStruct, type Address, type Hex } from 'viem'
 
 /**
  * Deposit ids are the EIP-712 struct hash of Relay's v1 Order, which the
@@ -9,13 +9,17 @@ import { hashStruct, type Hex } from 'viem'
  * https://github.com/relayprotocol/relay-settlement/blob/b2f3e0e5fba9381293f030ef340ffb4872687fcf/packages/sdk/src/order/index.ts
  * (`ORDER_EIP712_TYPES`, `getOrderId`). Commit b2f3e0e5fba9381293f030ef340ffb4872687fcf.
  *
- * Checked against a live `POST https://api.relay.link/quote/v2` on 2026-10-07
- * (Base USDC → Polygon USDC): `protocol.v2.orderId`, the `depositErc20` id
- * word, and this hash were all
+ * Checked against the saved quote in
+ * `packages/wallet/tests/fixtures/relay-base-usdc-polygon-quote.json`
+ * (Base USDC → Polygon USDC, 2026-10-07): `protocol.v2.orderId`, the
+ * `depositErc20` id word, and this hash were all
  * `0x5f4c9669be204ca72130c08d1afedcd63d6bd0944bedde4a04f7c340b074468a`.
- * The reviewer's earlier quote showed the same relationship with a different
- * salt: requestId `0x1791363652ee9de2aa0d5d243358ee189ec782407cb11dd0c1ea7759939ccc36`,
- * order id `0x2329c164a893b4b84c21ea63f4d9e1d37f5bb108f400409c327857dbe52d3514`.
+ * A later live quote hashes to a different id. The function matches the
+ * quote it is given; it does not reproduce one historical id for every quote.
+ *
+ * The solver on that fixture is `0xf70da97812cb96acdf810712aa562db8dfa3dbef`.
+ * That address is Relay's filler, not an output payment. Any other solver
+ * is rejected. Fees and `output.calls` still cannot pay a third party.
  *
  * Bytes fields are hashed as the 20-byte address the quote already carries.
  * Chain names we have not mapped fail closed. The v2 Order struct in that
@@ -75,6 +79,12 @@ const ORDER_EIP712_TYPES = {
 /** Chains whose addresses are 20-byte EVM values in Relay's order encoding. */
 const ETHEREUM_VM_CHAINS = new Set(['base', 'polygon', '8453', '137'])
 
+/**
+ * Filler on the checked Base → Polygon quote. Not a payment destination.
+ * A solver outside this set, the user, and the bridge recipient is rejected.
+ */
+const KNOWN_RELAY_SOLVERS = new Set(['0xf70da97812cb96acdf810712aa562db8dfa3dbef'])
+
 export class RelayOrderRejected extends Error {
     constructor(message: string) {
         super(message)
@@ -130,6 +140,9 @@ function assertOrderShape(order: Record<string, unknown>): void {
         throw new RelayOrderRejected('relay.link order is missing output payments.')
     }
     requireEthereumChain(order.output.chainId, 'output.chainId')
+    if (!Array.isArray(order.output.calls)) {
+        throw new RelayOrderRejected('relay.link order is missing output calls.')
+    }
     for (const payment of order.output.payments) {
         if (!isRecord(payment)) {
             throw new RelayOrderRejected('relay.link order output payment is malformed.')
@@ -165,6 +178,82 @@ export function hashRelayOrder(order: unknown): Hex {
         })
     } catch {
         throw new RelayOrderRejected('relay.link order could not be hashed. Refusing to sign.')
+    }
+}
+
+function asUint(value: unknown, field: string): bigint {
+    if (typeof value === 'bigint' && value >= 0n) return value
+    if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return BigInt(value)
+    if (typeof value === 'string' && /^[0-9]+$/.test(value)) return BigInt(value)
+    throw new RelayOrderRejected(`relay.link order ${field} is not an amount.`)
+}
+
+function addressOf(value: unknown, field: string): Address {
+    if (typeof value !== 'string') {
+        throw new RelayOrderRejected(`relay.link order ${field} is not an address.`)
+    }
+    try {
+        return getAddress(value)
+    } catch {
+        throw new RelayOrderRejected(`relay.link order ${field} is not an address.`)
+    }
+}
+
+function isUserOrRecipient(address: Address, user: Address, recipient: Address): boolean {
+    const normalized = address.toLowerCase()
+    return normalized === user.toLowerCase() || normalized === recipient.toLowerCase()
+}
+
+/**
+ * Fees, solver, and output calls are not covered by the output-payment check.
+ * A fee or a non-empty output call can pay someone the deposit id does not name.
+ * The known Relay filler may be the solver. It may not be a fee recipient.
+ */
+export function assertOrderRecipients(order: unknown, user: Address, recipient: Address): void {
+    if (!isRecord(order) || !isRecord(order.output)) {
+        throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
+    }
+    const solver = addressOf(order.solver, 'solver')
+    if (
+        !isUserOrRecipient(solver, user, recipient) &&
+        !KNOWN_RELAY_SOLVERS.has(solver.toLowerCase())
+    ) {
+        throw new RelayOrderRejected(
+            `relay.link order solver ${solver} is not the user, the bridge recipient, or the Relay filler.`,
+        )
+    }
+    const calls = order.output.calls
+    if (!Array.isArray(calls) || calls.length > 0) {
+        throw new RelayOrderRejected(
+            'relay.link order output calls are not bound to the user or the bridge recipient.',
+        )
+    }
+    if (!Array.isArray(order.output.payments)) {
+        throw new RelayOrderRejected('relay.link order is missing output payments.')
+    }
+    for (const payment of order.output.payments) {
+        if (!isRecord(payment)) {
+            throw new RelayOrderRejected('relay.link order output payment is malformed.')
+        }
+        if (asUint(payment.minimumAmount, 'output.minimumAmount') === 0n) {
+            throw new RelayOrderRejected(
+                'relay.link order output minimum is 0. Refusing to sign.',
+            )
+        }
+    }
+    if (!Array.isArray(order.fees)) {
+        throw new RelayOrderRejected('relay.link order is missing fees.')
+    }
+    for (const fee of order.fees) {
+        if (!isRecord(fee)) {
+            throw new RelayOrderRejected('relay.link order fee is malformed.')
+        }
+        const payee = addressOf(fee.recipient, 'fee.recipient')
+        if (!isUserOrRecipient(payee, user, recipient)) {
+            throw new RelayOrderRejected(
+                `relay.link order fee pays ${payee}, which is not the user or the bridge recipient.`,
+            )
+        }
     }
 }
 

@@ -1,13 +1,16 @@
 import {
     decodeFunctionData,
     erc20Abi,
+    formatUnits,
     getAddress,
     zeroAddress,
     type Address,
     type Hex,
 } from 'viem'
-import { hashRelayOrder, orderPayees, RelayOrderRejected } from './relay-order'
-import type { RelayQuoteResponse } from './relay-link'
+import { assertOrderRecipients, hashRelayOrder, orderPayees, RelayOrderRejected } from './relay-order'
+import { WETH_BY_CHAIN } from './quote-spend'
+import { getUsdcAddressByChainId } from './network-config'
+import type { RelayCurrencyAmount, RelayQuoteResponse } from './relay-link'
 
 /**
  * Swap and bridge may only sign calls to these relay.link contracts, and only
@@ -158,6 +161,9 @@ export class RelayQuoteRejected extends Error {
 
 export type RelayQuoteCheck = {
     sourceChainId: number
+    destinationChainId: number
+    /** User slippage in basis points. The quoted minimum must cover it. */
+    slippageBps: number
     inputAmount: bigint
     inputIsNative: boolean
     originCurrency: Address
@@ -272,6 +278,18 @@ function assertParty(address: Address, user: Address, kind: 'refundTo' | 'nftRec
     )
 }
 
+function assertInnerCalls(calls: InnerCall[]): void {
+    for (const call of calls) {
+        const forbidden = FORBIDDEN_SELECTORS[call.selector]
+        if (forbidden || call.selector === APPROVE_SELECTOR) {
+            const name = forbidden ?? 'approve'
+            throw new RelayQuoteRejected(
+                `relay.link quote inner call is ${name} (${call.selector}) on ${call.target}, which swap and bridge will not sign.`,
+            )
+        }
+    }
+}
+
 function innerCallOf(target: Address, data: Hex): InnerCall {
     const selector = data.length >= 10 ? data.slice(0, 10).toLowerCase() : '0x'
     const name =
@@ -289,10 +307,12 @@ function decodeMulticall(data: Hex, user: Address): PartyCall {
         const [calls, refundTo, nftRecipient] = decoded.args
         assertParty(getAddress(refundTo), user, 'refundTo')
         assertParty(getAddress(nftRecipient), user, 'nftRecipient')
+        const innerCalls = calls.map((call) => innerCallOf(getAddress(call.target), call.callData))
+        assertInnerCalls(innerCalls)
         return {
             refundTo: getAddress(refundTo),
             nftRecipient: getAddress(nftRecipient),
-            innerCalls: calls.map((call) => innerCallOf(getAddress(call.target), call.callData)),
+            innerCalls,
         }
     } catch (error) {
         if (error instanceof RelayQuoteRejected) throw error
@@ -365,6 +385,8 @@ function decodeTransferAndMulticall(
         if (tokens.length !== amounts.length) {
             throw new RelayQuoteRejected('relay.link quote transferAndMulticall calldata is invalid.')
         }
+        const innerCalls = calls.map((call) => innerCallOf(getAddress(call.target), call.callData))
+        assertInnerCalls(innerCalls)
         const pulls = tokens.map((token, index) => {
             const address = getAddress(token)
             const amount = amounts[index] ?? 0n
@@ -380,9 +402,7 @@ function decodeTransferAndMulticall(
             party: {
                 refundTo: getAddress(refundTo),
                 nftRecipient: getAddress(nftRecipient),
-                innerCalls: calls.map((call) =>
-                    innerCallOf(getAddress(call.target), call.callData),
-                ),
+                innerCalls,
             },
         }
     } catch (error) {
@@ -412,7 +432,15 @@ function assertWithinCap(totals: Map<string, bigint>, cap: bigint, kind: 'approv
 
 function bindOrder(quote: RelayQuoteResponse, check: RelayQuoteCheck, depositIds: Hex[]): void {
     const order = quote.protocol?.v2
-    if (depositIds.length === 0 && !order?.orderData && !order?.orderId) return
+    const bridge = check.destinationChainId !== check.sourceChainId
+    if (!bridge && depositIds.length === 0 && !order?.orderData && !order?.orderId) return
+    if (!order?.orderData) {
+        throw new RelayQuoteRejected(
+            bridge
+                ? 'relay.link bridge quote is missing an order. Refusing to sign.'
+                : 'relay.link quote deposit is missing an order. Refusing to sign.',
+        )
+    }
     let orderHash: Hex
     try {
         orderHash = hashRelayOrder(quote.protocol?.v2?.orderData)
@@ -466,6 +494,85 @@ function bindOrder(quote: RelayQuoteResponse, check: RelayQuoteCheck, depositIds
             )
         }
     }
+    try {
+        assertOrderRecipients(quote.protocol?.v2?.orderData, check.user, check.recipient)
+    } catch (error) {
+        if (error instanceof RelayOrderRejected) {
+            throw new RelayQuoteRejected(error.message, { cause: error })
+        }
+        throw error
+    }
+}
+
+function assertQuotedMinimum(quote: RelayQuoteResponse, slippageBps: number): void {
+    const out = quote.details?.currencyOut
+    const minimum = out?.minimumAmount
+    const shown = out?.amount
+    if (typeof minimum !== 'string' || !/^[0-9]+$/.test(minimum) || BigInt(minimum) === 0n) {
+        throw new RelayQuoteRejected('relay.link quote minimum output is 0. Refusing to sign.')
+    }
+    if (typeof shown !== 'string' || !/^[0-9]+$/.test(shown)) {
+        throw new RelayQuoteRejected('relay.link quote is missing the output amount. Refusing to sign.')
+    }
+    if (!Number.isInteger(slippageBps) || slippageBps <= 0 || slippageBps >= 10_000) {
+        throw new RelayQuoteRejected('relay.link quote slippage is not a usable basis-point value.')
+    }
+    const floor = (BigInt(shown) * BigInt(10_000 - slippageBps)) / 10_000n
+    if (BigInt(minimum) < floor) {
+        throw new RelayQuoteRejected(
+            `relay.link quote minimum ${minimum} is below ${floor}, the shown output minus ${slippageBps} bps of slippage.`,
+        )
+    }
+}
+
+/** Minimum the confirmation shows. `amountFormatted` is not a guarantee. */
+export function formatQuotedBuy(amount?: RelayCurrencyAmount): string {
+    const raw = amount?.minimumAmount
+    if (typeof raw !== 'string' || !/^[0-9]+$/.test(raw) || BigInt(raw) === 0n) {
+        return 'minimum unavailable'
+    }
+    const decimals = amount?.currency?.decimals
+    if (typeof decimals === 'number' && Number.isInteger(decimals) && decimals >= 0 && decimals <= 36) {
+        return `minimum ${formatUnits(BigInt(raw), decimals)}`
+    }
+    return `minimum ${raw}`
+}
+
+/**
+ * Tokens other than the quoted input that this wallet can name.
+ * A standing allowance of any of them to a Relay spender is refused.
+ * An unknown ERC-20 is not in this list. That is the residual.
+ */
+export function foreignAllowanceTokens(chainId: number, inputToken: Address | undefined): Address[] {
+    const candidates = [
+        WETH_BY_CHAIN[chainId],
+        getUsdcAddressByChainId(chainId),
+        getUsdcAddressByChainId(chainId, true),
+    ]
+    const input = inputToken?.toLowerCase()
+    const seen = new Set<string>()
+    const tokens: Address[] = []
+    for (const candidate of candidates) {
+        if (!candidate) continue
+        const address = getAddress(candidate)
+        if (input && address.toLowerCase() === input) continue
+        if (seen.has(address.toLowerCase())) continue
+        seen.add(address.toLowerCase())
+        tokens.push(address)
+    }
+    return tokens
+}
+
+export function relayAllowanceSpenders(chainId: number): Address[] {
+    return (CALL_ALLOWLIST[chainId] ?? []).map((contract) => contract.address)
+}
+
+export function quotedOutputMinimum(quote: RelayQuoteResponse): bigint {
+    const raw = quote.details?.currencyOut?.minimumAmount
+    if (typeof raw !== 'string' || !/^[0-9]+$/.test(raw) || BigInt(raw) === 0n) {
+        throw new RelayQuoteRejected('relay.link quote minimum output is 0. Refusing to sign.')
+    }
+    return BigInt(raw)
 }
 
 export function quoteExecutionFingerprint(quote: RelayQuoteResponse): string {
@@ -602,6 +709,7 @@ export function reviewRelayQuote(
     assertWithinCap(approveTotals, cap, 'approves')
     assertWithinCap(pullTotals, cap, 'pulls')
     bindOrder(quote, { ...check, user }, depositIds)
+    assertQuotedMinimum(quote, check.slippageBps)
     return { cap, tokens: [...tokens].map((token) => getAddress(token)) }
 }
 

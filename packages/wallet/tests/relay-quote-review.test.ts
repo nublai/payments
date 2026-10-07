@@ -1,8 +1,10 @@
 import { expect, mock, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
+import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
-import { formatRelayQuoteCalls, reviewRelayQuote } from '../src/lib/relay-allowlist'
+import { formatQuotedBuy, formatRelayQuoteCalls, reviewRelayQuote } from '../src/lib/relay-allowlist'
+import { quoteSpendCalls } from '../src/lib/quote-spend'
+import { accountAbi } from '@nubl/contracts/abis'
 import { hashRelayOrder } from '../src/lib/relay-order'
 import { simulateRelayQuote, type SimulateRelayQuoteInput } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
@@ -14,6 +16,14 @@ const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
 const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
 const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31' as Address
+const EXECUTION = {
+    orchestrator: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address,
+    delegation: '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address,
+    origin: '0x9999999999999999999999999999999999999999' as Address,
+    keyHash: `0x${'ab'.repeat(32)}` as Hex,
+    nonce: 0n,
+}
+
 const SIGNATURE =
     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const
 const CAP = 5_000000n
@@ -240,6 +250,7 @@ function run(input: {
     getQuote?: () => Promise<unknown>
     yes?: boolean
     amount?: string
+    slippage?: number
     fromToken?: string
     toToken?: string
     destinationChain?: 'polygon' | 'base'
@@ -248,8 +259,19 @@ function run(input: {
     confirmQuote?: () => Promise<boolean>
     simulateQuoteCalls?: (value: SimulateRelayQuoteInput) => Promise<void>
     getKeys?: () => Promise<unknown>
+    readAllowance?: (value: {
+        token: Address
+        spender: Address
+    }) => Promise<bigint>
+    installQuoteSpendLimit?: (value: {
+        bound: { nativeLimit: bigint; usdcLimit: bigint; frozenTokens: Address[] }
+    }) => Promise<() => Promise<void>>
+    events?: string[]
 }) {
-    const signTypedData = mock(async () => SIGNATURE)
+    const signTypedData = mock(async () => {
+        input.events?.push('sign')
+        return SIGNATURE
+    })
     const prepareCalls = mock(async () => ({
         context: { quote: { quotes: [] } },
         digest: '0xabc' as const,
@@ -262,6 +284,7 @@ function run(input: {
             fromToken: input.fromToken ?? 'USDC',
             toToken: input.toToken ?? 'ETH',
             amount: input.amount ?? '5',
+            slippage: input.slippage,
             sourceChain: 'base',
             destinationChain: input.destinationChain,
             recipient: input.recipient,
@@ -317,6 +340,15 @@ function run(input: {
                 txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
             })) as any,
             simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
+            installQuoteSpendLimit:
+                input.installQuoteSpendLimit ??
+                (async () => {
+                    input.events?.push('install')
+                    return async () => {
+                        input.events?.push('release')
+                    }
+                }),
+            readAllowance: input.readAllowance ?? (async () => 0n),
             ...(input.getKeys ? { getKeys: input.getKeys as any } : {}),
         },
     )
@@ -365,49 +397,20 @@ test('refuses an inner USDC.transfer inside transferAndMulticall', async () => {
     expect(() =>
         reviewRelayQuote(quote as any, {
             sourceChainId: 8453,
+            destinationChainId: 8453,
+            slippageBps: 50,
             inputAmount: CAP,
             inputIsNative: false,
             originCurrency: USDC,
             user: USER,
             recipient: USER,
         }),
-    ).not.toThrow()
+    ).toThrow(/inner call is transfer/)
 
-    const simulate = (input: SimulateRelayQuoteInput) =>
-        simulateRelayQuote({
-            ...input,
-            request: scriptedBalances({
-                before: [10_000000n, 10n ** 18n],
-                after: [CAP, 10n ** 18n],
-            }),
-        })
-    await expect(simulate({
-        rpcUrl: 'http://127.0.0.1:1',
-        chainId: 8453,
-        user: USER,
-        calls: [
-            { to: USDC, data: approve(APPROVAL_PROXY), value: 0n },
-            {
-                to: APPROVAL_PROXY,
-                data: transferAndMulticall({
-                    calls: [{ target: USDC, allowFailure: false, value: 0n, callData: innerTransfer }],
-                }),
-                value: 0n,
-            },
-        ],
-        watches: [
-            { kind: 'erc20', token: USDC, role: 'origin' },
-            { kind: 'native', role: 'output' },
-        ],
-        cap: CAP,
-        sameChain: true,
-        minimumOutput: 1000n,
-    })).rejects.toThrow(/below the quoted minimum/)
-
-    const ran = run({ quote, simulateQuoteCalls: simulate })
+    const ran = run({ quote })
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
-        message: expect.stringContaining('below the quoted minimum'),
+        message: expect.stringContaining('inner call is transfer'),
     })
     expect(ran.signTypedData).not.toHaveBeenCalled()
 })
@@ -534,6 +537,8 @@ test('signs the live quote whose deposit id is the order hash', async () => {
         quote,
         toToken: 'USDC',
         destinationChain: 'polygon',
+        // The fixture minimum is about 2% under the shown amount.
+        slippage: 2.5,
     })
     const result = await ran.result
     expect(ran.confirmQuote).toHaveBeenCalledTimes(1)
@@ -614,6 +619,8 @@ test('signs when the output recipient is the bridge recipient the user passed', 
         toToken: 'USDC',
         destinationChain: 'polygon',
         recipient: ATTACKER,
+        // The fixture minimum is about 2% under the shown amount.
+        slippage: 2.5,
     })
     await ran.result
     expect(ran.signTypedData).toHaveBeenCalledTimes(1)
@@ -747,6 +754,7 @@ test('refuses a simulation that drops an unspent balance', async () => {
             ],
             cap: CAP,
             sameChain: false,
+            execution: EXECUTION,
             request,
         }),
     ).rejects.toThrow(/would lower ETH/)
@@ -755,18 +763,21 @@ test('refuses a simulation that drops an unspent balance', async () => {
         quote,
         toToken: 'USDC',
         destinationChain: 'polygon',
+        // The fixture minimum is about 2% under the shown amount.
+        slippage: 2.5,
         simulateQuoteCalls: (input) =>
             simulateRelayQuote({
                 ...input,
                 request: scriptedBalances({
-                    before: [10_000000n, 10n ** 18n],
-                    after: [CAP, 10n ** 18n - 1n],
+                    // Watches: quoted USDC, native, then WETH. The drop is WETH.
+                    before: [10_000000n, 10n ** 18n, 10n ** 18n],
+                    after: [CAP, 10n ** 18n, 10n ** 18n - 1n],
                 }),
             }),
     })
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
-        message: expect.stringContaining('would lower ETH'),
+        message: expect.stringContaining('would lower 0x4200000000000000000000000000000000000006'),
     })
     expect(ran.signTypedData).not.toHaveBeenCalled()
 })
@@ -781,6 +792,7 @@ test('refuses when the simulation reverts', async () => {
             watches: [{ kind: 'erc20', token: USDC, role: 'origin' }],
             cap: CAP,
             sameChain: false,
+            execution: EXECUTION,
             request: scriptedBalances({
                 before: [10_000000n],
                 after: [CAP],
@@ -800,10 +812,156 @@ test('refuses when the injected rpc cannot simulate', async () => {
             watches: [{ kind: 'erc20', token: USDC, role: 'origin' }],
             cap: CAP,
             sameChain: false,
+            execution: EXECUTION,
             request: async (method) => {
                 if (method === 'eth_call') return '0x989680'
                 throw new Error('-32601 Method not found')
             },
         }),
     ).rejects.toThrow(/could not be simulated/)
+})
+
+test('refuses minimumAmount 0 even when the outer call is allowlisted', async () => {
+    const quote = quoteWith([{ to: ROUTER, data: multicall(USER, zeroAddress) }], {
+        details: {
+            currencyIn: { amount: CAP.toString() },
+            currencyOut: { amount: '2500000', amountFormatted: '2.5', minimumAmount: '0' },
+        },
+    })
+    const ran = run({ quote })
+    await expect(ran.result).rejects.toMatchObject({
+        code: 'QUOTE_FAILED',
+        message: expect.stringContaining('minimum output is 0'),
+    })
+    expect(ran.signTypedData).not.toHaveBeenCalled()
+})
+
+test('refuses a bridge-shaped quote with no order', async () => {
+    const ran = run({
+        quote: quoteWith([{ to: APPROVAL_PROXY, data: transferAndMulticall({}) }]),
+        toToken: 'USDC',
+        destinationChain: 'polygon',
+    })
+    await expect(ran.result).rejects.toMatchObject({
+        code: 'QUOTE_FAILED',
+        message: expect.stringContaining('missing an order'),
+    })
+    expect(ran.signTypedData).not.toHaveBeenCalled()
+})
+
+test('refuses an order fee, a foreign solver, and output calls', async () => {
+    const fee = patchedOrder((order) => {
+        ;(order as { fees: unknown[] }).fees = [
+            {
+                recipientChainId: 'base',
+                recipient: ATTACKER,
+                currencyChainId: 'base',
+                currency: USDC,
+                amount: '5000000',
+            },
+        ]
+    })
+    const solver = patchedOrder((order) => {
+        ;(order as { solver: string }).solver = ATTACKER
+    })
+    const calls = patchedOrder((order) => {
+        ;(order.output as { calls?: string[] }).calls = ['0xdeadbeef']
+    })
+    for (const [patched, message] of [
+        [fee, `fee pays ${ATTACKER}`],
+        [solver, `solver ${ATTACKER}`],
+        [calls, 'output calls'],
+    ] as const) {
+        const ran = run({
+            quote: liveQuote({
+                order: patched.order,
+                orderId: patched.hash,
+                depositData: depositErc20(USER, USDC, CAP, patched.hash),
+            }),
+            toToken: 'USDC',
+            destinationChain: 'polygon',
+            slippage: 2.5,
+        })
+        await expect(ran.result).rejects.toMatchObject({
+            code: 'QUOTE_FAILED',
+            message: expect.stringContaining(message),
+        })
+        expect(ran.signTypedData).not.toHaveBeenCalled()
+    }
+})
+
+test('refuses a standing WETH allowance to the router', async () => {
+    const weth = '0x4200000000000000000000000000000000000006'
+    const ran = run({
+        quote: quoteWith([{ to: ROUTER, data: multicall(USER, zeroAddress) }]),
+        readAllowance: async ({ token, spender }) =>
+            token.toLowerCase() === weth && spender.toLowerCase() === ROUTER.toLowerCase() ? 1n : 0n,
+    })
+    await expect(ran.result).rejects.toMatchObject({
+        code: 'QUOTE_FAILED',
+        message: expect.stringContaining('standing allowance'),
+    })
+    expect(ran.signTypedData).not.toHaveBeenCalled()
+})
+
+test('installs the quoted spend limit before signing and simulates twice', async () => {
+    const events: string[] = []
+    let simulations = 0
+    const ran = run({
+        quote: quoteWith([{ to: ROUTER, data: multicall(USER, zeroAddress) }]),
+        events,
+        simulateQuoteCalls: async () => {
+            simulations += 1
+        },
+        installQuoteSpendLimit: async (value) => {
+            events.push('install')
+            expect(value.bound.usdcLimit).toBe(CAP)
+            expect(value.bound.nativeLimit).toBe(0n)
+            expect(value.bound.usdcLimit).not.toBe(2n ** 256n - 1n)
+            expect(value.bound.nativeLimit).not.toBe(2n ** 256n - 1n)
+            return async () => {
+                events.push('release')
+            }
+        },
+    })
+    await ran.result
+    expect(simulations).toBe(2)
+    expect(events).toEqual(['install', 'sign', 'release'])
+})
+
+test('quote spend calldata is a minute limit equal to the input, never uint256 max', () => {
+    const weth = '0x4200000000000000000000000000000000000006' as Address
+    const calls = quoteSpendCalls(
+        {
+            keyHash: EXECUTION.keyHash,
+            account: USER,
+            nativeLimit: 10n ** 15n,
+            usdc: USDC,
+            usdcLimit: 0n,
+            frozenTokens: [weth],
+        },
+        'set',
+    )
+    const decoded = calls.map((call) => decodeFunctionData({ abi: accountAbi, data: call.data }))
+    expect(calls.every((call) => call.target === USER)).toBe(true)
+    expect(decoded.every((row) => row.functionName === 'setSpendLimit')).toBe(true)
+    expect(decoded[0]?.args?.[2]).toBe(0)
+    expect(decoded[0]?.args?.[3]).toBe(10n ** 15n)
+    expect(decoded[1]?.args?.[3]).toBe(0n)
+    expect(decoded[2]?.args?.[3]).toBe(0n)
+    expect(decoded[2]?.args?.[1]).toBe(weth)
+    for (const call of calls) {
+        expect(call.data.toLowerCase().includes('f'.repeat(64))).toBe(false)
+    }
+    expect(formatQuotedBuy({ amountFormatted: '2.5', amount: '2500000', minimumAmount: '0' })).toBe(
+        'minimum unavailable',
+    )
+    expect(
+        formatQuotedBuy({
+            amountFormatted: '2.5',
+            amount: '2500000',
+            minimumAmount: '2487500',
+            currency: { decimals: 6 },
+        }),
+    ).toBe('minimum 2.4875')
 })

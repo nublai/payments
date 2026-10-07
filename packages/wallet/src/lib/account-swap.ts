@@ -24,11 +24,13 @@ import {
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
+import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import { AccountCreateError, resolveKeystorePath } from './account-create'
 import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
 import {
     LoginProfileError,
     SessionOnlyProfileError,
+    decryptRootKeystore,
     decryptSessionKeystore,
     isAgentKeystore,
     readKeystoreBundle,
@@ -57,12 +59,27 @@ import {
     type RelayQuoteResponse,
 } from './relay-link'
 import {
+    foreignAllowanceTokens,
+    formatQuotedBuy,
     quoteExecutionFingerprint,
+    quotedOutputMinimum,
+    relayAllowanceSpenders,
     RelayQuoteRejected,
     reviewRelayQuote,
     type RelayQuoteReview,
 } from './relay-allowlist'
-import { RelaySimulationRejected, simulateRelayQuote, type SimulatedWatch } from './relay-simulate'
+import {
+    quoteSpendCalls,
+    WETH_BY_CHAIN,
+    type QuoteSpendBound,
+} from './quote-spend'
+import {
+    RELAY_SIMULATION_ORIGIN,
+    RelaySimulationRejected,
+    simulateRelayQuote,
+    type RelayExecutionContext,
+    type SimulatedWatch,
+} from './relay-simulate'
 import {
     ETH_ADDRESS,
     getChainConfig,
@@ -230,6 +247,23 @@ type AccountSwapDeps = {
     confirmQuote: (quote: RelayQuoteResponse) => Promise<boolean>
     auditQuote: (quote: RelayQuoteResponse) => void
     simulateQuoteCalls: (input: Parameters<typeof simulateRelayQuote>[0]) => Promise<void>
+    /**
+     * Install the per-quote minute spend, then return a function that removes it
+     * after the quote transaction is included.
+     */
+    installQuoteSpendLimit: (input: {
+        bound: QuoteSpendBound
+        network: NetworkConfig
+        password: string
+        keystorePath: string
+        sessionFile?: string
+    }) => Promise<() => Promise<void>>
+    readAllowance: (input: {
+        network: NetworkConfig
+        token: Address
+        owner: Address
+        spender: Address
+    }) => Promise<bigint>
 }
 
 function normalizeChain(value: string | undefined, env: EnvName): ChainName {
@@ -306,9 +340,9 @@ function parseRecipient(value: string | Address | undefined): Address | undefine
 }
 
 function getEstimatedOutputAmount(quote: RelayQuoteResponse): string {
-    const formatted = quote.details?.currencyOut?.amountFormatted
-    if (formatted) {
-        return formatted
+    const minimum = formatQuotedBuy(quote.details?.currencyOut)
+    if (minimum.startsWith('minimum ')) {
+        return minimum.slice('minimum '.length)
     }
     const raw = quote.details?.currencyOut?.amount
     if (raw) {
@@ -388,18 +422,63 @@ function quoteWatches(input: {
     for (const token of input.extraTokens) {
         watches.push({ kind: 'erc20', token, role: 'other' })
     }
+    const weth = WETH_BY_CHAIN[input.chainId]
+    if (weth) watches.push({ kind: 'erc20', token: weth, role: 'other' })
     return watches
 }
 
-function quotedMinimumOutput(quote: RelayQuoteResponse): bigint | undefined {
-    const raw = quote.details?.currencyOut?.minimumAmount ?? quote.details?.currencyOut?.amount
-    if (typeof raw === 'string' && /^[0-9]+$/.test(raw)) return BigInt(raw)
-    return undefined
+async function assertNoForeignAllowance(input: {
+    deps: Pick<AccountSwapDeps, 'readAllowance'>
+    network: NetworkConfig
+    chainId: number
+    owner: Address
+    inputToken: Address | undefined
+}): Promise<void> {
+    const tokens = foreignAllowanceTokens(input.chainId, input.inputToken)
+    const spenders = relayAllowanceSpenders(input.chainId)
+    for (const token of tokens) {
+        for (const spender of spenders) {
+            let allowance: bigint
+            try {
+                allowance = await input.deps.readAllowance({
+                    network: input.network,
+                    token,
+                    owner: input.owner,
+                    spender,
+                })
+            } catch (error) {
+                throw new AccountSwapError(
+                    'QUOTE_FAILED',
+                    'Could not read token allowances. Refusing to sign.',
+                    { cause: error },
+                )
+            }
+            if (allowance > 0n) {
+                throw new AccountSwapError(
+                    'QUOTE_FAILED',
+                    `The account has a standing allowance of ${token} to ${spender} for a token other than the quoted input. Refusing to sign.`,
+                )
+            }
+        }
+    }
+}
+
+function quotedMinimumOutput(quote: RelayQuoteResponse): bigint {
+    try {
+        return quotedOutputMinimum(quote)
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) {
+            throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
+        }
+        throw error
+    }
 }
 
 function validateQuoteForExecution(
     quote: RelayQuoteResponse,
     sourceChainId: number,
+    destinationChainId: number,
+    slippageBps: number,
     limits: {
         amount: bigint
         native: boolean
@@ -430,6 +509,8 @@ function validateQuoteForExecution(
     try {
         return reviewRelayQuote(quote, {
             sourceChainId,
+            destinationChainId,
+            slippageBps,
             inputAmount: limits.amount,
             inputIsNative: limits.native,
             originCurrency: limits.originCurrency,
@@ -563,6 +644,102 @@ function getDefaultDeps(): AccountSwapDeps {
         confirmQuote: async () => true,
         auditQuote: () => {},
         simulateQuoteCalls: (input) => simulateRelayQuote(input),
+        installQuoteSpendLimit: (input) => installQuoteSpendLimit(input),
+        readAllowance: async (input) => {
+            const client = createPublicClient({
+                chain: getChain(input.network.chainId, input.network.rpcUrl),
+                transport: http(input.network.rpcUrl),
+            })
+            return client.readContract({
+                address: input.token,
+                abi: erc20Abi,
+                functionName: 'allowance',
+                args: [input.owner, input.spender],
+            })
+        },
+    }
+}
+
+async function installQuoteSpendLimit(input: {
+    bound: QuoteSpendBound
+    network: NetworkConfig
+    password: string
+    keystorePath: string
+    sessionFile?: string
+}): Promise<() => Promise<void>> {
+    if (input.sessionFile) {
+        throw new AccountSwapError(
+            'QUOTE_FAILED',
+            'A swap needs the root key to set a per-quote spend limit. A session file alone cannot.',
+        )
+    }
+    let bundle: Awaited<ReturnType<typeof readKeystoreBundle>>
+    try {
+        bundle = await readKeystoreBundle(input.keystorePath)
+    } catch (error) {
+        throw new AccountSwapError(
+            'QUOTE_FAILED',
+            'A swap needs the root key to set a per-quote spend limit. The root keystore could not be read.',
+            { cause: error },
+        )
+    }
+    const root = await decryptRootKeystore(bundle.root, input.password)
+    const client = createPublicClient({
+        chain: getChain(input.network.chainId, input.network.rpcUrl),
+        transport: http(input.network.rpcUrl),
+    })
+    const signedNetwork = {
+        ...input.network,
+        authSigner: createEthHttpSigner(root.rootPrivateKey, input.network.chainId),
+    }
+    const submit = async (mode: 'set' | 'remove') => {
+        const nonce = await readAccountNonce(client, input.bound.account)
+        const result = await executeSignedCalls(
+            {
+                prepareCalls: async (call) => {
+                    const relayer = createCliRelayerClient(signedNetwork)
+                    return relayer.prepareCalls({
+                        from: call.from,
+                        chainId: signedNetwork.chainId,
+                        calls: call.calls,
+                        nonce: call.nonce,
+                    })
+                },
+                signTypedData: async (signed) => {
+                    const signer = privateKeyToAccount(signed.privateKey)
+                    return signer.signTypedData(signed.typedData)
+                },
+                sendPreparedCalls: async (prepared) => {
+                    const relayer = createCliRelayerClient(signedNetwork)
+                    return relayer.sendPreparedCalls(prepared)
+                },
+                waitForBundle: async (bundleStatus) => {
+                    const relayer = createCliRelayerClient(signedNetwork)
+                    return waitForBundleAction(relayer, {
+                        id: bundleStatus.id,
+                        chainId: signedNetwork.chainId,
+                    })
+                },
+            },
+            {
+                from: input.bound.account,
+                calls: quoteSpendCalls(input.bound, mode),
+                nonce,
+                signerPrivateKey: root.rootPrivateKey,
+            },
+        )
+        if (!result.finalStatus.success) {
+            throw new AccountSwapError(
+                'QUOTE_FAILED',
+                mode === 'set'
+                    ? 'The per-quote spend limit could not be set. Refusing to sign.'
+                    : 'The per-quote spend limit could not be removed after the swap.',
+            )
+        }
+    }
+    await submit('set')
+    return async () => {
+        await submit('remove')
     }
 }
 
@@ -722,6 +899,7 @@ async function maybeRefreshQuoteAfterConfirmation(input: {
     request: Parameters<typeof getQuote>[0]
     options: AccountSwapOptions
     deps: Pick<AccountSwapDeps, 'getQuote'>
+    slippageBps: number
     limits: {
         amount: bigint
         native: boolean
@@ -735,7 +913,13 @@ async function maybeRefreshQuoteAfterConfirmation(input: {
     }
 
     const refreshedQuote = await input.deps.getQuote(input.request, { env: input.options.env })
-    validateQuoteForExecution(refreshedQuote, input.request.originChainId, input.limits)
+    validateQuoteForExecution(
+        refreshedQuote,
+        input.request.originChainId,
+        input.request.destinationChainId,
+        input.slippageBps,
+        input.limits,
+    )
     return {
         quote: refreshedQuote,
         needsReconfirmation: quoteNeedsReconfirmation(input.initialQuote, refreshedQuote),
@@ -890,10 +1074,41 @@ export async function executeAccountSwap(
             user: sender,
             recipient,
         }
-        let review = validateQuoteForExecution(quote, quoteRequest.originChainId, quoteLimits)
+        const slippageBps = Number(slippagePercentToBps(slippage))
+        let review = validateQuoteForExecution(
+            quote,
+            quoteRequest.originChainId,
+            quoteRequest.destinationChainId,
+            slippageBps,
+            quoteLimits,
+        )
         const sameChain = quoteRequest.originChainId === quoteRequest.destinationChainId
+        const deployed = getAddressesWithFallback(options.env, quoteRequest.originChainId)
+        if (!deployed?.orchestrator || !deployed.accountProxy) {
+            throw new AccountSwapError(
+                'QUOTE_FAILED',
+                'This chain has no orchestrator to simulate the quote against. Refusing to sign.',
+            )
+        }
+        const executionBase: Omit<RelayExecutionContext, 'nonce'> = {
+            orchestrator: getAddress(deployed.orchestrator),
+            delegation: getAddress(deployed.accountProxy),
+            origin: RELAY_SIMULATION_ORIGIN,
+            keyHash: sessionKeyHash,
+        }
 
-        const simulateQuote = async (current: RelayQuoteResponse, currentReview: RelayQuoteReview) => {
+        const simulateQuote = async (
+            current: RelayQuoteResponse,
+            currentReview: RelayQuoteReview,
+            nonce: bigint,
+        ) => {
+            await assertNoForeignAllowance({
+                deps,
+                network: effectiveNetwork,
+                chainId: quoteRequest.originChainId,
+                owner: sender,
+                inputToken: fromToken === 'ETH' ? undefined : quoteRequest.originCurrency,
+            })
             const watches = quoteWatches({
                 origin: quoteRequest.originCurrency,
                 originIsNative: fromToken === 'ETH',
@@ -917,6 +1132,7 @@ export async function executeAccountSwap(
                     cap: currentReview.cap,
                     sameChain,
                     minimumOutput: sameChain ? quotedMinimumOutput(current) : undefined,
+                    execution: { ...executionBase, nonce },
                 })
             } catch (error) {
                 if (error instanceof AccountSwapError) throw error
@@ -933,8 +1149,12 @@ export async function executeAccountSwap(
 
         // `yes` does not skip this review. It only skips refreshing a quote that
         // went stale while the human was confirming.
+        let simulationNonce = await deps.readNonce({
+            network: signedNetwork,
+            account: sender,
+        })
         for (let attempt = 1; attempt <= MAX_CONFIRMATION_ATTEMPTS; attempt += 1) {
-            await simulateQuote(quote, review)
+            await simulateQuote(quote, review, simulationNonce)
             const confirmedAt = Date.now()
             const confirmed = await deps.confirmQuote(quote)
             if (!confirmed) {
@@ -947,13 +1167,20 @@ export async function executeAccountSwap(
                 request: quoteRequest,
                 options,
                 deps,
+                slippageBps,
                 limits: quoteLimits,
             })
             quote = refresh.quote
             if (!refresh.needsReconfirmation) {
                 break
             }
-            review = validateQuoteForExecution(quote, quoteRequest.originChainId, quoteLimits)
+            review = validateQuoteForExecution(
+                quote,
+                quoteRequest.originChainId,
+                quoteRequest.destinationChainId,
+                slippageBps,
+                quoteLimits,
+            )
             if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
                 throw new AccountSwapError(
                     'QUOTE_FAILED',
@@ -969,11 +1196,48 @@ export async function executeAccountSwap(
         }
 
         const relayRequestId = isBridge ? extractRequestId(quote) : undefined
-
-        const nonce = await deps.readNonce({
-            network: signedNetwork,
+        const usdc = getUsdcAddressByChainId(quoteRequest.originChainId)
+        if (!usdc) {
+            throw new AccountSwapError(
+                'QUOTE_FAILED',
+                'This chain has no USDC address to bound the quote against. Refusing to sign.',
+            )
+        }
+        const legacyUsdc = getUsdcAddressByChainId(quoteRequest.originChainId, true)
+        const frozenTokens = [
+            WETH_BY_CHAIN[quoteRequest.originChainId],
+            legacyUsdc && legacyUsdc.toLowerCase() !== usdc.toLowerCase() ? legacyUsdc : undefined,
+        ].filter((token): token is Address => Boolean(token))
+        const bound: QuoteSpendBound = {
+            keyHash: sessionKeyHash,
             account: sender,
+            nativeLimit: fromToken === 'ETH' ? parsedAmount.baseUnits : 0n,
+            usdc,
+            usdcLimit: fromToken === 'USDC' ? parsedAmount.baseUnits : 0n,
+            frozenTokens,
+        }
+        const releaseSpendLimit = await deps.installQuoteSpendLimit({
+            bound,
+            network: effectiveNetwork,
+            password: await resolvePassword(),
+            keystorePath,
+            sessionFile: options.sessionFile,
         })
+
+        // Nothing has been broadcast yet. A failed re-simulation must not leave
+        // the minute cap on the key. Once the swap is submitted, the cap stays
+        // until inclusion: the bundle may still land.
+        try {
+            simulationNonce = await deps.readNonce({
+                network: signedNetwork,
+                account: sender,
+            })
+            // Re-simulate the exact calls immediately before signTypedData.
+            await simulateQuote(quote, review, simulationNonce)
+        } catch (error) {
+            await releaseSpendLimit()
+            throw error
+        }
 
         function runWithSigner(
             network: typeof signedNetwork,
@@ -1001,7 +1265,7 @@ export async function executeAccountSwap(
                 {
                     from: sender,
                     calls,
-                    nonce,
+                    nonce: simulationNonce,
                     sessionKey: sessionPublicKey,
                     signerPrivateKey: signer.signerPrivateKey,
                     signerKeyHash: sessionKeyHash,
@@ -1042,6 +1306,10 @@ export async function executeAccountSwap(
                 signerPrivateKey: fallback.sessionPrivateKey,
             })
         }
+
+        // The source bundle has been included, so the minute limit already applied.
+        // Removing it afterwards does not widen that transaction.
+        await releaseSpendLimit()
 
         const finalStatus = submission.finalStatus
         if (!finalStatus.success) {

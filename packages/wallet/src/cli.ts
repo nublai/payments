@@ -86,7 +86,7 @@ import {
     type RelayCurrencyAmount,
     type RelayQuoteResponse,
 } from './lib/relay-link'
-import { formatRelayQuoteCalls } from './lib/relay-allowlist'
+import { formatQuotedBuy, formatRelayQuoteCalls } from './lib/relay-allowlist'
 import {
     PromptCancelledError,
     readlineExistingPassword,
@@ -213,7 +213,7 @@ function formatQuoteSummary(quote: RelayQuoteResponse, kind: 'swap' | 'bridge'):
     const lines = [
         `${kind === 'swap' ? 'Swap' : 'Bridge'} Quote:`,
         `  Sell: ${formatQuoteAmount(quote.details?.currencyIn)}`,
-        `  Buy:  ${formatQuoteAmount(quote.details?.currencyOut)}`,
+        `  Buy:  ${formatQuotedBuy(quote.details?.currencyOut)}`,
         `  Rate: ${quote.details?.rate ?? 'unknown'}`,
         `  Total fees: $${sumQuoteFeeUsd(quote)}`,
         `  Estimated time: ${quote.details?.timeEstimate ? `~${quote.details.timeEstimate}s` : 'unknown'}`,

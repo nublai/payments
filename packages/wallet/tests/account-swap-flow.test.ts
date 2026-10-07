@@ -1,6 +1,8 @@
 import { expect, mock, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import { JsonRpcClientError, type GetKeysResponse } from '@nubl/relayer-client'
 import { encodeFunctionData, zeroAddress, type Address, type Hex } from 'viem'
+import { hashRelayOrder } from '../src/lib/relay-order'
 import {
     executeAccountSwap as executeAccountSwapImpl,
     resolveAccountSwapPassword,
@@ -41,6 +43,10 @@ function executeAccountSwap(
 ) {
     return executeAccountSwapImpl(options, {
         simulateQuoteCalls: async () => {},
+        installQuoteSpendLimit: async () => async () => {},
+        readAllowance: async () => 0n,
+        // Confirmation now simulates, which needs a nonce before the user answers.
+        readNonce: async () => 2n,
         ...deps,
     })
 }
@@ -120,7 +126,9 @@ function makeQuote(overrides?: Record<string, unknown>) {
         ],
         details: {
             currencyOut: {
+                amount: '28500000000000000',
                 amountFormatted: '0.0285',
+                minimumAmount: '28500000000000000',
                 amountUsd: '100.10',
             },
             rate: '3508.77',
@@ -131,6 +139,67 @@ function makeQuote(overrides?: Record<string, unknown>) {
             relayer: { amountUsd: '0.07' },
         },
         ...overrides,
+    }
+}
+
+const bridgeOrderTemplate = JSON.parse(
+    readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
+).orderData as {
+    output: { payments: { recipient: string }[] }
+    inputs: { refunds: { recipient: string }[] }[]
+    solver: string
+    fees: unknown[]
+}
+
+function depositNative(depositor: Address, id: Hex): Hex {
+    const padded = depositor.toLowerCase().slice(2).padStart(64, '0')
+    return `0x49290c1c${padded}${id.slice(2).padStart(64, '0')}` as Hex
+}
+
+/** Signable ETH bridge: depositNative plus an order whose output pays `recipient`. */
+function makeEthBridgeQuote(input?: { recipient?: Address; omitRequestId?: boolean }) {
+    const recipient = input?.recipient ?? USER
+    const order = structuredClone(bridgeOrderTemplate)
+    order.output.payments[0]!.recipient = recipient
+    const orderId = hashRelayOrder(order)
+    const value = 10n ** 17n
+    const requestId = input?.omitRequestId ? undefined : 'relay-request-1'
+    return {
+        requestId,
+        steps: [
+            {
+                id: 'bridge',
+                kind: 'transaction',
+                requestId,
+                items: [
+                    {
+                        status: 'incomplete' as const,
+                        data: {
+                            to: '0x4cD00E387622C35bDDB9b4c962C136462338BC31',
+                            data: depositNative(USER, orderId),
+                            value: value.toString(),
+                            chainId: 8453,
+                        },
+                    },
+                ],
+            },
+        ],
+        details: {
+            currencyIn: { amount: value.toString(), amountFormatted: '0.1' },
+            currencyOut: {
+                amount: value.toString(),
+                minimumAmount: value.toString(),
+                amountFormatted: '0.1',
+                amountUsd: '100',
+            },
+            rate: '1',
+            timeEstimate: 9,
+        },
+        protocol: { v2: { orderId, orderData: order } },
+        fees: {
+            gas: { amountUsd: '0.10' },
+            relayer: { amountUsd: '0.07' },
+        },
     }
 }
 
@@ -350,8 +419,8 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
         status: 'success',
         txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
     }))
-    const getQuote = mock(async () => makeQuote()) as unknown as any
-    const recipient = '0x2222222222222222222222222222222222222222' as const
+    const recipient = '0x2222222222222222222222222222222222222222' as Address
+    const getQuote = mock(async () => makeEthBridgeQuote({ recipient })) as unknown as any
 
     const result = await executeAccountSwap(
         {
@@ -424,7 +493,7 @@ test('executeAccountSwap does not treat source intent hashes as destination tx h
             })),
             readTokenBalance: mock(async () => 1_000000000000000000n),
             getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-            getQuote: mock(async () => makeQuote()) as unknown as any,
+            getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
             readNonce: mock(async () => 2n),
             prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
             signTypedData: mock(
@@ -577,27 +646,7 @@ test('executeAccountSwap rejects same-chain bridges with typed error', async () 
 
 test('executeAccountSwap rejects bridge when quote has no requestId before executing', async () => {
     const waitForBundle = mock(async () => makeFinalStatus()) as unknown as any
-    const quoteWithoutRequestId = makeQuote({
-        requestId: undefined,
-        steps: [
-            {
-                id: 'bridge',
-                kind: 'transaction',
-                requestId: undefined,
-                items: [
-                    {
-                        status: 'incomplete',
-                        data: {
-                            to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
-                            data: EMPTY_ROUTER_CALL,
-                            value: '0',
-                            chainId: 8453,
-                        },
-                    },
-                ],
-            },
-        ],
-    })
+    const quoteWithoutRequestId = makeEthBridgeQuote({ omitRequestId: true })
 
     await expect(
         executeAccountSwap(
@@ -985,7 +1034,9 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
         return makeQuote({
             details: {
                 currencyOut: {
+                    amount: '28500000000000000',
                     amountFormatted: '0.0285',
+                    minimumAmount: '28500000000000000',
                     amountUsd: String(100 + callCount * 2),
                 },
                 rate: String(3500 + callCount * 25),
@@ -1044,7 +1095,9 @@ test('executeAccountSwap does not force reconfirmation when refreshed quotes are
         makeQuote({
             details: {
                 currencyOut: {
+                    amount: '28500000000000000',
                     amountFormatted: '0.0285',
+                    minimumAmount: '28500000000000000',
                 },
                 timeEstimate: 2,
             },
@@ -1115,7 +1168,7 @@ test('executeAccountSwap maps bridge polling timeouts to typed errors', async ()
                 })),
                 readTokenBalance: mock(async () => 1_000000000000000000n),
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
                 prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
                 signTypedData: mock(
@@ -1465,7 +1518,7 @@ test('executeAccountSwap maps bridge fill non-success to BRIDGE_FILL_FAILED', as
                 })),
                 readTokenBalance: mock(async () => 1_000000000000000000n),
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
                 prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
                 signTypedData: mock(
