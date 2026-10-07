@@ -489,13 +489,16 @@ contract GuardedExecutorTest is BaseTest {
         }
 
         // Test removal reduces infos' length.
+        // setSpendLimit / removeSpendLimit are onlyThis admin selectors. A non-super-admin
+        // key cannot call them, so the EOA signs these updates. The session key still signs
+        // the transfers. Spend assertions are unchanged.
         {
             calls = new ERC7821.Call[](1);
             calls[0] = _removeSpendLimitCall(k, token, periods[0]);
 
             u.nonce = d.d.getNonce(0);
             u.executionData = abi.encode(calls);
-            u.signature = _sig(k, u);
+            u.signature = _eoaSig(d.privateKey, u);
             assertEq(oc.execute(abi.encode(u)), 0);
 
             infos = d.d.spendInfos(k.keyHash);
@@ -511,7 +514,7 @@ contract GuardedExecutorTest is BaseTest {
 
             u.nonce = d.d.getNonce(0);
             u.executionData = abi.encode(calls);
-            u.signature = _sig(k, u);
+            u.signature = _eoaSig(d.privateKey, u);
             assertEq(oc.execute(abi.encode(u)), 0);
             infos = d.d.spendInfos(k.keyHash);
             for (uint256 i; i < infos.length; ++i) {
@@ -555,7 +558,7 @@ contract GuardedExecutorTest is BaseTest {
 
             u.nonce = d.d.getNonce(0);
             u.executionData = abi.encode(calls);
-            u.signature = _sig(k, u);
+            u.signature = _eoaSig(d.privateKey, u);
             assertEq(oc.execute(abi.encode(u)), 0);
 
             assertEq(d.d.spendInfos(k.keyHash).length, 0);
@@ -588,7 +591,7 @@ contract GuardedExecutorTest is BaseTest {
 
             u.nonce = d.d.getNonce(0);
             u.executionData = abi.encode(calls);
-            u.signature = _sig(k, u);
+            u.signature = _eoaSig(d.privateKey, u);
             assertEq(oc.execute(abi.encode(u)), 0);
 
             infos = d.d.spendInfos(k.keyHash);

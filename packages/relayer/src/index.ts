@@ -17,6 +17,7 @@ import { dispatch } from './rpc/dispatcher'
 import { createMethods } from './rpc/methods'
 import type { RpcContext } from './rpc/types'
 import { getChainRpcUrl } from './lib/multi-chain-client'
+import { getRpcCaller } from './auth/caller'
 import { authMiddleware } from './auth/middleware'
 import { createPrivyProvider } from './auth/providers/privy'
 import { createErc8128Provider } from './auth/providers/erc8128'
@@ -105,6 +106,7 @@ app.post('/', async (c) => {
         const ctx: RpcContext = {
             env: c.env,
             request: c.req.raw,
+            auth: getRpcCaller(c.req.raw),
         }
 
         const response = await dispatch(body, methods, ctx)

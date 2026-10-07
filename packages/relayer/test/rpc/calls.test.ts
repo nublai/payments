@@ -11,7 +11,21 @@ import {
 } from '../../src/rpc/methods/sendPreparedCalls'
 import { handleGetCallsStatus } from '../../src/rpc/methods/getCallsStatus'
 import { handleGetCallsHistory } from '../../src/rpc/methods/getCallsHistory'
-import { RpcError, INVALID_PARAMS, SIMULATION_FAILED } from '../../src/rpc/errors'
+import { RpcError, INVALID_PARAMS, SERVICE_UNAVAILABLE, SIMULATION_FAILED } from '../../src/rpc/errors'
+
+const { mockGetFeeEstimate } = vi.hoisted(() => ({
+    mockGetFeeEstimate: vi.fn(),
+}))
+
+vi.mock('../../src/services/fees', async () => {
+    const actual = await vi.importActual<typeof import('../../src/services/fees')>(
+        '../../src/services/fees',
+    )
+    return {
+        ...actual,
+        getFeeEstimate: mockGetFeeEstimate,
+    }
+})
 
 // Mock RelayerService
 const { mockPrepareIntent, mockSimulateIntent, mockMarkSubmitted, mockCreateIntentNonceProvider } =
@@ -81,8 +95,17 @@ vi.mock('../../src/config', () => ({
     }),
 }))
 
+const positiveFee = {
+    baseFeePerGas: 1_000_000_000n,
+    maxPriorityFeePerGas: 1_000_000_000n,
+    maxFeePerGas: 2_000_000_000n,
+    totalGas: 100_000n,
+    paymentAmount: 200_000_000_000_000n,
+}
+
 beforeEach(() => {
     vi.clearAllMocks()
+    mockGetFeeEstimate.mockResolvedValue(positiveFee)
     mockCreateIntentNonceProvider.mockReturnValue({
         acquireNonce: vi.fn().mockResolvedValue(1n),
         acquireNonceSynced: vi.fn().mockResolvedValue({ nonce: 1n, synced: false }),
@@ -98,6 +121,8 @@ const createMockCtx = (): RpcContext => ({
         RPC_URL: 'https://example.com/rpc',
         RPC_8453: 'https://example.com/rpc',
         CHAIN_IDS: '8453',
+        // These handlers exercise the local unsigned-quote path.
+        CONTEXT: 'local',
         ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
         SIMPLE_FUNDER_8453: '0x4567890123456789012345678901234567890123',
         SIMULATOR_8453: '0x5678901234567890123456789012345678901234',
@@ -315,6 +340,101 @@ describe('wallet_prepareCalls', () => {
             message: 'Simulation failed',
             data: { cause: 'VerificationError' },
         } satisfies Partial<RpcError>)
+    })
+
+    function preparedOk() {
+        mockPrepareIntent.mockResolvedValue({
+            success: true,
+            typedData: {
+                domain: { name: 'Orchestrator', version: '0.5.5', chainId: 8453 },
+                types: {},
+                primaryType: 'Intent',
+                message: {},
+            },
+            nonce: '1',
+            combinedGas: '500000',
+            expiry: '1700000000',
+            digest: '0xdigest',
+            txGas: '21000',
+        })
+    }
+
+    it('fails when fee estimation throws instead of signing a zero fee', async () => {
+        preparedOk()
+        mockGetFeeEstimate.mockRejectedValue(new Error('fee history unavailable'))
+        const ctx = createMockCtx()
+        Object.assign(ctx.env as object, {
+            CONTEXT: 'prod',
+            QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
+        })
+
+        await expect(
+            handlePrepareCalls(
+                {
+                    from: '0x1234567890123456789012345678901234567890',
+                    chain_id: '0x2105',
+                    calls: [
+                        {
+                            to: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+                            data: '0x',
+                            value: '0x0',
+                        },
+                    ],
+                    capabilities: {
+                        meta: {
+                            fee_payer: '0x4444444444444444444444444444444444444444',
+                            fee_max_amount: '1000000',
+                        },
+                    },
+                },
+                ctx,
+            ),
+        ).rejects.toMatchObject({
+            code: SERVICE_UNAVAILABLE,
+            message: 'Fee estimation failed',
+        })
+    })
+
+    it('refuses to sign a quote whose recomputed fee is zero outside local', async () => {
+        preparedOk()
+        mockGetFeeEstimate.mockResolvedValue({
+            baseFeePerGas: 0n,
+            maxPriorityFeePerGas: 0n,
+            maxFeePerGas: 0n,
+            totalGas: 21_000n,
+            paymentAmount: 0n,
+        })
+        const ctx = createMockCtx()
+        Object.assign(ctx.env as object, {
+            CONTEXT: 'prod',
+            QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
+        })
+
+        await expect(
+            handlePrepareCalls(
+                {
+                    from: '0x1234567890123456789012345678901234567890',
+                    chain_id: '0x2105',
+                    calls: [
+                        {
+                            to: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+                            data: '0x',
+                            value: '0x0',
+                        },
+                    ],
+                    capabilities: {
+                        meta: {
+                            fee_payer: '0x4444444444444444444444444444444444444444',
+                            fee_max_amount: '1000000',
+                        },
+                    },
+                },
+                ctx,
+            ),
+        ).rejects.toMatchObject({
+            code: SERVICE_UNAVAILABLE,
+            message: 'Refusing to sign a zero fee quote',
+        })
     })
 })
 

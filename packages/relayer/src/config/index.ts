@@ -4,6 +4,8 @@
 
 import type { Env, RelayerConfig } from '../types/env'
 import { hasDeployment } from '@nubl/contracts/deployments'
+import { parseErc8128Allowlist } from '../auth/erc8128/signer-policy'
+import { isLocalDevContext, quoteSigningSecret } from './runtime-context'
 import { getContractAddresses } from './addresses'
 import type { SignerPoolConfig } from '../types/env'
 import { getChainRpcUrl } from '../lib/multi-chain-client'
@@ -69,6 +71,14 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
         if (!env.PRIVY_APP_SECRET) {
             missing.push('PRIVY_APP_SECRET')
         }
+    }
+
+    if (!isLocalDevContext(env) && !quoteSigningSecret(env)) {
+        missing.push('QUOTE_SIGNING_SECRET')
+    }
+
+    if (parseErc8128Allowlist(env.ERC8128_ALLOWED_SIGNERS).invalid.length > 0) {
+        missing.push('ERC8128_ALLOWED_SIGNERS')
     }
 
     return { valid: missing.length === 0, missing }

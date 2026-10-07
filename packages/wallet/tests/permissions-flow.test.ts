@@ -165,6 +165,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
             keyHash,
             rule: 'call:0x3333333333333333333333333333333333333333:0x095ea7b3',
             password: 'pw',
+            phraseConfirmed: true,
         },
         {
             withKeystoreLock: async (_path, action) => action(),
@@ -372,6 +373,7 @@ test('executePermissionsRevoke surfaces send failure diagnostics', async () => {
                 keyHash,
                 rule: 'call:0x3333333333333333333333333333333333333333:0x095ea7b3',
                 password: 'pw',
+                phraseConfirmed: true,
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
@@ -588,6 +590,7 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
             keyHash,
             all: true,
             password: 'pw',
+            phraseConfirmed: true,
         },
         {
             withKeystoreLock: async (_path, action) => action(),
@@ -644,6 +647,7 @@ test('executePermissionsRevoke returns no-op when key has no permissions and --a
             keyHash,
             all: true,
             password: 'pw',
+            phraseConfirmed: true,
         },
         {
             withKeystoreLock: async (_path, action) => action(),
@@ -715,6 +719,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
             keyHash,
             rule: 'spend:0x5555555555555555555555555555555555555555:day',
             password: 'pw',
+            phraseConfirmed: true,
         },
         {
             withKeystoreLock: async (_path, action) => action(),

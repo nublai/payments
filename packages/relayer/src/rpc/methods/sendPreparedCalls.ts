@@ -24,6 +24,7 @@ import {
     hashQuotes,
     validateQuote,
     buildIntentFromParams,
+    assertErc8128BoundToQuotes,
 } from './shared/calls-helpers'
 import { getSignerPool } from './shared/signer-pool'
 
@@ -74,6 +75,8 @@ export async function handleSendPreparedCalls(
     if ('quote' in context && context.quote) {
         const quoteError = await validateQuote(context.quote, env)
         if (quoteError) throw quoteError
+        const callerError = await assertErc8128BoundToQuotes(env, ctx.auth, context.quote.quotes)
+        if (callerError) throw callerError
     }
 
     const chainId = getChainIdFromContext(context)
@@ -301,6 +304,15 @@ export async function handleBatchSendPreparedCalls(
             const quoteError = await validateQuote(typedParams.context.quote, env)
             if (quoteError) {
                 validationErrors.set(req.id, quoteError)
+                continue
+            }
+            const callerError = await assertErc8128BoundToQuotes(
+                env,
+                ctx.auth,
+                typedParams.context.quote.quotes,
+            )
+            if (callerError) {
+                validationErrors.set(req.id, callerError)
                 continue
             }
         }

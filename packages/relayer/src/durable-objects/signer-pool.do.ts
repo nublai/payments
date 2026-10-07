@@ -30,6 +30,25 @@ import type {
     ExecuteIntentTransaction,
 } from '../types/pool'
 import { selectSignerForEoa } from '../lib/pool-utils'
+import { poolSendBroadcastAttempted, signerSendDisposition } from './signer-pool-send'
+import {
+    consumeRateLimit,
+    peekRateLimit,
+    releaseRateLimit,
+    upgradeRateBuckets,
+    type UpgradeRateAction,
+    type UpgradeRateKind,
+} from '../rpc/methods/shared/upgrade-rate-limit'
+
+class SignerPoolSendError extends Error {
+    broadcastAttempted: boolean
+
+    constructor(message: string, broadcastAttempted: boolean) {
+        super(message)
+        this.name = 'SignerPoolSendError'
+        this.broadcastAttempted = broadcastAttempted
+    }
+}
 
 // Default configuration
 const DEFAULT_SIGNER_COUNT = 1
@@ -41,6 +60,7 @@ const DEFAULT_MAX_PENDING_TOTAL = 1000
 export class SignerPoolDO extends DurableObject<Env> {
     // Fallback for local dev where ctx.id.name is undefined
     private poolNameOverride: string | null = null
+    private upgradeRateSchemaReady = false
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env)
@@ -81,13 +101,173 @@ export class SignerPoolDO extends DurableObject<Env> {
                     return Response.json(result)
                 }
 
+                case '/upgrade-rate-limit': {
+                    if (request.method !== 'POST') {
+                        return new Response('Method not allowed', { status: 405 })
+                    }
+                    const body = (await request.json()) as {
+                        action?: UpgradeRateAction
+                        kind?: UpgradeRateKind
+                        chainId?: number
+                        account?: string
+                        ip?: string
+                        identity?: string
+                    }
+                    const result = this.consumeUpgradeRateLimit(body)
+                    return Response.json(result)
+                }
+
                 default:
                     return new Response('Not found', { status: 404 })
             }
         } catch (error) {
             const message = getErrorMessage(error)
+            if (url.pathname === '/send') {
+                const broadcastAttempted =
+                    error instanceof SignerPoolSendError ? error.broadcastAttempted : false
+                return Response.json({ error: message, broadcastAttempted }, { status: 500 })
+            }
             return Response.json({ error: message } as SignerError, { status: 500 })
         }
+    }
+
+    /**
+     * Sliding-window limit for account upgrade prepare/broadcast.
+     * State lives here because SignerPoolDO is already bound on every chain.
+     * `peek` does not consume a slot. `reserve` and a missing action commit
+     * every bucket from upgradeRateBuckets, including an IPv6 /56, in one
+     * transaction. `release`
+     * returns a reservation that never reached eth_sendRawTransaction.
+     */
+    private consumeUpgradeRateLimit(body: {
+        action?: UpgradeRateAction
+        kind?: UpgradeRateKind
+        chainId?: number
+        account?: string
+        ip?: string
+        identity?: string
+        reservedAt?: number
+    }): { allowed: boolean; reservedAt?: number } {
+        const knownAction =
+            body.action === undefined ||
+            body.action === 'peek' ||
+            body.action === 'commit' ||
+            body.action === 'reserve' ||
+            body.action === 'release'
+        if (
+            (body.kind !== 'prepare' && body.kind !== 'upgrade') ||
+            typeof body.chainId !== 'number' ||
+            !Number.isInteger(body.chainId) ||
+            typeof body.account !== 'string' ||
+            typeof body.ip !== 'string' ||
+            (body.identity !== undefined && typeof body.identity !== 'string') ||
+            (body.reservedAt !== undefined && !Number.isInteger(body.reservedAt)) ||
+            !knownAction
+        ) {
+            return { allowed: false }
+        }
+
+        const action = body.action ?? 'commit'
+        const nowSeconds = Math.floor(Date.now() / 1000)
+        const buckets = upgradeRateBuckets({
+            kind: body.kind,
+            chainId: body.chainId,
+            account: body.account,
+            ip: body.ip,
+            identity: body.identity,
+        })
+        const sql = this.ensureUpgradeRateSchema()
+
+        return this.ctx.storage.transactionSync(() => {
+            const store = new Map<string, number>()
+            for (const bucket of buckets) {
+                const earliest = nowSeconds - bucket.windowSeconds
+                const rows = sql
+                    .exec<{ window_start: number; hits: number }>(
+                        `SELECT window_start, hits FROM upgrade_rate_windows
+                         WHERE bucket_key = ? AND window_start > ?`,
+                        `${bucket.key}#sec`,
+                        earliest,
+                    )
+                    .toArray()
+                for (const row of rows) {
+                    if (!Number.isFinite(row.hits) || !Number.isFinite(row.window_start)) continue
+                    store.set(`${bucket.key}#${row.window_start}`, row.hits)
+                }
+            }
+
+            if (action === 'release') {
+                const reservedAt = body.reservedAt ?? nowSeconds
+                releaseRateLimit(store, buckets, reservedAt)
+                for (const bucket of buckets) {
+                    const hits = store.get(`${bucket.key}#${reservedAt}`) ?? 0
+                    const sqlKey = `${bucket.key}#sec`
+                    if (hits <= 0) {
+                        sql.exec(
+                            `DELETE FROM upgrade_rate_windows
+                             WHERE bucket_key = ? AND window_start = ?`,
+                            sqlKey,
+                            reservedAt,
+                        )
+                    } else {
+                        sql.exec(
+                            `INSERT INTO upgrade_rate_windows (bucket_key, window_start, hits)
+                             VALUES (?, ?, ?)
+                             ON CONFLICT(bucket_key, window_start) DO UPDATE SET hits = excluded.hits`,
+                            sqlKey,
+                            reservedAt,
+                            hits,
+                        )
+                    }
+                }
+                return { allowed: true }
+            }
+
+            const decision =
+                action === 'peek'
+                    ? peekRateLimit(store, buckets, nowSeconds)
+                    : consumeRateLimit(store, buckets, nowSeconds)
+            if (!decision.allowed || action === 'peek') {
+                return { allowed: decision.allowed }
+            }
+
+            for (const [id, hits] of store) {
+                const splitAt = id.lastIndexOf('#')
+                if (splitAt < 0) continue
+                const second = Number(id.slice(splitAt + 1))
+                if (!Number.isInteger(second)) continue
+                sql.exec(
+                    `INSERT INTO upgrade_rate_windows (bucket_key, window_start, hits)
+                     VALUES (?, ?, ?)
+                     ON CONFLICT(bucket_key, window_start) DO UPDATE SET hits = excluded.hits`,
+                    `${id.slice(0, splitAt)}#sec`,
+                    second,
+                    hits,
+                )
+            }
+
+            sql.exec(
+                'DELETE FROM upgrade_rate_windows WHERE window_start <= ?',
+                nowSeconds - 3600,
+            )
+            return action === 'reserve' ? { allowed: true, reservedAt: nowSeconds } : { allowed: true }
+        })
+    }
+
+    private ensureUpgradeRateSchema(): SqlStorage {
+        const sql = this.ctx.storage.sql
+        if (!this.upgradeRateSchemaReady) {
+            sql.exec(`
+                CREATE TABLE IF NOT EXISTS upgrade_rate_windows (
+                    bucket_key TEXT NOT NULL,
+                    window_start INTEGER NOT NULL,
+                    hits INTEGER NOT NULL,
+                    PRIMARY KEY (bucket_key, window_start)
+                )
+            `)
+            this.upgradeRateSchemaReady = true
+        }
+        return sql
     }
 
     /**
@@ -240,8 +420,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
         }
 
-        // Try each candidate until one succeeds
-        let lastError: Error | null = null
+        // Try each candidate until one succeeds. Retry only when that attempt
+        // returned before eth_sendRawTransaction. A later candidate cannot
+        // clear a slot that an earlier candidate already submitted.
+        const attempts: Array<{ broadcastAttempted: boolean; message?: string }> = []
+        let lastMessage = 'No signers available - all at capacity'
 
         for (const candidate of candidates) {
             const signerName = `signer-${chainId}-${candidate.index}`
@@ -261,31 +444,41 @@ export class SignerPoolDO extends DurableObject<Env> {
                     return result
                 }
 
-                // Check if rejection is due to capacity (retry) vs other error (fail)
-                const error = (await response.json()) as SignerError
-
-                if (error.code === 'CAPACITY_EXCEEDED' || error.code === 'PAUSED') {
-                    // Capacity exceeded or paused - try next signer
-                    lastError = new Error(error.error)
+                // An unreadable body is treated as a send: the slot stays reserved.
+                let error: SignerError & { broadcastAttempted?: boolean }
+                try {
+                    error = (await response.json()) as SignerError & { broadcastAttempted?: boolean }
+                } catch {
+                    throw new SignerPoolSendError('unreadable signer error', true)
+                }
+                const attempt = {
+                    broadcastAttempted: error.broadcastAttempted !== false,
+                    message: error.error,
+                }
+                attempts.push(attempt)
+                if (signerSendDisposition(attempt) === 'retry') {
+                    lastMessage = error.error
                     continue
                 }
-
-                // Other error - throw immediately
-                throw new Error(error.error)
+                throw new SignerPoolSendError(error.error, true)
             } catch (err) {
-                if (err instanceof Error) {
-                    // Check if this is a retryable error
-                    if (err.message.includes('capacity') || err.message.includes('paused')) {
-                        lastError = err
-                        continue
-                    }
+                if (
+                    err instanceof SignerPoolSendError &&
+                    signerSendDisposition({
+                        broadcastAttempted: err.broadcastAttempted,
+                        message: err.message,
+                    }) === 'retry'
+                ) {
+                    lastMessage = err.message
+                    continue
                 }
-                throw err
+                if (err instanceof SignerPoolSendError) throw err
+                // The attempt has no before-send flag. Keep the reservation.
+                throw new SignerPoolSendError(getErrorMessage(err), true)
             }
         }
 
-        // All candidates exhausted
-        throw new Error(lastError?.message ?? 'No signers available - all at capacity')
+        throw new SignerPoolSendError(lastMessage, poolSendBroadcastAttempted(attempts))
     }
 
     /**
