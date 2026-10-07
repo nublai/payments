@@ -451,7 +451,7 @@ if (c.req.path === "/health") {
 | MIN_SIGNER_BALANCE           | 0.01 ETH       | Auto-pause threshold |
 | TARGET_SIGNER_BALANCE        | 0.01 ETH       | Refill target        |
 | INTENT_EXPIRY_BUFFER_SECONDS | 30             | Rejection buffer     |
-| FEE_RECIPIENT                | signer address | Fee destination      |
+| FEE_RECIPIENT                | signer locally; required on stage and prod | Fee destination |
 
 ---
 
