@@ -299,6 +299,7 @@ type AccountSwapDeps = {
     readErc1155ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
     readErc4626ShareBalance?: (vault: Address) => Promise<bigint>
     readErc4626ShareAllowance?: (vault: Address, spender: Address) => Promise<bigint>
+    readApprovedSignatureCheckers?: (keyHash: Hex) => Promise<readonly Address[]>
 }
 
 function normalizeChain(value: string | undefined, env: EnvName): ChainName {
@@ -467,6 +468,7 @@ async function assertNoStandingRightsForQuote(input: {
     network: NetworkConfig
     chainId: number
     owner: Address
+    keyHash: Hex
     inputToken: Address | undefined
 }): Promise<void> {
     const chainReaders = chainStandingRightsReaders({
@@ -479,6 +481,7 @@ async function assertNoStandingRightsForQuote(input: {
             owner: input.owner,
             targets: relayStandingTargets(input.chainId),
             tokens: knownErc20Tokens(input.chainId, input.inputToken),
+            keyHash: input.keyHash,
             registry: input.deps.standingRightsRegistry,
             readers: {
                 readErc20Allowance: (token, spender) =>
@@ -510,6 +513,9 @@ async function assertNoStandingRightsForQuote(input: {
                 readErc4626ShareAllowance:
                     input.deps.readErc4626ShareAllowance ??
                     ((vault, spender) => chainReaders.readErc4626ShareAllowance(vault, spender)),
+                readApprovedSignatureCheckers:
+                    input.deps.readApprovedSignatureCheckers ??
+                    ((keyHash) => chainReaders.readApprovedSignatureCheckers(keyHash)),
             },
         })
     } catch (error) {
@@ -1170,6 +1176,7 @@ export async function executeAccountSwap(
                 network: effectiveNetwork,
                 chainId: quoteRequest.originChainId,
                 owner: sender,
+                keyHash: sessionKeyHash,
                 inputToken: fromToken === 'ETH' ? undefined : quoteRequest.originCurrency,
             })
             const watches = quoteWatches({

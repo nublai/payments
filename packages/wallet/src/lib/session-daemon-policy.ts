@@ -10,6 +10,7 @@ import {
     getUsdcTokenConfig,
     type EnvName,
 } from './network-config'
+import { RelayQuoteRejected, reviewRelayIntentCalls } from './relay-allowlist'
 import { isRecord } from './type-guards'
 
 export const ORCHESTRATOR_DOMAIN_NAME = 'Orchestrator'
@@ -235,4 +236,66 @@ export function assessPhraseLessIntent(input: {
         fail('Phrase-less session exceeds the 10 USDC daily budget')
     }
     return { chainId, usdc: usdcMoved }
+}
+
+/**
+ * A phrase-confirmed swap session may sign only an Orchestrator intent whose
+ * calls pass the relay quote reviewer. Any other typed data is refused.
+ */
+export function reviewSwapSessionSignature(typedData: unknown): void {
+    if (!isRecord(typedData)) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    const domain = typedData.domain
+    if (!isRecord(domain)) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    if (domain.name !== ORCHESTRATOR_DOMAIN_NAME || domain.version !== ORCHESTRATOR_DOMAIN_VERSION) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    if (typedData.primaryType !== 'Intent' || !typesMatch(typedData.types)) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    const chainId = Number(asBigint(domain.chainId, 'chainId'))
+    const chainName = getChainNameByChainId(chainId)
+    if (!chainName) {
+        fail('Swap session refused an Orchestrator intent for an unconfigured chain')
+    }
+    const orchestrator = getAddressesWithFallback('prod', chainId)?.orchestrator
+        ?? getAddressesWithFallback('stage', chainId)?.orchestrator
+        ?? getAddressesWithFallback('dev', chainId)?.orchestrator
+    if (!orchestrator) {
+        fail('Swap session refused an Orchestrator intent because the orchestrator is not configured')
+    }
+    const verifyingContract = asAddress(domain.verifyingContract, 'verifyingContract')
+    if (verifyingContract.toLowerCase() !== orchestrator.toLowerCase()) {
+        fail('Swap session refused an Orchestrator intent for a different verifying contract')
+    }
+    const message = typedData.message
+    if (!isRecord(message) || !Array.isArray(message.calls)) {
+        fail('Swap session refused an intent whose calls could not be read')
+    }
+    const user = asAddress(message.eoa, 'eoa')
+    const calls: { to: Address; value: bigint; data: Hex }[] = []
+    for (const call of message.calls) {
+        if (!isRecord(call)) {
+            fail('Swap session refused an intent whose calls could not be read')
+        }
+        calls.push({
+            to: asAddress(call.to, 'call.to'),
+            value: asBigint(call.value, 'call.value'),
+            data: asHex(call.data, 'call.data'),
+        })
+    }
+    if (calls.length === 0) {
+        fail('Swap session refused an intent with no calls')
+    }
+    try {
+        reviewRelayIntentCalls({ chainId, user, calls })
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) {
+            fail(error.message)
+        }
+        throw error
+    }
 }

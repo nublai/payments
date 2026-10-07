@@ -5,8 +5,10 @@ import {
     http,
     zeroAddress,
     type Address,
+    type Hex,
     type PublicClient,
 } from 'viem'
+import { accountAbi } from '@nubl/contracts/abis'
 import { getChain } from '@nubl/relayer-client'
 import { getUsdcAddressByChainId, type CliNetworkConfig } from './network-config'
 import { WETH_BY_CHAIN } from './quote-spend'
@@ -24,6 +26,9 @@ import { relayAllowanceSpenders } from './relay-allowlist'
  *   registries for ERC-721, ERC-1155, and ERC-4626 are empty. A bespoke vault
  *   or an unknown token is not read.
  * - A lying RPC that returns zero for every allowance.
+ * - ERC-721, ERC-1155, and ERC-4626 approvals are not scanned. A swap key can
+ *   move an NFT or a vault share when the account has approved the router,
+ *   the approval proxy, or the depository. Revoke those with the root key.
  */
 
 /** Canonical Permit2. Same address on Base and Polygon. */
@@ -110,6 +115,8 @@ export type StandingRightsReaders = {
     readErc1155ApprovedForAll: (token: Address, operator: Address) => Promise<boolean>
     readErc4626ShareBalance: (vault: Address) => Promise<bigint>
     readErc4626ShareAllowance: (vault: Address, spender: Address) => Promise<bigint>
+    /** ERC-1271 checkers. `approvedSignatureCheckers` on the account. */
+    readApprovedSignatureCheckers: (keyHash: Hex) => Promise<readonly Address[]>
     now?: () => bigint
 }
 
@@ -156,6 +163,8 @@ export async function assertNoStandingRights(input: {
     targets: readonly Address[]
     /** Known ERC-20s, including the quoted input. */
     tokens: readonly Address[]
+    /** Session key whose ERC-1271 checker set is read. */
+    keyHash: Hex
     registry?: StandingRightsRegistry
     readers: StandingRightsReaders
 }): Promise<void> {
@@ -163,6 +172,16 @@ export async function assertNoStandingRights(input: {
     const tokens = input.tokens.map((token) => getAddress(token))
     const now = () =>
         input.readers.now ? input.readers.now() : BigInt(Math.floor(Date.now() / 1000))
+
+    const checkers = await readOrRefuse(() =>
+        input.readers.readApprovedSignatureCheckers(input.keyHash),
+    )
+    for (const checker of checkers) {
+        if (getAddress(checker) === zeroAddress) continue
+        revoke(
+            `The account key ${input.keyHash} has signature checker ${getAddress(checker)} approved. That checker can validate ERC-1271 isValidSignature for this key.`,
+        )
+    }
 
     for (const token of tokens) {
         for (const target of targets) {
@@ -323,6 +342,13 @@ export function chainStandingRightsReaders(input: {
                 functionName: 'allowance',
                 args: [owner, spender],
             }),
+        readApprovedSignatureCheckers: (keyHash) =>
+            client.readContract({
+                address: owner,
+                abi: accountAbi,
+                functionName: 'approvedSignatureCheckers',
+                args: [keyHash],
+            }),
     }
 }
 
@@ -338,6 +364,7 @@ export function noStandingRightsReads(): {
     readErc1155ApprovedForAll: StandingRightsReaders['readErc1155ApprovedForAll']
     readErc4626ShareBalance: StandingRightsReaders['readErc4626ShareBalance']
     readErc4626ShareAllowance: StandingRightsReaders['readErc4626ShareAllowance']
+    readApprovedSignatureCheckers: StandingRightsReaders['readApprovedSignatureCheckers']
 } {
     return {
         readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
@@ -346,5 +373,6 @@ export function noStandingRightsReads(): {
         readErc1155ApprovedForAll: async () => false,
         readErc4626ShareBalance: async () => 0n,
         readErc4626ShareAllowance: async () => 0n,
+        readApprovedSignatureCheckers: async () => [],
     }
 }

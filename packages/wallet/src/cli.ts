@@ -104,6 +104,7 @@ import {
     CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
     CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
     CONFIRM_SEND_PHRASE,
+    CONFIRM_SWAP_SESSION_PHRASE,
     CONFIRM_UNLOCK_FULL_ACCESS_PHRASE,
     HumanConfirmationError,
     isInteractiveTerminal,
@@ -1378,7 +1379,7 @@ session.command('create', {
             .boolean()
             .optional()
             .describe(
-                'Create a dedicated swap session for this chain: the Relay router, approval proxy, and depository entrypoints, plus a minute spend of 0 on native, USDC, legacy USDC when it differs, and WETH. Does not install the 10 USDC/day default and does not replace the active payment session. Input-token approve is granted only for a quote, then revoked. Requires CREATE FULL ACCESS SESSION because the period is one minute. Cannot be combined with --full-access, --activate, --target, --selector, or a spend limit.',
+                'Create a dedicated swap session for this chain: the Relay router, approval proxy, and depository entrypoints, plus a minute spend of 0 on native, USDC, legacy USDC when it differs, and WETH. Does not install the 10 USDC/day default and does not replace the active payment session. Input-token approve is granted only for a quote, then revoked. Requires typing CREATE SWAP SESSION in an interactive terminal. MCP cannot confirm it. Cannot be combined with --full-access, --activate, --target, --selector, or a spend limit.',
             ),
         target: z
             .string()
@@ -1456,26 +1457,37 @@ session.command('create', {
                     '--swap cannot be combined with --full-access, --activate, --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. The swap session stays inactive so the payment key remains the active session.',
             })
         }
-        const phraseConfirmed = await confirmElevatedPermission(
-            reportError,
-            options.swap ? 'Creating a swap session' : 'Creating a full-access session',
-            CONFIRM_FULL_ACCESS_PHRASE,
-            {
-                env: options.env,
-                profile: options.profile,
-                keystorePath: options.keystorePath,
-                fullAccess: options.fullAccess,
-                target: options.target,
-                selector: options.selector,
-                spendLimit: options.spendLimit,
-                spendLimitRaw: options.spendLimitRaw,
-                spendPeriod: options.swap ? 'minute' : options.spendPeriod,
-                chain: options.chain,
-                defaultUsdcSpend: options.swap ? false : true,
-                stack: 'create',
-                parseHumanAmount: parseSpendLimit,
-            },
-        )
+        let phraseConfirmed = false
+        let swapPhraseConfirmed = false
+        if (options.swap) {
+            await confirmHuman(
+                reportError,
+                'Creating a swap session',
+                CONFIRM_SWAP_SESSION_PHRASE,
+            )
+            swapPhraseConfirmed = true
+        } else {
+            phraseConfirmed = await confirmElevatedPermission(
+                reportError,
+                'Creating a full-access session',
+                CONFIRM_FULL_ACCESS_PHRASE,
+                {
+                    env: options.env,
+                    profile: options.profile,
+                    keystorePath: options.keystorePath,
+                    fullAccess: options.fullAccess,
+                    target: options.target,
+                    selector: options.selector,
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    spendPeriod: options.spendPeriod,
+                    chain: options.chain,
+                    defaultUsdcSpend: true,
+                    stack: 'create',
+                    parseHumanAmount: parseSpendLimit,
+                },
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1510,6 +1522,7 @@ session.command('create', {
                 expiry: options.expiry,
                 password,
                 fullAccessPhraseConfirmed: phraseConfirmed,
+                swapPhraseConfirmed,
                 swap: options.swap,
             })
         } catch (error) {

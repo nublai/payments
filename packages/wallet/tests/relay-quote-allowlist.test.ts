@@ -178,6 +178,7 @@ function runQuote(input: {
             readErc1155ApprovedForAll: async () => false,
             readErc4626ShareBalance: async () => 0n,
             readErc4626ShareAllowance: async () => 0n,
+            readApprovedSignatureCheckers: async () => [],
             getKeys: async () => ({
                 '0x2105': [
                     {

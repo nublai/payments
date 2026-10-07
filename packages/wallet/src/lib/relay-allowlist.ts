@@ -637,9 +637,20 @@ function incompleteItems(quote: RelayQuoteResponse) {
     )
 }
 
+export type RelayQuoteReviewOptions = {
+    /**
+     * Review the calls only. A swap-session daemon signature has the
+     * Orchestrator intent, not the relay order or the quoted minimum.
+     * Order binding and the output floor stay on `tw swap` / `tw bridge`
+     * before that signature is requested.
+     */
+    callsOnly?: boolean
+}
+
 export function reviewRelayQuote(
     quote: RelayQuoteResponse,
     check: RelayQuoteCheck,
+    options?: RelayQuoteReviewOptions,
 ): RelayQuoteReview {
     const cap = quotedInputCap(check.inputAmount, quote)
     const contracts = contractsFor(check.sourceChainId)
@@ -753,9 +764,100 @@ export function reviewRelayQuote(
     }
     assertWithinCap(approveTotals, cap, 'approves')
     assertWithinCap(pullTotals, cap, 'pulls')
-    bindOrder(quote, { ...check, user }, depositIds)
-    assertQuotedMinimum(quote, check.slippageBps)
+    if (!options?.callsOnly) {
+        bindOrder(quote, { ...check, user }, depositIds)
+        assertQuotedMinimum(quote, check.slippageBps)
+    }
     return { cap, tokens: [...tokens].map((token) => getAddress(token)) }
+}
+
+const SESSION_SIGNATURE_CAP = 10n ** 30n
+
+function selectorPrefix(data: Hex): string {
+    return data.length >= 10 ? data.slice(0, 10).toLowerCase() : '0x'
+}
+
+/**
+ * Origin for a session signature that has calls but no relay quote.
+ * Approve and ERC-20 deposit name the input token. A native multicall does not.
+ */
+function intentOrigin(calls: readonly { to: Address; data: Hex }[]): {
+    inputIsNative: boolean
+    originCurrency: Address
+} {
+    for (const call of calls) {
+        if (selectorPrefix(call.data) === APPROVE_SELECTOR) {
+            return { inputIsNative: false, originCurrency: getAddress(call.to) }
+        }
+    }
+    for (const call of calls) {
+        if (selectorPrefix(call.data) !== DEPOSIT_ERC20_SELECTOR) continue
+        if (call.data.length < 2 + 8 + 64 * 2) continue
+        return {
+            inputIsNative: false,
+            originCurrency: getAddress(`0x${call.data.slice(10 + 64 + 24, 10 + 128)}`),
+        }
+    }
+    for (const call of calls) {
+        if (selectorPrefix(call.data) !== TRANSFER_AND_MULTICALL_SELECTOR) continue
+        try {
+            const decoded = decodeFunctionData({ abi: transferAndMulticallAbi, data: call.data })
+            const token = decoded.args[0][0]
+            if (token) return { inputIsNative: false, originCurrency: getAddress(token) }
+        } catch {
+            // reviewRelayQuote reports the bad calldata.
+        }
+    }
+    return { inputIsNative: true, originCurrency: zeroAddress }
+}
+
+/**
+ * The call-shape half of `reviewRelayQuote`, for a swap session that is
+ * signing an Orchestrator intent rather than holding the relay quote.
+ * Inner selectors other than cleanupErc20s and cleanupNative are refused.
+ */
+export function reviewRelayIntentCalls(input: {
+    chainId: number
+    user: Address
+    calls: readonly { to: Address; value: bigint; data: Hex }[]
+}): void {
+    const user = getAddress(input.user)
+    const origin = intentOrigin(input.calls)
+    const quote: RelayQuoteResponse = {
+        steps: [
+            {
+                id: 'swap',
+                kind: 'transaction',
+                items: input.calls.map((call) => ({
+                    status: 'incomplete' as const,
+                    data: {
+                        to: getAddress(call.to),
+                        data: call.data,
+                        value: call.value.toString(),
+                        chainId: input.chainId,
+                    },
+                })),
+            },
+        ],
+        details: {
+            currencyIn: { amount: SESSION_SIGNATURE_CAP.toString() },
+            currencyOut: { amount: '1', minimumAmount: '1' },
+        },
+    }
+    reviewRelayQuote(
+        quote,
+        {
+            sourceChainId: input.chainId,
+            destinationChainId: input.chainId,
+            slippageBps: 1,
+            inputAmount: SESSION_SIGNATURE_CAP,
+            inputIsNative: origin.inputIsNative,
+            originCurrency: origin.originCurrency,
+            user,
+            recipient: user,
+        },
+        { callsOnly: true },
+    )
 }
 
 function partySuffix(data: Hex, selector: string): { suffix: string; inners: string[] } {

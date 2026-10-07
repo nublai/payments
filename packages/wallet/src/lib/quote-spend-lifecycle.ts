@@ -53,6 +53,12 @@ import {
     type PendingQuoteLimitRecord,
 } from './quote-spend-pending'
 import { canExecuteChangeCalls, type SwapCallGrant } from './swap-session'
+import {
+    authorizeKeyExpiryCall,
+    planQuoteKeyExpiry,
+    restoreQuoteKeyExpiryCall,
+    type QuoteKeyMaterial,
+} from './quote-key-expiry'
 
 type NetworkConfig = CliNetworkConfig
 
@@ -147,7 +153,10 @@ export async function recoverPendingQuoteSpend(
             `Pending quote spend limit does not match the chain: ${planned.unexpected}`,
         )
     }
-    const calls = releaseCalls(record, planned.calls)
+    const calls = [
+        ...releaseCalls(record, planned.calls),
+        ...(await keyExpiryRestoreCall(record)),
+    ]
     if (calls.length > 0) {
         if (options?.submit) {
             await options.submit(record, calls)
@@ -208,6 +217,28 @@ async function installTrackedQuoteSpendLimitNow(input: {
         spendInfos,
         balances,
     })
+    let key: QuoteKeyMaterial
+    try {
+        const stored = await client.readContract({
+            address: input.bound.account,
+            abi: accountAbi,
+            functionName: 'getKey',
+            args: [input.bound.keyHash],
+        })
+        key = {
+            expiry: BigInt(stored.expiry),
+            keyType: Number(stored.keyType),
+            isSuperAdmin: stored.isSuperAdmin,
+            publicKey: stored.publicKey,
+        }
+    } catch (error) {
+        if (error instanceof QuoteSpendError) throw error
+        throw new QuoteSpendError('Could not read the swap key. Refusing to sign.')
+    }
+    const expiryPlan = planQuoteKeyExpiry({
+        now: BigInt(Math.floor(Date.now() / 1000)),
+        currentExpiry: key.expiry,
+    })
     const record = pendingRecordFromSlots({
         account: input.bound.account,
         keyHash: input.bound.keyHash,
@@ -217,6 +248,15 @@ async function installTrackedQuoteSpendLimitNow(input: {
         relayerUrl: input.network.relayerUrl,
         slots,
         callGrants: input.callGrants,
+        keyExpiry: expiryPlan.changed
+            ? {
+                  previous: expiryPlan.previous.toString(),
+                  installed: expiryPlan.installed.toString(),
+                  keyType: key.keyType,
+                  isSuperAdmin: key.isSuperAdmin,
+                  publicKey: key.publicKey,
+              }
+            : undefined,
     })
     await writePendingQuoteLimit(input.keystorePath, record)
     try {
@@ -237,6 +277,15 @@ async function installTrackedQuoteSpendLimitNow(input: {
                     grants: input.callGrants ?? [],
                     allowed: true,
                 }),
+                ...(expiryPlan.changed
+                    ? [
+                          authorizeKeyExpiryCall({
+                              account: input.bound.account,
+                              key,
+                              expiry: expiryPlan.installed,
+                          }),
+                      ]
+                    : []),
             ],
             failure: 'The per-quote spend limit could not be set. Refusing to sign.',
         })
@@ -278,7 +327,10 @@ async function releaseInstalledQuoteSpendLimit(
             `The per-quote spend limit could not be restored: ${planned.unexpected}`,
         )
     }
-    const calls = releaseCalls(current ?? record, planned.calls)
+    const calls = [
+        ...releaseCalls(current ?? record, planned.calls),
+        ...(await keyExpiryRestoreCall(current ?? record)),
+    ]
     if (calls.length > 0) {
         await submitRootCalls({
             keystorePath: input.keystorePath,
@@ -302,6 +354,42 @@ function releaseCalls(record: PendingQuoteLimitRecord, spendCalls: Call[]): Call
             allowed: false,
         }),
     ]
+}
+
+/**
+ * Restores the previous key expiry only while the key still exists.
+ * authorize on a missing key would create it again.
+ */
+async function keyExpiryRestoreCall(record: PendingQuoteLimitRecord): Promise<Call[]> {
+    if (!record.keyExpiry) return []
+    const client = publicClient(networkFromRecord(record))
+    let keyStillExists = true
+    try {
+        await client.readContract({
+            address: record.account,
+            abi: accountAbi,
+            functionName: 'getKey',
+            args: [record.keyHash],
+        })
+    } catch (error) {
+        const text = error instanceof Error ? error.message : String(error)
+        if (text.includes('KeyDoesNotExist')) keyStillExists = false
+        else {
+            throw new QuoteSpendError(
+                'Could not read the swap key expiry. The pending quote record was kept.',
+            )
+        }
+    }
+    return restoreQuoteKeyExpiryCall({
+        account: record.account,
+        keyStillExists,
+        previous: {
+            expiry: BigInt(record.keyExpiry.previous),
+            keyType: record.keyExpiry.keyType,
+            isSuperAdmin: record.keyExpiry.isSuperAdmin,
+            publicKey: record.keyExpiry.publicKey,
+        },
+    })
 }
 
 function networkFromRecord(record: PendingQuoteLimitRecord): NetworkConfig {

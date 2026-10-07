@@ -47,6 +47,8 @@ export type DaemonRequest =
               encryptionDevice?: Hex
               /** Recorded by unlock. Sign requests cannot change it. */
               phraseConfirmed?: boolean
+              /** Recorded by unlock when the key is a swap session. */
+              swapSession?: boolean
               env?: EnvName
           }
       }
@@ -206,6 +208,8 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                     typeof parsed.params.encryptionDevice !== 'string') ||
                 (parsed.params.phraseConfirmed !== undefined &&
                     typeof parsed.params.phraseConfirmed !== 'boolean') ||
+                (parsed.params.swapSession !== undefined &&
+                    typeof parsed.params.swapSession !== 'boolean') ||
                 (parsed.params.env !== undefined &&
                     parsed.params.env !== 'dev' &&
                     parsed.params.env !== 'stage' &&
@@ -224,6 +228,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                     kind: parsed.params.kind,
                     encryptionDevice: parsed.params.encryptionDevice as Hex | undefined,
                     phraseConfirmed: parsed.params.phraseConfirmed,
+                    swapSession: parsed.params.swapSession,
                     env: parsed.params.env,
                 },
             }

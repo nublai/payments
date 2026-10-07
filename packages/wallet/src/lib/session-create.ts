@@ -45,6 +45,7 @@ import {
 } from './execute-calls'
 import {
     CONFIRM_FULL_ACCESS_PHRASE,
+    CONFIRM_SWAP_SESSION_PHRASE,
     HumanConfirmationError,
     humanConfirmationMessage,
 } from './human-confirmation'
@@ -140,10 +141,12 @@ export type SessionCreateOptions = {
     password: string
     /** Set only after the caller collected CREATE FULL ACCESS SESSION. */
     fullAccessPhraseConfirmed?: boolean
+    /** Set only after the caller collected CREATE SWAP SESSION at a TTY. */
+    swapPhraseConfirmed?: boolean
     /**
      * Dedicated swap session: Relay entrypoints and a minute spend of 0 on
      * known tokens. Does not install 10 USDC/day and does not become the
-     * active session. Requires the full-access phrase.
+     * active session. Requires CREATE SWAP SESSION, not the full-access phrase.
      */
     swap?: boolean
 }
@@ -247,6 +250,7 @@ type SessionCreateDeps = {
     readErc1155ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
     readErc4626ShareBalance?: (vault: Address) => Promise<bigint>
     readErc4626ShareAllowance?: (vault: Address, spender: Address) => Promise<bigint>
+    readApprovedSignatureCheckers?: (keyHash: Hex) => Promise<readonly Address[]>
 }
 
 function normalizeChain(value?: string, env: EnvName = 'prod'): ChainName {
@@ -365,9 +369,9 @@ function assertSwapCreateOptions(options: SessionCreateOptions, chainId: number)
             '--swap cannot be combined with --full-access, --activate, --target, --selector, --spend-limit, or --spend-period. The swap session stays inactive so the payment key remains the active session.',
         )
     }
-    if (!options.fullAccessPhraseConfirmed) {
+    if (!options.swapPhraseConfirmed) {
         throw new HumanConfirmationError(
-            humanConfirmationMessage('Creating a swap session', CONFIRM_FULL_ACCESS_PHRASE),
+            humanConfirmationMessage('Creating a swap session', CONFIRM_SWAP_SESSION_PHRASE),
         )
     }
     if (relayEntryPoints(chainId).length === 0) {
@@ -592,6 +596,7 @@ export async function executeSessionCreate(
                     owner: accountAddress,
                     targets: relayStandingTargets(network.chainId),
                     tokens: knownErc20Tokens(network.chainId),
+                    keyHash: sessionKeyHash,
                     registry: deps.standingRightsRegistry,
                     readers: {
                         readErc20Allowance: (token, spender) =>
@@ -625,6 +630,9 @@ export async function executeSessionCreate(
                             deps.readErc4626ShareAllowance ??
                             ((vault, spender) =>
                                 readers.readErc4626ShareAllowance(vault, spender)),
+                        readApprovedSignatureCheckers:
+                            deps.readApprovedSignatureCheckers ??
+                            ((keyHash) => readers.readApprovedSignatureCheckers(keyHash)),
                     },
                 })
             } catch (error) {

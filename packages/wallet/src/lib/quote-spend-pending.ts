@@ -28,6 +28,18 @@ export type PendingQuoteLimitRecord = {
      * A grant the key already had is not recorded here.
      */
     callGrants?: Array<{ target: Address; selector: Hex }>
+    /**
+     * Key expiry this quote installed. Missing on older records, and when the
+     * key already expired sooner than the quote window. Release restores
+     * `previous` with authorize. `0` means the key did not expire.
+     */
+    keyExpiry?: {
+        previous: string
+        installed: string
+        keyType: number
+        isSuperAdmin: boolean
+        publicKey: Hex
+    }
 }
 
 export function pendingQuoteLimitPath(keystorePath: string): string {
@@ -69,6 +81,20 @@ export async function readPendingQuoteLimit(
             throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
         }
     }
+    if (parsed.keyExpiry !== undefined) {
+        const expiry = parsed.keyExpiry
+        if (
+            typeof expiry.previous !== 'string' ||
+            typeof expiry.installed !== 'string' ||
+            !/^\d+$/.test(expiry.previous) ||
+            !/^\d+$/.test(expiry.installed) ||
+            typeof expiry.keyType !== 'number' ||
+            typeof expiry.isSuperAdmin !== 'boolean' ||
+            !isHex(expiry.publicKey)
+        ) {
+            throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
+        }
+    }
     return parsed
 }
 
@@ -100,6 +126,7 @@ export function pendingRecordFromSlots(input: {
     relayerUrl: string
     slots: readonly QuoteSpendSlot[]
     callGrants?: readonly SwapCallGrant[]
+    keyExpiry?: PendingQuoteLimitRecord['keyExpiry']
 }): PendingQuoteLimitRecord {
     return {
         version: PENDING_QUOTE_LIMIT_VERSION,
@@ -118,6 +145,7 @@ export function pendingRecordFromSlots(input: {
             target: getAddress(grant.target),
             selector: grant.selector,
         })),
+        ...(input.keyExpiry ? { keyExpiry: input.keyExpiry } : {}),
     }
 }
 

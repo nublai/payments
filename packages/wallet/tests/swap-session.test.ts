@@ -134,6 +134,7 @@ function runSwap(input: {
     }
     readErc4626ShareBalance?: (vault: Address) => Promise<bigint>
     readErc4626ShareAllowance?: (vault: Address, spender: Address) => Promise<bigint>
+    readApprovedSignatureCheckers?: (keyHash: Hex) => Promise<readonly Address[]>
     installQuoteSpendLimit?: (value: { callGrants?: { target: Address; selector: Hex }[] }) => Promise<
         () => Promise<void>
     >
@@ -208,6 +209,8 @@ function runSwap(input: {
             readErc1155ApprovedForAll: async () => false,
             readErc4626ShareBalance: input.readErc4626ShareBalance ?? (async () => 0n),
             readErc4626ShareAllowance: input.readErc4626ShareAllowance ?? (async () => 0n),
+            readApprovedSignatureCheckers:
+                input.readApprovedSignatureCheckers ?? (async () => []),
             standingRightsRegistry: input.standingRightsRegistry,
             executeSignedCalls: executeSignedCalls as any,
             waitForBundle: mock(async () => ({
@@ -439,7 +442,7 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
             sessionName: 'swap',
             password: 'pw',
             swap: true,
-            fullAccessPhraseConfirmed: true,
+            swapPhraseConfirmed: true,
         },
         {
             withKeystoreLock: async (_path, action) => action(),
@@ -482,6 +485,7 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
             sleep: mock(async () => {}),
             readErc20Allowance: async () => 0n,
             readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+            readApprovedSignatureCheckers: async () => [],
         },
     )
     expect(result.activeSession).toBe('default')
@@ -499,7 +503,7 @@ test('swap session create on a chain with no relay contracts is refused', async 
             password: 'pw',
             keystorePath: '/tmp/does-not-matter.json',
             swap: true,
-            fullAccessPhraseConfirmed: true,
+            swapPhraseConfirmed: true,
         }),
     ).rejects.toThrow(/no relay\.link contracts/)
 })
@@ -517,7 +521,7 @@ test('swap session create refuses a standing Permit2 allowance before authorize'
                 sessionName: 'swap',
                 password: 'pw',
                 swap: true,
-                fullAccessPhraseConfirmed: true,
+                swapPhraseConfirmed: true,
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
@@ -561,6 +565,7 @@ test('swap session create refuses a standing Permit2 allowance before authorize'
                     expiration: 4_000_000_000n,
                     nonce: 0n,
                 }),
+                readApprovedSignatureCheckers: async () => [],
             },
         ),
     ).rejects.toThrow(/standing Permit2 allowance/)
@@ -580,7 +585,7 @@ test('swap session create fails closed when a standing-rights read errors', asyn
                 sessionName: 'swap',
                 password: 'pw',
                 swap: true,
-                fullAccessPhraseConfirmed: true,
+                swapPhraseConfirmed: true,
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
@@ -615,6 +620,7 @@ test('swap session create fails closed when a standing-rights read errors', asyn
                 readErc20Allowance: async () => {
                     throw new Error('allowance rpc down')
                 },
+                readApprovedSignatureCheckers: async () => [],
                 readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
             },
         ),
@@ -671,6 +677,7 @@ test('standing rights include the quoted input and fail closed on a read error',
         assertNoStandingRights({
             chainId: 8453,
             owner: USER,
+            keyHash: SESSION_KEY_HASH,
             targets: [ROUTER],
             tokens: [USDC],
             readers: {
@@ -683,6 +690,7 @@ test('standing rights include the quoted input and fail closed on a read error',
                 readErc1155ApprovedForAll: async () => false,
                 readErc4626ShareBalance: async () => 0n,
                 readErc4626ShareAllowance: async () => 0n,
+                readApprovedSignatureCheckers: async () => [],
             },
         }),
     ).rejects.toThrow(/Could not read standing rights/)
@@ -690,6 +698,7 @@ test('standing rights include the quoted input and fail closed on a read error',
         assertNoStandingRights({
             chainId: 8453,
             owner: USER,
+            keyHash: SESSION_KEY_HASH,
             targets: [ROUTER],
             tokens: [USDC],
             readers: {
@@ -701,7 +710,170 @@ test('standing rights include the quoted input and fail closed on a read error',
                 readErc1155ApprovedForAll: async () => false,
                 readErc4626ShareBalance: async () => 0n,
                 readErc4626ShareAllowance: async () => 0n,
+                readApprovedSignatureCheckers: async () => [],
             },
         }),
     ).rejects.toThrow(/standing allowance/)
+})
+
+const CHECKER = '0x5555555555555555555555555555555555555555' as Address
+
+test('creating a swap session requires CREATE SWAP SESSION, not the full-access phrase', async () => {
+    const executeSignedCalls = mock(async () => {
+        throw new Error('authorize should not be sent')
+    })
+    const deps = {
+        withKeystoreLock: async (_path: string, action: () => Promise<unknown>) => action(),
+        readKeystoreBundle: mock(
+            async () =>
+                ({
+                    root: {
+                        sessionRef: { active: 'default', dir: 'sessions' },
+                        addresses: { root: USER, delegated: USER },
+                    },
+                }) as const,
+        ),
+        fileExists: mock(async () => false),
+        generatePrivateKey: mock(
+            () => '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
+        ),
+        createSessionKeystore: mock(async () => ({
+            version: 2,
+            name: 'swap',
+            checkpoint: 'initialized',
+            network: {
+                env: 'prod',
+                relayerUrl: 'http://127.0.0.1:8787',
+                rpcUrl: 'https://mainnet.base.org',
+                chainId: 8453,
+            },
+            addresses: { session: SESSION_ADDRESS, delegated: USER },
+            secrets: {},
+        })),
+        writeSessionKeystoreFile: mock(async () => {}),
+        decryptRootKeystore: mock(async () => ({
+            rootPrivateKey:
+                '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
+        })),
+        readNonce: mock(async () => 1n),
+        executeSignedCalls,
+        readErc20Allowance: async () => 0n,
+        readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+        readApprovedSignatureCheckers: async () => [],
+    }
+    await expect(
+        executeSessionCreate(
+            {
+                env: 'prod',
+                chain: 'base',
+                keystorePath: '/tmp/default.keystore.json',
+                sessionName: 'swap',
+                password: 'pw',
+                swap: true,
+                fullAccessPhraseConfirmed: true,
+            },
+            deps,
+        ),
+    ).rejects.toThrow(/CREATE SWAP SESSION/)
+    await expect(
+        executeSessionCreate(
+            {
+                env: 'prod',
+                chain: 'base',
+                keystorePath: '/tmp/default.keystore.json',
+                sessionName: 'swap',
+                password: 'pw',
+                swap: true,
+            },
+            deps,
+        ),
+    ).rejects.toThrow(/CREATE SWAP SESSION/)
+    expect(executeSignedCalls).not.toHaveBeenCalled()
+})
+
+test('an ERC-1271 signature checker is refused before a swap quote is signed', async () => {
+    const ran = runSwap({
+        permissions: relaySessionCallPermissions(8453),
+        readApprovedSignatureCheckers: async () => [CHECKER],
+    })
+    await expect(ran.result).rejects.toMatchObject({
+        code: 'QUOTE_FAILED',
+        message: expect.stringMatching(/signature checker[\s\S]*isValidSignature/),
+    })
+    expect(ran.signTypedData).not.toHaveBeenCalled()
+})
+
+test('swap session create refuses an ERC-1271 signature checker before authorize', async () => {
+    const executeSignedCalls = mock(async () => {
+        throw new Error('authorize should not be sent')
+    })
+    await expect(
+        executeSessionCreate(
+            {
+                env: 'prod',
+                chain: 'base',
+                keystorePath: '/tmp/default.keystore.json',
+                sessionName: 'swap',
+                password: 'pw',
+                swap: true,
+                fullAccessPhraseConfirmed: true,
+                swapPhraseConfirmed: true,
+            },
+            {
+                withKeystoreLock: async (_path, action) => action(),
+                readKeystoreBundle: mock(
+                    async () =>
+                        ({
+                            root: {
+                                sessionRef: { active: 'default', dir: 'sessions' },
+                                addresses: { root: USER, delegated: USER },
+                            },
+                        }) as const,
+                ),
+                fileExists: mock(async () => false),
+                generatePrivateKey: mock(
+                    () =>
+                        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
+                ),
+                createSessionKeystore: mock(async () => ({
+                    version: 2,
+                    name: 'swap',
+                    checkpoint: 'initialized',
+                    network: {
+                        env: 'prod',
+                        relayerUrl: 'http://127.0.0.1:8787',
+                        rpcUrl: 'https://mainnet.base.org',
+                        chainId: 8453,
+                    },
+                    addresses: { session: SESSION_ADDRESS, delegated: USER },
+                    secrets: {},
+                })),
+                writeSessionKeystoreFile: mock(async () => {}),
+                decryptRootKeystore: mock(async () => ({
+                    rootPrivateKey:
+                        '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
+                })),
+                readNonce: mock(async () => 1n),
+                executeSignedCalls,
+                readErc20Allowance: async () => 0n,
+                readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+                readApprovedSignatureCheckers: async () => [CHECKER],
+            },
+        ),
+    ).rejects.toThrow(/signature checker[\s\S]*ERC-1271/)
+    expect(executeSignedCalls).not.toHaveBeenCalled()
+})
+
+test('a signature-checker read error refuses the swap session', async () => {
+    const ran = runSwap({
+        permissions: relaySessionCallPermissions(8453),
+        readApprovedSignatureCheckers: async () => {
+            throw new Error('checker rpc down')
+        },
+    })
+    await expect(ran.result).rejects.toMatchObject({
+        code: 'QUOTE_FAILED',
+        message: expect.stringContaining('Could not read standing rights'),
+    })
+    expect(ran.signTypedData).not.toHaveBeenCalled()
 })

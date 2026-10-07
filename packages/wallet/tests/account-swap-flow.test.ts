@@ -51,6 +51,7 @@ function executeAccountSwap(
         readErc1155ApprovedForAll: async () => false,
         readErc4626ShareBalance: async () => 0n,
         readErc4626ShareAllowance: async () => 0n,
+        readApprovedSignatureCheckers: async () => [],
         getKeys: async () => {
             const key = {
                 hash: computeSessionKeyHash(

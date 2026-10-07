@@ -18,7 +18,7 @@ import { toSpendPeriodEnum } from './session-common'
  * after this flow raises the minute slot to the quoted amount. Minute 0 keeps
  * those tokens in the guarded set between quotes. The quote installer writes
  * the minute slot and restores it to 0. This period is full access, so create
- * requires CREATE FULL ACCESS SESSION. It does not install the 10 USDC/day
+ * requires CREATE SWAP SESSION. It does not install the 10 USDC/day
  * default, and a 0 minute limit adds nothing to that daily stack.
  */
 
@@ -93,6 +93,35 @@ function callPairs(permissions: readonly CallPermission[]): { target: Address; s
         })
     }
     return pairs
+}
+
+/**
+ * A swap session at rest, or during a quote that added approve or transfer
+ * on one input token. A payment key and a wildcard are not.
+ */
+export function isSwapSessionKey(
+    permissions: readonly CallPermission[],
+    chainId: number,
+): boolean {
+    const relay = relayEntryPoints(chainId)
+    if (relay.length === 0) return false
+    let pairs: { target: Address; selector: string }[]
+    try {
+        pairs = callPairs(permissions)
+    } catch {
+        return false
+    }
+    const have = new Set(pairs.map((pair) => pairKey(pair.target, pair.selector)))
+    if (!relay.every((entry) => have.has(pairKey(entry.target, entry.selector)))) return false
+    const relayKeys = new Set(relay.map((entry) => pairKey(entry.target, entry.selector)))
+    const extras = pairs.filter((pair) => !relayKeys.has(pairKey(pair.target, pair.selector)))
+    if (extras.length === 0) return true
+    const token = extras[0]!.target.toLowerCase()
+    return extras.every(
+        (pair) =>
+            pair.target.toLowerCase() === token &&
+            (pair.selector === APPROVE_SELECTOR || pair.selector === TRANSFER_SELECTOR),
+    )
 }
 
 /** Resting swap key: exactly the Relay entrypoints, and no other call permission. */

@@ -249,5 +249,5 @@ export async function sessionHasWildcardCall(
 }
 
 export function fullAccessSessionHowTo(kind: 'swap' | 'bridge'): string {
-    return `${kind} needs a dedicated swap session, not the payment key and not a wildcard. Create one with \`tw session create <name> --swap --chain <chain>\` and type CREATE FULL ACCESS SESSION. Pass it with --session <name>. The payment session stays active.`
+    return `${kind} needs a dedicated swap session, not the payment key and not a wildcard. Create one with \`tw session create <name> --swap --chain <chain>\` and type CREATE SWAP SESSION. Pass it with --session <name>. The payment session stays active.`
 }

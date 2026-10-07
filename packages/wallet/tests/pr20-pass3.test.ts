@@ -197,6 +197,7 @@ function run(input: {
             readErc1155ApprovedForAll: async () => false,
             readErc4626ShareBalance: async () => 0n,
             readErc4626ShareAllowance: async () => 0n,
+            readApprovedSignatureCheckers: async () => [],
             executeSignedCalls: (input.executeSignedCalls ??
                 (async () => ({
                     id: 'bundle-1',
@@ -529,6 +530,7 @@ test('the second simulation runs on the calls about to be signed, after prepare 
             readErc1155ApprovedForAll: async () => false,
             readErc4626ShareBalance: async () => 0n,
             readErc4626ShareAllowance: async () => 0n,
+            readApprovedSignatureCheckers: async () => [],
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',
