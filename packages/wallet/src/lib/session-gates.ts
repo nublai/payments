@@ -2,12 +2,19 @@ import { getAddress, type Address } from 'viem'
 import { resolveKeystorePath } from './account-create'
 import { readKeystoreBundle, readSessionKeystoreFile, resolveSessionKeystorePath } from './keystore'
 import {
+    chainsForEnv,
+    getChainConfig,
     getUsdcTokenConfig,
     resolveNetworkConfig,
+    rpcUrlForChain,
     selectDefaultChain,
     type EnvName,
 } from './network-config'
-import { narrowCallAllowlist, readAccountKeysFromChain } from './session-chain-permissions'
+import {
+    narrowCallAllowlist,
+    readAccountKeysFromChain,
+    readSessionChainGuard,
+} from './session-chain-permissions'
 import {
     activeUsdcDailyTotal,
     callPermissionsFitAllowlist,
@@ -34,6 +41,25 @@ type StoredPermission = {
 }
 
 /**
+ * Narrow only when the key's own calls, the ANY_KEYHASH calls, and every call
+ * checker sit in the allowlist, and the key has a USDC spend of at most 10/day.
+ * Any call checker is elevated: `callCheckerInfos` lists the checker contract,
+ * and that contract's `canExecute` is arbitrary code.
+ */
+export function accountStateRequiresPhrase(input: {
+    permissions: readonly StoredPermission[] | undefined
+    anyCalls: readonly StoredPermission[]
+    checkerCount: number
+    usdcAddress: string | undefined
+    allowedCalls: ReadonlySet<string>
+}): boolean {
+    if (input.checkerCount > 0) return true
+    if (!input.permissions || input.permissions.length === 0) return true
+    if (storedPermissionsRequirePhrase(input.permissions, input.usdcAddress)) return true
+    return !callPermissionsFitAllowlist([...input.permissions, ...input.anyCalls], input.allowedCalls)
+}
+
+/**
  * Missing, empty, or unreadable permissions are elevated.
  * A narrow verdict is a non-empty list whose calls sit in the allowlist and
  * whose USDC spend is at most 10 per day.
@@ -48,10 +74,36 @@ export function chainPermissionsRequirePhrase(
     return !callPermissionsFitAllowlist(permissions, allowedCalls)
 }
 
+async function chainVerdict(input: {
+    env: EnvName
+    chainName: ReturnType<typeof chainsForEnv>[number]
+    account: Address
+    sessionAddress: Address
+}): Promise<'absent' | 'narrow' | 'elevated'> {
+    const chain = getChainConfig(input.chainName)
+    const usdc = getUsdcTokenConfig(input.chainName).address
+    const guard = await readSessionChainGuard({
+        rpcUrl: rpcUrlForChain(input.chainName),
+        chainId: chain.chainId,
+        account: input.account,
+        keyHash: computeSessionKeyHash(input.sessionAddress),
+    })
+    if (!guard.key) return 'absent'
+    const elevated = accountStateRequiresPhrase({
+        permissions: guard.key.permissions,
+        anyCalls: guard.anyCalls,
+        checkerCount: guard.checkerCount,
+        usdcAddress: usdc,
+        allowedCalls: narrowCallAllowlist(input.env, chain.chainId),
+    })
+    return elevated ? 'elevated' : 'narrow'
+}
+
 /**
- * Phrase required unless this session's permissions, read from the account
- * contract, are a positive match for the narrow allowlist.
- * RPC failure, a revert, or an unknown chain is elevated.
+ * Phrase required unless every configured chain for this env shows the session
+ * as a positive match for the narrow allowlist.
+ * A chain the key is not on is skipped. An RPC failure, a revert, or an
+ * unreadable checker list on any configured chain is elevated.
  */
 export async function sessionOnChainRequiresPhrase(input: {
     env: EnvName
@@ -59,26 +111,24 @@ export async function sessionOnChainRequiresPhrase(input: {
     account: Address
     sessionAddress: Address
 }): Promise<boolean> {
-    try {
-        const chainName = selectDefaultChain(input.env, input.chain)
-        const network = resolveNetworkConfig(input.env, chainName)
-        const usdc = getUsdcTokenConfig(chainName).address
-        const keys = await readAccountKeysFromChain({
-            rpcUrl: network.rpcUrl,
-            chainId: network.chainId,
-            account: input.account,
-        })
-        const hash = computeSessionKeyHash(input.sessionAddress)
-        const key = keys.find((entry) => entry.hash.toLowerCase() === hash.toLowerCase())
-        if (!key) return true
-        return chainPermissionsRequirePhrase(
-            key.permissions,
-            usdc,
-            narrowCallAllowlist(input.env, network.chainId),
-        )
-    } catch {
-        return true
+    let sawKey = false
+    for (const chainName of chainsForEnv(input.env)) {
+        try {
+            const verdict = await chainVerdict({
+                env: input.env,
+                chainName,
+                account: input.account,
+                sessionAddress: input.sessionAddress,
+            })
+            if (verdict === 'elevated') return true
+            if (verdict === 'narrow') sawKey = true
+        } catch {
+            return true
+        }
     }
+    // Every chain was readable and none of them authorized this key.
+    if (!sawKey) return true
+    return false
 }
 
 /**
@@ -131,7 +181,7 @@ export async function readActiveUsdcDaily(
         const bundle = await readKeystoreBundle(keystorePath)
         const account = getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root)
         const keys = await readAccountKeysFromChain({
-            rpcUrl: network.rpcUrl,
+            rpcUrl: rpcUrlForChain(chainName),
             chainId: network.chainId,
             account,
         })
@@ -185,7 +235,7 @@ export async function sessionHasWildcardCall(
             account = getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root)
         }
         const keys = await readAccountKeysFromChain({
-            rpcUrl: network.rpcUrl,
+            rpcUrl: rpcUrlForChain(chainName),
             chainId: network.chainId,
             account,
         })

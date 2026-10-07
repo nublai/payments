@@ -44,6 +44,9 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
         durationSeconds: 1,
         kind: 'agent',
         encryptionDevice: '0x1234',
+        // Lifecycle fixture signs arbitrary typed data, which only a phrase unlock may do.
+        phraseConfirmed: true,
+        env: 'prod',
     })
     expect(load?.ok).toBe(true)
 

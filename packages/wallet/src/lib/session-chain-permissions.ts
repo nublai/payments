@@ -1,4 +1,4 @@
-import { createPublicClient, getAddress, http, type Address, type Hex } from 'viem'
+import { createPublicClient, getAddress, http, type Address, type Hex, type PublicClient } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import { ERC20_SELECTORS, getChain } from '@nubl/relayer-client'
@@ -7,6 +7,10 @@ import {
     getUsdcTokenConfig,
     type EnvName,
 } from './network-config'
+
+/** GuardedExecutor wildcard key. Packed calls and checkers here apply to every key. */
+export const ANY_KEYHASH =
+    '0x3232323232323232323232323232323232323232323232323232323232323232' as Hex
 
 const ESCROW_ESCROW_SELECTOR = '0x657061bf'
 const ESCROW_REFUND_SELECTOR = '0x6023fda5'
@@ -29,11 +33,32 @@ export type ChainKeyView = {
     permissions: ChainPermission[]
 }
 
+export type GuardCleanup = {
+    anyCalls: { target: Address; selector: Hex }[]
+    checkers: { keyHash: Hex; target: Address }[]
+}
+
+export type SessionChainGuard = {
+    /** Undefined when this chain's getKeys succeeded and the session key is not authorized. */
+    key: ChainKeyView | undefined
+    anyCalls: ChainPermission[]
+    /** Call checkers for the session key plus ANY_KEYHASH. Any checker is elevated. */
+    checkerCount: number
+}
+
 function decodePackedCanExecute(packed: Hex): { target: Address; selector: Hex } {
     const value = BigInt(packed)
     const target = getAddress(`0x${(value >> 96n).toString(16).padStart(40, '0')}`)
     const selector = `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex
     return { target, selector }
+}
+
+function chainClient(rpcUrl: string, chainId: number): PublicClient {
+    return createPublicClient({
+        chain: getChain(chainId, rpcUrl),
+        transport: http(rpcUrl, { timeout: 10_000 }),
+        batch: { multicall: false },
+    })
 }
 
 function spendPeriodName(period: number): string {
@@ -77,11 +102,7 @@ export async function readAccountKeysFromChain(input: {
     chainId: number
     account: Address
 }): Promise<ChainKeyView[]> {
-    const client = createPublicClient({
-        chain: getChain(input.chainId, input.rpcUrl),
-        transport: http(input.rpcUrl, { timeout: 10_000 }),
-        batch: { multicall: false },
-    })
+    const client = chainClient(input.rpcUrl, input.chainId)
     const keysResult = await client.readContract({
         address: input.account,
         abi: accountAbi,
@@ -127,4 +148,78 @@ export async function readAccountKeysFromChain(input: {
             permissions,
         }
     })
+}
+
+/**
+ * One chain's session key, the ANY_KEYHASH call list, and call checkers.
+ * Throws when any view fails. Call checkers are enumerated by `callCheckerInfos`;
+ * a checker is an arbitrary contract, so a non-empty list cannot be proven narrow.
+ */
+export async function readSessionChainGuard(input: {
+    rpcUrl: string
+    chainId: number
+    account: Address
+    keyHash: Hex
+}): Promise<SessionChainGuard> {
+    const client = chainClient(input.rpcUrl, input.chainId)
+    const keys = await readAccountKeysFromChain({
+        rpcUrl: input.rpcUrl,
+        chainId: input.chainId,
+        account: input.account,
+    })
+    const key = keys.find((entry) => entry.hash.toLowerCase() === input.keyHash.toLowerCase())
+    const anyPacked = await client.readContract({
+        address: input.account,
+        abi: accountAbi,
+        functionName: 'canExecutePackedInfos',
+        args: [ANY_KEYHASH],
+    })
+    const anyCalls: ChainPermission[] = anyPacked.map((packed) => {
+        const decoded = decodePackedCanExecute(packed)
+        return { type: 'call', to: decoded.target, selector: decoded.selector }
+    })
+    const hashes = key ? [input.keyHash, ANY_KEYHASH] : [ANY_KEYHASH]
+    let checkerCount = 0
+    for (const hash of hashes) {
+        const infos = await client.readContract({
+            address: input.account,
+            abi: accountAbi,
+            functionName: 'callCheckerInfos',
+            args: [hash],
+        })
+        checkerCount += infos.filter((info) => info.checker !== '0x0000000000000000000000000000000000000000').length
+    }
+    return { key, anyCalls, checkerCount }
+}
+
+/** ANY_KEYHASH calls and call checkers for the given keys plus ANY_KEYHASH. */
+export async function readGuardCleanup(input: {
+    rpcUrl: string
+    chainId: number
+    account: Address
+    keyHashes: readonly Hex[]
+}): Promise<GuardCleanup> {
+    const client = chainClient(input.rpcUrl, input.chainId)
+    const anyPacked = await client.readContract({
+        address: input.account,
+        abi: accountAbi,
+        functionName: 'canExecutePackedInfos',
+        args: [ANY_KEYHASH],
+    })
+    const anyCalls = anyPacked.map((packed) => decodePackedCanExecute(packed))
+    const checkers: GuardCleanup['checkers'] = []
+    const hashes = [...input.keyHashes, ANY_KEYHASH]
+    for (const keyHash of hashes) {
+        const infos = await client.readContract({
+            address: input.account,
+            abi: accountAbi,
+            functionName: 'callCheckerInfos',
+            args: [keyHash],
+        })
+        for (const info of infos) {
+            if (info.checker === '0x0000000000000000000000000000000000000000') continue
+            checkers.push({ keyHash, target: getAddress(info.target) })
+        }
+    }
+    return { anyCalls, checkers }
 }
