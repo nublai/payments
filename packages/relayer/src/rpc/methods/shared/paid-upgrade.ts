@@ -312,6 +312,14 @@ export async function assertPaidUpgrade(args: {
     maxPayment: bigint
     paymentAmount: bigint
     publicClient: PublicClient
+    /** Balance that must be present. Zero skips the read on a retry after the fee was pulled. */
+    requiredBalance?: bigint
+    /**
+     * The fee is already on file and a previous upgrade broadcast may have
+     * applied the delegation even though the intent reverted. The retry sends
+     * the intent without a second authorization.
+     */
+    allowExistingDelegation?: boolean
 }): Promise<CheckedPaidUpgrade> {
     const eoa = getAddress(args.eoa)
     const payer = args.payer ? getAddress(args.payer) : zeroAddress
@@ -422,27 +430,36 @@ export async function assertPaidUpgrade(args: {
         logger.error({ error, address: eoa }, 'failed to read account before paid upgrade')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
-    if (isEip7702Delegated(code)) {
+    const alreadyDelegated =
+        isEip7702Delegated(code) &&
+        code?.toLowerCase() === eip7702DelegationCode(args.accountProxy).toLowerCase()
+    if (isEip7702Delegated(code) && !alreadyDelegated) {
         throw new RpcError(INVALID_PARAMS, 'Account is already delegated')
     }
-    if (pendingNonce !== authorization.nonce) {
+    if (alreadyDelegated && !args.allowExistingDelegation) {
+        throw new RpcError(INVALID_PARAMS, 'Account is already delegated')
+    }
+    if (!alreadyDelegated && pendingNonce !== authorization.nonce) {
         throw new RpcError(INVALID_PARAMS, 'Authorization nonce does not match the account nonce')
     }
 
-    let balance: bigint
-    try {
-        balance = await args.publicClient.readContract({
-            address: args.usdc,
-            abi: erc20Abi,
-            functionName: 'balanceOf',
-            args: [eoa],
-        })
-    } catch (error) {
-        logger.error({ error, address: eoa }, 'failed to read USDC balance before paid upgrade')
-        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
-    }
-    if (balance < args.paymentAmount) {
-        throw new RpcError(INSUFFICIENT_FUNDS, 'Insufficient USDC balance')
+    const requiredBalance = args.requiredBalance ?? args.paymentAmount
+    if (requiredBalance > 0n) {
+        let balance: bigint
+        try {
+            balance = await args.publicClient.readContract({
+                address: args.usdc,
+                abi: erc20Abi,
+                functionName: 'balanceOf',
+                args: [eoa],
+            })
+        } catch (error) {
+            logger.error({ error, address: eoa }, 'failed to read USDC balance before paid upgrade')
+            throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+        }
+        if (balance < requiredBalance) {
+            throw new RpcError(INSUFFICIENT_FUNDS, 'Insufficient USDC balance')
+        }
     }
 
     const normalized: PaidUpgradeQuote = {
@@ -720,7 +737,7 @@ export async function assertPaidUpgradeSimulation(args: {
     publicClient: PublicClient
     orchestrator: Address
     intent: IntentStruct
-    authorization: SignedAuthorization
+    authorization?: SignedAuthorization
     feeRecipient: string | undefined
 }): Promise<void> {
     const intentForBroadcast: IntentStruct = {
@@ -737,7 +754,7 @@ export async function assertPaidUpgradeSimulation(args: {
         const result = await args.publicClient.call({
             to: args.orchestrator,
             data,
-            authorizationList: [args.authorization],
+            ...(args.authorization ? { authorizationList: [args.authorization] } : {}),
         })
         returned = result.data
     } catch (error) {

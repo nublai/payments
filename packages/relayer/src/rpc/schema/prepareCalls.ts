@@ -99,9 +99,15 @@ export interface Quote {
     }
     /**
      * Payment amount in fee-token units, as quoted.
-     * Send ignores this field and recomputes the fee from txGas, maxFeePerGas, and nativeRate.
+     * Send recomputes the fee from txGas, maxFeePerGas, and nativeRate and
+     * refuses a paid upgrade when this field differs.
      */
     paymentAmount: string
+    /**
+     * Relayer fee recipient for a paid upgrade. Taken from `FEE_RECIPIENT`
+     * at prepare and covered by the quote HMAC. Absent on other quotes.
+     */
+    feeRecipient?: Address
     /**
      * Fee-token units per 1 native token, scaled by 1e18.
      * Set by prepareCalls and covered by the quote HMAC. Required to recompute an ERC-20 fee.

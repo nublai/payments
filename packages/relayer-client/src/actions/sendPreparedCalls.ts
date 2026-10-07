@@ -8,7 +8,7 @@ import type { RpcSendPreparedCallsParams, RpcSendPreparedCallsResult } from '../
 
 export type SendPreparedCallsParams = Pick<
     RpcSendPreparedCallsParams,
-    'context' | 'signature' | 'paymentSignature'
+    'context' | 'signature' | 'paymentSignature' | 'feeAuthorization'
 >
 
 export interface SendPreparedCallsResponse {

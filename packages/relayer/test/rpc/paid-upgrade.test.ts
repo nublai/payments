@@ -36,10 +36,17 @@ import {
 } from '../../src/rpc/methods/shared/account-helpers'
 import {
     encodeSignedPreCall,
+    eip7702DelegationCode,
     PAID_UPGRADE_ADDRESS_LIMIT,
     paidUpgradeRateBuckets,
     recordPaidUpgradeRateLimit,
+    signedPaymentMaxForQuote,
 } from '../../src/rpc/methods/shared/paid-upgrade'
+import {
+    paidUpgradeFeeNonce,
+    paidUpgradeFeeTypedData,
+    type PaidUpgradeFeeRecord,
+} from '../../src/rpc/schema/paid-upgrade-fee'
 import {
     consumeRateLimit,
     peekRateLimit,
@@ -48,6 +55,9 @@ import {
 
 const CHAIN_ID = 8453
 const SECRET = 'paid-upgrade-test-secret'
+const FEE_RECIPIENT = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
+const PULL_HASH = `0x${'11'.repeat(32)}` as Hex
+const UPGRADE_HASH = `0x${'ab'.repeat(32)}` as Hex
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
@@ -66,6 +76,9 @@ const rpc = {
     gasThrow: false,
     failBroadcast: false,
     gasBudget: 2_000_000n,
+    pullReverts: false,
+    authUsed: false,
+    upgradeRevertRemaining: 0,
 }
 
 const gasLog: Array<Record<string, unknown>> = []
@@ -84,9 +97,35 @@ function jsonResponse(body: unknown, ok = true): Response {
     } as Response
 }
 
-let captures: unknown[] = []
+let captures: Array<Record<string, unknown>> = []
 const rateBodies: Array<Record<string, unknown>> = []
 const rateStore = new Map<string, number>()
+const feeStore = new Map<string, PaidUpgradeFeeRecord>()
+
+function applyFee(body: Record<string, unknown>): { allowed: boolean; inserted?: boolean; record: PaidUpgradeFeeRecord | null } {
+    const quoteKey = typeof body.quoteKey === 'string' ? body.quoteKey : ''
+    const record = body.record as PaidUpgradeFeeRecord | undefined
+    if (body.action === 'get') {
+        return { allowed: true, record: feeStore.get(quoteKey) ?? null }
+    }
+    if (body.action === 'delete') {
+        feeStore.delete(quoteKey)
+        return { allowed: true, record: null }
+    }
+    if (body.action === 'insert') {
+        const existing = feeStore.get(quoteKey)
+        if (existing) return { allowed: true, inserted: false, record: existing }
+        if (!record) return { allowed: false, record: null }
+        feeStore.set(quoteKey, record)
+        return { allowed: true, inserted: true, record }
+    }
+    if (body.action === 'update') {
+        if (!feeStore.has(quoteKey) || !record) return { allowed: true, record: null }
+        feeStore.set(quoteKey, record)
+        return { allowed: true, record }
+    }
+    return { allowed: false, record: null }
+}
 
 function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: number; failures?: number } {
     gasLog.push(body)
@@ -144,15 +183,19 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         const decision = consumeRateLimit(rateStore, buckets, now)
         return Promise.resolve(jsonResponse({ allowed: decision.allowed, reservedAt: now }))
     }
+    if (url.includes('paid-upgrade-fee')) {
+        return Promise.resolve(jsonResponse(applyFee(body)))
+    }
     if (rpc.failBroadcast) {
         return Promise.resolve(
             jsonResponse({ error: 'broadcast failed', broadcastAttempted: false }, false),
         )
     }
     captures.push(body)
+    const txHash = body.type === 'pull-paid-upgrade-fee' ? PULL_HASH : UPGRADE_HASH
     return Promise.resolve(
         jsonResponse({
-            txHash: `0x${'ab'.repeat(32)}`,
+            txHash,
             signer: '0x123',
             signerName: 'signer-8453-0',
         }),
@@ -170,6 +213,7 @@ function createCtx(ip?: string): RpcContext {
             CHAIN_IDS: String(CHAIN_ID),
             CONTEXT: 'local',
             QUOTE_SIGNING_SECRET: SECRET,
+            FEE_RECIPIENT,
             ORCHESTRATOR_8453: ORCHESTRATOR,
             SIMPLE_FUNDER_8453: '0x41D23D227C6D0F732D41eE5c203C48d96292A48B',
             SIMULATOR_8453: '0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65',
@@ -248,9 +292,12 @@ async function signedParams(options?: {
     txGas?: number
     maxFeePerGas?: number
     encodedPreCalls?: Hex[]
+    callData?: Hex
     mutateAfterSign?: (quote: Quote) => void
     echo?: Partial<PaidUpgradeQuote>
-}): Promise<{ params: unknown; eoa: Address; upgrade: PaidUpgradeQuote }> {
+    fee?: 'default' | 'omit' | 'expired' | 'replay-nonce' | 'redirect-value' | 'redirect-to' | 'wrong-payee-sig'
+    feeFrom?: { signature: Hex; ttl: number; value: bigint }
+}): Promise<{ params: unknown; eoa: Address; upgrade: PaidUpgradeQuote; payment: bigint; fee: bigint }> {
     const eoa = privateKeyToAccount(OWNER_KEY).address
     const preCall = await signedPreCall(OWNER_KEY)
     const delegation = options?.delegation ?? ACCOUNT_PROXY
@@ -278,7 +325,7 @@ async function signedParams(options?: {
         chainId: '0x2105',
         intent: {
             eoa,
-            calls: [{ to: USDC, value: '0', data: '0x' }],
+            calls: [{ to: USDC, value: '0', data: options?.callData ?? '0x' }],
             nonce: '0',
             combinedGas: '500000',
             expiry: String(Math.floor(Date.now() / 1000) + 3600),
@@ -286,7 +333,8 @@ async function signedParams(options?: {
             payer: options?.payer ?? eoa,
             paymentToken,
             paymentMaxAmount:
-                options?.paymentMaxAmount ?? (paymentAmount > 0n ? paymentAmount.toString() : '1'),
+                options?.paymentMaxAmount ??
+                (paymentAmount > 0n ? signedPaymentMaxForQuote(paymentAmount).toString() : '1'),
         },
         orchestrator: ORCHESTRATOR,
         extraPayment: '0x0',
@@ -297,11 +345,12 @@ async function signedParams(options?: {
             maxFeePerGas,
             maxPriorityFeePerGas: 1_000_000,
         },
-        paymentAmount: '1',
+        paymentAmount: paymentAmount.toString(),
         nativeRate: NATIVE_RATE,
         authSigner: eoa,
         feeTokenDeficit: '0x0',
         assetDeficits: [],
+        feeRecipient: FEE_RECIPIENT,
         accountUpgrade: upgrade,
     }
     const signed: SignedQuotes = {
@@ -311,6 +360,51 @@ async function signedParams(options?: {
     }
     signed.signature = await signQuotes(signed, SECRET)
     options?.mutateAfterSign?.(quote)
+    const feeValue = signedPaymentMaxForQuote(paymentAmount)
+    let feeAuthorization: {
+        validAfter: string
+        validBefore: string
+        nonce: Hex
+        signature: Hex
+    } | undefined
+    if (options?.fee !== 'omit' && paymentAmount > 0n) {
+        const mode = options?.fee ?? 'default'
+        const otherPayee = '0x00000000000000000000000000000000000000ab' as Address
+        const signedTo = mode === 'redirect-to' || mode === 'wrong-payee-sig' ? otherPayee : FEE_RECIPIENT
+        const signedValue = mode === 'redirect-value' ? feeValue + 1n : feeValue
+        const nonce =
+            mode === 'replay-nonce'
+                ? (`0x${'22'.repeat(32)}` as Hex)
+                : paidUpgradeFeeNonce({
+                      quoteSignature: options?.feeFrom?.signature ?? signed.signature,
+                      chainId: CHAIN_ID,
+                      from: eoa,
+                      to: mode === 'redirect-to' ? otherPayee : FEE_RECIPIENT,
+                      value:
+                          mode === 'redirect-value'
+                              ? feeValue + 1n
+                              : (options?.feeFrom?.value ?? feeValue),
+                  })
+        const validBefore = mode === 'expired' ? 1n : BigInt(signed.ttl)
+        const signature = await privateKeyToAccount(OWNER_KEY).signTypedData(
+            paidUpgradeFeeTypedData({
+                chainId: CHAIN_ID,
+                token: USDC,
+                from: eoa,
+                to: signedTo,
+                value: signedValue,
+                validAfter: 0n,
+                validBefore,
+                nonce,
+            }),
+        )
+        feeAuthorization = {
+            validAfter: '0',
+            validBefore: validBefore.toString(),
+            nonce,
+            signature,
+        }
+    }
     const intent = quote.intent
     const digest = hashTypedData({
         domain: {
@@ -343,12 +437,15 @@ async function signedParams(options?: {
     return {
         eoa,
         upgrade,
+        payment: paymentAmount,
+        fee: feeValue,
         params: {
             context: { quote: signed },
             signature: await privateKeyToAccount(options?.intentSigner ?? OWNER_KEY).sign({
                 hash: digest,
             }),
             ...(options?.echo ? { accountUpgrade: options.echo } : {}),
+            ...(feeAuthorization ? { feeAuthorization } : {}),
         },
     }
 }
@@ -375,9 +472,63 @@ function intentExecutedLog(err: Hex) {
     }
 }
 
-function successReceipt() {
+function transferLog(value: bigint) {
+    const pull = [...captures].reverse().find((body) => body.type === 'pull-paid-upgrade-fee')
+    const from = (pull?.from as Address | undefined) ?? privateKeyToAccount(OWNER_KEY).address
+    const to = (pull?.to as Address | undefined) ?? FEE_RECIPIENT
     return {
-        transactionHash: `0x${'ab'.repeat(32)}`,
+        address: USDC,
+        topics: encodeEventTopics({
+            abi: [
+                {
+                    type: 'event',
+                    name: 'Transfer',
+                    inputs: [
+                        { name: 'from', type: 'address', indexed: true },
+                        { name: 'to', type: 'address', indexed: true },
+                        { name: 'value', type: 'uint256', indexed: false },
+                    ],
+                },
+            ],
+            eventName: 'Transfer',
+            args: { from, to, value },
+        }),
+        data: word(value),
+        logIndex: '0x0',
+        transactionIndex: '0x0',
+        transactionHash: PULL_HASH,
+        blockHash: `0x${'cd'.repeat(32)}`,
+        blockNumber: '0x1',
+        removed: false,
+    }
+}
+
+function pullReceipt() {
+    const pull = [...captures].reverse().find((body) => body.type === 'pull-paid-upgrade-fee')
+    const value = BigInt(typeof pull?.value === 'string' ? pull.value : '0')
+    return {
+        transactionHash: PULL_HASH,
+        transactionIndex: '0x0',
+        blockHash: `0x${'cd'.repeat(32)}`,
+        blockNumber: '0x1',
+        from: FEE_RECIPIENT,
+        to: USDC,
+        cumulativeGasUsed: '0x5208',
+        gasUsed: '0x5208',
+        contractAddress: null,
+        logs: rpc.pullReverts ? [] : [transferLog(value)],
+        logsBloom: `0x${'00'.repeat(256)}`,
+        status: rpc.pullReverts ? '0x0' : '0x1',
+        effectiveGasPrice: '0x3b9aca00',
+        type: '0x2',
+    }
+}
+
+function successReceipt() {
+    const revert = rpc.upgradeRevertRemaining > 0
+    if (revert) rpc.upgradeRevertRemaining -= 1
+    return {
+        transactionHash: UPGRADE_HASH,
         transactionIndex: '0x0',
         blockHash: `0x${'cd'.repeat(32)}`,
         blockNumber: '0x1',
@@ -386,9 +537,9 @@ function successReceipt() {
         cumulativeGasUsed: rpc.receiptGas,
         gasUsed: rpc.receiptGas,
         contractAddress: null,
-        logs: [intentExecutedLog(rpc.receiptErr)],
+        logs: revert ? [] : [intentExecutedLog(rpc.receiptErr)],
         logsBloom: `0x${'00'.repeat(256)}`,
-        status: '0x1',
+        status: revert ? '0x0' : '0x1',
         effectiveGasPrice: '0x3b9aca00',
         type: '0x4',
     }
@@ -412,6 +563,10 @@ beforeEach(() => {
     rpc.gasThrow = false
     rpc.failBroadcast = false
     rpc.gasBudget = 2_000_000n
+    rpc.pullReverts = false
+    rpc.authUsed = false
+    rpc.upgradeRevertRemaining = 0
+    feeStore.clear()
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
         const url =
             typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
@@ -426,13 +581,19 @@ beforeEach(() => {
         const batch = Array.isArray(raw) ? raw : [raw]
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
             let result: unknown = '0x'
-            const tx = call.params?.[0] as { authorizationList?: unknown } | undefined
+            const tx = call.params?.[0] as { authorizationList?: unknown; data?: string; to?: string } | undefined
             if (call.method === 'eth_getCode') result = rpc.code
             else if (call.method === 'eth_getTransactionCount') result = rpc.nonce
-            else if (call.method === 'eth_call' && tx?.authorizationList) result = rpc.executeResult
-            else if (call.method === 'eth_call') result = word(rpc.balance)
+            else if (call.method === 'eth_call' && tx?.to?.toLowerCase() === ORCHESTRATOR.toLowerCase()) {
+                result = rpc.executeResult
+            } else if (call.method === 'eth_call' && tx?.authorizationList) result = rpc.executeResult
+            else if (call.method === 'eth_call' && tx?.data?.startsWith('0xe94a0102')) {
+                result = word(rpc.authUsed ? 1n : 0n)
+            } else if (call.method === 'eth_call') result = word(rpc.balance)
             else if (call.method === 'eth_chainId') result = '0x2105'
-            else if (call.method === 'eth_getTransactionReceipt') result = successReceipt()
+            else if (call.method === 'eth_getTransactionReceipt') {
+                result = call.params?.[0] === PULL_HASH ? pullReceipt() : successReceipt()
+            }
             return { jsonrpc: '2.0', id: call.id ?? 1, result }
         })
         return new Response(JSON.stringify(Array.isArray(raw) ? results : results[0]), {
@@ -448,20 +609,29 @@ afterEach(() => {
 
 describe('paid upgrade send refusals', () => {
     it('attaches the quoted authorization and broadcasts once', async () => {
-        const { params } = await signedParams()
+        const { params, fee } = await signedParams()
         const result = await handleSendPreparedCalls(params, createCtx())
         expect(result.id).toEqual(expect.any(String))
-        expect(captures).toHaveLength(1)
-        const tx = captures[0] as {
+        const pulls = captures.filter((body) => body.type === 'pull-paid-upgrade-fee')
+        const upgrades = captures.filter((body) => body.type === 'execute-intent')
+        expect(pulls).toHaveLength(1)
+        expect(upgrades).toHaveLength(1)
+        expect(pulls[0]?.to).toBe(FEE_RECIPIENT)
+        expect(pulls[0]?.value).toBe(fee.toString())
+        const tx = upgrades[0] as {
             type: string
+            intent: { paymentAmount: string }
             authorization: { address: string; chainId: number; nonce: number; r: Hex; s: Hex }
         }
         expect(tx.type).toBe('execute-intent')
+        expect(tx.intent.paymentAmount).toBe('0')
         expect(tx.authorization.address).toBe(ACCOUNT_PROXY)
         expect(tx.authorization.chainId).toBe(CHAIN_ID)
         expect(tx.authorization.nonce).toBe(0)
         expect(tx.authorization.r).toMatch(/^0x[0-9a-fA-F]{64}$/)
         expect(tx.authorization.s).toMatch(/^0x[0-9a-fA-F]{64}$/)
+        expect(gasLog.filter((entry) => entry.action === 'settle-gas')).toHaveLength(2)
+        expect(gasSpent).toBe(21_000n + 279_620n)
     })
 
     it('refuses a zero fee in local', async () => {
@@ -628,9 +798,10 @@ describe('paid upgrade send refusals', () => {
         const { params } = await signedParams()
         const result = await handleSendPreparedCalls(params, createCtx())
         expect(result.id).toEqual(expect.any(String))
-        expect(captures).toHaveLength(1)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(1)
+        expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')).toHaveLength(1)
         expect(gasFailures).toBe(1)
-        expect(gasSpent).toBe(60_478n)
+        expect(gasSpent).toBe(21_000n + 60_478n)
         expect(gasLog.some((entry) => entry.action === 'settle-gas' && entry.failure === true)).toBe(
             true,
         )
@@ -772,17 +943,176 @@ describe('paid upgrade send refusals', () => {
     })
 
     it('refuses the address after the per-address window is full', async () => {
-        const { params } = await signedParams()
         const ctx = createCtx()
         for (let i = 0; i < PAID_UPGRADE_ADDRESS_LIMIT; i++) {
+            const { params } = await signedParams({ callData: `0x${i.toString(16).padStart(2, '0')}` })
             await handleSendPreparedCalls(params, ctx)
         }
-        expect(captures).toHaveLength(PAID_UPGRADE_ADDRESS_LIMIT)
-        await expect(handleSendPreparedCalls(params, ctx)).rejects.toMatchObject({
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(
+            PAID_UPGRADE_ADDRESS_LIMIT,
+        )
+        const blocked = await signedParams({ callData: '0xabcdef' })
+        await expect(handleSendPreparedCalls(blocked.params, ctx)).rejects.toMatchObject({
             code: RATE_LIMITED,
             message: 'Paid upgrade rate limit exceeded',
         })
-        expect(captures).toHaveLength(PAID_UPGRADE_ADDRESS_LIMIT)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(
+            PAID_UPGRADE_ADDRESS_LIMIT,
+        )
+    })
+
+    it('refuses a sweep that leaves less than the clamped fee and does not pull', async () => {
+        const { payment, fee } = await signedParams()
+        expect(fee).toBeGreaterThan(payment)
+        rpc.balance = payment
+        const { params } = await signedParams()
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: INSUFFICIENT_FUNDS,
+            message: 'Insufficient USDC balance',
+        })
+        expect(captures).toHaveLength(0)
+        expect(gasSpent).toBe(0n)
+        expect(gasLog).toHaveLength(0)
+    })
+
+    it('does not broadcast the upgrade when the fee pull reverts', async () => {
+        rpc.pullReverts = true
+        const { params } = await signedParams()
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: SERVICE_UNAVAILABLE,
+            message: 'Paid upgrade fee pull failed',
+        })
+        expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')).toHaveLength(1)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(0)
+        expect(gasFailures).toBe(1)
+        expect(gasSpent).toBe(21_000n)
+        expect([...feeStore.values()][0]?.status).toBe('pull_failed')
+    })
+
+    it('refuses an authorization nonce that belongs to another quote', async () => {
+        const first = await signedParams({ callData: '0x01' })
+        const second = await signedParams({
+            callData: '0x02',
+            feeFrom: {
+                signature: (first.params as { context: { quote: { signature: Hex } } }).context.quote
+                    .signature,
+                ttl: 0,
+                value: first.fee,
+            },
+        })
+        await expect(handleSendPreparedCalls(second.params, createCtx())).rejects.toMatchObject({
+            code: INVALID_PARAMS,
+            message: 'Paid upgrade fee nonce does not match the quote',
+        })
+        expect(captures).toHaveLength(0)
+    })
+
+    it('refuses a reused authorization nonce', async () => {
+        const { params } = await signedParams({ fee: 'replay-nonce' })
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: INVALID_PARAMS,
+            message: 'Paid upgrade fee nonce does not match the quote',
+        })
+        expect(captures).toHaveLength(0)
+    })
+
+    it('refuses an authorization signed for a different value', async () => {
+        const { params } = await signedParams({ fee: 'redirect-value' })
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: INVALID_PARAMS,
+            message: 'Paid upgrade fee nonce does not match the quote',
+        })
+        expect(captures).toHaveLength(0)
+    })
+
+    it('refuses an authorization signed for a different payee', async () => {
+        const { params } = await signedParams({ fee: 'redirect-to' })
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: INVALID_PARAMS,
+            message: 'Paid upgrade fee nonce does not match the quote',
+        })
+        expect(captures).toHaveLength(0)
+    })
+
+    it('refuses an authorization whose signature pays a different address', async () => {
+        const { params } = await signedParams({ fee: 'wrong-payee-sig' })
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: INVALID_SIGNATURE,
+            message: 'Paid upgrade fee signer is not the account',
+        })
+        expect(captures).toHaveLength(0)
+    })
+
+    it('refuses an expired fee authorization', async () => {
+        const { params } = await signedParams({ fee: 'expired' })
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: INVALID_PARAMS,
+            message: 'Paid upgrade fee authorization expired',
+        })
+        expect(captures).toHaveLength(0)
+    })
+
+    it('retries the upgrade after a reverted inclusion and does not pull again', async () => {
+        rpc.upgradeRevertRemaining = 1
+        const { params, fee } = await signedParams()
+        const ctx = createCtx()
+        await expect(handleSendPreparedCalls(params, ctx)).rejects.toMatchObject({
+            message: 'Paid upgrade was not included; retry will not charge the fee again',
+        })
+        expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')).toHaveLength(1)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(1)
+        expect([...feeStore.values()][0]?.status).toBe('upgrade_failed')
+        const spentAfterFailure = gasSpent
+        expect(gasFailures).toBe(1)
+
+        const retried = await handleSendPreparedCalls(params, ctx)
+        expect(retried.id).toEqual(expect.any(String))
+        expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')).toHaveLength(1)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(2)
+        expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')[0]?.value).toBe(
+            fee.toString(),
+        )
+        expect([...feeStore.values()][0]?.status).toBe('upgrade_confirmed')
+        expect(gasFailures).toBe(1)
+        expect(gasSpent).toBeGreaterThan(spentAfterFailure)
+        const spentAfterRetry = gasSpent
+
+        const again = await handleSendPreparedCalls(params, ctx)
+        expect(again.id).toBe(retried.id)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(2)
+        expect(gasSpent).toBe(spentAfterRetry)
+    })
+
+    it('retries a stuck delegation without a second authorization', async () => {
+        rpc.upgradeRevertRemaining = 1
+        const { params } = await signedParams({ callData: '0xee' })
+        const ctx = createCtx()
+        await expect(handleSendPreparedCalls(params, ctx)).rejects.toMatchObject({
+            message: 'Paid upgrade was not included; retry will not charge the fee again',
+        })
+        rpc.code = eip7702DelegationCode(ACCOUNT_PROXY)
+        rpc.nonce = '0x1'
+        await handleSendPreparedCalls(params, ctx)
+        const upgrades = captures.filter((body) => body.type === 'execute-intent')
+        expect(upgrades).toHaveLength(2)
+        expect(upgrades[0]?.authorization).toBeTruthy()
+        expect(upgrades[1]?.authorization).toBeUndefined()
+        expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')).toHaveLength(1)
+    })
+
+    it('charges the pull against the same rate buckets and gas budget', async () => {
+        const { params } = await signedParams()
+        await handleSendPreparedCalls(params, createCtx('203.0.113.50'))
+        expect(rateBodies.some((body) => body.action === 'reserve' && body.ip === '203.0.113.50')).toBe(
+            true,
+        )
+        const reserves = gasLog.filter((entry) => entry.action === 'reserve-gas')
+        const settles = gasLog.filter((entry) => entry.action === 'settle-gas')
+        expect(reserves).toHaveLength(2)
+        expect(settles).toHaveLength(2)
+        expect(settles[0]?.failure).toBe(false)
+        expect(BigInt(String(settles[0]?.gas))).toBe(21_000n)
+        expect(gasHeld).toBe(0n)
     })
 
     it('does not batch a paid upgrade', async () => {

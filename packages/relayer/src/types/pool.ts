@@ -40,7 +40,11 @@ export interface IntentStruct {
 /**
  * Transaction types supported by the relayer pool
  */
-export type RelayTransactionType = 'create-account' | 'execute-intent' | 'batch-execute-intent'
+export type RelayTransactionType =
+    | 'create-account'
+    | 'execute-intent'
+    | 'batch-execute-intent'
+    | 'pull-paid-upgrade-fee'
 
 /**
  * Base transaction fields
@@ -95,12 +99,31 @@ export interface BatchExecuteIntentTransaction extends BaseRelayTransaction {
 }
 
 /**
+ * EIP-3009 `receiveWithAuthorization` for a paid-upgrade fee.
+ * `to` is the configured fee recipient. The broadcasting signer must be that
+ * address: Circle requires `msg.sender == to`.
+ */
+export interface PullPaidUpgradeFeeTransaction extends BaseRelayTransaction {
+    type: 'pull-paid-upgrade-fee'
+    account: Address
+    usdc: Address
+    from: Address
+    to: Address
+    value: string
+    validAfter: string
+    validBefore: string
+    nonce: Hex
+    signature: Hex
+}
+
+/**
  * Union type for all relay transactions
  */
 export type RelayTransaction =
     | CreateAccountTransaction
     | ExecuteIntentTransaction
     | BatchExecuteIntentTransaction
+    | PullPaidUpgradeFeeTransaction
 
 /**
  * Capacity information returned by SignerDO

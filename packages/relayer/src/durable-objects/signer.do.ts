@@ -18,6 +18,7 @@ import { mnemonicToSeedSync } from '@scure/bip39'
 import {
     createPublicClient,
     createWalletClient,
+    getAddress,
     http,
     encodeFunctionData,
     bytesToHex,
@@ -49,6 +50,7 @@ import type {
 } from '../types/pool'
 import { getContractAddresses } from '../config/addresses'
 import { getPaymentRecipient } from '../services/fees'
+import { encodeReceiveWithAuthorization } from '../rpc/schema/paid-upgrade-fee'
 import { encodeIntentCalldata } from '../services/encode-intent'
 import {
     assertAccountUpgradeFee,
@@ -1339,6 +1341,35 @@ export class SignerDO extends DurableObject<Env> {
                 }
             }
 
+            case 'pull-paid-upgrade-fee': {
+                if (getAddress(signerAddress) !== getAddress(tx.to)) {
+                    throw new SignerDOError(
+                        'Paid upgrade fee pull signer is not the fee recipient',
+                        'BROADCAST_FAILED',
+                        false,
+                    )
+                }
+                let data: Hex
+                try {
+                    data = encodeReceiveWithAuthorization({
+                        from: tx.from,
+                        to: tx.to,
+                        value: BigInt(tx.value),
+                        validAfter: BigInt(tx.validAfter),
+                        validBefore: BigInt(tx.validBefore),
+                        nonce: tx.nonce,
+                        signature: tx.signature,
+                    })
+                } catch (error) {
+                    throw new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED', false)
+                }
+                return {
+                    to: tx.usdc,
+                    data,
+                    value: 0n,
+                }
+            }
+
             case 'execute-intent': {
                 const bufferSeconds = parseInt(
                     this.env.INTENT_EXPIRY_BUFFER_SECONDS ??
@@ -1355,6 +1386,8 @@ export class SignerDO extends DurableObject<Env> {
                 const intentWithRecipient = {
                     ...tx.intent,
                     paymentRecipient: getPaymentRecipient(this.env.FEE_RECIPIENT, signerAddress),
+                    // The fee was pulled first. A non-zero payment here would charge twice.
+                    ...(tx.authorization ? { paymentAmount: '0' } : {}),
                 }
                 const encodedIntent = this.encodeIntentToBytes(intentWithRecipient)
                 return {
