@@ -19,6 +19,13 @@ import { accountAbi } from '@nubl/contracts/abis'
  * comparison. If recovery never runs, the key stops signing when this expiry
  * passes. The grant and the minute limit remain in storage and cannot be used.
  *
+ * Limit: this is a time bound, not a revoke. On a mismatch, or when recovery
+ * never runs, this key can still use the grant and the minute limit until
+ * that expiry, which is at most now+7200 (a sooner non-zero expiry is kept).
+ * The bound holds only while no root `authorize` writes a later expiry for
+ * this key, including 0 (never). `authorize` on an existing key rewrites only
+ * the key fields, so the grant and the minute limit stay live under it.
+ *
  * No new storage, no bytecode change, no redeploy. The root key sends the
  * existing `authorize` call, which updates expiry when the key already exists.
  */
