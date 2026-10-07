@@ -114,6 +114,12 @@ export interface Env {
     PRIVY_APP_ID?: string
     PRIVY_APP_SECRET?: string
 
+    /**
+     * Cap on paymentMaxAmount for a USDC-paid first upgrade, in fee-token base
+     * units. Unset uses 10 USDC (6 decimals). See DEFAULT_PAID_UPGRADE_MAX_PAYMENT.
+     */
+    PAID_UPGRADE_MAX_PAYMENT?: string
+
     // Price oracle configuration
     PRICE_ORACLE_PROVIDER?: string // Default: "coingecko"
     PRICE_RATE_TTL_SECONDS?: string // Default: "300"

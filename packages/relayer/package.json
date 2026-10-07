@@ -32,7 +32,7 @@
         "telemetry:summary:stage": "wrangler tail --env stage --format json | bun run scripts/telemetry-summary.ts",
         "telemetry:summary:prod": "wrangler tail --env prod --format json | bun run scripts/telemetry-summary.ts",
         "test": "vitest",
-        "test:run": "vitest run"
+        "test:run": "vitest run && bun ./test/integration/paid-upgrade-anvil.ts"
     },
     "dependencies": {
         "@hono/zod-validator": "0.7.6",

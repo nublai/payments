@@ -31,6 +31,14 @@ import type {
     PrepareCallsContext,
     PrepareCallsResult,
 } from '../schema/prepareCalls'
+import {
+    assertPaidUpgrade,
+    assertPaidUpgradeRateCapacity,
+    chainUsdcAddress,
+    encodeSignedPreCall,
+    paidUpgradeMaxPayment,
+    recordPaidUpgradeRateLimit,
+} from './shared/paid-upgrade'
 
 /**
  * wallet_prepareCalls - Prepare calls for signing.
@@ -89,6 +97,20 @@ export async function handlePrepareCalls(
         data: c.data ?? '0x',
     }))
 
+    const requestedUpgrade = typedParams.capabilities?.accountUpgrade
+    let upgradePreCallEncoding: Hex[] | undefined
+    if (requestedUpgrade) {
+        await assertPaidUpgradeRateCapacity(env, config.chainId, typedParams.from)
+        // Encode before simulation so the digest and the gas estimate include the pre-call.
+        // Signature, delegation, fee, and balance are checked again once the fee is known.
+        try {
+            upgradePreCallEncoding = [encodeSignedPreCall(requestedUpgrade.preCall)]
+        } catch (error) {
+            if (error instanceof RpcError) throw error
+            throw new RpcError(INVALID_PARAMS, 'Invalid authorization nonce')
+        }
+    }
+
     const result = await relayerService.prepareIntent({
         eoa: typedParams.from,
         calls: normalizedCalls,
@@ -101,6 +123,10 @@ export async function handlePrepareCalls(
         paymentMaxAmount,
         prepareKey,
         sessionKey: typedParams.session_key,
+        encodedPreCalls: upgradePreCallEncoding,
+        paidUpgradeDelegation: requestedUpgrade
+            ? config.contracts.accountProxy
+            : undefined,
     })
 
     if (!result.success || !result.typedData || !result.digest) {
@@ -215,12 +241,37 @@ export async function handlePrepareCalls(
         if (onChain) authSigner = claimedSession
     }
 
+    let accountUpgrade: Quote['accountUpgrade']
+    if (requestedUpgrade) {
+        if (paymentAmount <= 0n) {
+            throw new RpcError(INVALID_PARAMS, 'Paid upgrade fee must be greater than zero')
+        }
+        const checked = await assertPaidUpgrade({
+            eoa: typedParams.from,
+            payer,
+            paymentToken,
+            paymentMaxAmount,
+            upgrade: requestedUpgrade,
+            encodedPreCalls: upgradePreCallEncoding,
+            chainId: config.chainId,
+            orchestrator: config.contracts.orchestrator,
+            accountProxy: config.contracts.accountProxy,
+            usdc: chainUsdcAddress(config.chainId),
+            maxPayment: paidUpgradeMaxPayment(env),
+            paymentAmount,
+            publicClient,
+        })
+        accountUpgrade = checked.quote
+        upgradePreCallEncoding = checked.encodedPreCalls
+    }
+
     const quoteIntent: QuoteIntent = {
         eoa: typedParams.from,
         calls: normalizedCalls,
         nonce: result.nonce!,
         combinedGas: result.combinedGas!,
         expiry: result.expiry!,
+        encodedPreCalls: upgradePreCallEncoding,
         payer,
         paymentToken,
         paymentMaxAmount,
@@ -251,6 +302,7 @@ export async function handlePrepareCalls(
             txGas: result.txGas,
             paymentEnabled,
         },
+        accountUpgrade,
     }
 
     const ttl = Math.floor(Date.now() / 1000) + feeConfig.quoteTtlSeconds
@@ -270,6 +322,10 @@ export async function handlePrepareCalls(
         }
     } else {
         signedQuotes.signature = await signQuotes(signedQuotes, quoteSecret)
+    }
+
+    if (requestedUpgrade) {
+        await recordPaidUpgradeRateLimit(env, config.chainId, typedParams.from)
     }
 
     const preparedContext: PrepareCallsContext = {

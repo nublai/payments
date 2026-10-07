@@ -1,5 +1,5 @@
 import type { Hex } from 'viem'
-import type { PrepareCallsContext } from './prepareCalls'
+import type { PaidUpgradeQuote, PrepareCallsContext } from './prepareCalls'
 
 /**
  * Parameters for wallet_sendPreparedCalls (spec-compliant)
@@ -12,6 +12,11 @@ export interface SendPreparedCallsParams {
     capabilities?: {
         feeSignature?: Hex
     }
+    /**
+     * Optional echo of the quoted upgrade. When present, every field must match
+     * the HMAC'd quote. The transaction is built from the quote, not from this copy.
+     */
+    accountUpgrade?: Partial<PaidUpgradeQuote>
 }
 
 /**

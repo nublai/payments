@@ -12,6 +12,30 @@ export interface RpcCall {
 /**
  * Parameters for wallet_prepareCalls
  */
+/**
+ * EIP-7702 authorization for a user-paid first upgrade.
+ * The quote HMAC covers this object. The intent digest does not.
+ */
+export interface PaidUpgradeAuthorization {
+    contractAddress: Address
+    chainId: number
+    nonce: number
+    signature: Hex
+}
+
+/** Key-initialization SignedCall carried inside the HMAC'd quote and the intent. */
+export interface PaidUpgradePreCall {
+    eoa: Address
+    executionData: Hex
+    nonce: string
+    signature: Hex
+}
+
+export interface PaidUpgradeQuote {
+    authorization: PaidUpgradeAuthorization
+    preCall: PaidUpgradePreCall
+}
+
 export interface PrepareCallsParams {
     from?: Address
     chain_id: string // hex
@@ -30,6 +54,11 @@ export interface PrepareCallsParams {
             settler?: Address
             settler_context?: Hex
         }
+        /**
+         * Present only for a USDC-paid first EIP-7702 upgrade.
+         * The relayer copies this onto the quote before the HMAC.
+         */
+        accountUpgrade?: PaidUpgradeQuote
     }
 }
 
@@ -97,6 +126,12 @@ export interface Quote {
         txGas?: string
         paymentEnabled?: boolean
     }
+    /**
+     * User-paid first upgrade. Covered by the quote HMAC together with `intent`,
+     * including `intent.encodedPreCalls`. Send rejects a different authorization
+     * or pre-call.
+     */
+    accountUpgrade?: PaidUpgradeQuote
 }
 
 /**

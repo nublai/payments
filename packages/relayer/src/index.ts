@@ -19,7 +19,7 @@ import type { RpcContext } from './rpc/types'
 import { getChainRpcUrl } from './lib/multi-chain-client'
 import { getRpcCaller } from './auth/caller'
 import { authMiddleware } from './auth/middleware'
-import { createPrivyProvider } from './auth/providers/privy'
+import { identityAuthProviders } from './auth/identity-registry'
 import { createErc8128Provider } from './auth/providers/erc8128'
 // Re-export Durable Objects for Cloudflare
 export { SignerDO } from './durable-objects/signer.do'
@@ -87,7 +87,10 @@ app.use('*', async (c, next) => {
 })
 
 // Shared HTTP authentication for protected JSON-RPC methods (enabled providers: Privy, ERC-8128).
-app.use('*', authMiddleware({ providers: [createPrivyProvider(), createErc8128Provider()] }))
+app.use(
+    '*',
+    authMiddleware({ providers: [...identityAuthProviders(), createErc8128Provider()] }),
+)
 
 // ============================================================================
 // Routes

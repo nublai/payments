@@ -39,6 +39,7 @@ import {
     type UpgradeRateAction,
     type UpgradeRateKind,
 } from '../rpc/methods/shared/upgrade-rate-limit'
+import { paidUpgradeRateBuckets } from '../rpc/methods/shared/paid-upgrade'
 
 class SignerPoolSendError extends Error {
     broadcastAttempted: boolean
@@ -107,7 +108,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     }
                     const body = (await request.json()) as {
                         action?: UpgradeRateAction
-                        kind?: UpgradeRateKind
+                        kind?: UpgradeRateKind | 'paid-upgrade'
                         chainId?: number
                         account?: string
                         ip?: string
@@ -141,7 +142,7 @@ export class SignerPoolDO extends DurableObject<Env> {
      */
     private consumeUpgradeRateLimit(body: {
         action?: UpgradeRateAction
-        kind?: UpgradeRateKind
+        kind?: UpgradeRateKind | 'paid-upgrade'
         chainId?: number
         account?: string
         ip?: string
@@ -154,12 +155,13 @@ export class SignerPoolDO extends DurableObject<Env> {
             body.action === 'commit' ||
             body.action === 'reserve' ||
             body.action === 'release'
+        const paidUpgrade = body.kind === 'paid-upgrade'
         if (
-            (body.kind !== 'prepare' && body.kind !== 'upgrade') ||
+            (body.kind !== 'prepare' && body.kind !== 'upgrade' && !paidUpgrade) ||
             typeof body.chainId !== 'number' ||
             !Number.isInteger(body.chainId) ||
             typeof body.account !== 'string' ||
-            typeof body.ip !== 'string' ||
+            (!paidUpgrade && typeof body.ip !== 'string') ||
             (body.identity !== undefined && typeof body.identity !== 'string') ||
             (body.reservedAt !== undefined && !Number.isInteger(body.reservedAt)) ||
             !knownAction
@@ -169,13 +171,18 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         const action = body.action ?? 'commit'
         const nowSeconds = Math.floor(Date.now() / 1000)
-        const buckets = upgradeRateBuckets({
-            kind: body.kind,
-            chainId: body.chainId,
-            account: body.account,
-            ip: body.ip,
-            identity: body.identity,
-        })
+        const buckets = paidUpgrade
+            ? paidUpgradeRateBuckets({
+                  chainId: body.chainId,
+                  account: body.account,
+              })
+            : upgradeRateBuckets({
+                  kind: body.kind as UpgradeRateKind,
+                  chainId: body.chainId,
+                  account: body.account,
+                  ip: body.ip as string,
+                  identity: body.identity,
+              })
         const sql = this.ensureUpgradeRateSchema()
 
         return this.ctx.storage.transactionSync(() => {

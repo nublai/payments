@@ -20,10 +20,8 @@ import {
     createWalletClient,
     http,
     encodeFunctionData,
-    encodeAbiParameters,
     bytesToHex,
     parseEther,
-    zeroAddress,
     type Address,
     type Hex,
     type PublicClient,
@@ -51,6 +49,7 @@ import type {
 } from '../types/pool'
 import { getContractAddresses } from '../config/addresses'
 import { getPaymentRecipient } from '../services/fees'
+import { encodeIntentCalldata } from '../services/encode-intent'
 import {
     assertAccountUpgradeFee,
     assertAccountUpgradeGas,
@@ -1366,6 +1365,7 @@ export class SignerDO extends DurableObject<Env> {
                         args: [encodedIntent],
                     }),
                     value: 0n,
+                    ...(tx.authorization ? { authorizationList: [tx.authorization] } : {}),
                 }
             }
 
@@ -1588,86 +1588,7 @@ export class SignerDO extends DurableObject<Env> {
      * Encode an intent to bytes for the Orchestrator.execute() call
      */
     private encodeIntentToBytes(intent: IntentStruct): Hex {
-        // Convert calls array to Call[] struct format
-        const calls = intent.calls.map((call) => ({
-            to: call.to as Address,
-            value: call.value ? BigInt(call.value) : 0n,
-            data: (call.data ?? '0x') as Hex,
-        }))
-
-        // Encode calls as executionData (abi.encode(calls))
-        const executionData = encodeAbiParameters(
-            [
-                {
-                    type: 'tuple[]',
-                    components: [
-                        { name: 'to', type: 'address' },
-                        { name: 'value', type: 'uint256' },
-                        { name: 'data', type: 'bytes' },
-                    ],
-                },
-            ],
-            [calls],
-        )
-
-        // Build the Intent struct matching ICommon.Intent
-        const intentForContract = {
-            // EIP-712 Fields
-            eoa: intent.eoa as Address,
-            executionData,
-            nonce: BigInt(intent.nonce),
-            payer: (intent.payer ?? zeroAddress) as Address,
-            paymentToken: (intent.paymentToken ?? zeroAddress) as Address,
-            paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? '0'),
-            combinedGas: BigInt(intent.combinedGas),
-            encodedPreCalls: (intent.encodedPreCalls ?? []) as Hex[],
-            encodedFundTransfers: (intent.encodedFundTransfers ?? []) as Hex[],
-            settler: (intent.settler ?? zeroAddress) as Address,
-            expiry: BigInt(intent.expiry ?? '0'),
-            // Additional Fields (not in EIP-712)
-            isMultichain: intent.isMultichain ?? false,
-            funder: (intent.funder ?? zeroAddress) as Address,
-            funderSignature: (intent.funderSignature ?? '0x') as Hex,
-            settlerContext: (intent.settlerContext ?? '0x') as Hex,
-            paymentAmount: BigInt(intent.paymentAmount ?? '0'),
-            paymentRecipient: (intent.paymentRecipient ?? zeroAddress) as Address,
-            signature: intent.signature as Hex,
-            paymentSignature: (intent.paymentSignature ?? '0x') as Hex,
-            supportedAccountImplementation: (intent.supportedAccountImplementation ??
-                zeroAddress) as Address,
-        }
-
-        // ABI-encode the full Intent struct as bytes
-        return encodeAbiParameters(
-            [
-                {
-                    type: 'tuple',
-                    components: [
-                        { name: 'eoa', type: 'address' },
-                        { name: 'executionData', type: 'bytes' },
-                        { name: 'nonce', type: 'uint256' },
-                        { name: 'payer', type: 'address' },
-                        { name: 'paymentToken', type: 'address' },
-                        { name: 'paymentMaxAmount', type: 'uint256' },
-                        { name: 'combinedGas', type: 'uint256' },
-                        { name: 'encodedPreCalls', type: 'bytes[]' },
-                        { name: 'encodedFundTransfers', type: 'bytes[]' },
-                        { name: 'settler', type: 'address' },
-                        { name: 'expiry', type: 'uint256' },
-                        { name: 'isMultichain', type: 'bool' },
-                        { name: 'funder', type: 'address' },
-                        { name: 'funderSignature', type: 'bytes' },
-                        { name: 'settlerContext', type: 'bytes' },
-                        { name: 'paymentAmount', type: 'uint256' },
-                        { name: 'paymentRecipient', type: 'address' },
-                        { name: 'signature', type: 'bytes' },
-                        { name: 'paymentSignature', type: 'bytes' },
-                        { name: 'supportedAccountImplementation', type: 'address' },
-                    ],
-                },
-            ],
-            [intentForContract],
-        )
+        return encodeIntentCalldata(intent)
     }
 
     /**
