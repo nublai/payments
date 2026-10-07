@@ -46,7 +46,11 @@ import {
     createEthHttpSigner,
     readAccountNonce,
 } from './relayer-client-utils'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+} from './execute-calls'
 import { isMissingFileError } from './fs-utils'
 import { hasLegacyRecipientAlias } from './legacy-recipient-aliases'
 import { RecipientResolutionError, resolveAddressOrEnsInput } from './recipient-resolver'
@@ -156,6 +160,10 @@ type AccountSendDeps = {
         calls: Call[]
         sessionKey?: Hex
         nonce: bigint
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -169,14 +177,7 @@ type AccountSendDeps = {
     waitForBundle: (input: { network: NetworkConfig; id: string }) => Promise<BundleStatusResponse>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            sessionKey?: Hex
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-        },
+        params: ExecuteSignedCallsParams,
     ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
 }
 
@@ -290,6 +291,10 @@ function getDefaultDeps(): AccountSendDeps {
                 calls: input.calls,
                 sessionKey: input.sessionKey,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
             })
         },
         signTypedData: async (input) => {
@@ -536,6 +541,10 @@ export async function executeAccountSend(
                             calls: input.calls,
                             sessionKey: input.sessionKey,
                             nonce: input.nonce,
+                            expiry: input.expiry,
+                            payer: input.payer,
+                            paymentToken: input.paymentToken,
+                            paymentMaxAmount: input.paymentMaxAmount,
                         }),
                     signTypedData: signer.signTypedData,
                     sendPreparedCalls: async (input) =>
@@ -553,6 +562,9 @@ export async function executeAccountSend(
                     sessionKey: sessionPublicKey,
                     signerPrivateKey: signer.signerPrivateKey,
                     signerKeyHash: sessionKeyHash,
+                    chainId: network.chainId,
+                    env: network.env,
+                    rpcUrl: network.rpcUrl,
                 },
             )
         }

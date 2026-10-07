@@ -42,7 +42,11 @@ import {
     createEthHttpSigner,
     readAccountNonce,
 } from './relayer-client-utils'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+} from './execute-calls'
 import { readActiveUsdcDaily } from './session-gates'
 import {
     buildPermissionDefaults,
@@ -156,14 +160,7 @@ type SessionRotateDeps = {
     }) => Promise<GetKeysResponse>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-            sessionKey?: Hex
-        },
+        params: ExecuteSignedCallsParams,
     ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
     prepareCalls: (input: {
         network: CliNetworkConfig
@@ -171,6 +168,10 @@ type SessionRotateDeps = {
         calls: Call[]
         nonce: bigint
         sessionKey?: Hex
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -320,6 +321,10 @@ function getDefaultDeps(): SessionRotateDeps {
                 chainId: input.network.chainId,
                 calls: input.calls,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
                 sessionKey: input.sessionKey,
             })
         },
@@ -679,6 +684,10 @@ export async function executeSessionRotate(
                                 from: input.from,
                                 calls: input.calls,
                                 nonce: input.nonce,
+                                expiry: input.expiry,
+                                payer: input.payer,
+                                paymentToken: input.paymentToken,
+                                paymentMaxAmount: input.paymentMaxAmount,
                                 sessionKey: input.sessionKey,
                             }),
                         signTypedData: deps.signTypedData,
@@ -696,6 +705,9 @@ export async function executeSessionRotate(
                         calls,
                         nonce,
                         signerPrivateKey: decryptedRoot.rootPrivateKey,
+                        chainId: signedNetwork.chainId,
+                        env: signedNetwork.env,
+                        rpcUrl: signedNetwork.rpcUrl,
                     },
                 )
                 bundleId = submission.id

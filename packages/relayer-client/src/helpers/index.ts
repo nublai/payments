@@ -16,6 +16,25 @@ export {
 } from './signPreparedCalls'
 
 export {
+    bindPreparedCalls,
+    PreparedCallsBindingError,
+    ORCHESTRATOR_DOMAIN_NAME,
+    ORCHESTRATOR_DOMAIN_VERSION,
+    INTENT_EXPIRY_TTL_SECONDS,
+    type PreparedCallsExpectation,
+    type BoundPreparedCalls,
+} from './bindPreparedCalls'
+
+export {
+    bindPreparedUpgrade,
+    buildUpgradeExecution,
+    SIGNED_CALL_TYPES,
+    UPGRADE_PRECALL_NONCE,
+    type UpgradeBindingExpectation,
+    type BoundPreparedUpgrade,
+} from './bindPreparedUpgrade'
+
+export {
     executePreparedCalls,
     type ExecutePreparedCallsParams,
     type ExecutePreparedCallsResult,

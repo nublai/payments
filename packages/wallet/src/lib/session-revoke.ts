@@ -31,7 +31,11 @@ import {
     createEthHttpSigner,
     readAccountNonce,
 } from './relayer-client-utils'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+} from './execute-calls'
 import {
     computeSessionKeyHash,
     getChainKeys,
@@ -106,14 +110,7 @@ type SessionRevokeDeps = {
     sleep: (ms: number) => Promise<void>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-            sessionKey?: Hex
-        },
+        params: ExecuteSignedCallsParams,
     ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
     prepareCalls: (input: {
         network: CliNetworkConfig
@@ -121,6 +118,10 @@ type SessionRevokeDeps = {
         calls: Call[]
         nonce: bigint
         sessionKey?: Hex
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -166,6 +167,10 @@ function getDefaultDeps(): SessionRevokeDeps {
                 chainId: input.network.chainId,
                 calls: input.calls,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
                 sessionKey: input.sessionKey,
             })
         },
@@ -376,6 +381,10 @@ export async function executeSessionRevoke(
                             from: input.from,
                             calls: input.calls,
                             nonce: input.nonce,
+                            expiry: input.expiry,
+                            payer: input.payer,
+                            paymentToken: input.paymentToken,
+                            paymentMaxAmount: input.paymentMaxAmount,
                             sessionKey: input.sessionKey,
                         }),
                     signTypedData: deps.signTypedData,
@@ -393,6 +402,9 @@ export async function executeSessionRevoke(
                     calls,
                     nonce,
                     signerPrivateKey: decryptedRoot.rootPrivateKey,
+                    chainId: signedNetwork.chainId,
+                    env: signedNetwork.env,
+                    rpcUrl: signedNetwork.rpcUrl,
                 },
             )
         } catch (error) {

@@ -85,9 +85,13 @@ export async function getCapabilities(
             },
         }
     } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        if (/https/i.test(message)) {
+            throw error instanceof Error ? error : new Error(message)
+        }
         return {
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: message,
             pool: {
                 signerCount: 0,
                 totalCapacity: 0,

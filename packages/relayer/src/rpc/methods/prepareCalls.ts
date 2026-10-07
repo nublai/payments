@@ -158,12 +158,15 @@ export async function handlePrepareCalls(
     }
 
     const ethPriceHex = formatPriceForQuote(nativeUsdPrice)
-    let paymentAmount = feeEstimate.paymentAmount
+    // A zero-payer intent is not charged. The native gas estimate stays in
+    // nativeFeeEstimate; paymentAmount is only the fee the quote will pull.
+    const paymentEnabled = isPaymentEnabled(payer ?? zeroAddress, paymentToken ?? zeroAddress)
+    let paymentAmount = paymentEnabled ? feeEstimate.paymentAmount : 0n
     let paymentTokenDecimals = 18
     // 1e18 means "1 fee token per 1 native token", so convertToFeeToken is the identity for native fees.
     let nativeRate = 10n ** 18n
 
-    if (paymentToken && paymentToken !== zeroAddress) {
+    if (paymentEnabled && paymentToken && paymentToken !== zeroAddress) {
         const normalizedPaymentToken = paymentToken.toLowerCase()
         const assetEntry = Object.entries(chainAssetsConfig.assets ?? {}).find(
             ([, asset]) => asset.address.toLowerCase() === normalizedPaymentToken,
@@ -246,7 +249,7 @@ export async function handlePrepareCalls(
             simulationGas: result.simulationGas,
             combinedGas: result.combinedGas,
             txGas: result.txGas,
-            paymentEnabled: isPaymentEnabled(payer ?? zeroAddress, paymentToken ?? zeroAddress),
+            paymentEnabled,
         },
     }
 

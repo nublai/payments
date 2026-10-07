@@ -13,6 +13,7 @@ export function createCliRelayerClient(network: CliNetworkConfig) {
         relayerActions({
             relayerUrl: network.relayerUrl,
             authSigner: network.authSigner,
+            allowInsecureHttp: network.env === 'dev',
         }),
     )
 }

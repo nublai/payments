@@ -1,6 +1,6 @@
 import { anvil, base, polygon } from 'viem/chains'
 import { zeroAddress, type Address } from 'viem'
-import type { EthHttpSigner } from '@nubl/relayer-client'
+import { assertRelayerUrl, type EthHttpSigner } from '@nubl/relayer-client'
 
 export type EnvName = 'prod' | 'stage' | 'dev'
 export type ChainName = 'base' | 'polygon' | 'anvil'
@@ -81,16 +81,18 @@ export function getChainNameByChainId(chainId: number): ChainName | undefined {
 }
 
 export function getEnvRelayerUrl(env: EnvName): string {
-    if (env === 'dev') {
-        return readEnv('RELAYER_URL_DEV') ?? DEV_RELAYER_URL_DEFAULT
-    }
-    const key = env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE'
-    const value = readEnv(key)
+    const value =
+        env === 'dev'
+            ? (readEnv('RELAYER_URL_DEV') ?? DEV_RELAYER_URL_DEFAULT)
+            : readEnv(env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE')
     if (!value) {
+        const key = env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE'
         throw new Error(
             `${key} is not set. Set it to the relayer base URL for the ${env} environment.`,
         )
     }
+    // Dev may use plain http. Prod and stage must be https unless the host is loopback.
+    assertRelayerUrl(value, { allowInsecureHttp: env === 'dev' })
     return value
 }
 
