@@ -346,7 +346,7 @@ async function confirmElevatedPermission(
         excludeSessionName?: string
         excludeKeyHash?: string
     },
-): Promise<void> {
+): Promise<boolean> {
     const spendLimit = resolveSpendLimitInput({
         spendLimit: input.spendLimit,
         spendLimitRaw: input.spendLimitRaw,
@@ -375,9 +375,9 @@ async function confirmElevatedPermission(
         })
     ) {
         await confirmHuman(reportError, operation, phrase)
-        return
+        return true
     }
-    if (!input.stack) return
+    if (!input.stack) return false
     const proposed = proposedUsdcDaily({
         stack: input.stack,
         grantType: input.grantType,
@@ -387,7 +387,7 @@ async function confirmElevatedPermission(
         token: input.token,
         usdcAddress,
     })
-    if (proposed === null) return
+    if (proposed === null) return false
     const existing = await readActiveUsdcDaily({
         env: input.env,
         chain: input.chain,
@@ -398,7 +398,9 @@ async function confirmElevatedPermission(
     })
     if (existing === 'unreadable' || existing + proposed > DEFAULT_SESSION_SPEND_LIMIT) {
         await confirmHuman(reportError, operation, phrase)
+        return true
     }
+    return false
 }
 
 function fullKeyHash(value?: string): string | undefined {
@@ -1407,7 +1409,7 @@ session.command('create', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
-        await confirmElevatedPermission(
+        const phraseConfirmed = await confirmElevatedPermission(
             reportError,
             'Creating a full-access session',
             CONFIRM_FULL_ACCESS_PHRASE,
@@ -1440,28 +1442,34 @@ session.command('create', {
             },
         )
 
-        const result = await executeSessionCreate({
-            env: options.env,
-            chain: options.chain as ChainName | undefined,
-            name: options.profile,
-            keystorePath: options.keystorePath,
-            sessionName: args.sessionName,
-            activate: options.activate,
-            resume: options.resume,
-            fullAccess: options.fullAccess,
-            target: options.target as `0x${string}` | undefined,
-            selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
-            spendLimit: resolveSpendLimitInput({
-                spendLimit: options.spendLimit,
-                spendLimitRaw: options.spendLimitRaw,
-                parseHumanAmount: parseSpendLimit,
-            }),
-            spendPeriod: options.spendPeriod,
-            expiry: options.expiry,
-            password,
-        })
-
-        return result
+        try {
+            return await executeSessionCreate({
+                env: options.env,
+                chain: options.chain as ChainName | undefined,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                sessionName: args.sessionName,
+                activate: options.activate,
+                resume: options.resume,
+                fullAccess: options.fullAccess,
+                target: options.target as `0x${string}` | undefined,
+                selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
+                spendLimit: resolveSpendLimitInput({
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    parseHumanAmount: parseSpendLimit,
+                }),
+                spendPeriod: options.spendPeriod,
+                expiry: options.expiry,
+                password,
+                fullAccessPhraseConfirmed: phraseConfirmed,
+            })
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            throw error
+        }
     },
 })
 
@@ -1886,14 +1894,13 @@ daemon.command('unlock', {
         expiresAt: z.number(),
     }),
     async run({ args, options, env, error: reportError }) {
-        if (
-            await storedSessionRequiresPhrase({
-                env: options.env,
-                name: options.profile,
-                keystorePath: options.keystorePath,
-                sessionName: args.sessionName,
-            })
-        ) {
+        const requiresPhrase = await storedSessionRequiresPhrase({
+            env: options.env,
+            name: options.profile,
+            keystorePath: options.keystorePath,
+            sessionName: args.sessionName,
+        })
+        if (requiresPhrase) {
             await confirmHuman(
                 reportError,
                 'Unlocking a full-access session',
@@ -1923,6 +1930,7 @@ daemon.command('unlock', {
             duration: options.duration,
             force: options.force,
             device: options.device,
+            humanConfirmed: requiresPhrase,
         })
     },
 })
@@ -2120,7 +2128,7 @@ permissions.command('grant', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
-        await confirmElevatedPermission(
+        const phraseConfirmed = await confirmElevatedPermission(
             reportError,
             'Granting a full-access permission',
             CONFIRM_FULL_ACCESS_PHRASE,
@@ -2154,26 +2162,34 @@ permissions.command('grant', {
             },
         )
 
-        return executePermissionsGrant({
-            env: options.env,
-            chain: options.chain as ChainName | undefined,
-            name: options.profile,
-            keystorePath: options.keystorePath,
-            keyRef: args.keyRef,
-            keyName: options.keyName,
-            keyHash: options.keyHash as `0x${string}` | undefined,
-            grantType: options.type,
-            target: options.target as `0x${string}` | undefined,
-            selector: options.selector as `0x${string}` | undefined,
-            token: options.token as `0x${string}` | undefined,
-            spendLimit: resolveSpendLimitInput({
-                spendLimit: options.spendLimit,
-                spendLimitRaw: options.spendLimitRaw,
-                parseHumanAmount: parseSpendLimitUnits,
-            }),
-            period: options.period,
-            password,
-        })
+        try {
+            return await executePermissionsGrant({
+                env: options.env,
+                chain: options.chain as ChainName | undefined,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                keyRef: args.keyRef,
+                keyName: options.keyName,
+                keyHash: options.keyHash as `0x${string}` | undefined,
+                grantType: options.type,
+                target: options.target as `0x${string}` | undefined,
+                selector: options.selector as `0x${string}` | undefined,
+                token: options.token as `0x${string}` | undefined,
+                spendLimit: resolveSpendLimitInput({
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    parseHumanAmount: parseSpendLimitUnits,
+                }),
+                period: options.period,
+                password,
+                fullAccessPhraseConfirmed: phraseConfirmed,
+            })
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            throw error
+        }
     },
 })
 

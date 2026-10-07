@@ -362,14 +362,33 @@ type StoredPermission = {
 }
 
 /**
- * True when stored permissions are above the full-access gate, or their
- * combined USDC spend on this session is above 10 USDC per day.
- * An empty list that was successfully read is not elevated.
+ * True when every call permission is in the narrow allowlist.
+ * Spend permissions are judged separately. An empty call set fits.
+ */
+export function callPermissionsFitAllowlist(
+    permissions: readonly StoredPermission[],
+    allowedCalls: ReadonlySet<string>,
+): boolean {
+    for (const permission of permissions) {
+        if (permission.type !== 'call') continue
+        const target = permission.to ? normalizeAddress(permission.to) : undefined
+        const selector = permission.selector ? normalizeSelector(permission.selector) : undefined
+        if (!target || !selector) return false
+        if (!allowedCalls.has(`${target}:${selector}`)) return false
+    }
+    return true
+}
+
+/**
+ * True when stored permissions are above the full-access gate, their
+ * combined USDC spend is above 10 USDC per day, or the list is empty.
+ * A narrow verdict needs a positive allowlist match from chain, not an empty read.
  */
 export function storedPermissionsRequirePhrase(
     permissions: readonly StoredPermission[],
     usdcAddress: string | undefined,
 ): boolean {
+    if (permissions.length === 0) return true
     let daily = 0n
     for (const permission of permissions) {
         if (permission.type === 'call') {
