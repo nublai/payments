@@ -4,7 +4,8 @@ import { logger } from '../lib/logger'
 import type { Env } from '../types/env'
 import { setRpcCaller } from './caller'
 import { authorizeRequest } from './engine'
-import { extractAuthRequirement, parseAuthProtectedMethods } from './policy'
+import { runWithAuthIdentity } from './identity'
+import { extractAuthRequirement, resolveAuthProtectedMethods } from './policy'
 import type { AuthFailure, AuthProvider } from './types'
 
 interface MiddlewareDeps {
@@ -42,7 +43,7 @@ export function authMiddleware(deps: MiddlewareDeps = {}): MiddlewareHandler<{
             .json()
             .catch(() => undefined)
 
-        const protectedMethods = parseAuthProtectedMethods(c.env.AUTH_PROTECTED_METHODS)
+        const protectedMethods = resolveAuthProtectedMethods(c.env.AUTH_PROTECTED_METHODS)
         const { requiresAuth, id } = extractAuthRequirement(payload, protectedMethods)
 
         if (!requiresAuth) {
@@ -95,6 +96,13 @@ export function authMiddleware(deps: MiddlewareDeps = {}): MiddlewareHandler<{
             'auth middleware authorized',
         )
 
-        await next()
+        return runWithAuthIdentity(
+            {
+                provider: result.provider ?? '',
+                userId: typeof result.userId === 'string' ? result.userId : '',
+                boundAccounts: result.boundAccounts,
+            },
+            () => next(),
+        )
     }
 }

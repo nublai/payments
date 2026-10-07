@@ -1,19 +1,29 @@
-import type { Address, Hex } from 'viem'
+import { getAddress, type Address, type Hex } from 'viem'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { CreateAccountTransaction, SendResult } from '../../types/pool'
-import type {
-    SignedCall,
-    UpgradeAccountParams,
-    UpgradeAccountResult,
-} from '../schema/upgradeAccount'
-import { RpcError, INVALID_PARAMS, SERVICE_UNAVAILABLE, INTERNAL_ERROR } from '../errors'
+import type { UpgradeAccountParams, UpgradeAccountResult } from '../schema/upgradeAccount'
+import {
+    RpcError,
+    INVALID_PARAMS,
+    INVALID_SIGNATURE,
+    SERVICE_UNAVAILABLE,
+    INTERNAL_ERROR,
+} from '../errors'
 import { getChainConfig } from '../../config'
 import { logger } from '../../lib/logger'
 import { createRelayerPublicClient, isEip7702Delegated } from '../../lib/viem-utils'
-import { requireParam, unwrapParams } from '../../lib/rpc-utils'
-import { waitForDelegationCode, parseSignature, resolveChainId } from './shared/account-helpers'
+import { requireParam, unwrapParams, validateAddress } from '../../lib/rpc-utils'
+import { authIdentityOwnsAccount, upgradeRateIdentity } from '../../auth/identity'
+import {
+    waitForDelegationCode,
+    parseSignature,
+    resolveChainId,
+    authorizationSignerMatchesAccount,
+    assertAllowedUpgradePreCall,
+} from './shared/account-helpers'
 import { getSignerPool } from './shared/signer-pool'
+import { releaseUpgradeRateLimit, reserveUpgradeRateLimit } from './shared/upgrade-rate-limit'
 
 export type {
     UpgradeAccountParams,
@@ -44,6 +54,15 @@ export async function handleUpgradeAccount(
         )
     }
 
+    const accountAddress = validateAddress(context.address, 'context.address')
+    const delegation = validateAddress(
+        context.authorization.contractAddress,
+        'context.authorization.contractAddress',
+    )
+    if (!Number.isInteger(context.authorization.nonce) || context.authorization.nonce < 0) {
+        throw new RpcError(INVALID_PARAMS, 'Invalid authorization nonce')
+    }
+
     const chainId = resolveChainId(env, context.chainId)
     const config = getChainConfig(env, chainId)
 
@@ -55,8 +74,59 @@ export async function handleUpgradeAccount(
         throw new RpcError(INVALID_PARAMS, 'Failed to parse auth signature')
     }
 
+    const authorizationMatches = await authorizationSignerMatchesAccount({
+        account: accountAddress,
+        contractAddress: delegation,
+        chainId: config.chainId,
+        nonce: context.authorization.nonce,
+        signature: signatures.auth,
+    })
+    if (!authorizationMatches) {
+        throw new RpcError(INVALID_SIGNATURE, 'Invalid authorization signature')
+    }
+
+    if (!authIdentityOwnsAccount(accountAddress)) {
+        throw new RpcError(INVALID_PARAMS, 'Authenticated identity is not bound to the account')
+    }
+
+    if (getAddress(delegation) !== getAddress(config.contracts.accountProxy)) {
+        throw new RpcError(INVALID_PARAMS, 'Delegation target is not the account proxy')
+    }
+
+    const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
+    let pendingNonce: number
+    try {
+        pendingNonce = await publicClient.getTransactionCount({
+            address: accountAddress,
+            blockTag: 'pending',
+        })
+    } catch (error) {
+        logger.error({ error, address: accountAddress }, 'failed to fetch account nonce')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
+    }
+    if (pendingNonce !== context.authorization.nonce) {
+        throw new RpcError(INVALID_PARAMS, 'Authorization nonce does not match the account nonce')
+    }
+
+    const allowedPreCall = await assertAllowedUpgradePreCall({
+        account: accountAddress,
+        chainId: config.chainId,
+        orchestrator: config.contracts.orchestrator,
+        executionData: context.preCall.executionData,
+        eoa: context.preCall.eoa,
+        nonce: context.preCall.nonce,
+        execSignature: signatures.exec,
+    })
+
+    const rateIdentity = upgradeRateIdentity(accountAddress)
+    const reservedAt = await reserveUpgradeRateLimit(env, chainId, ctx, {
+        kind: 'upgrade',
+        account: accountAddress,
+        identity: rateIdentity,
+    })
+
     const signedAuth = {
-        address: context.authorization.contractAddress,
+        address: delegation,
         chainId: config.chainId,
         nonce: context.authorization.nonce,
         r: parsedAuthSig.r,
@@ -64,39 +134,52 @@ export async function handleUpgradeAccount(
         yParity: parsedAuthSig.yParity,
     }
 
-    const signedPreCall: SignedCall = {
-        ...context.preCall,
-        signature: signatures.exec,
-    }
-
     const tx: CreateAccountTransaction = {
         id: crypto.randomUUID(),
         type: 'create-account',
-        accountAddress: context.address,
-        ownerAddress: context.address,
+        accountAddress,
+        ownerAddress: accountAddress,
         authorization: signedAuth,
-        preCall:
-            signedPreCall.executionData !== '0x'
-                ? {
-                      eoa: signedPreCall.eoa,
-                      executionData: signedPreCall.executionData,
-                      nonce: signedPreCall.nonce,
-                      signature: signedPreCall.signature,
-                  }
-                : undefined,
+        preCall: allowedPreCall,
     }
 
     const pool = getSignerPool(env, chainId)
-    const response = await pool.fetch(`http://do/send?poolName=pool-${chainId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tx),
-    })
+    let response: Response
+    try {
+        response = await pool.fetch(`http://do/send?poolName=pool-${chainId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(tx),
+        })
+    } catch (error) {
+        logger.error({ error, address: accountAddress }, 'account upgrade pool unavailable')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
+    }
 
     if (!response.ok) {
-        const error = (await response.json()) as { error: string }
-        logger.warn({ address: context.address, error: error.error }, 'account upgrade failed')
-        throw new RpcError(SERVICE_UNAVAILABLE, error.error)
+        let detail = 'unknown'
+        let broadcastAttempted = true
+        try {
+            const errorBody = (await response.json()) as {
+                error?: unknown
+                broadcastAttempted?: unknown
+            }
+            broadcastAttempted = errorBody.broadcastAttempted !== false
+            detail =
+                typeof errorBody.error === 'string' ? errorBody.error : JSON.stringify(errorBody)
+        } catch (parseError) {
+            detail = parseError instanceof Error ? parseError.message : 'unreadable pool error'
+        }
+        if (!broadcastAttempted) {
+            await releaseUpgradeRateLimit(env, chainId, ctx, {
+                kind: 'upgrade',
+                account: accountAddress,
+                identity: rateIdentity,
+                reservedAt,
+            })
+        }
+        logger.warn({ address: accountAddress, error: detail }, 'account upgrade failed')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
 
     const result = (await response.json()) as SendResult
@@ -108,8 +191,6 @@ export async function handleUpgradeAccount(
         },
         'account upgrade submitted, waiting for confirmation',
     )
-
-    const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
 
     try {
         const receipt = await publicClient.waitForTransactionReceipt({
@@ -158,6 +239,6 @@ export async function handleUpgradeAccount(
             { address: context.address, txHash: result.txHash, error },
             'failed waiting for confirmation',
         )
-        throw new RpcError(INTERNAL_ERROR, `Failed to confirm account upgrade: ${error}`)
+        throw new RpcError(INTERNAL_ERROR, 'Failed to confirm account upgrade')
     }
 }

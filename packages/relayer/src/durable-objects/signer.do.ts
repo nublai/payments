@@ -52,6 +52,10 @@ import type {
 import { getContractAddresses } from '../config/addresses'
 import { getPaymentRecipient } from '../services/fees'
 import {
+    assertAccountUpgradeFee,
+    assertAccountUpgradeGas,
+} from '../rpc/methods/shared/upgrade-gas'
+import {
     mapStoredTxStatusToPublicStatus as mapStoredTxStatusToPublicStatusImpl,
     computeReplacementFees,
     shouldApplyFinalization,
@@ -79,6 +83,7 @@ interface PreparedBroadcastTransaction {
     data: Hex
     value: bigint
     authorizationList?: SignedAuthorization[]
+    gas?: bigint
 }
 
 interface FeeParams {
@@ -251,7 +256,12 @@ export class SignerDO extends DurableObject<Env> {
         } catch (error) {
             const message = getErrorMessage(error)
             const code = error instanceof SignerDOError ? error.code : undefined
-            return Response.json({ error: message, code } as SignerError, {
+            // A plain error has no before-send flag. Keep the slot and do not
+            // hand the broadcast to another signer. False is only a known
+            // pre-send SignerDOError that already carries false.
+            const broadcastAttempted =
+                error instanceof SignerDOError ? error.broadcastAttempted : true
+            return Response.json({ error: message, code, broadcastAttempted }, {
                 status: 500,
             })
         }
@@ -889,6 +899,18 @@ export class SignerDO extends DurableObject<Env> {
      * Uses SQLite transaction for atomic nonce allocation
      */
     async sendTransaction(tx: RelayTransaction): Promise<SendResult> {
+        const broadcast = { attempted: false }
+        try {
+            return await this.performSend(tx, broadcast)
+        } catch (error) {
+            throw tagBroadcastAttempt(error, broadcast.attempted)
+        }
+    }
+
+    private async performSend(
+        tx: RelayTransaction,
+        broadcast: { attempted: boolean },
+    ): Promise<SendResult> {
         await this.ensureInitialized()
 
         // Keep local nonce floor in sync with chain pending nonce before reservation.
@@ -1014,6 +1036,7 @@ export class SignerDO extends DurableObject<Env> {
                 successResult.nonce,
                 successResult.chainId,
                 initialFeeParams,
+                broadcast,
             )
         } catch (error) {
             const errorMessage = getErrorMessage(error)
@@ -1060,6 +1083,7 @@ export class SignerDO extends DurableObject<Env> {
                         retryNonce,
                         successResult.chainId,
                         retryFeeParams,
+                        broadcast,
                     )
                     usedFeeParams = retryFeeParams
                     usedNonce = retryNonce
@@ -1385,14 +1409,19 @@ export class SignerDO extends DurableObject<Env> {
         nonce: number,
         chainId: number,
         feeParams: FeeParams,
+        broadcast: { attempted: boolean } = { attempted: false },
     ): Promise<Hex> {
+        const capped = await this.applyCreateAccountCaps(txParams, nonce, chainId, feeParams)
+        broadcast.attempted = true
+        const broadcastParams = capped.txParams
+        const broadcastFees = capped.feeParams
         const { publicClient, walletClient, account } = this.ensureClients(chainId)
         try {
             return await this.sendWithPrimaryPath(
-                txParams,
+                broadcastParams,
                 nonce,
                 chainId,
-                feeParams,
+                broadcastFees,
                 walletClient,
                 account,
             )
@@ -1412,10 +1441,10 @@ export class SignerDO extends DurableObject<Env> {
 
             try {
                 const txHash = await this.sendWithRawFallback(
-                    txParams,
+                    broadcastParams,
                     nonce,
                     chainId,
-                    feeParams,
+                    broadcastFees,
                     publicClient,
                     walletClient,
                     account,
@@ -1435,6 +1464,64 @@ export class SignerDO extends DurableObject<Env> {
                     'BROADCAST_FAILED',
                 )
             }
+        }
+    }
+
+    /**
+     * Account upgrades are the only type-4 broadcasts. Estimate first, then
+     * refuse to sign if gas or maxFeePerGas is above the upgrade cap.
+     */
+    private async applyCreateAccountCaps(
+        txParams: PreparedBroadcastTransaction,
+        nonce: number,
+        chainId: number,
+        feeParams: FeeParams,
+    ): Promise<{ txParams: PreparedBroadcastTransaction; feeParams: FeeParams }> {
+        if (!txParams.authorizationList || txParams.authorizationList.length === 0) {
+            return { txParams, feeParams }
+        }
+
+        try {
+            assertAccountUpgradeFee(feeParams.maxFeePerGas, feeParams.maxPriorityFeePerGas)
+        } catch (error) {
+            throw new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED')
+        }
+
+        const { publicClient, account } = this.ensureClients(chainId)
+        let gas: bigint
+        try {
+            gas = await publicClient.estimateGas({
+                account: account.address,
+                to: txParams.to,
+                data: txParams.data,
+                value: txParams.value,
+                nonce,
+                maxFeePerGas: feeParams.maxFeePerGas,
+                maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
+                authorizationList: txParams.authorizationList,
+            })
+        } catch (error) {
+            throw new SignerDOError(
+                `Failed to estimate account upgrade: ${getErrorMessage(error)}`,
+                'BROADCAST_FAILED',
+            )
+        }
+
+        try {
+            const capped = assertAccountUpgradeGas({
+                gas,
+                maxFeePerGas: feeParams.maxFeePerGas,
+                maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
+            })
+            return {
+                txParams: { ...txParams, gas: capped.gas },
+                feeParams: {
+                    maxFeePerGas: capped.maxFeePerGas,
+                    maxPriorityFeePerGas: capped.maxPriorityFeePerGas,
+                },
+            }
+        } catch (error) {
+            throw new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED')
         }
     }
 
@@ -1465,16 +1552,18 @@ export class SignerDO extends DurableObject<Env> {
         walletClient: WalletClient,
         account: PrivateKeyAccount,
     ): Promise<Hex> {
-        const gas = await publicClient.estimateGas({
-            account: account.address,
-            to: txParams.to,
-            data: txParams.data,
-            value: txParams.value,
-            nonce,
-            maxFeePerGas: feeParams.maxFeePerGas,
-            maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
-            authorizationList: txParams.authorizationList,
-        })
+        const gas =
+            txParams.gas ??
+            (await publicClient.estimateGas({
+                account: account.address,
+                to: txParams.to,
+                data: txParams.data,
+                value: txParams.value,
+                nonce,
+                maxFeePerGas: feeParams.maxFeePerGas,
+                maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
+                authorizationList: txParams.authorizationList,
+            }))
 
         const request = buildRawFallbackBroadcastRequest({
             txParams,
@@ -1992,10 +2081,20 @@ export class SignerDO extends DurableObject<Env> {
  */
 class SignerDOError extends Error {
     code: SignerErrorCode
+    broadcastAttempted: boolean
 
-    constructor(message: string, code: SignerErrorCode) {
+    constructor(message: string, code: SignerErrorCode, broadcastAttempted = true) {
         super(message)
         this.name = 'SignerDOError'
         this.code = code
+        this.broadcastAttempted = broadcastAttempted
     }
+}
+
+function tagBroadcastAttempt(error: unknown, attempted: boolean): SignerDOError {
+    if (error instanceof SignerDOError) {
+        error.broadcastAttempted = attempted
+        return error
+    }
+    return new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED', attempted)
 }

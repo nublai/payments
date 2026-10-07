@@ -51,6 +51,7 @@ export async function authorizeRequest(args: AuthorizeRequestArgs): Promise<Auth
                     ok: true,
                     provider: provider.name,
                     userId: result.userId,
+                    boundAccounts: result.boundAccounts,
                 }
             }
 

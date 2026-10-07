@@ -100,6 +100,8 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 
 Protected JSON-RPC methods are controlled by a shared policy used by all enabled auth mechanisms.
 
+`wallet_prepareUpgradeAccount` and `wallet_upgradeAccount` are always authenticated. They spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. The authenticated identity must be the account (ERC-8128) or a Privy user with a linked account of type `wallet` whose address checksum-matches that account. A Privy smart wallet does not match. The delegation must be the configured account proxy, the authorization nonce must be the account's pending nonce, and arbitrary preCalls are rejected. Key initialization (`authorize`, `setCanExecute`, `setSpendLimit`) is still allowed because `tw account create` / `tw account delegate` and the local payment and escrow flows submit it. Gas, max fee, and priority fee are capped before the upgrade is signed. An upgrade reserves its identity, IP, IPv6 /56, and chain slots in the same step that decides to broadcast, and releases them only when the signer returns before `eth_sendRawTransaction`. Per 10-minute window the upgrade ceilings are 5 per identity, 100 per IP, and 2,000 per chain. Prepare is 10, 400, and 2,000. IPv6 is bucketed by /64 and by /56, both at that IP ceiling, after the text form is normalized. An IPv4 or IPv4-mapped address keeps a single IP bucket and has no /56 bucket. No extra env var is required.
+
 | Name                     | Default                    | Description                                |
 | ------------------------ | -------------------------- | ------------------------------------------ |
 | `AUTH_PROTECTED_METHODS` | `wallet_sendPreparedCalls` | Comma-separated protected JSON-RPC methods |
@@ -135,6 +137,8 @@ Suggested rollout:
 
 - Stage: `AUTH_PROTECTED_METHODS=wallet_sendPreparedCalls,wallet_prepareCalls`
 - Prod: `AUTH_PROTECTED_METHODS=wallet_sendPreparedCalls`
+
+Account upgrade stays on the protected list in every environment, including those two.
 
 ## Deployment
 
