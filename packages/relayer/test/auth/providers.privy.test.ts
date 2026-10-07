@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { Address } from 'viem'
 import type { Env } from '../../src/types/env'
+import { authorizeRequest } from '../../src/auth/engine'
+import { authIdentityOwnsAccount, runWithAuthIdentity } from '../../src/auth/identity'
 
 const privyClientMock = vi.hoisted(() => vi.fn())
 const verifyAuthTokenMock = vi.hoisted(() => vi.fn())
@@ -276,7 +279,12 @@ describe('privy auth provider', () => {
             appId: 'app_123',
             userId: 'did:privy:user_1',
         })
-        getUserByWalletAddressMock.mockResolvedValueOnce({ id: 'did:privy:user_1' })
+        getUserByWalletAddressMock.mockResolvedValueOnce({
+            id: 'did:privy:user_1',
+            linkedAccounts: [
+                { type: 'wallet', address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' },
+            ],
+        })
 
         const provider = createPrivyProvider()
         const result = await provider.verify(
@@ -311,4 +319,79 @@ describe('privy auth provider', () => {
             boundAccounts: ['0x70997970C51812dc3A010C7d01b50e0d17dc79C8'],
         })
     })
+
+    it('rejects an upgrade when the linked wallet does not checksum-match the account', async () => {
+        verifyAuthTokenMock.mockResolvedValueOnce({
+            appId: 'app_123',
+            userId: 'did:privy:user_1',
+        })
+        getUserByWalletAddressMock.mockResolvedValueOnce({
+            id: 'did:privy:user_1',
+            linkedAccounts: [
+                { type: 'wallet', address: '0x00000000000000000000000000000000000000aa' },
+            ],
+        })
+
+        const provider = createPrivyProvider()
+        const result = await authorizeRequest({
+            request: upgradeRequest('0x70997970C51812dc3A010C7d01b50e0d17dc79C8'),
+            env: makeEnv(),
+            nowSeconds: 1_700_000_000,
+            providers: [provider],
+        })
+
+        expect(result).toEqual({
+            ok: false,
+            code: 'NO_LINKED_WALLET',
+            message: 'Privy user is not bound to the account',
+        })
+    })
+
+    it('accepts an upgrade when the linked wallet checksum-matches the account', async () => {
+        const account = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
+        verifyAuthTokenMock.mockResolvedValueOnce({
+            appId: 'app_123',
+            userId: 'did:privy:user_1',
+        })
+        getUserByWalletAddressMock.mockResolvedValueOnce({
+            id: 'did:privy:user_1',
+            linkedAccounts: [{ type: 'wallet', address: account.toLowerCase() }],
+        })
+
+        const result = await authorizeRequest({
+            request: upgradeRequest(account),
+            env: makeEnv(),
+            nowSeconds: 1_700_000_000,
+            providers: [createPrivyProvider()],
+        })
+
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+        expect(result.boundAccounts).toEqual([account])
+        const owns = runWithAuthIdentity(
+            {
+                provider: result.provider ?? 'privy',
+                userId: String(result.userId),
+                boundAccounts: result.boundAccounts,
+            },
+            () => authIdentityOwnsAccount(account),
+        )
+        expect(owns).toBe(true)
+    })
 })
+
+function upgradeRequest(account: string): Request {
+    return new Request('https://relayer.example.com/', {
+        method: 'POST',
+        headers: {
+            Authorization: 'Bearer token_1',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'wallet_upgradeAccount',
+            params: [{ context: { address: account } }],
+        }),
+    })
+}

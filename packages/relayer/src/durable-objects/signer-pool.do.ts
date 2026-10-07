@@ -33,10 +33,21 @@ import { selectSignerForEoa } from '../lib/pool-utils'
 import {
     consumeRateLimit,
     peekRateLimit,
+    releaseRateLimit,
     upgradeRateBuckets,
     type UpgradeRateAction,
     type UpgradeRateKind,
 } from '../rpc/methods/shared/upgrade-rate-limit'
+
+class SignerPoolSendError extends Error {
+    broadcastAttempted: boolean
+
+    constructor(message: string, broadcastAttempted: boolean) {
+        super(message)
+        this.name = 'SignerPoolSendError'
+        this.broadcastAttempted = broadcastAttempted
+    }
+}
 
 // Default configuration
 const DEFAULT_SIGNER_COUNT = 1
@@ -110,6 +121,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
         } catch (error) {
             const message = getErrorMessage(error)
+            if (url.pathname === '/send') {
+                const broadcastAttempted =
+                    error instanceof SignerPoolSendError ? error.broadcastAttempted : false
+                return Response.json({ error: message, broadcastAttempted }, { status: 500 })
+            }
             return Response.json({ error: message } as SignerError, { status: 500 })
         }
     }
@@ -117,8 +133,9 @@ export class SignerPoolDO extends DurableObject<Env> {
     /**
      * Sliding-window limit for account upgrade prepare/broadcast.
      * State lives here because SignerPoolDO is already bound on every chain.
-     * `peek` does not consume a slot. Missing action commits, which is what
-     * a successful submit records.
+     * `peek` does not consume a slot. `reserve` and a missing action commit
+     * the identity, IP, and global slots in one transaction. `release`
+     * returns a reservation that never reached eth_sendRawTransaction.
      */
     private consumeUpgradeRateLimit(body: {
         action?: UpgradeRateAction
@@ -127,7 +144,14 @@ export class SignerPoolDO extends DurableObject<Env> {
         account?: string
         ip?: string
         identity?: string
-    }): { allowed: boolean } {
+        reservedAt?: number
+    }): { allowed: boolean; reservedAt?: number } {
+        const knownAction =
+            body.action === undefined ||
+            body.action === 'peek' ||
+            body.action === 'commit' ||
+            body.action === 'reserve' ||
+            body.action === 'release'
         if (
             (body.kind !== 'prepare' && body.kind !== 'upgrade') ||
             typeof body.chainId !== 'number' ||
@@ -135,7 +159,8 @@ export class SignerPoolDO extends DurableObject<Env> {
             typeof body.account !== 'string' ||
             typeof body.ip !== 'string' ||
             (body.identity !== undefined && typeof body.identity !== 'string') ||
-            (body.action !== undefined && body.action !== 'peek' && body.action !== 'commit')
+            (body.reservedAt !== undefined && !Number.isInteger(body.reservedAt)) ||
+            !knownAction
         ) {
             return { allowed: false }
         }
@@ -169,6 +194,33 @@ export class SignerPoolDO extends DurableObject<Env> {
                 }
             }
 
+            if (action === 'release') {
+                const reservedAt = body.reservedAt ?? nowSeconds
+                releaseRateLimit(store, buckets, reservedAt)
+                for (const bucket of buckets) {
+                    const hits = store.get(`${bucket.key}#${reservedAt}`) ?? 0
+                    const sqlKey = `${bucket.key}#sec`
+                    if (hits <= 0) {
+                        sql.exec(
+                            `DELETE FROM upgrade_rate_windows
+                             WHERE bucket_key = ? AND window_start = ?`,
+                            sqlKey,
+                            reservedAt,
+                        )
+                    } else {
+                        sql.exec(
+                            `INSERT INTO upgrade_rate_windows (bucket_key, window_start, hits)
+                             VALUES (?, ?, ?)
+                             ON CONFLICT(bucket_key, window_start) DO UPDATE SET hits = excluded.hits`,
+                            sqlKey,
+                            reservedAt,
+                            hits,
+                        )
+                    }
+                }
+                return { allowed: true }
+            }
+
             const decision =
                 action === 'peek'
                     ? peekRateLimit(store, buckets, nowSeconds)
@@ -196,7 +248,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 'DELETE FROM upgrade_rate_windows WHERE window_start <= ?',
                 nowSeconds - 3600,
             )
-            return { allowed: true }
+            return action === 'reserve' ? { allowed: true, reservedAt: nowSeconds } : { allowed: true }
         })
     }
 
@@ -387,17 +439,24 @@ export class SignerPoolDO extends DurableObject<Env> {
                     return result
                 }
 
-                // Check if rejection is due to capacity (retry) vs other error (fail)
-                const error = (await response.json()) as SignerError
+                // Check if rejection is due to capacity (retry) vs other error (fail).
+                // An unreadable body is treated as a send: the slot stays reserved.
+                let error: SignerError & { broadcastAttempted?: boolean }
+                try {
+                    error = (await response.json()) as SignerError & { broadcastAttempted?: boolean }
+                } catch {
+                    throw new SignerPoolSendError('unreadable signer error', true)
+                }
+                const broadcastAttempted = error.broadcastAttempted !== false
 
                 if (error.code === 'CAPACITY_EXCEEDED' || error.code === 'PAUSED') {
-                    // Capacity exceeded or paused - try next signer
-                    lastError = new Error(error.error)
+                    // Capacity exceeded or paused - try next signer. Neither reached send.
+                    lastError = new SignerPoolSendError(error.error, false)
                     continue
                 }
 
                 // Other error - throw immediately
-                throw new Error(error.error)
+                throw new SignerPoolSendError(error.error, broadcastAttempted)
             } catch (err) {
                 if (err instanceof Error) {
                     // Check if this is a retryable error
@@ -410,8 +469,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
         }
 
-        // All candidates exhausted
-        throw new Error(lastError?.message ?? 'No signers available - all at capacity')
+        // All candidates exhausted. None of the capacity or pause rejects reached send.
+        throw new SignerPoolSendError(
+            lastError?.message ?? 'No signers available - all at capacity',
+            false,
+        )
     }
 
     /**

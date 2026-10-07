@@ -27,6 +27,8 @@ import {
 } from '../../src/rpc/methods/shared/account-helpers'
 import {
     consumeRateLimit,
+    peekRateLimit,
+    releaseRateLimit,
     upgradeRateBuckets,
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
 
@@ -42,6 +44,8 @@ interface RateBody {
     chainId?: number
     account?: string
     ip?: string
+    identity?: string
+    reservedAt?: number
 }
 
 function providerFor(userId: string): AuthProvider {
@@ -69,7 +73,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
             capture.push(parsed)
             return {
                 ok: false,
-                json: async () => ({ error: 'execution reverted' }),
+                json: async () => ({ error: 'execution reverted', broadcastAttempted: false }),
             } as unknown as Response
         }
 
@@ -78,14 +82,26 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
             chainId: typeof parsed.chainId === 'number' ? parsed.chainId : CHAIN_ID,
             account: parsed.account ?? 'unknown',
             ip: parsed.ip ?? 'unknown',
+            identity: parsed.identity,
         })
+        if (parsed.action === 'release') {
+            releaseRateLimit(
+                store,
+                buckets,
+                typeof parsed.reservedAt === 'number' ? parsed.reservedAt : now,
+            )
+            return {
+                ok: true,
+                json: async () => ({ allowed: true }),
+            } as unknown as Response
+        }
         const allowed =
             parsed.action === 'peek'
-                ? consumeRateLimit(new Map(store), buckets, now).allowed
+                ? peekRateLimit(store, buckets, now).allowed
                 : consumeRateLimit(store, buckets, now).allowed
         return {
             ok: true,
-            json: async () => ({ allowed }),
+            json: async () => ({ allowed, reservedAt: now }),
         } as unknown as Response
     }
 

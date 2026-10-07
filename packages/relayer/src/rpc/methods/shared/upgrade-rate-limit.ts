@@ -5,7 +5,7 @@ import { RpcError, RATE_LIMITED, SERVICE_UNAVAILABLE } from '../../errors'
 import { getSignerPool } from './signer-pool'
 
 export type UpgradeRateKind = 'prepare' | 'upgrade'
-export type UpgradeRateAction = 'peek' | 'commit'
+export type UpgradeRateAction = 'peek' | 'commit' | 'reserve' | 'release'
 
 export interface RateBucket {
     key: string
@@ -18,13 +18,13 @@ const GLOBAL_WINDOW_SECONDS = 10 * 60
 
 /**
  * One authenticated identity may succeed a handful of times per window.
- * The IP and global ceilings are far above that quota, so one caller
- * filling their own budget cannot lock out everyone else on the chain.
- * Slots are committed only after a successful prepare or a submitted upgrade.
+ * The per-IP ceiling stays well below the per-chain ceiling, so one NAT
+ * or the shared `unknown` bucket cannot spend the chain budget.
+ * Upgrade slots are reserved in the same step that decides to broadcast.
  */
 const LIMITS: Record<UpgradeRateKind, { account: number; ip: number; global: number }> = {
-    prepare: { account: 10, ip: 2_000, global: 2_000 },
-    upgrade: { account: 5, ip: 2_000, global: 2_000 },
+    prepare: { account: 10, ip: 400, global: 2_000 },
+    upgrade: { account: 5, ip: 100, global: 2_000 },
 }
 
 export function rateWindowStart(nowSeconds: number, windowSeconds: number): number {
@@ -119,6 +119,26 @@ export function consumeRateLimit(
     return { allowed: true }
 }
 
+/** Drop one reservation from the same second buckets. Counts do not go below zero. */
+export function releaseRateLimit(
+    store: Map<string, number>,
+    buckets: RateBucket[],
+    nowSeconds: number,
+): void {
+    for (const bucket of buckets) {
+        const secondId = `${bucket.key}#${nowSeconds}`
+        const next = (store.get(secondId) ?? 0) - 1
+        if (next <= 0) store.delete(secondId)
+        else store.set(secondId, next)
+
+        const windowStart = rateWindowStart(nowSeconds, bucket.windowSeconds)
+        const windowId = rateWindowId(bucket.key, windowStart)
+        const windowNext = (store.get(windowId) ?? 0) - 1
+        if (windowNext <= 0) store.delete(windowId)
+        else store.set(windowId, windowNext)
+    }
+}
+
 export function upgradeClientIp(request: Request | undefined): string {
     const raw = request?.headers.get('cf-connecting-ip')?.trim() ?? ''
     if (/^[A-Za-z0-9.:]{1,128}$/.test(raw)) {
@@ -131,8 +151,14 @@ async function postUpgradeRateLimit(
     env: Env,
     chainId: number,
     ctx: RpcContext,
-    input: { action: UpgradeRateAction; kind: UpgradeRateKind; account: string; identity: string },
-): Promise<boolean> {
+    input: {
+        action: UpgradeRateAction
+        kind: UpgradeRateKind
+        account: string
+        identity: string
+        reservedAt?: number
+    },
+): Promise<{ allowed: boolean; reservedAt?: number }> {
     const ip = upgradeClientIp(ctx.request)
     const pool = getSignerPool(env, chainId)
 
@@ -148,6 +174,7 @@ async function postUpgradeRateLimit(
                 account: input.account,
                 identity: input.identity,
                 ip,
+                ...(input.reservedAt !== undefined ? { reservedAt: input.reservedAt } : {}),
             }),
         })
     } catch (error) {
@@ -166,8 +193,11 @@ async function postUpgradeRateLimit(
         throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
 
-    const result = (await response.json()) as { allowed?: boolean }
-    return result.allowed === true
+    const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
+    return {
+        allowed: result.allowed === true,
+        reservedAt: typeof result.reservedAt === 'number' ? result.reservedAt : undefined,
+    }
 }
 
 export async function assertUpgradeRateCapacity(
@@ -176,9 +206,40 @@ export async function assertUpgradeRateCapacity(
     ctx: RpcContext,
     input: { kind: UpgradeRateKind; account: string; identity: string },
 ): Promise<void> {
-    const allowed = await postUpgradeRateLimit(env, chainId, ctx, { ...input, action: 'peek' })
-    if (!allowed) {
+    const result = await postUpgradeRateLimit(env, chainId, ctx, { ...input, action: 'peek' })
+    if (!result.allowed) {
         throw new RpcError(RATE_LIMITED, 'Upgrade rate limit exceeded')
+    }
+}
+
+/**
+ * Take the identity, IP, and global slots together. The caller broadcasts
+ * only after this returns. `reservedAt` is the second those slots occupy.
+ */
+export async function reserveUpgradeRateLimit(
+    env: Env,
+    chainId: number,
+    ctx: RpcContext,
+    input: { kind: UpgradeRateKind; account: string; identity: string },
+): Promise<number> {
+    const result = await postUpgradeRateLimit(env, chainId, ctx, { ...input, action: 'reserve' })
+    if (!result.allowed) {
+        throw new RpcError(RATE_LIMITED, 'Upgrade rate limit exceeded')
+    }
+    return result.reservedAt ?? Math.floor(Date.now() / 1000)
+}
+
+/** Give back a reservation that never reached eth_sendRawTransaction. */
+export async function releaseUpgradeRateLimit(
+    env: Env,
+    chainId: number,
+    ctx: RpcContext,
+    input: { kind: UpgradeRateKind; account: string; identity: string; reservedAt: number },
+): Promise<void> {
+    try {
+        await postUpgradeRateLimit(env, chainId, ctx, { ...input, action: 'release' })
+    } catch (error) {
+        logger.error({ error, kind: input.kind, chainId }, 'upgrade rate limit release failed')
     }
 }
 
@@ -189,11 +250,11 @@ export async function recordUpgradeRateLimit(
     input: { kind: UpgradeRateKind; account: string; identity: string },
 ): Promise<void> {
     try {
-        const allowed = await postUpgradeRateLimit(env, chainId, ctx, {
+        const result = await postUpgradeRateLimit(env, chainId, ctx, {
             ...input,
             action: 'commit',
         })
-        if (!allowed) {
+        if (!result.allowed) {
             logger.warn({ kind: input.kind, chainId }, 'upgrade rate limit commit rejected')
         }
     } catch (error) {

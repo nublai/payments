@@ -84,14 +84,37 @@ async function upgradeAccountsFromRequest(
     return { accounts, invalid }
 }
 
+function linkedWalletMatches(
+    user: {
+        wallet?: { address?: string }
+        linkedAccounts?: Array<{ type?: string; address?: string }>
+    },
+    account: Address,
+): boolean {
+    const target = getAddress(account)
+    const candidates: string[] = []
+    if (typeof user.wallet?.address === 'string') candidates.push(user.wallet.address)
+    for (const linked of user.linkedAccounts ?? []) {
+        if (
+            (linked.type === 'wallet' || linked.type === 'smart_wallet') &&
+            typeof linked.address === 'string'
+        ) {
+            candidates.push(linked.address)
+        }
+    }
+    return candidates.some((candidate) => isAddress(candidate) && getAddress(candidate) === target)
+}
+
 async function bindPrivyAccounts(
     client: PrivyClient,
     userId: string,
     accounts: Address[],
-): Promise<{ ok: true; accounts: Address[] } | { ok: false; code: 'NO_LINKED_WALLET'; message: string }> {
+): Promise<
+    { ok: true; accounts: Address[] } | { ok: false; code: 'NO_LINKED_WALLET'; message: string }
+> {
     for (const account of accounts) {
         const user = await client.getUserByWalletAddress(account)
-        if (!user || user.id !== userId) {
+        if (!user || user.id !== userId || !linkedWalletMatches(user, account)) {
             return {
                 ok: false,
                 code: 'NO_LINKED_WALLET',

@@ -32,4 +32,21 @@ describe('account upgrade gas cap', () => {
         expect(allowed.gas).toBe(46_018n)
         expect(allowed.gas).toBeLessThanOrEqual(ACCOUNT_UPGRADE_GAS_LIMIT)
     })
+
+    it('caps maxPriorityFeePerGas on its own', () => {
+        expect(() =>
+            assertAccountUpgradeGas({
+                gas: 46_018n,
+                maxFeePerGas: ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
+                maxPriorityFeePerGas: 90_000_000_000n,
+            }),
+        ).toThrow(/priority fee exceeds cap/)
+
+        const allowed = assertAccountUpgradeGas({
+            gas: 46_018n,
+            maxFeePerGas: ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
+            maxPriorityFeePerGas: 1n,
+        })
+        expect(allowed.maxPriorityFeePerGas).toBe(1n)
+    })
 })

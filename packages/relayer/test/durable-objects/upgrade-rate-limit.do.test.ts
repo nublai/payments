@@ -31,4 +31,50 @@ describe('SignerPoolDO upgrade rate limit', () => {
         expect(blocked.ok).toBe(true)
         expect(await blocked.json()).toEqual({ allowed: false })
     })
+
+    it('releases a reservation that never reached send', async () => {
+        const poolName = 'pool-8453-c1-release'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+        const body = {
+            action: 'reserve',
+            kind: 'upgrade',
+            chainId: 8453,
+            account: '0x2222222222222222222222222222222222222222',
+            ip: '203.0.113.10',
+        }
+
+        let reservedAt = 0
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const response = await stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+            const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
+            expect(result.allowed).toBe(true)
+            reservedAt = result.reservedAt ?? reservedAt
+        }
+
+        const blocked = await stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        expect(await blocked.json()).toEqual({ allowed: false })
+
+        const released = await stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, action: 'release', reservedAt }),
+        })
+        expect(await released.json()).toEqual({ allowed: true })
+
+        const again = await stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        expect(await again.json()).toMatchObject({ allowed: true })
+    })
 })

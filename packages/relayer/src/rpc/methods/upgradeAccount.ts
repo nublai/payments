@@ -23,7 +23,7 @@ import {
     assertAllowedUpgradePreCall,
 } from './shared/account-helpers'
 import { getSignerPool } from './shared/signer-pool'
-import { assertUpgradeRateCapacity, recordUpgradeRateLimit } from './shared/upgrade-rate-limit'
+import { releaseUpgradeRateLimit, reserveUpgradeRateLimit } from './shared/upgrade-rate-limit'
 
 export type {
     UpgradeAccountParams,
@@ -119,7 +119,7 @@ export async function handleUpgradeAccount(
     })
 
     const rateIdentity = upgradeRateIdentity(accountAddress)
-    await assertUpgradeRateCapacity(env, chainId, ctx, {
+    const reservedAt = await reserveUpgradeRateLimit(env, chainId, ctx, {
         kind: 'upgrade',
         account: accountAddress,
         identity: rateIdentity,
@@ -144,30 +144,43 @@ export async function handleUpgradeAccount(
     }
 
     const pool = getSignerPool(env, chainId)
-    const response = await pool.fetch(`http://do/send?poolName=pool-${chainId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tx),
-    })
+    let response: Response
+    try {
+        response = await pool.fetch(`http://do/send?poolName=pool-${chainId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(tx),
+        })
+    } catch (error) {
+        logger.error({ error, address: accountAddress }, 'account upgrade pool unavailable')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
+    }
 
     if (!response.ok) {
         let detail = 'unknown'
+        let broadcastAttempted = true
         try {
-            const errorBody = (await response.json()) as { error?: unknown }
+            const errorBody = (await response.json()) as {
+                error?: unknown
+                broadcastAttempted?: unknown
+            }
+            broadcastAttempted = errorBody.broadcastAttempted !== false
             detail =
                 typeof errorBody.error === 'string' ? errorBody.error : JSON.stringify(errorBody)
         } catch (parseError) {
             detail = parseError instanceof Error ? parseError.message : 'unreadable pool error'
         }
+        if (!broadcastAttempted) {
+            await releaseUpgradeRateLimit(env, chainId, ctx, {
+                kind: 'upgrade',
+                account: accountAddress,
+                identity: rateIdentity,
+                reservedAt,
+            })
+        }
         logger.warn({ address: accountAddress, error: detail }, 'account upgrade failed')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
-
-    await recordUpgradeRateLimit(env, chainId, ctx, {
-        kind: 'upgrade',
-        account: accountAddress,
-        identity: rateIdentity,
-    })
 
     const result = (await response.json()) as SendResult
     logger.info(

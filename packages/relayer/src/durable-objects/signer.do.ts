@@ -256,7 +256,9 @@ export class SignerDO extends DurableObject<Env> {
         } catch (error) {
             const message = getErrorMessage(error)
             const code = error instanceof SignerDOError ? error.code : undefined
-            return Response.json({ error: message, code } as SignerError, {
+            const broadcastAttempted =
+                error instanceof SignerDOError ? error.broadcastAttempted : false
+            return Response.json({ error: message, code, broadcastAttempted }, {
                 status: 500,
             })
         }
@@ -894,6 +896,18 @@ export class SignerDO extends DurableObject<Env> {
      * Uses SQLite transaction for atomic nonce allocation
      */
     async sendTransaction(tx: RelayTransaction): Promise<SendResult> {
+        const broadcast = { attempted: false }
+        try {
+            return await this.performSend(tx, broadcast)
+        } catch (error) {
+            throw tagBroadcastAttempt(error, broadcast.attempted)
+        }
+    }
+
+    private async performSend(
+        tx: RelayTransaction,
+        broadcast: { attempted: boolean },
+    ): Promise<SendResult> {
         await this.ensureInitialized()
 
         // Keep local nonce floor in sync with chain pending nonce before reservation.
@@ -1019,6 +1033,7 @@ export class SignerDO extends DurableObject<Env> {
                 successResult.nonce,
                 successResult.chainId,
                 initialFeeParams,
+                broadcast,
             )
         } catch (error) {
             const errorMessage = getErrorMessage(error)
@@ -1065,6 +1080,7 @@ export class SignerDO extends DurableObject<Env> {
                         retryNonce,
                         successResult.chainId,
                         retryFeeParams,
+                        broadcast,
                     )
                     usedFeeParams = retryFeeParams
                     usedNonce = retryNonce
@@ -1390,8 +1406,10 @@ export class SignerDO extends DurableObject<Env> {
         nonce: number,
         chainId: number,
         feeParams: FeeParams,
+        broadcast: { attempted: boolean } = { attempted: false },
     ): Promise<Hex> {
         const capped = await this.applyCreateAccountCaps(txParams, nonce, chainId, feeParams)
+        broadcast.attempted = true
         const broadcastParams = capped.txParams
         const broadcastFees = capped.feeParams
         const { publicClient, walletClient, account } = this.ensureClients(chainId)
@@ -2060,10 +2078,20 @@ export class SignerDO extends DurableObject<Env> {
  */
 class SignerDOError extends Error {
     code: SignerErrorCode
+    broadcastAttempted: boolean
 
-    constructor(message: string, code: SignerErrorCode) {
+    constructor(message: string, code: SignerErrorCode, broadcastAttempted = true) {
         super(message)
         this.name = 'SignerDOError'
         this.code = code
+        this.broadcastAttempted = broadcastAttempted
     }
+}
+
+function tagBroadcastAttempt(error: unknown, attempted: boolean): SignerDOError {
+    if (error instanceof SignerDOError) {
+        error.broadcastAttempted = attempted
+        return error
+    }
+    return new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED', attempted)
 }

@@ -91,7 +91,8 @@ describe('upgrade rate limit', () => {
             ip: '203.0.113.5',
         })
         expect(buckets[2].limit).toBeGreaterThan(buckets[0].limit * 100)
-        expect(buckets[1].limit).toBeGreaterThan(buckets[0].limit * 100)
+        expect(buckets[1].limit).toBeGreaterThan(buckets[0].limit)
+        expect(buckets[2].limit).toBeGreaterThan(buckets[1].limit * 10)
     })
 
     it('rejects at the global cap before a fresh account is exhausted', () => {
