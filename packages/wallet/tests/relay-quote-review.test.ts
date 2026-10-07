@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
+import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { formatQuotedBuy, formatRelayQuoteCalls, reviewRelayQuote } from '../src/lib/relay-allowlist'
 import { quoteSpendCalls } from '../src/lib/quote-spend'
 import { accountAbi } from '@nubl/contracts/abis'
@@ -947,7 +948,7 @@ test('installs the quoted spend limit before signing and simulates twice', async
         },
         installQuoteSpendLimit: async (value) => {
             events.push('install')
-            expect(value.bound.usdcLimit).toBe(CAP)
+            expect(value.bound.usdcLimit).toBe(CAP + PAID_FEE_CAP)
             expect(value.bound.nativeLimit).toBe(0n)
             expect(value.bound.usdcLimit).not.toBe(2n ** 256n - 1n)
             expect(value.bound.nativeLimit).not.toBe(2n ** 256n - 1n)

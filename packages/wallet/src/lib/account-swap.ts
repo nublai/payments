@@ -44,6 +44,7 @@ import {
     type RelayerSessionKeystoreV2,
 } from './keystore'
 import { isMissingFileError } from './fs-utils'
+import { resolveIntentPayment } from './intent-payment'
 import { PromptCancelledError } from './password-readline'
 import {
     createCliRelayerClient,
@@ -1282,12 +1283,23 @@ export async function executeAccountSwap(
             legacyUsdc && legacyUsdc.toLowerCase() !== usdc.toLowerCase() ? legacyUsdc : undefined,
             ...review.tokens,
         ].filter((token): token is Address => Boolean(token))
+        // The Orchestrator fee is charged against the same USDC minute slot as
+        // the swap input, so that slot also has to fit the signed fee cap.
+        const intentPayment = resolveIntentPayment(
+            signedNetwork.env,
+            signedNetwork.chainId,
+            sender,
+        )
+        const usdcFeeCap =
+            getAddress(intentPayment.paymentToken) === getAddress(usdc)
+                ? intentPayment.paymentMaxAmount
+                : 0n
         const bound: QuoteSpendBound = {
             keyHash: sessionKeyHash,
             account: sender,
             nativeLimit: fromToken === 'ETH' ? parsedAmount.baseUnits : 0n,
             usdc,
-            usdcLimit: fromToken === 'USDC' ? parsedAmount.baseUnits : 0n,
+            usdcLimit: (fromToken === 'USDC' ? parsedAmount.baseUnits : 0n) + usdcFeeCap,
             frozenTokens,
         }
         return await deps.withAccountLock(keystorePath, async () => {
