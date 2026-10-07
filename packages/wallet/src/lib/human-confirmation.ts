@@ -18,6 +18,8 @@ export class HumanConfirmationError extends Error {
 
 export const CONFIRM_SEND_PHRASE = 'SEND USDC'
 export const CONFIRM_FULL_ACCESS_PHRASE = 'CREATE FULL ACCESS SESSION'
+/** Dedicated swap session. Not a wildcard. MCP and non-TTY callers cannot supply it. */
+export const CONFIRM_SWAP_SESSION_PHRASE = 'CREATE SWAP SESSION'
 export const CONFIRM_ROTATE_FULL_ACCESS_PHRASE = 'ROTATE FULL ACCESS SESSION'
 export const CONFIRM_UNLOCK_FULL_ACCESS_PHRASE = 'UNLOCK FULL ACCESS SESSION'
 export const CONFIRM_REVOKE_FULL_ACCESS_PHRASE = 'REVOKE FULL ACCESS SESSION'

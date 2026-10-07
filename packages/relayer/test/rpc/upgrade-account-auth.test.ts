@@ -14,6 +14,7 @@ import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { hashAuthorization } from 'viem/utils'
 
+import { formerProd8453Env } from '../former-prod-env'
 import { authMiddleware } from '../../src/auth/middleware'
 import type { AuthProvider } from '../../src/auth/types'
 import { dispatch } from '../../src/rpc/dispatcher'
@@ -84,6 +85,7 @@ function createEnv(
         RPC_URL,
         RPC_8453: RPC_URL,
         CONTEXT: 'prod',
+        ...formerProd8453Env,
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',

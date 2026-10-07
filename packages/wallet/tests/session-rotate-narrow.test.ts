@@ -12,6 +12,7 @@ import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
@@ -21,9 +22,33 @@ const newAddress = privateKeyToAccount(newSessionKey).address
 const rootPrivateKey =
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
 
+const anvilDeployEnv = {
+    ORCHESTRATOR_31337: '0x2222222222222222222222222222222222222222',
+    SIMPLE_FUNDER_31337: '0x0000000000000000000000000000000000000004',
+    SIMULATOR_31337: '0x0000000000000000000000000000000000000005',
+    ACCOUNT_31337: '0x0000000000000000000000000000000000000003',
+    ACCOUNT_PROXY_31337: '0x1111111111111111111111111111111111111111',
+    SIMPLE_SETTLER_31337: '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE',
+    ESCROW_31337: '0x05f9597eed844410b7c0746A1C584188d0644730',
+    MULTI_SIG_SIGNER_31337: '0x0000000000000000000000000000000000000008',
+}
+
+function useAnvilDeployments(): () => void {
+    const previous: Record<string, string | undefined> = {}
+    for (const [key, value] of Object.entries(anvilDeployEnv)) {
+        previous[key] = process.env[key]
+        process.env[key] = value
+    }
+    return () => {
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+        }
+    }
+}
+
 test('executeSessionRotate --narrow revokes the old key and installs the narrow default', async () => {
-    const previous = process.env.RELAYER_URL_PROD
-    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:9'
+    const restore = useAnvilDeployments()
     const captured: Hex[] = []
     const oldSession = {
         addresses: { session: oldAddress, delegated: account },
@@ -38,8 +63,8 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
     try {
         const result = await executeSessionRotate(
             {
-                env: 'prod',
-                chain: 'base',
+                env: 'dev',
+                chain: 'anvil',
                 keystorePath: '/tmp/narrow-rotate.json',
                 password: 'pw',
                 narrow: true,
@@ -81,7 +106,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
                 readActiveUsdcDaily: mock(async () => 0n),
                 getKeys: mock(async () => ({
-                    '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+                    '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
                 })),
                 executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
@@ -123,7 +148,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
         const revoked = decoded.find((entry) => entry.functionName === 'revoke')
         expect(revoked?.args[0]).toBe(computeSessionKeyHash(oldAddress))
 
-        const expected = getDefaultSessionPermissions(8453, { env: 'prod' }).filter(
+        const expected = getDefaultSessionPermissions(31337, { env: 'dev' }).filter(
             (permission) => permission.type === 'call',
         )
         const installed = decoded
@@ -144,9 +169,9 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
         const spend = decoded.find((entry) => entry.functionName === 'setSpendLimit')
         expect(spend?.args[2]).toBe(2)
         expect(spend?.args[3]).toBe(10_000_000n)
+        expect(() => getDefaultSessionPermissions(8453, { env: 'prod' })).toThrow(/not deployed/)
     } finally {
-        if (previous === undefined) delete process.env.RELAYER_URL_PROD
-        else process.env.RELAYER_URL_PROD = previous
+        restore()
     }
 })
 
@@ -229,14 +254,13 @@ function rotateDeps(overrides: Record<string, unknown>) {
 }
 
 test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers', async () => {
-    const previous = process.env.RELAYER_URL_PROD
-    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:9'
+    const restore = useAnvilDeployments()
     const captured: Hex[] = []
     try {
         await executeSessionRotate(
             {
-                env: 'prod',
-                chain: 'base',
+                env: 'dev',
+                chain: 'anvil',
                 keystorePath: '/tmp/narrow-rotate-clear.json',
                 password: 'pw',
                 narrow: true,
@@ -244,6 +268,9 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                 fullAccessPhraseConfirmed: true,
             },
             rotateDeps({
+                getKeys: mock(async () => ({
+                    '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
+                })),
                 readGuardCleanup: mock(async () => ({
                     anyCalls: [
                         {
@@ -293,8 +320,7 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
             true,
         )
     } finally {
-        if (previous === undefined) delete process.env.RELAYER_URL_PROD
-        else process.env.RELAYER_URL_PROD = previous
+        restore()
     }
 })
 
@@ -348,6 +374,7 @@ const PLANTED_SELECTOR = '0x39509351' as Hex
 test('extra-chain cleanup resolves the fee policy for that chain', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const prepares: {
         chainId: number
         payer?: Address
@@ -366,6 +393,9 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                 newName: 'default-next',
             },
             rotateDeps({
+                getKeys: mock(async () => ({
+                    '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+                })),
                 readGuardCleanup: mock(async (input: { chainId: number }) => {
                     if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
                     return {
@@ -433,6 +463,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
         expect(decoded.args[2]).toBe(PLANTED_SELECTOR)
         expect(decoded.args[3]).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -454,6 +485,9 @@ function partialRotateHarness(mode: 'status' | 'throw') {
     }
     const prepares: { chainId: number }[] = []
     const deps = rotateDeps({
+        getKeys: mock(async () => ({
+            '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+        })),
         readRotationIntent: mock(async () => savedIntent),
         writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
             savedIntent = { ...value, fileName: fileName ?? 'rotation.json' }
@@ -547,6 +581,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
 test('a failed extra-chain bundle is a partial rotation and keeps both session files', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
     try {
         await expect(
@@ -558,6 +593,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
         expect(harness.unlinked.some((path) => path.endsWith('default.json'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -566,6 +602,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
 test('a thrown extra-chain wait keeps the new session file', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('throw')
     try {
         await expect(
@@ -576,6 +613,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
         })
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -584,6 +622,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
 test('resuming a partial rotation finishes the extra-chain cleanup', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
     try {
         await expect(
@@ -603,6 +642,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
         )
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -613,7 +653,9 @@ const attacker = '0x4444444444444444444444444444444444444444' as Address
 function stageEnv<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     return fn().finally(() => {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     })
@@ -624,6 +666,9 @@ test('resume after a successful rotation does not start another rotation', async
         let intent: Record<string, unknown> | null = null
         const signed: string[] = []
         const deps = rotateDeps({
+            getKeys: mock(async () => ({
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
             readRotationIntent: mock(async () => intent),
             writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
                 intent = { ...value, fileName: fileName ?? '.rotation.json' }
@@ -856,6 +901,9 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
     await stageEnv(async () => {
         const daily = mock(async () => 0n)
         const deps = rotateDeps({
+            getKeys: mock(async () => ({
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
             readRotationIntent: mock(async () => ({
                 ...(await sealRotationMarker(
                     {

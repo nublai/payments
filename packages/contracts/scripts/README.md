@@ -29,10 +29,12 @@ anvil
 
 ## deploy.sh
 
-The bash deployment script is a powerful, chain-agnostic deployment tool supporting:
+The bash deployment script unsets inherited `FOUNDRY_*` and `DAPP_*` variables, then sets `FOUNDRY_PROFILE=release` (via IR, 200 optimizer runs) for every `forge build` and `forge script` it runs. Before any broadcast it refuses a symlink under `deployments/` or `deploy/` and runs `scripts/sh/check-runtime-size.sh`, which fails if release-profile runtime bytecode for Account, Orchestrator, Simulator, Escrow, MultiSigSigner, SimpleFunder, SimpleSettler, or LayerZeroSettler is over 24,576 bytes, or if `compilationTarget`, `appendCBOR`, `bytecodeHash`, `optimizer.enabled`, or `evmVersion` is not the release profile. RPC, private key, sender, and contract-list values are quoted arguments, and forge flags that change bytecode are refused. `build:contracts` and `generate` run the same check. The forge CI job, `build:contracts`, `deploy.sh`, and both local e2e deploys use the release profile. The size check prints the Account runtime size and the headroom under 24,576 bytes. `forge test` without `FOUNDRY_PROFILE=release` stays on the default profile and is not a deploy or CI artifact. Hardlinks, a symlink created after the check, and `vm.ffi` paths are not covered by the symlink refusal. CI is a fresh checkout.
+
+The bash deployment script is a chain-agnostic deployment tool supporting:
 - **Multi-chain deployment** - Deploy to any EVM chain, multiple chains at once
 - **Full or selective deployment** - Deploy all contracts or specific ones
-- **Resume failed deployments** - Skip already-deployed contracts
+- **Failed deployments** - Rerun the same command. `--resume` is refused
 - **Dry run mode** - Simulate without broadcasting
 - **Built-in chain support** - Optimism, Arbitrum, Polygon, Base (Sepolia/Mainnet), Anvil
 - **CREATE2 deterministic addresses** - Same address across chains
@@ -88,8 +90,15 @@ Verification:
 
 Other:
   --dry-run                Simulate without broadcasting
-  --resume                 Skip contracts that are already deployed
   --help                   Show this help message
+
+`--resume` is refused. `forge script --resume` rebroadcasts stored initcode and does not compare it to the release artifact.
+
+Compiler:
+  FOUNDRY_PROFILE=release is hard-set for forge build and forge script.
+  This Foundry has no profile CLI flag. The release profile's only cheatcode
+  write path is ./deployments.
+  Runtime bytecode must be <= 24576 bytes or the script exits before broadcast.
 ```
 
 ### Quick Examples
@@ -118,9 +127,6 @@ Other:
 
 # Dry run to test deployment
 ./scripts/sh/deploy.sh prod --dry-run --account deployer
-
-# Resume a failed deployment
-./scripts/sh/deploy.sh prod --resume --account deployer
 
 # Deploy with custom gas settings on congested network
 ./scripts/sh/deploy.sh --chain 137 --gas-price 100 --priority-fee 30 --account deployer
@@ -195,19 +201,16 @@ Deploy specific contracts only:
 - `SimpleSettler` - Requires owner
 - `LayerZeroSettler` - Requires endpoint, owner, signer
 
-### Resume Failed Deployments
+### Resume is refused
 
-If a deployment fails partway through, resume from where it left off:
+`deploy.sh` does not forward `--resume`. `forge script --resume` rebroadcasts the initcode stored in `broadcast/` and does not compare it to the release artifact.
 
 ```bash
-# Resume prod deployment
 ./scripts/sh/deploy.sh prod --resume --account deployer
-
-# Resume with same options as original deployment
-./scripts/sh/deploy.sh --chain 10 --resume --account deployer
+# Error: refusing --resume
 ```
 
-The `--resume` flag skips contracts that are already deployed at their predicted CREATE2 addresses.
+CREATE2 already skips a contract whose predicted address has runtime that matches the release artifact. A failed broadcast is rerun with the same `deploy.sh` command, without `--resume`.
 
 ### Gas Configuration
 
@@ -460,6 +463,19 @@ All contracts (except AccountProxy) use CREATE2 via `DeployFacetWithArgs`:
 - Already-deployed contracts are automatically skipped
 - Use `deployer.getDeployedAddress(name)` to get predicted/deployed address
 
+Nubl contracts have never been deployed. The addresses in `addresses.json` and `envs/*.json` are inherited from the Towns deployment and are not ours. There are no existing nubl accounts to migrate or re-delegate. The first deploy uses the release build. That change must replace every address in `addresses.json` and `envs/*.json` with our release CREATE2 addresses in the same change, and check that each JSON address's on-chain code hash matches the release artifact. That check is implemented. `DeployUnified` and `deploy.sh` first compare on-chain runtime to the release artifact with `scripts/sh/match-release-runtime.py`, which masks every `immutableReferences` span, including Solady EIP-712 chain id and cached address. After a masked match, `scripts/sol/common/ReleaseRuntime.sol` checks the trusted immutables against their expected values: `Account.ORCHESTRATOR()` must be the release Orchestrator verified in the same deploy or JSON check, and `LayerZeroSettler.endpoint()` must be `LZ_ENDPOINT`, which on Base, Arbitrum, and Polygon must be the LayerZero V2 endpoint `0x1a44076050125825900e736c501f859c50fE728c` and on Base Sepolia `0x6EDCE65403992e310A62460808c4b910D972f10f`. It then runs the release creation code with the expected constructor args at the same address and requires the returned runtime byte for byte, which also pins the five Solady EIP-712 immutables. A mismatch fails closed in `DeployUnified`, both for a reused dependency and for code already at a CREATE2 address, and in the `deploy.sh` post-broadcast check (`scripts/sol/VerifyRelease.s.sol`), which also requires `accountProxy.json` to be an EIP7702Proxy whose implementation is the verified Account. A JSON dependency address is used only when the masked compare matches; one that matches masked but has the wrong immutables is a revert. Code already at a CREATE2 address that does not match is a revert, because CREATE2 cannot replace it. Non-local entries in `addresses.json` and `envs/*.json` are the zero address until that first deploy, so the wallet and relayer fail closed with `not deployed`.
+
+Release-profile bytecode is not the default-profile bytecode, so the addresses change. Salt is 0 and the factory is `0x4e59b44847b379578588920cA78FbF26c0B4956C`.
+
+| Contract | Inherited Towns address | This tree, default profile | This tree, release profile |
+| --- | --- | --- | --- |
+| Escrow | `0x05f9597eed844410b7c0746A1C584188d0644730` | same address | `0x13122A1dc74D0adc144c904e963d7d58BBe0E5f9` |
+| MultiSigSigner | `0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3` | same address | `0x1DdE1F548A0b0a676D325B2633eA3E5F5E7C52c8` |
+| Orchestrator | `0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8` or `0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC` | `0x2a87aD816CD97423E731E15206F0a84941B35B23` | `0xE6CfdB399efdc88FA11964072AB519c65c044130` |
+| Simulator | `0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65` | `0x7abfE2f168Cc82229F00D9Dd529E48b0f2515c72` | `0x58915cA306aF01724EC5d9AfE75a1Ce4C8dc4A08` |
+
+Account, SimpleFunder, SimpleSettler, and LayerZeroSettler append constructor arguments to that creation bytecode. The creation bytecode differs between profiles, so those CREATE2 addresses change for the same arguments. AccountProxy is not this salt-0 CREATE2 deployment.
+
 ## Local Setup
 
 The script automatically handles local environment setup:
@@ -529,21 +545,16 @@ export RPC_999=https://custom-rpc.com
 ```
 
 ### Contract already deployed
-CREATE2 ensures idempotency - if a contract exists at its predicted address, it's skipped automatically. This is expected behavior and not an error.
+CREATE2 skips a predicted address when the on-chain runtime matches the release artifact. Code at that address that does not match reverts, because CREATE2 cannot replace it. A JSON dependency address is used only when its code matches the same way.
 
-To redeploy anyway, manually remove the deployment JSON file:
+Removing the deployment JSON does not clear code at the CREATE2 address. A matching runtime stays. To redeploy a contract that has no matching code, remove the stale JSON file and run the same command:
 ```bash
 rm deployments/envs/dev/84532/orchestrator.json
 ./scripts/sh/deploy.sh dev --contracts Orchestrator --account deployer
 ```
 
 ### Deployment failed partway through
-Use `--resume` to skip already-deployed contracts:
-```bash
-./scripts/sh/deploy.sh prod --resume --account deployer
-```
-
-This is especially useful after network issues or gas price spikes.
+Rerun the same `deploy.sh` command. `--resume` is refused, because it would rebroadcast stored initcode without comparing it to the release artifact. CREATE2 skips a predicted address only when the on-chain runtime matches the release artifact.
 
 ### Gas price too low
 On congested networks, specify higher gas settings:
@@ -609,7 +620,4 @@ When deploying to multiple chains, if one fails:
 ./scripts/sh/deploy.sh --chain 137 --account deployer
 ```
 
-Or use `--resume` to automatically skip succeeded chains:
-```bash
-./scripts/sh/deploy.sh --chain 10,42161,137 --resume --account deployer
-```
+`--resume` is refused and does not skip succeeded chains. Pass only the chain ids that still need a deploy.

@@ -15,6 +15,16 @@ contract MockPaymentToken is ERC20 {
         return true;
     }
 
+    /// @dev OpenZeppelin-style allowance increment. Production tokens such as USDC expose this.
+    function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+        return approve(spender, allowance(msg.sender, spender) + addedValue);
+    }
+
+    /// @dev Older DAI-style allowance increment. Same accounting shape as `increaseAllowance`.
+    function increaseApproval(address spender, uint256 addedValue) public returns (bool) {
+        return approve(spender, allowance(msg.sender, spender) + addedValue);
+    }
+
     function name() public view virtual override returns (string memory) {
         return "Name";
     }

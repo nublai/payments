@@ -170,6 +170,7 @@ export class SessionDaemonClient {
         kind?: string
         encryptionDevice?: Hex
         phraseConfirmed?: boolean
+        swapSession?: boolean
         env?: 'dev' | 'stage' | 'prod'
     }): Promise<SessionDaemonRpcResponse<{ name: string; address: Address; expiresAt: number }>> {
         const response = await this.request({
@@ -183,6 +184,7 @@ export class SessionDaemonClient {
                 kind: input.kind,
                 encryptionDevice: input.encryptionDevice,
                 phraseConfirmed: input.phraseConfirmed,
+                swapSession: input.swapSession,
                 env: input.env,
             },
         })

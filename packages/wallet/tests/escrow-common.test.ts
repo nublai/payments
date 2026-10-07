@@ -208,10 +208,8 @@ test('executeEscrowCreate trims relative deadline input before validation', asyn
     expect((err as EscrowError).code).not.toBe('INVALID_ARGUMENT')
 })
 
-test('resolveEscrowContracts uses dev deployment context', () => {
-    const contracts = resolveEscrowContracts('dev', 84532, 'base')
-    expect(contracts.escrowAddress).toBe('0x05f9597eed844410b7c0746A1C584188d0644730')
-    expect(contracts.simpleSettlerAddress).toBe('0x90cacD85C1dc93af2D2D3e6c380162bBe07bb329')
+test('resolveEscrowContracts refuses a zeroed non-local deployment', () => {
+    expect(() => resolveEscrowContracts('dev', 84532, 'base')).toThrow(/not deployed/)
 })
 
 test('executeEscrowSettle rejects mismatched oracle private key', async () => {

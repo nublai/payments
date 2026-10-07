@@ -7,7 +7,7 @@
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
-        "build:contracts": "forge build && wagmi generate && tsc && cp deployments/addresses.json dist/ && cp -r deployments/config dist/",
+        "build:contracts": "FOUNDRY_PROFILE=release forge build && FOUNDRY_PROFILE=release wagmi generate && ./scripts/sh/check-runtime-size.sh && tsc && cp deployments/addresses.json dist/ && cp -r deployments/config dist/",
         "build": "tsc && cp deployments/addresses.json dist/ && cp -r deployments/config dist/",
         "coverage": "forge coverage --report summary",
         "deploy:local": "./scripts/sh/deploy.sh local",
@@ -16,7 +16,7 @@
         "deploy:stage": "./scripts/sh/deploy.sh stage",
         "dev": "./scripts/sh/dev.sh",
         "fmt": "prettier --write \"src/**/*.sol\" \"test/**/*.sol\" \"scripts/sol/**/*.sol\"",
-        "generate": "wagmi generate",
+        "generate": "FOUNDRY_PROFILE=release wagmi generate && ./scripts/sh/check-runtime-size.sh",
         "lint": "prettier --check \"src/**/*.sol\" \"test/**/*.sol\" \"scripts/sol/**/*.sol\"",
         "make-config": "node ./deployments/make-config.js",
         "test": "forge test -vvv",

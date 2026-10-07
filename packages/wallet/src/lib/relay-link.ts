@@ -41,6 +41,7 @@ export type RelayCurrencyAmount = {
     amount: string
     amountFormatted?: string
     amountUsd?: string
+    minimumAmount?: string
     currency?: {
         symbol?: string
         name?: string
@@ -60,6 +61,12 @@ export type RelayQuoteResponse = {
         totalImpact?: { usd?: string; percent?: string }
         rate?: string
         timeEstimate?: number
+    }
+    protocol?: {
+        v2?: {
+            orderId?: string
+            orderData?: Record<string, unknown>
+        }
     }
 }
 
@@ -161,8 +168,23 @@ async function postJson<TRequest, TResponse>(
             'content-type': 'application/json',
         },
         body: JSON.stringify(body),
+        redirect: 'error',
         signal: createTimeoutSignal(),
     })
+    const payload = await readRelayPayload(response)
+    return payload as TResponse
+}
+
+function assertNoRedirect(response: Response): void {
+    if (response.redirected || (response.status >= 300 && response.status < 400)) {
+        throw new RelayLinkError('API_ERROR', 'relay.link redirected the request. Refusing to follow it.', {
+            statusCode: response.status,
+        })
+    }
+}
+
+async function readRelayPayload(response: Response): Promise<unknown> {
+    assertNoRedirect(response)
     const payload = await parseRelayResponse(response)
     if (!response.ok) {
         throw new RelayLinkError(
@@ -174,7 +196,7 @@ async function postJson<TRequest, TResponse>(
             },
         )
     }
-    return payload as TResponse
+    return payload
 }
 
 async function getJson<TResponse>(
@@ -187,20 +209,10 @@ async function getJson<TResponse>(
         url.searchParams.set(key, value)
     }
     const response = await deps.fetch(url.toString(), {
+        redirect: 'error',
         signal: createTimeoutSignal(),
     })
-    const payload = await parseRelayResponse(response)
-    if (!response.ok) {
-        throw new RelayLinkError(
-            'API_ERROR',
-            getErrorMessage(payload, `relay.link request failed with ${response.status}.`),
-            {
-                statusCode: response.status,
-                details: payload,
-            },
-        )
-    }
-    return payload as TResponse
+    return (await readRelayPayload(response)) as TResponse
 }
 
 function createTimeoutSignal(): AbortSignal | undefined {
@@ -317,6 +329,18 @@ function normalizeQuoteResponse(payload: unknown): RelayQuoteResponse {
         details: isRecord(payload.details)
             ? (payload.details as RelayQuoteResponse['details'])
             : undefined,
+        protocol: normalizeProtocol(payload.protocol),
+    }
+}
+
+function normalizeProtocol(value: unknown): RelayQuoteResponse['protocol'] {
+    if (!isRecord(value) || !isRecord(value.v2)) return undefined
+    const orderData = value.v2.orderData
+    return {
+        v2: {
+            orderId: typeof value.v2.orderId === 'string' ? value.v2.orderId : undefined,
+            orderData: isRecord(orderData) ? orderData : undefined,
+        },
     }
 }
 

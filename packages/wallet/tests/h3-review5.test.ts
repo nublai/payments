@@ -52,7 +52,7 @@ function orchestratorIntent(
         domain: {
             name: 'Orchestrator',
             version: '0.5.5',
-            chainId: 8453,
+            chainId: 31337,
             verifyingContract: ORCHESTRATOR,
         },
         types: {
@@ -82,7 +82,32 @@ function orchestratorIntent(
     }
 }
 
+function installAnvilDeployments(): () => void {
+    const values: Record<string, string> = {
+        ORCHESTRATOR_31337: ORCHESTRATOR,
+        SIMPLE_FUNDER_31337: '0x0000000000000000000000000000000000000004',
+        SIMULATOR_31337: '0x0000000000000000000000000000000000000005',
+        ACCOUNT_31337: '0x0000000000000000000000000000000000000003',
+        ACCOUNT_PROXY_31337: '0x1111111111111111111111111111111111111111',
+        SIMPLE_SETTLER_31337: '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE',
+        ESCROW_31337: ESCROW,
+        MULTI_SIG_SIGNER_31337: '0x0000000000000000000000000000000000000008',
+    }
+    const previous: Record<string, string | undefined> = {}
+    for (const [key, value] of Object.entries(values)) {
+        previous[key] = process.env[key]
+        process.env[key] = value
+    }
+    return () => {
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+        }
+    }
+}
+
 async function loadPhraseLess() {
+    const restore = installAnvilDeployments()
     const dir = await mkdtemp(join(tmpdir(), 'tw-h3-daemon-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session.sock')
     const daemon = await runSessionDaemon()
@@ -93,14 +118,14 @@ async function loadPhraseLess() {
         privateKey: TEST_PRIVATE_KEY,
         address: account.address,
         durationSeconds: 60,
-        env: 'prod',
+        env: 'dev',
     })
     expect(load?.ok).toBe(true)
-    return { daemon, client }
+    return { daemon, client, restore }
 }
 
 test('a phrase-less session refuses non-Orchestrator typed data and signMessage', async () => {
-    const { daemon, client } = await loadPhraseLess()
+    const { daemon, client, restore } = await loadPhraseLess()
     try {
         const other = await client.sign('default', {
             domain: { name: 'session-daemon-test', version: '1', chainId: 8453, verifyingContract: ORCHESTRATOR },
@@ -122,11 +147,12 @@ test('a phrase-less session refuses non-Orchestrator typed data and signMessage'
         }
     } finally {
         await daemon.stop()
+        restore()
     }
 })
 
 test('a phrase-less session refuses increaseAllowance, transferFrom, and an unknown target', async () => {
-    const { daemon, client } = await loadPhraseLess()
+    const { daemon, client, restore } = await loadPhraseLess()
     try {
         const increase = encodeFunctionData({
             abi: parseAbi(['function increaseAllowance(address spender, uint256 addedValue)']),
@@ -153,11 +179,12 @@ test('a phrase-less session refuses increaseAllowance, transferFrom, and an unkn
         expect(unknown?.ok).toBe(false)
     } finally {
         await daemon.stop()
+        restore()
     }
 })
 
 test('a phrase-less session allows an in-budget USDC transfer and refuses a cumulative one past 10/day', async () => {
-    const { daemon, client } = await loadPhraseLess()
+    const { daemon, client, restore } = await loadPhraseLess()
     const account = privateKeyToAccount(TEST_PRIVATE_KEY)
     try {
         const first = orchestratorIntent([{ to: USDC, value: 0n, data: transfer(6_000_000n) }])
@@ -202,6 +229,7 @@ test('a phrase-less session allows an in-budget USDC transfer and refuses a cumu
         expect(escrow?.ok).toBe(false)
     } finally {
         await daemon.stop()
+        restore()
     }
 })
 

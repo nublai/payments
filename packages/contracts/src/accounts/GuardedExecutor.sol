@@ -99,6 +99,17 @@ abstract contract GuardedExecutor is ERC7821 {
     /// @dev In order to spend a token, it must have spend permissions set.
     error NoSpendPermissions();
 
+    /// @dev A metered token's `balanceOf` failed, reverted, or returned short data.
+    error SpendBalanceReadFailed();
+
+    /// @dev A nested `execute` ran while a guarded batch was still in progress.
+    error GuardedReentrancy();
+
+    /// @dev Transient flag set for the rest of a guarded batch. Not a storage slot.
+    /// EIP-1153. This account already uses transient storage for the key-hash stack.
+    bytes32 internal constant _GUARDED_BATCH_TRANSIENT_SLOT =
+        bytes32(uint256(keccak256("GUARDED_BATCH_TRANSIENT_SLOT")) - 1);
+
     /// @dev Super admin keys can execute everything.
     error SuperAdminCanExecuteEverything();
 
@@ -215,14 +226,83 @@ abstract contract GuardedExecutor is ERC7821 {
         DynamicArrayLib.DynamicArray permit2Spenders;
     }
 
-    /// @dev The `_execute` function imposes spending limits with the following:
-    /// 1. For every token with a spending limit, the
-    ///    `max(sum(outgoingAmounts), balanceBefore - balanceAfter)`
-    ///    will be added to the spent limit.
-    /// 2. Any token that is granted a non-zero approval will have the approval
-    ///    reset to zero after the calls.
-    /// 3. Except for the EOA and super admins, a spend limit has to be set for the
-    ///    `keyHash` in order for it to spend tokens.
+    /// @dev Reused buffer for per-call balance metering.
+    /// `buf` is length `2n`: spent totals, then the pre-call account balances.
+    struct _MeterSnap {
+        uint256[] buf;
+        uint256[] tokens;
+    }
+
+
+    /// @dev Spend guard for a limited key.
+    ///
+    /// Guarantee. A spend limit protects tokens this account holds directly, for a key
+    /// whose on-chain `canExecute` is an allowlist of targets that hold no standing
+    /// rights over the account's assets. Standing rights are an ERC-20 allowance, a
+    /// Permit2 allowance, an ERC-721 or ERC-1155 operator approval, a vault share
+    /// allowance or operator role, and a signature-checker approval.
+    /// `Account.isValidSignature` accepts a non-root key when `msg.sender` is in that
+    /// key's checker set, so an ERC-1271 permit through the checker can `transferFrom`
+    /// outside `execute` and this guard never runs. This contract meters balances. It
+    /// does not read those rights. Today the wallet does not refuse a payment session
+    /// when an allowlisted target already holds a standing right. Root can revoke those
+    /// rights. A scan of payment-key targets for those rights, at session creation and
+    /// again at use, is a planned follow-up.
+    ///
+    /// Wildcard keys (`ANY_TARGET` or `ANY_FN_SEL`) and super-admin keys are outside
+    /// this guarantee. A super-admin key, and the root key (key hash 0), skip the
+    /// guard. A wildcard key is still metered for its own balance decrease and for
+    /// recognized selectors. A target that key can call may already hold a standing right.
+    ///
+    /// Covered, on chain. The only balance-metered tokens are those with a spend period
+    /// for `keyHash`. There is no hardcoded token list. For each metered token the
+    /// charge is `max(sum of recognized calldata amounts, sum of per-call balance
+    /// decreases)`. Each call is measured on its own. A later call's inflow does not
+    /// reduce an earlier call's charge. The per-call figure is the drop in this
+    /// account's own balance. A failed, reverted, or short `balanceOf` on a metered
+    /// token reverts the batch with `SpendBalanceReadFailed`. `pay` uses that same
+    /// read. For a metered token its charge is `max(paymentAmount, this account's
+    /// balance decrease)`. The approval reset and Permit2 lockdown are measured the
+    /// same way, and any extra debit is added to the per-call sum before the limit check.
+    ///
+    /// While this guarded batch is running, any nested `execute` into this account
+    /// (orchestrator, signed `opData`, or self-execute) reverts `GuardedReentrancy`.
+    /// The flag is one transient-storage slot (EIP-1153, `tstore`/`tload`). It is not
+    /// part of the contract storage layout. This account already requires transient
+    /// storage for the key-hash stack.
+    ///
+    /// Recognized selectors are priced from calldata even when that is the whole charge:
+    /// `transfer`, `transferFrom` (out of this account), `approve`, `increaseAllowance`,
+    /// `increaseApproval`, and Permit2 `approve`. Non-zero ERC20 approvals are reset to
+    /// zero after the batch. Permit2 approvals are locked down. A recognized non-zero
+    /// amount with no spend period reverts `NoSpendPermissions`.
+    /// `increaseAllowance` and `increaseApproval` stay charged and reset because a
+    /// leftover allowance can drain the account. They are not a balance probe.
+    ///
+    /// Outside the guarantee:
+    /// - A donor top-up in the same call as a drop in someone else's balance. The
+    ///   charge is this account's own balance decrease. A drop in the call target's
+    ///   inventory is not spend.
+    /// - A vault `withdraw`, or a forward, through a target that already holds a
+    ///   standing right over assets this account keeps outside its token balance.
+    /// - Credit-then-pull through a standing allowance, when the ending balance of
+    ///   this account does not fall.
+    /// - An in-batch permit signed by the EOA (EIP-2612, DAI `permit`, Permit2
+    ///   `permit`) and a session `customApprove` (any approval selector other than
+    ///   `approve`, `increaseAllowance`, and `increaseApproval`). Those selectors are
+    ///   not reset. A later pull of a token that still has no spend period is not charged.
+    /// - A hostile metered token. `balanceOf` returns 32 bytes of a lie (a constant,
+    ///   or a proxy that pins the pre-transfer balance), or an unrecognized selector
+    ///   debits this account and refills the balance before the call returns.
+    /// - A token with no spend period. A non-root key can move it through any call
+    ///   that is not a recognized selector, and the move is not charged. That includes
+    ///   swap output and any other token this account already holds, a spender the
+    ///   root key approved earlier (a proxy with no `balanceOf`, the Escrow `escrow`
+    ///   selector alone on a narrow key, a three-item `escrow` whose only non-zero
+    ///   amount is not a recognized selector, a puller whose token word sits behind a
+    ///   32-word pad, a puller that masks the token word with `address(uint160(word))`),
+    ///   and a call to token A that pulls token B.
+    ///
     /// Note: Called internally in ERC7821, which coalesce zero-address `target`s to
     /// `address(this)`.
     function _execute(Call[] calldata calls, bytes32 keyHash) internal virtual override {
@@ -232,6 +312,7 @@ abstract contract GuardedExecutor is ERC7821 {
         }
 
         SpendStorage storage spends = _getGuardedExecutorKeyStorage(keyHash).spends;
+        _setGuardedBatch(1);
         _ExecuteTemps memory t;
 
         // Collect all ERC20 tokens that need to be guarded,
@@ -247,83 +328,51 @@ abstract contract GuardedExecutor is ERC7821 {
             }
         }
 
-        // We will only filter based on functions that are known to use `msg.sender`.
-        // For signature-based approvals (e.g. permit), we can't do anything
-        // to guard, as anyone else can directly submit the calldata and the signature.
+        // Recognized selectors are priced from calldata. Balance metering is only the
+        // tokens that already have a spend period. Signature permits are not revoked.
         uint256 totalNativeSpend;
         for (uint256 i; i < calls.length; ++i) {
             (address target, uint256 value, bytes calldata data) = _get(calls, i);
             if (value != 0) totalNativeSpend += value;
-            if (data.length < 4) continue;
-            uint32 fnSel = uint32(bytes4(LibBytes.loadCalldata(data, 0x00)));
-            // `transfer(address,uint256)`.
-            if (fnSel == 0xa9059cbb) {
-                t.erc20s.p(target);
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24)); // `amount`.
-            }
-            // `transferFrom(address,address,uint256)`.
-            // The account may have existing ERC20 allowances. If `transferFrom` is used
-            // to transfer to an account that is not `address(this)`, treat it as outflow.
-            if (fnSel == 0x23b872dd) {
-                // `transferFrom(address from, address to, uint256 amount)`.
-                if (LibBytes.loadCalldata(data, 0x24).lsbToAddress() == address(this)) continue;
-                if (LibBytes.loadCalldata(data, 0x44) == 0) continue; // `amount == 0`.
-                t.erc20s.p(target);
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44)); // `amount`.
-            }
-            // `approve(address,uint256)`.
-            // We have to revoke any new approvals after the batch, else a bad app can
-            // leave an approval to let them drain unlimited tokens after the batch.
-            if (fnSel == 0x095ea7b3) {
-                if (LibBytes.loadCalldata(data, 0x24) == 0) continue; // `amount == 0`.
-                t.approvedERC20s.p(target);
-                t.approvalSpenders.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress()); // `spender`.
-                t.erc20s.p(target); // `token`.
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24)); // `amount`.
-            }
-            // The only Permit2 method that requires `msg.sender` to approve.
-            // `approve(address,address,uint160,uint48)`.
-            // For ERC20 tokens giving Permit2 infinite approvals by default,
-            // the approve method on Permit2 acts like a approve method on the ERC20.
-            if (fnSel == 0x87517c45) {
-                if (target != _PERMIT2) continue;
-                if (LibBytes.loadCalldata(data, 0x44) == 0) continue; // `amount == 0`.
-                t.permit2ERC20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress()); // `token`.
-                t.permit2Spenders.p(LibBytes.loadCalldata(data, 0x24).lsbToAddress()); // `spender`.
-                t.erc20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress()); // `token`.
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44)); // `amount`.
-            }
+            _accountForCall(t, target, data);
         }
 
         // Sum transfer amounts, grouped by the ERC20s. In-place.
         LibSort.groupSum(t.erc20s.data, t.transferAmounts.data);
 
-        // Collect the ERC20 balances before the batch execution.
-        uint256[] memory balancesBefore = DynamicArrayLib.malloc(t.erc20s.length());
-        for (uint256 i; i < t.erc20s.length(); ++i) {
-            address token = t.erc20s.getAddress(i);
-            balancesBefore.set(i, SafeTransferLib.balanceOf(token, address(this)));
-        }
+        // Execute call by call. A later call's inflow cannot cancel an earlier call's decrease.
+        _MeterSnap memory snap = _executeAndSumDecreases(calls, keyHash, t.erc20s);
 
-        // Perform the batch execution.
-        ERC7821._execute(calls, keyHash);
-
-        // Perform after the `_execute`, so that in the case where `calls`
+        // Perform after the calls, so that in the case where `calls`
         // contain a `setSpendLimit`, it will affect the `_incrementSpent`.
         _incrementSpent(spends.spends[address(0)], address(0), totalNativeSpend);
 
-        // Revoke all non-zero approvals that have been made.
-        // As spend permissions are whitelist style, we need to make sure that
-        // approvals are revoked. This is to prevent sidestepping the guard.
-        for (uint256 i; i < t.approvedERC20s.length(); ++i) {
-            address token = t.approvedERC20s.getAddress(i);
-            SafeTransferLib.safeApprove(token, t.approvalSpenders.getAddress(i), 0);
+        // Revoke non-zero approvals, then measure any balance that left in the reset.
+        // The reset is outside the per-call snapshot. An `approve(0)` that transfers
+        // is still this account's spend.
+        if (t.approvedERC20s.length() != 0) {
+            _meter(snap, 0);
+            for (uint256 i; i < t.approvedERC20s.length(); ++i) {
+                SafeTransferLib.safeApprove(
+                    t.approvedERC20s.getAddress(i),
+                    t.approvalSpenders.getAddress(i),
+                    0
+                );
+            }
+            _meter(snap, 1);
         }
 
-        // Revoke all non-zero Permit2 direct approvals that have been made.
-        for (uint256 i; i < t.permit2ERC20s.length(); ++i) {
-            address token = t.permit2ERC20s.getAddress(i);
-            SafeTransferLib.permit2Lockdown(token, t.permit2Spenders.getAddress(i));
+        // Revoke non-zero Permit2 direct approvals. A debit here is charged on its own,
+        // so a later inflow cannot hide the approval reset.
+        if (t.permit2ERC20s.length() != 0) {
+            _meter(snap, 0);
+            for (uint256 i; i < t.permit2ERC20s.length(); ++i) {
+                SafeTransferLib.permit2Lockdown(
+                    t.permit2ERC20s.getAddress(i),
+                    t.permit2Spenders.getAddress(i)
+                );
+            }
+            _meter(snap, 1);
         }
 
         // Increments the spent amounts.
@@ -333,20 +382,171 @@ abstract contract GuardedExecutor is ERC7821 {
             _incrementSpent(
                 tokenSpends,
                 token,
-                // While we can actually just use the difference before and after,
-                // we also want to let the sum of the transfer amounts in the calldata to be capped.
-                // This prevents tokens to be used as flash loans, and also handles cases
-                // where the actual token transfers might not match the calldata amounts.
-                // There is no strict definition on what constitutes spending,
-                // and we want to be as conservative as possible.
-                Math.max(
-                    t.transferAmounts.get(i),
-                    Math.saturatingSub(
-                        balancesBefore.get(i),
-                        SafeTransferLib.balanceOf(token, address(this))
-                    )
-                )
+                // Calldata amounts cover allowance changes, which do not move the balance.
+                // Decreases cover tokens that left during the calls and during the reset,
+                // including a fee above the calldata amount. The larger of the two is the charge.
+                Math.max(t.transferAmounts.get(i), snap.buf[i])
             );
+        }
+        _setGuardedBatch(0);
+    }
+
+    /// @dev Executes `calls` one at a time and sums each guarded token's balance decrease.
+    /// A failed or short `balanceOf` on a guarded token reverts the batch.
+    function _executeAndSumDecreases(
+        Call[] calldata calls,
+        bytes32 keyHash,
+        DynamicArrayLib.DynamicArray memory erc20s
+    ) internal returns (_MeterSnap memory snap) {
+        snap = _newMeterSnap(erc20s);
+        // First `n` words are the spent totals. The caller indexes with `erc20s.length()`.
+        uint256 callCount = calls.length;
+        for (uint256 c; c < callCount; ++c) {
+            (address target, uint256 value, bytes calldata data) = _get(calls, c);
+            _meter(snap, 0);
+            _execute(target, value, data, keyHash);
+            _meter(snap, 1);
+        }
+    }
+
+    /// @dev Allocates the reused balance buffers away from the execute loop.
+    function _newMeterSnap(
+        DynamicArrayLib.DynamicArray memory erc20s
+    ) internal pure returns (_MeterSnap memory snap) {
+        snap.buf = new uint256[](erc20s.length() << 1);
+        snap.tokens = erc20s.data;
+    }
+
+    /// @dev This account's balance of `token`. A revert, a short return, a non-contract,
+    /// or an out-of-gas `balanceOf` reverts `SpendBalanceReadFailed`.
+    function _accountBalance(address token) internal view returns (uint256 bal) {
+        bytes4 err = SpendBalanceReadFailed.selector;
+        /// @solidity memory-safe-assembly
+        assembly {
+            mstore(0x14, address())
+            mstore(0x00, 0x70a08231000000000000000000000000)
+            let ok := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
+            if iszero(and(ok, gt(returndatasize(), 0x1f))) {
+                mstore(0x00, err)
+                revert(0x00, 0x04)
+            }
+            bal := mload(0x20)
+        }
+    }
+
+    /// @dev `fold == 0` stores this account's balance. `fold == 1` adds the decrease.
+    /// The staticcall matches `_accountBalance`. It stays inline: a Solidity loop
+    /// that calls the helper does not fit under the account size limit.
+    function _meter(_MeterSnap memory snap, uint256 fold) internal view {
+        bytes4 err = SpendBalanceReadFailed.selector;
+        /// @solidity memory-safe-assembly
+        assembly {
+            let n := shr(1, mload(mload(snap)))
+            let i := 0
+            for {} lt(i, n) {} {
+                let p := shl(5, i)
+                i := add(i, 1)
+                let token := mload(add(add(mload(add(snap, 0x20)), 0x20), p))
+                mstore(0x14, address())
+                mstore(0x00, 0x70a08231000000000000000000000000)
+                let ok := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
+                if iszero(and(ok, gt(returndatasize(), 0x1f))) {
+                    mstore(0x00, err)
+                    revert(0x00, 0x04)
+                }
+                let bal := mload(0x20)
+                // Layout: [spent | beforeBal], `n` words each.
+                let step := shl(5, n)
+                let base := add(mload(snap), 0x20)
+                let balSlot := add(add(base, step), p)
+                if iszero(fold) { mstore(balSlot, bal) }
+                if fold {
+                    let beforeB := mload(balSlot)
+                    let accountDec := 0
+                    if gt(beforeB, bal) { accountDec := sub(beforeB, bal) }
+                    let decSlot := add(base, p)
+                    let sum := add(mload(decSlot), accountDec)
+                    if lt(sum, accountDec) { sum := not(0) }
+                    mstore(decSlot, sum)
+                }
+            }
+        }
+    }
+
+    /// @dev Records recognized calldata spend for one call.
+    /// Unrecognized calls are not probed. A token with a spend period is already in
+    /// `t.erc20s` and is snapshotted around the call.
+    function _accountForCall(
+        _ExecuteTemps memory t,
+        address target,
+        bytes calldata data
+    ) internal view {
+        if (data.length >= 4) {
+            uint32 fnSel = uint32(bytes4(LibBytes.loadCalldata(data, 0x00)));
+            // `transfer(address,uint256)`.
+            if (fnSel == 0xa9059cbb) {
+                t.erc20s.p(target);
+                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24)); // `amount`.
+                return;
+            }
+            // `transferFrom(address,address,uint256)`.
+            // Existing allowances can be spent by this key. A transfer into this account
+            // is inflow. A zero amount is not spend.
+            if (fnSel == 0x23b872dd) {
+                if (LibBytes.loadCalldata(data, 0x24).lsbToAddress() != address(this)) {
+                    if (LibBytes.loadCalldata(data, 0x44) != 0) {
+                        t.erc20s.p(target);
+                        t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44)); // `amount`.
+                    }
+                }
+                return;
+            }
+            // `approve(address,uint256)`, `increaseAllowance(address,uint256)`,
+            // `increaseApproval(address,uint256)`.
+            // Reset after the batch so a leftover allowance cannot drain the account,
+            // and count the amount or the increment against the spend limit.
+            if (fnSel == 0x095ea7b3 || fnSel == 0x39509351 || fnSel == 0xd73dd623) {
+                if (LibBytes.loadCalldata(data, 0x24) != 0) {
+                    t.approvedERC20s.p(target);
+                    t.approvalSpenders.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress());
+                    t.erc20s.p(target);
+                    t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24));
+                }
+                return;
+            }
+            // Permit2 `approve(address,address,uint160,uint48)`.
+            // For tokens that give Permit2 infinite approval, this is the ERC20 approve.
+            if (fnSel == 0x87517c45 && target == _PERMIT2) {
+                if (LibBytes.loadCalldata(data, 0x44) != 0) {
+                    t.permit2ERC20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress());
+                    t.permit2Spenders.p(LibBytes.loadCalldata(data, 0x24).lsbToAddress());
+                    t.erc20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress());
+                    t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44));
+                }
+                return;
+            }
+        }
+    }
+
+    /// @dev Sets the guarded-batch flag. A revert rolls transient storage back.
+    function _setGuardedBatch(uint256 open) internal {
+        bytes32 slot = _GUARDED_BATCH_TRANSIENT_SLOT;
+        /// @solidity memory-safe-assembly
+        assembly {
+            tstore(slot, open)
+        }
+    }
+
+    /// @dev Revert if a guarded batch is already running in this transaction.
+    function _revertIfGuardedBatch() internal view {
+        bytes32 slot = _GUARDED_BATCH_TRANSIENT_SLOT;
+        bytes4 err = GuardedReentrancy.selector;
+        /// @solidity memory-safe-assembly
+        assembly {
+            if tload(slot) {
+                mstore(0x00, err)
+                revert(0x00, 0x04)
+            }
         }
     }
 

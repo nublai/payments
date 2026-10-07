@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, expect, mock, test } from 'bun:test'
 import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -10,6 +10,15 @@ import {
     SessionSignerDaemonError,
     SessionSignerExpiredError,
 } from '../src/lib/signer'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 const TEST_PRIVATE_KEY =
     '0x59c6995e998f97a5a0044966f0945388cf6f64f6b5f8a6d4f7e7a3fa8f8ff7f0' as const

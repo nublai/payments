@@ -731,11 +731,31 @@ contract Account is IAccount, EIP712, GuardedExecutor {
             }
         }
 
+        // Meter a token that has a spend period around the transfer. The charge is
+        // max(paymentAmount, this account's balance decrease). Root and super-admin
+        // skip the guard. Native value is the exact amount sent.
+        bool limited = !(keyHash == bytes32(0) || _isSuperAdmin(keyHash));
+        uint256 beforeBal;
+        bool meterPay = limited &&
+            intent.paymentToken != address(0) &&
+            _getGuardedExecutorKeyStorage(keyHash).spends.spends[intent.paymentToken].periods.length() !=
+            0;
+        if (meterPay) beforeBal = _accountBalance(intent.paymentToken);
+
         TokenTransferLib.safeTransfer(intent.paymentToken, intent.paymentRecipient, paymentAmount);
-        // Increase spend.
-        if (!(keyHash == bytes32(0) || _isSuperAdmin(keyHash))) {
-            SpendStorage storage spends = _getGuardedExecutorKeyStorage(keyHash).spends;
-            _incrementSpent(spends.spends[intent.paymentToken], intent.paymentToken, paymentAmount);
+
+        if (limited) {
+            uint256 charge = paymentAmount;
+            if (meterPay) {
+                uint256 afterBal = _accountBalance(intent.paymentToken);
+                uint256 dec = beforeBal > afterBal ? beforeBal - afterBal : 0;
+                if (dec > charge) charge = dec;
+            }
+            _incrementSpent(
+                _getGuardedExecutorKeyStorage(keyHash).spends.spends[intent.paymentToken],
+                intent.paymentToken,
+                charge
+            );
         }
 
         // Done to avoid compiler warnings.
@@ -753,6 +773,9 @@ contract Account is IAccount, EIP712, GuardedExecutor {
         Call[] calldata calls,
         bytes calldata opData
     ) internal virtual override {
+        // A guarded batch is still on the stack. Do not start another one.
+        _revertIfGuardedBatch();
+
         // Orchestrator workflow.
         if (msg.sender == ORCHESTRATOR) {
             // opdata

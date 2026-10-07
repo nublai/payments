@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { access, chmod, lstat, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
@@ -590,6 +591,12 @@ export class LoginProfileError extends Error {
 }
 
 export async function readKeystoreBundle(rootPath: string): Promise<KeystoreBundle> {
+    const { maybeRecoverPendingQuoteSpend } = await import('./quote-spend-lifecycle')
+    await maybeRecoverPendingQuoteSpend(rootPath)
+    return readKeystoreBundleNow(rootPath)
+}
+
+async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> {
     let content: string
     try {
         content = await readFile(rootPath, 'utf8')
@@ -822,6 +829,17 @@ export function assertValidSessionName(name: string): void {
     }
 }
 
+const keystoreLockDepth = new AsyncLocalStorage<number>()
+
+type KeystoreLockOptions = {
+    stale?: number
+    retries?: {
+        retries: number
+        minTimeout?: number
+        maxTimeout?: number
+    }
+}
+
 export class KeystoreLockError extends Error {
     code = 'KEYSTORE_LOCKED' as const
     lockPath: string
@@ -843,13 +861,17 @@ export async function withKeystoreLock<T>(
     rootKeystorePath: string,
     action: () => Promise<T>,
     lock: typeof lockfile.lock = lockfile.lock,
+    options?: KeystoreLockOptions,
 ): Promise<T> {
+    if ((keystoreLockDepth.getStore() ?? 0) > 0) {
+        return action()
+    }
     let release: (() => Promise<void>) | undefined
     try {
         release = await lock(rootKeystorePath, {
             lockfilePath: `${rootKeystorePath}.lock`,
-            stale: 10_000,
-            retries: {
+            stale: options?.stale ?? 10_000,
+            retries: options?.retries ?? {
                 retries: 3,
                 minTimeout: 100,
             },
@@ -870,7 +892,7 @@ export async function withKeystoreLock<T>(
     let actionError: unknown
 
     try {
-        result = await action()
+        result = await keystoreLockDepth.run(1, () => action())
     } catch (error) {
         actionError = error
     }

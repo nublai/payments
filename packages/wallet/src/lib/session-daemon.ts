@@ -23,6 +23,7 @@ import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
 import {
     assessPhraseLessIntent,
     PhraseLessSignError,
+    reviewSwapSessionSignature,
 } from './session-daemon-policy'
 import type { EnvName } from './network-config'
 
@@ -37,6 +38,11 @@ type StoredKey = {
     encryptionDevice?: Buffer
     /** Set at unlock. Sign requests cannot change it. */
     phraseConfirmed: boolean
+    /**
+     * Set at unlock when the key is a swap session. Sign requests cannot
+     * change it. A phrase-confirmed swap session still runs the relay reviewer.
+     */
+    swapSession: boolean
     env?: EnvName
 }
 
@@ -406,6 +412,7 @@ export async function runSessionDaemon(options?: {
                                     kind: request.params.kind,
                                     encryptionDevice,
                                     phraseConfirmed: request.params.phraseConfirmed === true,
+                                    swapSession: request.params.swapSession === true,
                                     env: request.params.env,
                                 })
 
@@ -456,6 +463,27 @@ export async function runSessionDaemon(options?: {
                                 }
                                 const privateKey = `0x${entry.privateKey.toString('hex')}` as Hex
                                 const account = privateKeyToAccount(privateKey)
+                                if (entry.swapSession) {
+                                    try {
+                                        reviewSwapSessionSignature(request.params.typedData)
+                                    } catch (error) {
+                                        writeResponse(
+                                            buildError(
+                                                request.id,
+                                                DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                                error instanceof Error
+                                                    ? error.message
+                                                    : 'Swap session refused this signature',
+                                            ),
+                                        )
+                                        return
+                                    }
+                                    const signature = await account.signTypedData(
+                                        request.params.typedData,
+                                    )
+                                    writeResponse({ id: request.id, result: { signature } })
+                                    return
+                                }
                                 if (!entry.phraseConfirmed) {
                                     let rollback = () => {}
                                     try {
@@ -513,6 +541,16 @@ export async function runSessionDaemon(options?: {
                                     writeResponse,
                                 )
                                 if (!entry) {
+                                    return
+                                }
+                                if (entry.swapSession) {
+                                    writeResponse(
+                                        buildError(
+                                            request.id,
+                                            DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                            'Swap session refused a message. It only signs relay quotes.',
+                                        ),
+                                    )
                                     return
                                 }
                                 if (!entry.phraseConfirmed) {

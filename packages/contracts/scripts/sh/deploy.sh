@@ -11,6 +11,33 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Drop inherited Foundry and Dapp settings, then set only what this script uses.
+# A caller FOUNDRY_* or DAPP_* value must not change the release bytecode.
+clear_foundry_env() {
+    local entry name
+    while IFS= read -r -d '' entry; do
+        name="${entry%%=*}"
+        case "$name" in
+            FOUNDRY_*|DAPP_*) unset "$name" ;;
+        esac
+    done < <(env -0)
+    export FOUNDRY_PROFILE=release
+}
+clear_foundry_env
+
+# Refuse forge script flags that change bytecode after the size check.
+refuse_bytecode_changing_flags() {
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --optimize|--optimize=*|--optimizer-runs|--optimizer-runs=*|--via-ir|--evm-version|--evm-version=*|--out|--out=*|-o|--contracts|--contracts=*|-C|--use|--use=*|--no-cbor-metadata|--cbor-metadata|--cbor-metadata=*|--bytecode-hash|--bytecode-hash=*|--revert-strings|--revert-strings=*|--use-literal-content|--extra-output|--extra-output=*|--deny|--deny=*|--skip|--skip=*|--libraries|--libraries=*|--remappings|--remappings=*|--hh|--ast|--build-info|--build-info-path|--build-info-path=*|--root|--root=*)
+                echo -e "${RED}Error: refusing forge flag ${arg} after the size check${NC}" >&2
+                exit 1
+                ;;
+        esac
+    done
+}
+
 # =============================================================================
 # DEFAULT VALUES
 # =============================================================================
@@ -75,8 +102,17 @@ Verification:
 
 Other:
   --dry-run                Simulate without broadcasting
-  --resume                 Skip contracts that are already deployed
   --help                   Show this help message
+
+--resume is refused. forge script --resume rebroadcasts stored initcode and
+does not compare it to the release artifact.
+
+Compiler:
+  Inherited FOUNDRY_* and DAPP_* variables are unset. FOUNDRY_PROFILE=release
+  is then set for forge build and forge script. Runtime bytecode must be
+  <= 24576 bytes or the script exits before broadcast. Forge flags that
+  change bytecode (--optimize, --via-ir, --evm-version, --out, and similar)
+  are refused.
 
 Examples:
   # Local development
@@ -131,7 +167,6 @@ PRIORITY_FEE=""
 VERIFY=""
 ETHERSCAN_KEY=""
 DRY_RUN=""
-RESUME=""
 
 # Check for environment shortcut as first arg
 case "${1:-}" in
@@ -238,8 +273,8 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --resume)
-            RESUME="true"
-            shift
+            echo -e "${RED}Error: refusing --resume. forge script --resume rebroadcasts stored initcode and does not compare it to the release artifact.${NC}" >&2
+            exit 1
             ;;
         --help|-h)
             usage
@@ -382,33 +417,30 @@ deploy_to_chain() {
         setup_local_anvil "$rpc"
     fi
 
-    # Build auth args
-    local auth_args=""
+    # Build auth args as separate words. Values are not passed through eval.
+    local -a auth_args=()
     if [[ -n "$LEDGER" ]]; then
-        # Use printf %q to properly escape for shell re-evaluation
-        auth_args="--ledger --hd-paths $(printf "$LEDGER")"
+        auth_args=(--ledger --hd-paths "$LEDGER")
     elif [[ -n "$ACCOUNT" ]]; then
-        auth_args="--account $ACCOUNT"
+        auth_args=(--account "$ACCOUNT")
         if [[ -n "$PASSWORD" ]]; then
-            auth_args="$auth_args --password $PASSWORD"
+            auth_args+=(--password "$PASSWORD")
         fi
     elif [[ -n "$PRIVATE_KEY" ]]; then
-        auth_args="--private-key $PRIVATE_KEY"
+        auth_args=(--private-key "$PRIVATE_KEY")
     elif [[ "$chain_id" == "31337" || "$chain_id" == "41337" ]]; then
-        auth_args="--private-key $DEFAULT_LOCAL_PRIVATE_KEY"
+        auth_args=(--private-key "$DEFAULT_LOCAL_PRIVATE_KEY")
     else
         echo -e "${RED}Error: Authentication required. Use --account, --ledger, or --private-key${NC}"
         exit 1
     fi
 
-    # Build script signature
-    local script_sig script_args
+    # Build script signature. Constructor-style args are added as their own words later.
+    local script_sig
     if [[ -n "$CONTRACTS" ]]; then
         script_sig="runSelective(uint256[],string)"
-        script_args="\"[$chain_id]\" \"$CONTRACTS\""
     else
         script_sig="run(uint256[])"
-        script_args="\"[$chain_id]\""
     fi
 
     # Export environment variables for the Solidity script
@@ -432,50 +464,55 @@ deploy_to_chain() {
     export LZ_ENDPOINT="${LZ_ENDPOINT:-}"
     export LZ_SETTLER_SIGNER="${LZ_SIGNER:-0x0000000000000000000000000000000000000000}"
 
-    # Build forge command
-    local forge_cmd="forge script scripts/sol/DeployUnified.s.sol:DeployUnified"
-    forge_cmd="$forge_cmd --rpc-url $rpc"
-    forge_cmd="$forge_cmd --sig \"$script_sig\" $script_args"
-    forge_cmd="$forge_cmd --ffi"
-    forge_cmd="$forge_cmd $auth_args"
-
-    # Sender address
-    if [[ -n "$SENDER" ]]; then
-        forge_cmd="$forge_cmd --sender $SENDER"
+    # Each value is one array element. Spaces and metacharacters are not evaluated.
+    # Foundry 1.5 selects the profile from FOUNDRY_PROFILE, set in clear_foundry_env.
+    # This forge has no profile CLI flag, so the script does not pass one.
+    local -a forge_cmd=(
+        forge
+        script
+        scripts/sol/DeployUnified.s.sol:DeployUnified
+        --rpc-url "$rpc"
+        --sig "$script_sig"
+    )
+    if [[ -n "$CONTRACTS" ]]; then
+        forge_cmd+=("[$chain_id]" "$CONTRACTS")
+    else
+        forge_cmd+=("[$chain_id]")
     fi
+    forge_cmd+=(--ffi)
+    forge_cmd+=("${auth_args[@]}")
 
-    # Gas settings
+    if [[ -n "$SENDER" ]]; then
+        forge_cmd+=(--sender "$SENDER")
+    fi
     if [[ -n "$GAS_PRICE" ]]; then
-        forge_cmd="$forge_cmd --gas-price ${GAS_PRICE}gwei"
+        forge_cmd+=(--gas-price "${GAS_PRICE}gwei")
     fi
     if [[ -n "$PRIORITY_FEE" ]]; then
-        forge_cmd="$forge_cmd --priority-gas-price ${PRIORITY_FEE}gwei"
+        forge_cmd+=(--priority-gas-price "${PRIORITY_FEE}gwei")
     fi
-
-    # Verification
     if [[ -n "$VERIFY" ]]; then
-        forge_cmd="$forge_cmd --verify"
+        forge_cmd+=(--verify)
         if [[ -n "$ETHERSCAN_KEY" ]]; then
-            forge_cmd="$forge_cmd --etherscan-api-key $ETHERSCAN_KEY"
+            forge_cmd+=(--etherscan-api-key "$ETHERSCAN_KEY")
         elif [[ -n "${ETHERSCAN_API_KEY:-}" ]]; then
-            forge_cmd="$forge_cmd --etherscan-api-key $ETHERSCAN_API_KEY"
+            forge_cmd+=(--etherscan-api-key "$ETHERSCAN_API_KEY")
         fi
     fi
-
-    # Broadcast
     if [[ -z "$DRY_RUN" ]]; then
-        forge_cmd="$forge_cmd --broadcast"
+        forge_cmd+=(--broadcast)
     fi
 
-    # Resume (skip deployed)
-    if [[ -n "$RESUME" ]]; then
-        forge_cmd="$forge_cmd --resume"
-    fi
+    refuse_bytecode_changing_flags "${forge_cmd[@]}"
 
-    echo -e "${YELLOW}Command: $forge_cmd${NC}"
+    echo -e "${YELLOW}Command:$(printf ' %q' "${forge_cmd[@]}")${NC}"
     echo ""
 
-    eval "$forge_cmd"
+    "${forge_cmd[@]}"
+
+    if [[ -z "$DRY_RUN" ]]; then
+        verify_release_runtimes "$chain_id" "$context" "$rpc"
+    fi
 
     echo -e "${GREEN}✅ Deployment complete for $chain_name${NC}"
     echo ""
@@ -498,11 +535,99 @@ echo -e "${YELLOW}Deployment Plan:${NC}"
 echo "  Chains: ${CHAIN_ARRAY[*]}"
 echo "  Contracts: ${CONTRACTS:-all}"
 echo "  Context: ${CONTEXT:-auto}"
+echo "  Compiler: FOUNDRY_PROFILE=release"
 [[ -n "$SKIP_RELAYER" ]] && echo "  Relayer setup: skipped"
 [[ -n "$VERIFY" ]] && echo "  Verification: enabled"
 [[ -n "$DRY_RUN" ]] && echo "  Mode: dry-run (no broadcast)"
-[[ -n "$RESUME" ]] && echo "  Resume: enabled"
 echo ""
+
+# Compare non-zero deployment JSON to the release runtime. Zero addresses and
+# empty code are skipped. AccountProxy is not the Account artifact.
+# Immutables are masked by match-release-runtime.py, so VerifyRelease.s.sol then
+# requires the exact runtime: Account.ORCHESTRATOR() is the verified release
+# Orchestrator, LayerZeroSettler.endpoint() is LZ_ENDPOINT, and AccountProxy's
+# implementation is the verified Account.
+verify_release_runtimes() {
+    local chain_id="$1"
+    local context="$2"
+    local rpc="$3"
+    local dir="$PROJECT_ROOT/deployments/envs/$context/$chain_id"
+    local file stem name addr code result
+    [[ -d "$dir" ]] || return 0
+    shopt -s nullglob
+    for file in "$dir"/*.json; do
+        stem="$(basename "$file" .json)"
+        case "$stem" in
+            account) name="Account" ;;
+            orchestrator) name="Orchestrator" ;;
+            simulator) name="Simulator" ;;
+            escrow) name="Escrow" ;;
+            multiSigSigner) name="MultiSigSigner" ;;
+            simpleFunder) name="SimpleFunder" ;;
+            simpleSettler) name="SimpleSettler" ;;
+            layerZeroSettler) name="LayerZeroSettler" ;;
+            *) continue ;;
+        esac
+        addr="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["address"])' "$file")"
+        addr="${addr,,}"
+        if [[ "$addr" == "0x0000000000000000000000000000000000000000" ]]; then
+            continue
+        fi
+        code="$(cast code "$addr" --rpc-url "$rpc")"
+        if [[ -z "$code" || "$code" == "0x" ]]; then
+            continue
+        fi
+        result="$(python3 "$SCRIPT_DIR/match-release-runtime.py" "$PROJECT_ROOT/out/${name}.sol/${name}.json" "$code")"
+        if [[ "$result" != "match" ]]; then
+            echo -e "${RED}Error: ${name} at ${addr} on-chain code hash does not match the release artifact${NC}" >&2
+            exit 1
+        fi
+        echo "  on-chain code hash matches the release artifact: $name $addr"
+    done
+    shopt -u nullglob
+
+    local -a verify_cmd=(
+        forge
+        script
+        scripts/sol/VerifyRelease.s.sol:VerifyRelease
+        --rpc-url "$rpc"
+        --sig "run(uint256)"
+        "$chain_id"
+        --ffi
+    )
+    refuse_bytecode_changing_flags "${verify_cmd[@]}"
+    if ! "${verify_cmd[@]}"; then
+        echo -e "${RED}Error: deployed immutables do not match the expected values on chain ${chain_id}${NC}" >&2
+        exit 1
+    fi
+}
+
+# Foundry fs_permissions follow a symlink inside an allowed directory.
+# Refuse those before any forge build or broadcast.
+# Residuals, not refused here: a hardlink under deployments/ or deploy/,
+# a symlink created after this check, and vm.ffi paths (including `..` and
+# absolute paths). CI runs from a fresh checkout.
+refuse_deployment_symlinks() {
+    local dir link
+    for dir in "$PROJECT_ROOT/deployments" "$PROJECT_ROOT/deploy"; do
+        if [[ -L "$dir" ]]; then
+            echo -e "${RED}Error: refusing symlink $dir${NC}" >&2
+            exit 1
+        fi
+        if [[ ! -d "$dir" ]]; then
+            continue
+        fi
+        while IFS= read -r -d '' link; do
+            echo -e "${RED}Error: refusing symlink $link${NC}" >&2
+            exit 1
+        done < <(find -P "$dir" -type l -print0)
+    done
+}
+
+refuse_deployment_symlinks
+
+# Release-profile size check before any forge script broadcast.
+"$SCRIPT_DIR/check-runtime-size.sh"
 
 # Deploy to each chain
 for chain_id in "${CHAIN_ARRAY[@]}"; do

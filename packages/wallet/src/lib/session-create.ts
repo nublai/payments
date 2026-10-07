@@ -24,6 +24,7 @@ import {
     type AnySessionKeystore,
 } from './keystore'
 import {
+    getChainConfig,
     getUsdcTokenConfig,
     resolveNetworkConfig,
     selectDefaultChain,
@@ -44,9 +45,21 @@ import {
 } from './execute-calls'
 import {
     CONFIRM_FULL_ACCESS_PHRASE,
+    CONFIRM_SWAP_SESSION_PHRASE,
     HumanConfirmationError,
     humanConfirmationMessage,
 } from './human-confirmation'
+import { relayEntryPoints } from './relay-allowlist'
+import { swapSessionInstallCalls } from './swap-session'
+import {
+    assertNoStandingRights,
+    chainStandingRightsReaders,
+    knownErc20Tokens,
+    relayStandingTargets,
+    StandingRightsRejected,
+    type Permit2Allowance,
+    type StandingRightsRegistry,
+} from './standing-rights'
 import { readActiveUsdcDaily } from './session-gates'
 import {
     buildPermissionDefaults,
@@ -128,6 +141,14 @@ export type SessionCreateOptions = {
     password: string
     /** Set only after the caller collected CREATE FULL ACCESS SESSION. */
     fullAccessPhraseConfirmed?: boolean
+    /** Set only after the caller collected CREATE SWAP SESSION at a TTY. */
+    swapPhraseConfirmed?: boolean
+    /**
+     * Dedicated swap session: Relay entrypoints and a minute spend of 0 on
+     * known tokens. Does not install 10 USDC/day and does not become the
+     * active session. Requires CREATE SWAP SESSION, not the full-access phrase.
+     */
+    swap?: boolean
 }
 
 export type SessionCreateResult = {
@@ -152,6 +173,10 @@ export type SessionCreateResult = {
         spendToken: Address
         spendLimit: string
         spendPeriod: SpendPeriod
+    }
+    swap?: {
+        calls: { target: Address; selector: Hex }[]
+        spend: { token: Address; limit: '0'; period: 'minute' }[]
     }
     bundle: {
         id: string
@@ -207,6 +232,25 @@ type SessionCreateDeps = {
         id: string
     }) => Promise<BundleStatusResponse>
     withKeystoreLock: typeof withKeystoreLock
+    readErc20Allowance: (input: {
+        network: CliNetworkConfig
+        owner: Address
+        token: Address
+        spender: Address
+    }) => Promise<bigint>
+    readPermit2Allowance: (input: {
+        network: CliNetworkConfig
+        owner: Address
+        token: Address
+        spender: Address
+    }) => Promise<Permit2Allowance>
+    standingRightsRegistry?: StandingRightsRegistry
+    readErc721ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
+    readErc721GetApproved?: (token: Address, tokenId: bigint) => Promise<Address>
+    readErc1155ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
+    readErc4626ShareBalance?: (vault: Address) => Promise<bigint>
+    readErc4626ShareAllowance?: (vault: Address, spender: Address) => Promise<bigint>
+    readApprovedSignatureCheckers?: (keyHash: Hex) => Promise<readonly Address[]>
 }
 
 function normalizeChain(value?: string, env: EnvName = 'prod'): ChainName {
@@ -279,6 +323,16 @@ function getDefaultDeps(): SessionCreateDeps {
             })
         },
         withKeystoreLock,
+        readErc20Allowance: async (input) =>
+            chainStandingRightsReaders({
+                network: input.network,
+                owner: input.owner,
+            }).readErc20Allowance(input.token, input.spender),
+        readPermit2Allowance: async (input) =>
+            chainStandingRightsReaders({
+                network: input.network,
+                owner: input.owner,
+            }).readPermit2Allowance(input.token, input.spender),
     }
 }
 
@@ -300,6 +354,34 @@ export async function resolveSessionCreatePassword(
     )
 }
 
+function assertSwapCreateOptions(options: SessionCreateOptions, chainId: number): void {
+    if (
+        options.fullAccess ||
+        options.noPermissions ||
+        options.activate ||
+        options.target !== undefined ||
+        (options.selectors !== undefined && options.selectors.length > 0) ||
+        options.spendLimit !== undefined ||
+        options.spendPeriod !== undefined
+    ) {
+        throw new SessionCreateError(
+            'SESSION_CREATE_FAILED',
+            '--swap cannot be combined with --full-access, --activate, --target, --selector, --spend-limit, or --spend-period. The swap session stays inactive so the payment key remains the active session.',
+        )
+    }
+    if (!options.swapPhraseConfirmed) {
+        throw new HumanConfirmationError(
+            humanConfirmationMessage('Creating a swap session', CONFIRM_SWAP_SESSION_PHRASE),
+        )
+    }
+    if (relayEntryPoints(chainId).length === 0) {
+        throw new SessionCreateError(
+            'SESSION_CREATE_FAILED',
+            `Chain ${chainId} has no relay.link contracts. Refusing to create a swap session.`,
+        )
+    }
+}
+
 export async function executeSessionCreate(
     options: SessionCreateOptions,
     depsArg?: Partial<SessionCreateDeps>,
@@ -308,6 +390,10 @@ export async function executeSessionCreate(
     const chain = options.chain
         ? normalizeChain(options.chain, options.env)
         : selectDefaultChain(options.env)
+    if (options.swap) {
+        const chainId = getChainConfig(chain).chainId
+        assertSwapCreateOptions(options, chainId)
+    }
     const network = resolveNetworkConfig(options.env, chain)
     const keystorePath = resolveKeystorePath({
         env: options.env,
@@ -376,16 +462,24 @@ export async function executeSessionCreate(
         const sessionAddress = getAddress(sessionKeystore.addresses.session)
         const sessionKeyHash = computeSessionKeyHash(sessionAddress)
 
-        const permissionDefaults = options.noPermissions
-            ? undefined
-            : buildPermissionDefaults({
-                  fullAccess: options.fullAccess ?? false,
-                  chain,
-                  target: options.target,
-                  selectors: options.selectors,
-                  spendLimit: options.spendLimit,
-                  spendPeriod: options.spendPeriod,
+        const swapInstall = options.swap
+            ? swapSessionInstallCalls({
+                  account: accountAddress,
+                  keyHash: sessionKeyHash,
+                  chainId: network.chainId,
               })
+            : undefined
+        const permissionDefaults =
+            options.noPermissions || swapInstall
+                ? undefined
+                : buildPermissionDefaults({
+                      fullAccess: options.fullAccess ?? false,
+                      chain,
+                      target: options.target,
+                      selectors: options.selectors,
+                      spendLimit: options.spendLimit,
+                      spendPeriod: options.spendPeriod,
+                  })
         const permissionResult = permissionDefaults
             ? {
                   target: permissionDefaults.target,
@@ -393,6 +487,19 @@ export async function executeSessionCreate(
                   spendToken: permissionDefaults.spendToken,
                   spendLimit: permissionDefaults.spendLimit.toString(),
                   spendPeriod: permissionDefaults.spendPeriod,
+              }
+            : undefined
+        const swapResult = swapInstall
+            ? {
+                  calls: swapInstall.entryPoints.map((entry) => ({
+                      target: entry.target,
+                      selector: entry.selector,
+                  })),
+                  spend: swapInstall.spendTokens.map((token) => ({
+                      token,
+                      limit: '0' as const,
+                      period: 'minute' as const,
+                  })),
               }
             : undefined
 
@@ -439,6 +546,7 @@ export async function executeSessionCreate(
                         expiry: onChainExpiry,
                     },
                     permissions: permissionResult,
+                    swap: swapResult,
                     bundle: {
                         id: 'resume-noop',
                         status: 'confirmed',
@@ -477,6 +585,70 @@ export async function executeSessionCreate(
 
         const expiryTimestamp = options.expiry ? parseExpiry(options.expiry) : 0
 
+        if (swapInstall) {
+            try {
+                const readers = chainStandingRightsReaders({
+                    network: signedNetwork,
+                    owner: accountAddress,
+                })
+                await assertNoStandingRights({
+                    chainId: network.chainId,
+                    owner: accountAddress,
+                    targets: relayStandingTargets(network.chainId),
+                    tokens: knownErc20Tokens(network.chainId),
+                    keyHash: sessionKeyHash,
+                    registry: deps.standingRightsRegistry,
+                    readers: {
+                        readErc20Allowance: (token, spender) =>
+                            deps.readErc20Allowance({
+                                network: signedNetwork,
+                                owner: accountAddress,
+                                token,
+                                spender,
+                            }),
+                        readPermit2Allowance: (token, spender) =>
+                            deps.readPermit2Allowance({
+                                network: signedNetwork,
+                                owner: accountAddress,
+                                token,
+                                spender,
+                            }),
+                        readErc721ApprovedForAll:
+                            deps.readErc721ApprovedForAll ??
+                            ((token, operator) => readers.readErc721ApprovedForAll(token, operator)),
+                        readErc721GetApproved:
+                            deps.readErc721GetApproved ??
+                            ((token, tokenId) => readers.readErc721GetApproved(token, tokenId)),
+                        readErc1155ApprovedForAll:
+                            deps.readErc1155ApprovedForAll ??
+                            ((token, operator) =>
+                                readers.readErc1155ApprovedForAll(token, operator)),
+                        readErc4626ShareBalance:
+                            deps.readErc4626ShareBalance ??
+                            ((vault) => readers.readErc4626ShareBalance(vault)),
+                        readErc4626ShareAllowance:
+                            deps.readErc4626ShareAllowance ??
+                            ((vault, spender) =>
+                                readers.readErc4626ShareAllowance(vault, spender)),
+                        readApprovedSignatureCheckers:
+                            deps.readApprovedSignatureCheckers ??
+                            ((keyHash) => readers.readApprovedSignatureCheckers(keyHash)),
+                    },
+                })
+            } catch (error) {
+                if (error instanceof StandingRightsRejected) {
+                    throw new SessionCreateError('SESSION_CREATE_FAILED', error.message, {
+                        cause: error,
+                    })
+                }
+                throw new SessionCreateError(
+                    'SESSION_CREATE_FAILED',
+                    'Could not read standing rights. Refusing to sign.',
+                    { cause: error },
+                )
+            }
+        }
+
         const authorizeCallData = encodeFunctionData({
             abi: accountAbi,
             functionName: 'authorize',
@@ -499,7 +671,9 @@ export async function executeSessionCreate(
                 data: authorizeCallData,
             },
         ]
-        if (permissionDefaults) {
+        if (swapInstall) {
+            calls.push(...swapInstall.calls)
+        } else if (permissionDefaults) {
             calls.push({
                 target: accountAddress,
                 value: 0n,
@@ -645,6 +819,7 @@ export async function executeSessionCreate(
                 expiry: expiryTimestamp,
             },
             permissions: permissionResult,
+            swap: swapResult,
             bundle: {
                 id: submission.id,
                 status: finalStatus.status ?? 'unknown',

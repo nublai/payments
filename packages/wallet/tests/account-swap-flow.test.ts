@@ -1,11 +1,89 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 import { JsonRpcClientError, type GetKeysResponse } from '@nubl/relayer-client'
-import { zeroAddress } from 'viem'
-import { executeAccountSwap, resolveAccountSwapPassword } from '../src/lib/account-swap'
+import { encodeFunctionData, zeroAddress, type Address, type Hex } from 'viem'
+import { hashRelayOrder } from '../src/lib/relay-order'
+import {
+    executeAccountSwap as executeAccountSwapImpl,
+    resolveAccountSwapPassword,
+} from '../src/lib/account-swap'
+
+const USER = '0x1111111111111111111111111111111111111111' as Address
+const EMPTY_ROUTER_CALL: Hex = encodeFunctionData({
+    abi: [
+        {
+            name: 'multicall',
+            type: 'function',
+            stateMutability: 'payable',
+            inputs: [
+                {
+                    name: 'calls',
+                    type: 'tuple[]',
+                    components: [
+                        { name: 'target', type: 'address' },
+                        { name: 'allowFailure', type: 'bool' },
+                        { name: 'value', type: 'uint256' },
+                        { name: 'callData', type: 'bytes' },
+                    ],
+                },
+                { name: 'refundTo', type: 'address' },
+                { name: 'nftRecipient', type: 'address' },
+                { name: 'metadata', type: 'bytes' },
+            ],
+            outputs: [],
+        },
+    ],
+    functionName: 'multicall',
+    args: [[], USER, zeroAddress, '0x'],
+})
+
+function executeAccountSwap(
+    options: Parameters<typeof executeAccountSwapImpl>[0],
+    deps?: Parameters<typeof executeAccountSwapImpl>[1],
+) {
+    return executeAccountSwapImpl(options, {
+        simulateQuoteCalls: async () => {},
+        installQuoteSpendLimit: async () => async () => {},
+        readAllowance: async () => 0n,
+        readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+        readErc721ApprovedForAll: async () => false,
+        readErc721GetApproved: async () => zeroAddress,
+        readErc1155ApprovedForAll: async () => false,
+        readErc4626ShareBalance: async () => 0n,
+        readErc4626ShareAllowance: async () => 0n,
+        readApprovedSignatureCheckers: async () => [],
+        getKeys: async () => {
+            const key = {
+                hash: computeSessionKeyHash(
+                    '0x3333333333333333333333333333333333333333' as Address,
+                ),
+                expiry: '0x0',
+                type: 'secp256k1' as const,
+                role: 'normal' as const,
+                publicKey: '0x' as const,
+                permissions: relaySessionCallPermissions(8453),
+            }
+            return { '0x2105': [key], '0x89': [key], '0x7a69': [key] }
+        },
+        // Confirmation now simulates, which needs a nonce before the user answers.
+        readNonce: async () => 2n,
+        ...deps,
+    })
+}
 import { LoginProfileError } from '../src/lib/keystore'
 import { PromptCancelledError } from '../src/lib/password-readline'
 import { RelayLinkError } from '../src/lib/relay-link'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
@@ -68,8 +146,8 @@ function makeQuote(overrides?: Record<string, unknown>) {
                     {
                         status: 'incomplete',
                         data: {
-                            to: '0x4444444444444444444444444444444444444444',
-                            data: '0xdeadbeef',
+                            to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
+                            data: EMPTY_ROUTER_CALL,
                             value: '0',
                             chainId: 8453,
                         },
@@ -79,7 +157,9 @@ function makeQuote(overrides?: Record<string, unknown>) {
         ],
         details: {
             currencyOut: {
+                amount: '28500000000000000',
                 amountFormatted: '0.0285',
+                minimumAmount: '28500000000000000',
                 amountUsd: '100.10',
             },
             rate: '3508.77',
@@ -90,6 +170,67 @@ function makeQuote(overrides?: Record<string, unknown>) {
             relayer: { amountUsd: '0.07' },
         },
         ...overrides,
+    }
+}
+
+const bridgeOrderTemplate = JSON.parse(
+    readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
+).orderData as {
+    output: { payments: { recipient: string }[] }
+    inputs: { refunds: { recipient: string }[] }[]
+    solver: string
+    fees: unknown[]
+}
+
+function depositNative(depositor: Address, id: Hex): Hex {
+    const padded = depositor.toLowerCase().slice(2).padStart(64, '0')
+    return `0x49290c1c${padded}${id.slice(2).padStart(64, '0')}` as Hex
+}
+
+/** Signable ETH bridge: depositNative plus an order whose output pays `recipient`. */
+function makeEthBridgeQuote(input?: { recipient?: Address; omitRequestId?: boolean }) {
+    const recipient = input?.recipient ?? USER
+    const order = structuredClone(bridgeOrderTemplate)
+    order.output.payments[0]!.recipient = recipient
+    const orderId = hashRelayOrder(order)
+    const value = 10n ** 17n
+    const requestId = input?.omitRequestId ? undefined : 'relay-request-1'
+    return {
+        requestId,
+        steps: [
+            {
+                id: 'bridge',
+                kind: 'transaction',
+                requestId,
+                items: [
+                    {
+                        status: 'incomplete' as const,
+                        data: {
+                            to: '0x4cD00E387622C35bDDB9b4c962C136462338BC31',
+                            data: depositNative(USER, orderId),
+                            value: value.toString(),
+                            chainId: 8453,
+                        },
+                    },
+                ],
+            },
+        ],
+        details: {
+            currencyIn: { amount: value.toString(), amountFormatted: '0.1' },
+            currencyOut: {
+                amount: value.toString(),
+                minimumAmount: value.toString(),
+                amountFormatted: '0.1',
+                amountUsd: '100',
+            },
+            rate: '1',
+            timeEstimate: 9,
+        },
+        protocol: { v2: { orderId, orderData: order } },
+        fees: {
+            gas: { amountUsd: '0.10' },
+            relayer: { amountUsd: '0.07' },
+        },
     }
 }
 
@@ -127,12 +268,13 @@ function makeKeys(input?: {
                 publicKey: '0x',
                 permissions: input?.nativeSpendLimit
                     ? [
+                          ...relaySessionCallPermissions(8453),
                           {
-                              type: 'spend',
+                              type: 'spend' as const,
                               token: zeroAddress,
                               limit: input.nativeSpendLimit,
                               spent: input.nativeSpent ?? '0x0',
-                              period: 'forever',
+                              period: 'forever' as const,
                           },
                       ]
                     : [],
@@ -247,9 +389,9 @@ test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
     const prepareInput = (prepareCalls as any).mock.calls[0]?.[0]
     expect(prepareInput.calls).toEqual([
         {
-            target: '0x4444444444444444444444444444444444444444',
+            target: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
             value: 0n,
-            data: '0xdeadbeef',
+            data: EMPTY_ROUTER_CALL,
         },
     ])
     const sentSignature = (sendPreparedCalls as any).mock.calls[0]?.[0]?.signature as string
@@ -300,8 +442,8 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
         status: 'success',
         txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
     }))
-    const getQuote = mock(async () => makeQuote()) as unknown as any
-    const recipient = '0x2222222222222222222222222222222222222222' as const
+    const recipient = '0x2222222222222222222222222222222222222222' as Address
+    const getQuote = mock(async () => makeEthBridgeQuote({ recipient })) as unknown as any
 
     const result = await executeAccountSwap(
         {
@@ -374,7 +516,7 @@ test('executeAccountSwap does not treat source intent hashes as destination tx h
             })),
             readTokenBalance: mock(async () => 1_000000000000000000n),
             getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-            getQuote: mock(async () => makeQuote()) as unknown as any,
+            getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
             readNonce: mock(async () => 2n),
             prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
             signTypedData: mock(
@@ -527,27 +669,7 @@ test('executeAccountSwap rejects same-chain bridges with typed error', async () 
 
 test('executeAccountSwap rejects bridge when quote has no requestId before executing', async () => {
     const waitForBundle = mock(async () => makeFinalStatus()) as unknown as any
-    const quoteWithoutRequestId = makeQuote({
-        requestId: undefined,
-        steps: [
-            {
-                id: 'bridge',
-                kind: 'transaction',
-                requestId: undefined,
-                items: [
-                    {
-                        status: 'incomplete',
-                        data: {
-                            to: '0x4444444444444444444444444444444444444444',
-                            data: '0xdeadbeef',
-                            value: '0',
-                            chainId: 8453,
-                        },
-                    },
-                ],
-            },
-        ],
-    })
+    const quoteWithoutRequestId = makeEthBridgeQuote({ omitRequestId: true })
 
     await expect(
         executeAccountSwap(
@@ -842,7 +964,7 @@ test('executeAccountSwap fails fast on insufficient balance', async () => {
     })
 })
 
-test('executeAccountSwap skips confirmation when yes is set', async () => {
+test('executeAccountSwap still confirms the quote when yes is set', async () => {
     const confirmQuote = mock(async () => true)
 
     await executeAccountSwap(
@@ -876,7 +998,7 @@ test('executeAccountSwap skips confirmation when yes is set', async () => {
         },
     )
 
-    expect(confirmQuote).toHaveBeenCalledTimes(0)
+    expect(confirmQuote).toHaveBeenCalledTimes(1)
 })
 
 test('executeAccountSwap rejects relay quotes with mismatched source-chain calls', async () => {
@@ -935,7 +1057,9 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
         return makeQuote({
             details: {
                 currencyOut: {
+                    amount: '28500000000000000',
                     amountFormatted: '0.0285',
+                    minimumAmount: '28500000000000000',
                     amountUsd: String(100 + callCount * 2),
                 },
                 rate: String(3500 + callCount * 25),
@@ -948,36 +1072,41 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
     const originalNow = Date.now
     Date.now = () => nowValues[Math.min(nowIndex++, nowValues.length - 1)] ?? 95_500
 
+    let caught: unknown
     try {
-        await expect(
-            executeAccountSwap(
-                {
-                    env: 'prod',
-                    fromToken: 'USDC',
-                    toToken: 'ETH',
-                    amount: '1',
-                    sourceChain: 'base',
-                    password: 'pw',
-                    keystorePath: '/tmp/alice.json',
-                },
-                {
-                    readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
-                    decryptSessionKeystore: mock(async () => ({
-                        sessionPrivateKey:
-                            '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
-                    })),
-                    readTokenBalance: mock(async () => 2_000000n),
-                    getQuote: getQuote as unknown as any,
-                    confirmQuote,
-                },
-            ),
-        ).rejects.toMatchObject({
-            code: 'QUOTE_FAILED',
-            message: expect.stringContaining('Quote changed materially too many times'),
-        })
+        await executeAccountSwap(
+            {
+                env: 'prod',
+                fromToken: 'USDC',
+                toToken: 'ETH',
+                amount: '1',
+                sourceChain: 'base',
+                password: 'pw',
+                keystorePath: '/tmp/alice.json',
+            },
+            {
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                decryptSessionKeystore: mock(async () => ({
+                    sessionPrivateKey:
+                        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
+                })),
+                readTokenBalance: mock(async () => 2_000000n),
+                getQuote: getQuote as unknown as any,
+                confirmQuote,
+            },
+        )
+    } catch (error) {
+        caught = error
     } finally {
         Date.now = originalNow
     }
+
+    expect(caught).toMatchObject({
+        code: 'QUOTE_FAILED',
+        message: expect.stringContaining('Quote changed materially too many times'),
+    })
+    const driftMessage = String((caught as { message?: unknown }).message ?? '')
+    expect(driftMessage.includes('--yes')).toBe(false)
 
     expect(confirmQuote).toHaveBeenCalledTimes(3)
     expect(getQuote).toHaveBeenCalledTimes(4)
@@ -989,7 +1118,9 @@ test('executeAccountSwap does not force reconfirmation when refreshed quotes are
         makeQuote({
             details: {
                 currencyOut: {
+                    amount: '28500000000000000',
                     amountFormatted: '0.0285',
+                    minimumAmount: '28500000000000000',
                 },
                 timeEstimate: 2,
             },
@@ -1060,7 +1191,7 @@ test('executeAccountSwap maps bridge polling timeouts to typed errors', async ()
                 })),
                 readTokenBalance: mock(async () => 1_000000000000000000n),
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
                 prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
@@ -1410,7 +1541,7 @@ test('executeAccountSwap maps bridge fill non-success to BRIDGE_FILL_FAILED', as
                 })),
                 readTokenBalance: mock(async () => 1_000000000000000000n),
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
                 prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
