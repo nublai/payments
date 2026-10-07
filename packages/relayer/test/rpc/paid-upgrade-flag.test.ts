@@ -1,9 +1,9 @@
 /**
- * OIDC callers on the paid upgrade path must own the account.
- * Sponsored upgrade already uses authIdentityOwnsAccount. Paid prepare and
- * paid send must refuse an unbound OIDC token, or one bound to another
- * account, before a quote, a hold, or a broadcast. Privy and ERC-8128 stay
- * on their existing paths.
+ * Launch sponsors every first upgrade. The paid first-upgrade path stays in
+ * the code but is off unless PAID_UPGRADE_ENABLED is exactly "true". Off
+ * refuses paid prepare and paid send before any rate-limit bucket, gas hold,
+ * simulation, signer call, or broadcast. A quote signed while the flag was on
+ * is refused once it is off.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +12,6 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
 import { orchestratorAbi } from '@nubl/contracts/abis'
 
-import { runWithAuthIdentity, type AuthIdentity } from '../../src/auth/identity'
 import type { RpcContext } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
 import { handlePrepareCalls } from '../../src/rpc/methods/prepareCalls'
@@ -32,11 +31,7 @@ import {
     encodeSignedPreCall,
     paidUpgradeRateBuckets,
 } from '../../src/rpc/methods/shared/paid-upgrade'
-import {
-    consumeRateLimit,
-    peekRateLimit,
-    releaseRateLimit,
-} from '../../src/rpc/methods/shared/upgrade-rate-limit'
+import { consumeRateLimit, peekRateLimit } from '../../src/rpc/methods/shared/upgrade-rate-limit'
 
 const { mockPrepareIntent } = vi.hoisted(() => ({
     mockPrepareIntent: vi.fn(),
@@ -84,27 +79,25 @@ vi.mock('../../src/services/price-oracle', async () => {
 })
 
 const CHAIN_ID = 8453
-const SECRET = 'paid-upgrade-oidc-owner-secret'
+const SECRET = 'paid-upgrade-flag-secret'
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
-const OTHER_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e141207b4c24b44a4361' as Hex
-const ISSUER = 'https://issuer.example'
-const NATIVE_RATE = (3000n * 10n ** 18n).toString()
 const OWNER = privateKeyToAccount(OWNER_KEY).address
-const OTHER = privateKeyToAccount(OTHER_KEY).address
+const NATIVE_RATE = (3000n * 10n ** 18n).toString()
 
-const rpc = {
-    balance: 20_000_000n,
-    receiptGas: '0x44444' as Hex,
+const disabled = {
+    code: INVALID_PARAMS,
+    message: expect.stringMatching(
+        /Paid account upgrades are disabled.*wallet_prepareUpgradeAccount.*wallet_upgradeAccount.*sponsored/,
+    ),
 }
 
-const gasLog: Array<Record<string, unknown>> = []
 const rateBodies: Array<Record<string, unknown>> = []
+const gasLog: Array<Record<string, unknown>> = []
+const rpcMethods: string[] = []
 let captures: unknown[] = []
-let gasSpent = 0n
-let gasHeld = 0n
 const rateStore = new Map<string, number>()
 
 function word(value: bigint): Hex {
@@ -115,57 +108,30 @@ function jsonResponse(body: unknown, ok = true): Response {
     return { ok, json: async () => body } as Response
 }
 
-function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: number } {
-    gasLog.push(body)
-    const amount = BigInt(typeof body.gas === 'string' ? body.gas : '0')
-    if (body.action === 'reserve-gas') {
-        gasHeld += amount
-        return { allowed: true, gas: Number(gasSpent) }
-    }
-    if (body.action === 'release-gas') {
-        gasHeld = gasHeld > amount ? gasHeld - amount : 0n
-        return { allowed: true, gas: Number(gasSpent) }
-    }
-    if (body.action === 'settle-gas') {
-        const hold = BigInt(typeof body.hold === 'string' ? body.hold : '0')
-        gasHeld = gasHeld > hold ? gasHeld - hold : 0n
-        gasSpent += amount
-        return { allowed: true, gas: Number(gasSpent) }
-    }
-    return { allowed: true }
-}
-
 function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
     if (url.includes('upgrade-rate-limit')) {
-        if (
-            body.action === 'reserve-gas' ||
-            body.action === 'release-gas' ||
-            body.action === 'settle-gas' ||
-            body.action === 'enqueue-receipt'
-        ) {
-            return Promise.resolve(jsonResponse(applyGas(body)))
+        if (typeof body.action === 'string' && body.action.endsWith('-gas')) {
+            gasLog.push(body)
+            return Promise.resolve(jsonResponse({ allowed: true, gas: 0 }))
+        }
+        if (body.action === 'enqueue-receipt') {
+            gasLog.push(body)
+            return Promise.resolve(jsonResponse({ allowed: true }))
         }
         rateBodies.push(body)
         const now = Math.floor(Date.now() / 1000)
         const buckets = paidUpgradeRateBuckets({
-            chainId: typeof body.chainId === 'number' ? body.chainId : CHAIN_ID,
-            account: typeof body.account === 'string' ? body.account : 'unknown',
-            ip: typeof body.ip === 'string' ? body.ip : 'unknown',
+            chainId: CHAIN_ID,
+            account: String(body.account ?? 'unknown'),
+            ip: String(body.ip ?? 'unknown'),
             includeGlobal: body.action === 'reserve' || body.action === 'release',
         })
         if (body.action === 'peek') {
             return Promise.resolve(jsonResponse({ allowed: peekRateLimit(rateStore, buckets, now).allowed }))
         }
-        if (body.action === 'release') {
-            releaseRateLimit(
-                rateStore,
-                buckets,
-                typeof body.reservedAt === 'number' ? body.reservedAt : now,
-            )
-            return Promise.resolve(jsonResponse({ allowed: true }))
-        }
+        if (body.action === 'release') return Promise.resolve(jsonResponse({ allowed: true }))
         const decision = consumeRateLimit(rateStore, buckets, now)
         return Promise.resolve(jsonResponse({ allowed: decision.allowed, reservedAt: now }))
     }
@@ -179,16 +145,14 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     )
 }
 
-function createCtx(): RpcContext {
+function createCtx(flag?: string): RpcContext {
     return {
         request: new Request('https://relayer.local/'),
-        auth: { provider: 'erc8128', userId: OWNER },
         env: {
             RPC_URL: 'http://rpc.test/8453',
             RPC_8453: 'http://rpc.test/8453',
             CHAIN_IDS: String(CHAIN_ID),
             CONTEXT: 'local',
-            PAID_UPGRADE_ENABLED: 'true',
             RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
             RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: SECRET,
@@ -205,61 +169,44 @@ function createCtx(): RpcContext {
                 idFromName: () => 'pool-id',
                 get: () => ({ fetch: poolFetch }),
             },
+            ...(flag === undefined ? {} : { PAID_UPGRADE_ENABLED: flag }),
         } as unknown as Env,
     }
 }
 
-function oidc(boundAccounts?: Address[]): AuthIdentity {
-    return {
-        provider: 'oidc',
-        userId: 'user_oidc_1',
-        issuer: ISSUER,
-        boundAccounts,
-    }
-}
-
-async function signAuth(key: Hex, delegation: Address, nonce: number): Promise<Hex> {
-    return privateKeyToAccount(key).sign({
-        hash: hashAuthorization({ contractAddress: delegation, chainId: CHAIN_ID, nonce }),
-    })
-}
-
-async function signedPreCall(ownerKey: Hex): Promise<PaidUpgradeQuote['preCall']> {
-    const owner = privateKeyToAccount(ownerKey)
+async function upgradeQuote(): Promise<PaidUpgradeQuote> {
+    const owner = privateKeyToAccount(OWNER_KEY)
     const session = privateKeyToAccount(generatePrivateKey())
     const publicKey = encodeAbiParameters([{ type: 'address' }], [session.address])
     const { calls, executionData } = buildKeyInitializationData(
         [{ expiry: '0', type: 'secp256k1', role: 'admin', publicKey, permissions: [] }],
         owner.address,
     )
-    const signature = await owner.signTypedData({
+    const preCallSignature = await owner.signTypedData({
         domain: getSignedCallDomain(CHAIN_ID, ORCHESTRATOR),
         types: SIGNED_CALL_TYPES,
         primaryType: 'SignedCall',
         message: { multichain: false, eoa: owner.address, calls, nonce: UPGRADE_PRECALL_NONCE },
     })
     return {
-        eoa: owner.address,
-        executionData,
-        nonce: UPGRADE_PRECALL_NONCE.toString(),
-        signature,
-    }
-}
-
-async function upgradeQuote(): Promise<PaidUpgradeQuote> {
-    const preCall = await signedPreCall(OWNER_KEY)
-    return {
         authorization: {
             contractAddress: ACCOUNT_PROXY,
             chainId: CHAIN_ID,
             nonce: 0,
-            signature: await signAuth(OWNER_KEY, ACCOUNT_PROXY, 0),
+            signature: await owner.sign({
+                hash: hashAuthorization({ contractAddress: ACCOUNT_PROXY, chainId: CHAIN_ID, nonce: 0 }),
+            }),
         },
-        preCall,
+        preCall: {
+            eoa: owner.address,
+            executionData,
+            nonce: UPGRADE_PRECALL_NONCE.toString(),
+            signature: preCallSignature,
+        },
     }
 }
 
-function preparedIntent(eoa: Address) {
+function preparedIntent() {
     return {
         success: true,
         typedData: {
@@ -273,10 +220,10 @@ function preparedIntent(eoa: Address) {
             primaryType: 'Intent' as const,
             message: {
                 multichain: false,
-                eoa,
+                eoa: OWNER,
                 calls: [{ to: USDC, value: 0n, data: '0x' as Hex }],
                 nonce: 0n,
-                payer: eoa,
+                payer: OWNER,
                 paymentToken: USDC,
                 paymentMaxAmount: 1n,
                 combinedGas: 150_000n,
@@ -295,7 +242,16 @@ function preparedIntent(eoa: Address) {
     }
 }
 
-async function prepareParams(): Promise<unknown> {
+function plainPrepareParams(): unknown {
+    return {
+        from: OWNER,
+        chain_id: '0x2105',
+        calls: [{ to: USDC, value: '0x0', data: '0x' }],
+        capabilities: { meta: { fee_payer: OWNER, fee_token: USDC } },
+    }
+}
+
+async function paidPrepareParams(): Promise<unknown> {
     return {
         from: OWNER,
         chain_id: '0x2105',
@@ -307,7 +263,8 @@ async function prepareParams(): Promise<unknown> {
     }
 }
 
-async function sendParams(): Promise<unknown> {
+/** A paid quote HMAC-signed with the relayer secret, the way prepare signs it with the flag on. */
+async function signedPaidSendParams(): Promise<unknown> {
     const upgrade = await upgradeQuote()
     const encoded = [encodeSignedPreCall(upgrade.preCall)]
     const txGas = 100_000
@@ -353,23 +310,14 @@ async function sendParams(): Promise<unknown> {
     signed.signature = await signQuotes(signed, SECRET)
     const intent = quote.intent
     const digest = hashTypedData({
-        domain: {
-            name: 'Orchestrator',
-            version: '0.5.5',
-            chainId: CHAIN_ID,
-            verifyingContract: ORCHESTRATOR,
-        },
+        domain: { name: 'Orchestrator', version: '0.5.5', chainId: CHAIN_ID, verifyingContract: ORCHESTRATOR },
         types: INTENT_TYPES,
         primaryType: 'Intent',
         message: {
             multichain: false,
-            eoa: intent.eoa as Address,
-            calls: intent.calls.map((call) => ({
-                to: call.to as Address,
-                value: BigInt(call.value || '0'),
-                data: call.data as Hex,
-            })),
-            nonce: BigInt(intent.nonce),
+            eoa: OWNER,
+            calls: [{ to: USDC, value: 0n, data: '0x' }],
+            nonce: 0n,
             payer: OWNER,
             paymentToken: USDC,
             paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? '0'),
@@ -394,10 +342,7 @@ function intentExecutedLog() {
             eventName: 'IntentExecuted',
             args: { eoa: OWNER, nonce: 0n },
         }),
-        data: encodeAbiParameters(
-            [{ type: 'bool' }, { type: 'bytes4' }],
-            [true, '0x00000000'],
-        ),
+        data: encodeAbiParameters([{ type: 'bool' }, { type: 'bytes4' }], [true, '0x00000000']),
         logIndex: '0x0',
         transactionIndex: '0x0',
         transactionHash: `0x${'ab'.repeat(32)}`,
@@ -407,27 +352,40 @@ function intentExecutedLog() {
     }
 }
 
-beforeEach(() => {
+function resetSideEffects(): void {
     captures = []
     rateBodies.length = 0
     gasLog.length = 0
-    gasSpent = 0n
-    gasHeld = 0n
+    rpcMethods.length = 0
     rateStore.clear()
+    mockPrepareIntent.mockClear()
+}
+
+function expectNoPaidSideEffects(): void {
+    expect(mockPrepareIntent).not.toHaveBeenCalled()
+    expect(rateBodies).toEqual([])
+    expect(gasLog).toEqual([])
+    expect(captures).toEqual([])
+    expect(rpcMethods).toEqual([])
+}
+
+beforeEach(() => {
+    resetSideEffects()
     mockPrepareIntent.mockReset()
-    mockPrepareIntent.mockImplementation(async () => preparedIntent(OWNER))
+    mockPrepareIntent.mockImplementation(async () => preparedIntent())
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
         if (!url.includes('rpc.test')) throw new Error(`unexpected fetch ${url}`)
         const raw = init?.body ? JSON.parse(String(init.body)) : {}
         const batch = Array.isArray(raw) ? raw : [raw]
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
+            rpcMethods.push(call.method ?? '')
             let result: unknown = '0x'
             const tx = call.params?.[0] as { authorizationList?: unknown } | undefined
             if (call.method === 'eth_getCode') result = '0x'
             else if (call.method === 'eth_getTransactionCount') result = '0x0'
             else if (call.method === 'eth_call' && tx?.authorizationList) result = word(0n)
-            else if (call.method === 'eth_call') result = word(rpc.balance)
+            else if (call.method === 'eth_call') result = word(20_000_000n)
             else if (call.method === 'eth_chainId') result = '0x2105'
             else if (call.method === 'eth_getTransactionReceipt') {
                 result = {
@@ -437,8 +395,8 @@ beforeEach(() => {
                     blockNumber: '0x1',
                     from: `0x${'11'.repeat(20)}`,
                     to: ORCHESTRATOR,
-                    cumulativeGasUsed: rpc.receiptGas,
-                    gasUsed: rpc.receiptGas,
+                    cumulativeGasUsed: '0x44444',
+                    gasUsed: '0x44444',
                     contractAddress: null,
                     logs: [intentExecutedLog()],
                     logsBloom: `0x${'00'.repeat(256)}`,
@@ -460,95 +418,70 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-const unbound = {
-    code: INVALID_PARAMS,
-    message: 'Authenticated identity is not bound to the account',
-}
-
-describe('paid upgrade OIDC ownership', () => {
-    it('refuses an OIDC token with no binding on paid prepare', async () => {
-        const params = await prepareParams()
-        await expect(
-            runWithAuthIdentity(oidc(), () => handlePrepareCalls(params, createCtx())),
-        ).rejects.toMatchObject(unbound)
-        expect(mockPrepareIntent).not.toHaveBeenCalled()
-        expect(rateBodies).toHaveLength(0)
-        expect(captures).toHaveLength(0)
-        expect(gasLog).toHaveLength(0)
+describe('PAID_UPGRADE_ENABLED', () => {
+    it('refuses a paid wallet_prepareCalls with the flag off, with no rate limit, hold, or simulation', async () => {
+        await expect(handlePrepareCalls(await paidPrepareParams(), createCtx())).rejects.toMatchObject(
+            disabled,
+        )
+        expectNoPaidSideEffects()
     })
 
-    it('refuses an OIDC token with no binding on paid send', async () => {
-        const params = await sendParams()
-        await expect(
-            runWithAuthIdentity(oidc(), () => handleSendPreparedCalls(params, createCtx())),
-        ).rejects.toMatchObject(unbound)
-        expect(captures).toHaveLength(0)
-        expect(gasLog).toHaveLength(0)
-        expect(rateBodies).toHaveLength(0)
-    })
-
-    it('refuses an OIDC token bound to another account on paid prepare and paid send', async () => {
-        const prepare = await prepareParams()
-        await expect(
-            runWithAuthIdentity(oidc([OTHER]), () => handlePrepareCalls(prepare, createCtx())),
-        ).rejects.toMatchObject(unbound)
-        expect(mockPrepareIntent).not.toHaveBeenCalled()
-
-        const send = await sendParams()
-        await expect(
-            runWithAuthIdentity(oidc([OTHER]), () => handleSendPreparedCalls(send, createCtx())),
-        ).rejects.toMatchObject(unbound)
-        expect(captures).toHaveLength(0)
-        expect(gasLog).toHaveLength(0)
-        expect(rateBodies).toHaveLength(0)
-    })
-
-    it('prepares and sends a paid upgrade for an OIDC token bound to that account', async () => {
-        const identity = oidc([OWNER])
-        const prepare = await prepareParams()
-        const prepared = await runWithAuthIdentity(identity, () =>
-            handlePrepareCalls(prepare, createCtx()),
+    it('refuses a paid quote signed while the flag was on once the flag is off', async () => {
+        const sendable = await signedPaidSendParams()
+        await expect(handleSendPreparedCalls(sendable, createCtx('false'))).rejects.toMatchObject(
+            disabled,
         )
-        expect(prepared.context.quote.quotes[0]?.accountUpgrade?.authorization.contractAddress).toBe(
-            ACCOUNT_PROXY,
-        )
-        expect(mockPrepareIntent).toHaveBeenCalledOnce()
+        expectNoPaidSideEffects()
 
-        const send = await sendParams()
-        const sent = await runWithAuthIdentity(identity, () =>
-            handleSendPreparedCalls(send, createCtx()),
+        const prepared = await handlePrepareCalls(await paidPrepareParams(), createCtx('true'))
+        expect(prepared.context.quote.quotes[0]?.accountUpgrade).toBeDefined()
+        expect(prepared.context.quote.signature).not.toBe('0x')
+        resetSideEffects()
+        const relayerSigned = {
+            context: prepared.context,
+            signature: await privateKeyToAccount(OWNER_KEY).sign({ hash: prepared.digest as Hex }),
+        }
+        await expect(handleSendPreparedCalls(relayerSigned, createCtx())).rejects.toMatchObject(
+            disabled,
         )
+        expectNoPaidSideEffects()
+
+        const sent = await handleSendPreparedCalls(sendable, createCtx('true'))
         expect(sent.id).toEqual(expect.any(String))
         expect(captures).toHaveLength(1)
     })
 
-    it('prepares and sends a paid upgrade for Privy without a binding', async () => {
-        const identity: AuthIdentity = { provider: 'privy', userId: 'did:privy:abc' }
-        const prepare = await prepareParams()
-        const prepared = await runWithAuthIdentity(identity, () =>
-            handlePrepareCalls(prepare, createCtx()),
-        )
-        expect(prepared.digest).toMatch(/^0x[0-9a-fA-F]{64}$/)
+    it('treats unset, empty, "false", and anything but the exact string "true" as off', async () => {
+        for (const flag of [undefined, '', 'false', 'TRUE', 'True', '1', 'yes', ' true', 'true ']) {
+            resetSideEffects()
+            await expect(
+                handlePrepareCalls(await paidPrepareParams(), createCtx(flag)),
+                `PAID_UPGRADE_ENABLED=${JSON.stringify(flag)}`,
+            ).rejects.toMatchObject(disabled)
+            expectNoPaidSideEffects()
+            await expect(
+                handleSendPreparedCalls(await signedPaidSendParams(), createCtx(flag)),
+                `PAID_UPGRADE_ENABLED=${JSON.stringify(flag)}`,
+            ).rejects.toMatchObject(disabled)
+            expectNoPaidSideEffects()
+        }
 
-        const send = await sendParams()
-        const sent = await runWithAuthIdentity(identity, () =>
-            handleSendPreparedCalls(send, createCtx()),
-        )
-        expect(sent.id).toEqual(expect.any(String))
-        expect(captures).toHaveLength(1)
+        resetSideEffects()
+        const prepared = await handlePrepareCalls(await paidPrepareParams(), createCtx('true'))
+        expect(prepared.context.quote.quotes[0]?.accountUpgrade).toBeDefined()
+        expect(rateBodies.map((body) => body.action)).toEqual(['peek', 'commit'])
     })
 
-    it('prepares and sends a paid upgrade for a wallet-signed caller', async () => {
-        const identity: AuthIdentity = { provider: 'erc8128', userId: OWNER }
+    it('still prepares a normal non-upgrade wallet_prepareCalls with the flag off', async () => {
         const ctx = createCtx()
-        ctx.auth = { provider: 'erc8128', userId: OWNER }
-        const prepare = await prepareParams()
-        const prepared = await runWithAuthIdentity(identity, () => handlePrepareCalls(prepare, ctx))
-        expect(prepared.context.quote.quotes[0]?.intent.eoa).toBe(OWNER)
+        await expect(handlePrepareCalls(await paidPrepareParams(), ctx)).rejects.toMatchObject(disabled)
+        expectNoPaidSideEffects()
 
-        const send = await sendParams()
-        const sent = await runWithAuthIdentity(identity, () => handleSendPreparedCalls(send, ctx))
-        expect(sent.id).toEqual(expect.any(String))
-        expect(captures).toHaveLength(1)
+        const prepared = await handlePrepareCalls(plainPrepareParams(), ctx)
+        expect(prepared.digest).toMatch(/^0x[0-9a-fA-F]{64}$/)
+        expect(prepared.context.quote.quotes[0]?.accountUpgrade).toBeUndefined()
+        expect(mockPrepareIntent).toHaveBeenCalledOnce()
+        expect(rateBodies).toEqual([])
+        expect(gasLog).toEqual([])
     })
 })

@@ -246,6 +246,20 @@ export function eip7702DelegationCode(accountProxy: Address): Hex {
     return `0xef0100${getAddress(accountProxy).slice(2).toLowerCase()}` as Hex
 }
 
+/**
+ * Launch sponsors every first upgrade. The paid path is on only when
+ * `PAID_UPGRADE_ENABLED` is exactly `true`; unset, empty, or any other value
+ * is off. Call before any bucket, hold, simulation, or broadcast.
+ */
+export function assertPaidUpgradeEnabled(env: { PAID_UPGRADE_ENABLED?: string }): void {
+    if (env.PAID_UPGRADE_ENABLED !== 'true') {
+        throw new RpcError(
+            INVALID_PARAMS,
+            'Paid account upgrades are disabled. Use wallet_prepareUpgradeAccount and wallet_upgradeAccount (sponsored).',
+        )
+    }
+}
+
 export function chainUsdcAddress(chainId: number): Address {
     const assets = getChainAssetsConfig(chainId)
     const usdc = assets?.assets.usdc

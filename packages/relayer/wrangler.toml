@@ -36,6 +36,10 @@ new_sqlite_classes = ["WalletBindingDO"]
 # OIDC_WALLETS_CLAIM = "wallets"
 # Stage and prod set PRIVY_ENABLED explicitly. Unset still means on in code.
 # Set PRIVY_ENABLED = "false" for OIDC-only.
+# PAID_UPGRADE_ENABLED is unset in every env, so the USDC-paid first upgrade
+# (wallet_prepareCalls accountUpgrade) is off. Launch is sponsored-only. Only
+# the exact string "true" turns it on. Example, not applied:
+# PAID_UPGRADE_ENABLED = "true"
 [dev]
 ip = "0.0.0.0"
 port = 8787

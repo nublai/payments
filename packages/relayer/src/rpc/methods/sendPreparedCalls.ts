@@ -34,6 +34,7 @@ import {
 import { getSignerPool } from './shared/signer-pool'
 import {
     assertPaidUpgrade,
+    assertPaidUpgradeEnabled,
     assertPaidUpgradeIntentSigner,
     assertPaidUpgradeSimulation,
     chainUsdcAddress,
@@ -232,6 +233,7 @@ export async function handleSendPreparedCalls(
     if ('quote' in context && context.quote) {
         const paidQuote = context.quote.quotes?.[0]
         if (paidQuote && paidUpgradeFromQuote(paidQuote)) {
+            assertPaidUpgradeEnabled(env)
             assertPaidUpgradeOidcOwner(paidQuote.intent?.eoa ?? '')
         }
         const quoteError = await validateQuote(context.quote, env)
