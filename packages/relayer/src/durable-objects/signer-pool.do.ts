@@ -68,11 +68,17 @@ function parseGasUnits(value: unknown): number | undefined {
 
 class SignerPoolSendError extends Error {
     broadcastAttempted: boolean
+    code?: SignerError['code']
 
-    constructor(message: string, broadcastAttempted: boolean) {
+    constructor(
+        message: string,
+        broadcastAttempted: boolean,
+        code?: SignerError['code'],
+    ) {
         super(message)
         this.name = 'SignerPoolSendError'
         this.broadcastAttempted = broadcastAttempted
+        this.code = code
     }
 }
 
@@ -188,7 +194,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             if (url.pathname === '/send') {
                 const broadcastAttempted =
                     error instanceof SignerPoolSendError ? error.broadcastAttempted : false
-                return Response.json({ error: message, broadcastAttempted }, { status: 500 })
+                const code = error instanceof SignerPoolSendError ? error.code : undefined
+                return Response.json(
+                    { error: message, broadcastAttempted, ...(code ? { code } : {}) },
+                    { status: 500 },
+                )
             }
             return Response.json({ error: message } as SignerError, { status: 500 })
         }
@@ -1096,6 +1106,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         // clear a slot that an earlier candidate already submitted.
         const attempts: Array<{ broadcastAttempted: boolean; message?: string }> = []
         let lastMessage = 'No signers available - all at capacity'
+        let lastCode: SignerError['code'] | undefined
 
         for (const candidate of candidates) {
             const signerName = `signer-${chainId}-${candidate.index}`
@@ -1129,9 +1140,10 @@ export class SignerPoolDO extends DurableObject<Env> {
                 attempts.push(attempt)
                 if (signerSendDisposition(attempt) === 'retry') {
                     lastMessage = error.error
+                    lastCode = error.code
                     continue
                 }
-                throw new SignerPoolSendError(error.error, true)
+                throw new SignerPoolSendError(error.error, true, error.code)
             } catch (err) {
                 if (
                     err instanceof SignerPoolSendError &&
@@ -1141,6 +1153,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     }) === 'retry'
                 ) {
                     lastMessage = err.message
+                    lastCode = err.code
                     continue
                 }
                 if (err instanceof SignerPoolSendError) throw err
@@ -1149,7 +1162,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
         }
 
-        throw new SignerPoolSendError(lastMessage, poolSendBroadcastAttempted(attempts))
+        throw new SignerPoolSendError(
+            lastMessage,
+            poolSendBroadcastAttempted(attempts),
+            lastCode,
+        )
     }
 
     /**

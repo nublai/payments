@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import argon2 from 'argon2'
 import { chmod, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { encodeFunctionData, getAddress, isAddress, zeroAddress, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
@@ -22,7 +23,6 @@ import {
     createSessionKeystore,
     decryptRootKeystore,
     decryptSessionKeystore,
-    deriveKeystoreKey,
     ensureOwnerOnlyDirectory,
     readKeystoreBundle,
     type KdfParams,
@@ -510,6 +510,50 @@ const MARKER_MAC_KDF = {
     hashLength: 32,
 } as const
 
+const MARKER_MAC_DOMAIN = 'towns-rotation-marker-v1'
+const ROTATION_FRESHNESS_NAME = 'rotation-freshness'
+
+function markerMacKdfAllowed(params: KdfParams): boolean {
+    if (params.salt.length < 12 || params.salt.length > 88) return false
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(params.salt)) return false
+    const salt = Buffer.from(params.salt, 'base64')
+    return (
+        Number.isInteger(params.memoryCost) &&
+        params.memoryCost >= 1 &&
+        params.memoryCost <= MARKER_MAC_KDF.memoryCost &&
+        Number.isInteger(params.timeCost) &&
+        params.timeCost >= 1 &&
+        params.timeCost <= MARKER_MAC_KDF.timeCost &&
+        params.parallelism === MARKER_MAC_KDF.parallelism &&
+        params.hashLength === MARKER_MAC_KDF.hashLength &&
+        salt.length >= 8 &&
+        salt.length <= 64
+    )
+}
+
+function assertMarkerMacKdfAllowed(params: KdfParams): void {
+    if (markerMacKdfAllowed(params)) return
+    throw new SessionRotateError(
+        'ROTATION_MARKER_MISMATCH',
+        'Rotation marker KDF parameters are not allowed. Refusing to derive a key.',
+    )
+}
+
+async function deriveMarkerMacKey(password: string, params: KdfParams): Promise<Buffer> {
+    assertMarkerMacKdfAllowed(params)
+    const derived = await argon2.hash(password, {
+        type: argon2.argon2id,
+        memoryCost: params.memoryCost,
+        timeCost: params.timeCost,
+        parallelism: params.parallelism,
+        hashLength: params.hashLength,
+        raw: true,
+        salt: Buffer.from(params.salt, 'base64'),
+        associatedData: Buffer.from(MARKER_MAC_DOMAIN),
+    })
+    return Buffer.from(derived)
+}
+
 function canonicalPermissions(permissions: RotationPermissions | undefined): unknown {
     if (!permissions) return null
     if (permissions.kind !== 'custom') return { kind: permissions.kind }
@@ -527,13 +571,16 @@ function canonicalPermissions(permissions: RotationPermissions | undefined): unk
  * oldKeyHash, newKeyHash, permissions, fullAccess, and newSessionName.
  * narrow, oldSessionName, chain, chainId, status, and bundleId are covered
  * too, so a local edit of any of them fails before resume signs.
+ * freshness is the sidecar value, not a field stored in the marker, so
+ * restoring an older marker file against a newer sidecar fails.
  */
-function rotationMarkerMacBody(value: RotationIntentPayload): string {
+function rotationMarkerMacBody(value: RotationIntentPayload, freshness: string | null): string {
     return JSON.stringify({
         account: value.account ? value.account.toLowerCase() : null,
         bundleId: value.status === 'submitted' ? (value.bundleId ?? null) : null,
         chain: value.chain,
         chainId: value.chainId,
+        freshness,
         fullAccess: value.fullAccess,
         narrow: value.narrow,
         newKeyHash: value.newKeyHash.toLowerCase(),
@@ -554,34 +601,87 @@ function markerMacMatches(expected: string, actual: string): boolean {
 export async function sealRotationMarker<T extends RotationIntentPayload>(
     value: T,
     password: string,
+    freshness: string | null = null,
 ): Promise<T & { mac: string; macKdf: KdfParams }> {
     const macKdf: KdfParams = value.macKdf ?? {
         ...MARKER_MAC_KDF,
         salt: randomBytes(16).toString('base64'),
     }
-    const key = await deriveKeystoreKey(password, macKdf)
+    const key = await deriveMarkerMacKey(password, macKdf)
     try {
-        const mac = createHmac('sha256', key).update(rotationMarkerMacBody(value)).digest('hex')
+        const mac = createHmac('sha256', key)
+            .update(rotationMarkerMacBody(value, freshness))
+            .digest('hex')
         return { ...value, mac, macKdf }
     } finally {
         key.fill(0)
     }
 }
 
-async function assertRotationMarkerMac(intent: RotationIntent, password: string): Promise<void> {
+async function assertRotationMarkerMac(
+    intent: RotationIntent,
+    password: string,
+    freshness: string | null,
+): Promise<void> {
     if (!intent.mac || !intent.macKdf) {
         throw new SessionRotateError(
             'ROTATION_MARKER_MISMATCH',
             'Rotation marker is not authenticated. Refusing to sign.',
         )
     }
-    const sealed = await sealRotationMarker(intent, password)
+    const sealed = await sealRotationMarker(intent, password, freshness)
     if (!markerMacMatches(sealed.mac, intent.mac)) {
         throw new SessionRotateError(
             'ROTATION_MARKER_MISMATCH',
             'Rotation marker authentication failed. Refusing to sign.',
         )
     }
+}
+
+function rotationFreshnessPath(rootKeystorePath: string, sessionsDir: string): string {
+    const name = `${ROTATION_FRESHNESS_NAME}-${basename(rootKeystorePath, '.json')}`
+    return join(rotationDir(rootKeystorePath, sessionsDir), name)
+}
+
+async function readRotationFreshness(
+    rootKeystorePath: string,
+    sessionsDir: string,
+): Promise<string | null> {
+    try {
+        const raw = (await readFile(rotationFreshnessPath(rootKeystorePath, sessionsDir), 'utf8')).trim()
+        if (!/^[0-9a-f]{32}$/.test(raw)) return null
+        return raw
+    } catch (error) {
+        if (isEnoent(error)) return null
+        throw error
+    }
+}
+
+async function writeRotationFreshness(
+    rootKeystorePath: string,
+    sessionsDir: string,
+): Promise<string> {
+    const dir = rotationDir(rootKeystorePath, sessionsDir)
+    await ensureOwnerOnlyDirectory(dir)
+    const freshness = randomBytes(16).toString('hex')
+    const finalPath = rotationFreshnessPath(rootKeystorePath, sessionsDir)
+    const tempPath = `${finalPath}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    await writeFile(tempPath, `${freshness}\n`, { mode: 0o600 })
+    await rename(tempPath, finalPath)
+    if (process.platform !== 'win32') {
+        await chmod(finalPath, 0o600)
+    }
+    return freshness
+}
+
+async function sealBoundRotationMarker<T extends RotationIntentPayload>(
+    rootKeystorePath: string,
+    sessionsDir: string,
+    value: T,
+    password: string,
+): Promise<T & { mac: string; macKdf: KdfParams }> {
+    const freshness = await writeRotationFreshness(rootKeystorePath, sessionsDir)
+    return sealRotationMarker(value, password, freshness)
 }
 
 function markRotationIntentSubmitted(
@@ -619,6 +719,9 @@ async function defaultDeleteRotationIntent(
     fileName: string,
 ): Promise<void> {
     await unlink(join(rotationDir(rootKeystorePath, sessionsDir), fileName))
+    await unlink(rotationFreshnessPath(rootKeystorePath, sessionsDir)).catch((error) => {
+        if (!isEnoent(error)) throw error
+    })
 }
 
 function getDefaultDeps(): SessionRotateDeps {
@@ -1044,6 +1147,22 @@ export async function executeSessionRotate(
             if (!intent) {
                 throw new SessionRotateError('ROTATION_FAILED', 'No rotation marker to abandon.')
             }
+            try {
+                await assertRotationMarkerMac(
+                    intent,
+                    options.password,
+                    await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
+                )
+            } catch (error) {
+                if (error instanceof SessionRotateError && error.code === 'ROTATION_MARKER_MISMATCH') {
+                    throw new SessionRotateError(
+                        'ROTATION_MARKER_MISMATCH',
+                        'Rotation marker is unverified. Refusing to abandon it or to report on-chain keys from it. Nothing was signed. Delete the marker file only after you have checked the chain yourself.',
+                        { cause: error },
+                    )
+                }
+                throw error
+            }
             const reportNetwork = resolveNetworkConfig(options.env, intent.chain)
             const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
             const signedNetwork = {
@@ -1138,7 +1257,9 @@ export async function executeSessionRotate(
             intent = await deps.writeRotationIntent(
                 keystorePath,
                 bundle.root.sessionRef.dir,
-                await sealRotationMarker(
+                await sealBoundRotationMarker(
+                    keystorePath,
+                    bundle.root.sessionRef.dir,
                     {
                         oldSessionName: activeSessionName,
                         newSessionName,
@@ -1169,7 +1290,11 @@ export async function executeSessionRotate(
             newSession = await deps.readSessionKeystoreFile(newSessionPath)
         } catch (error) {
             if (resumed && isEnoent(error)) {
-                await assertRotationMarkerMac(intent, options.password)
+                await assertRotationMarkerMac(
+                intent,
+                options.password,
+                await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
+            )
                 const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
                 const signedNetwork = {
                     ...network,
@@ -1292,7 +1417,11 @@ export async function executeSessionRotate(
                     'Rotation marker old key does not match the previous session file. Refusing to delete it.',
                 )
             }
-            await assertRotationMarkerMac(intent, options.password)
+            await assertRotationMarkerMac(
+                intent,
+                options.password,
+                await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
+            )
             const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
             const signedNetwork = {
                 ...network,
@@ -1368,7 +1497,11 @@ export async function executeSessionRotate(
             resumed,
         )
         if (resumed) {
-            await assertRotationMarkerMac(intent, options.password)
+            await assertRotationMarkerMac(
+                intent,
+                options.password,
+                await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
+            )
         }
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
         const signedNetwork = {
@@ -1683,7 +1816,9 @@ export async function executeSessionRotate(
                             intent = await deps.writeRotationIntent(
                                 keystorePath,
                                 bundle.root.sessionRef.dir,
-                                await sealRotationMarker(
+                                await sealBoundRotationMarker(
+                                    keystorePath,
+                                    bundle.root.sessionRef.dir,
                                     markRotationIntentSubmitted(intent, id),
                                     options.password,
                                 ),
@@ -1704,7 +1839,9 @@ export async function executeSessionRotate(
                         intent = await deps.writeRotationIntent(
                             keystorePath,
                             bundle.root.sessionRef.dir,
-                            await sealRotationMarker(
+                            await sealBoundRotationMarker(
+                                keystorePath,
+                                bundle.root.sessionRef.dir,
                                 markRotationIntentSubmitted(intent, submittedId),
                                 options.password,
                             ),
@@ -1734,7 +1871,9 @@ export async function executeSessionRotate(
             intent = await deps.writeRotationIntent(
                 keystorePath,
                 bundle.root.sessionRef.dir,
-                await sealRotationMarker(
+                await sealBoundRotationMarker(
+                    keystorePath,
+                    bundle.root.sessionRef.dir,
                     markRotationIntentSubmitted(intent, bundleId),
                     options.password,
                 ),
