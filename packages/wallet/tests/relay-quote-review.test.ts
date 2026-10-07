@@ -8,6 +8,7 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { hashRelayOrder } from '../src/lib/relay-order'
 import { simulateRelayQuote, type SimulateRelayQuoteInput } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
 const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
@@ -272,11 +273,9 @@ function run(input: {
         input.events?.push('sign')
         return SIGNATURE
     })
-    const prepareCalls = mock(async () => ({
-        context: { quote: { quotes: [] } },
-        digest: '0xabc' as const,
-        typedData: { domain: {}, types: {}, primaryType: 'Intent', message: {} },
-    }))
+    const prepareCalls = mock(async (input: Parameters<typeof matchingPreparedCalls>[0]) =>
+        matchingPreparedCalls(input),
+    )
     const confirmQuote = input.confirmQuote ? mock(input.confirmQuote) : mock(async () => true)
     const result = executeAccountSwap(
         {

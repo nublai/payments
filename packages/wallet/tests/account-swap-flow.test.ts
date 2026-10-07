@@ -54,6 +54,7 @@ import { LoginProfileError } from '../src/lib/keystore'
 import { PromptCancelledError } from '../src/lib/password-readline'
 import { RelayLinkError } from '../src/lib/relay-link'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
@@ -203,17 +204,8 @@ function makeEthBridgeQuote(input?: { recipient?: Address; omitRequestId?: boole
     }
 }
 
-function makePreparedCalls() {
-    return {
-        context: { quote: { quotes: [] } },
-        digest: '0xabc' as const,
-        typedData: {
-            domain: {},
-            types: {},
-            primaryType: 'Intent',
-            message: {},
-        },
-    }
+function makePreparedCalls(input: Parameters<typeof matchingPreparedCalls>[0]) {
+    return matchingPreparedCalls(input)
 }
 
 function makeFinalStatus(overrides?: Record<string, unknown>) {
@@ -322,7 +314,7 @@ test('resolveAccountSwapPassword uses interactive prompt when stdin is not reque
 test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
     const confirmQuote = mock(async () => true)
     const auditQuote = mock((_quote) => {})
-    const prepareCalls = mock(async () => makePreparedCalls()) as unknown as any
+    const prepareCalls = mock(async (input) => makePreparedCalls(input)) as unknown as any
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
 
     const result = await executeAccountSwap(
@@ -396,7 +388,7 @@ test('executeAccountSwap accepts successful bundles without a statusCode', async
             readTokenBalance: mock(async () => 200_000000n),
             getQuote: mock(async () => makeQuote()) as unknown as any,
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -445,7 +437,7 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
             getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
             getQuote,
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -495,7 +487,7 @@ test('executeAccountSwap does not treat source intent hashes as destination tx h
             getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
             getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -568,7 +560,7 @@ test('executeAccountSwap uses the provided session file when it matches the requ
             readTokenBalance: mock(async () => 2_000000n),
             getQuote: mock(async () => makeQuote()) as unknown as any,
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -672,7 +664,7 @@ test('executeAccountSwap rejects bridge when quote has no requestId before execu
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
                 getQuote: mock(async () => quoteWithoutRequestId) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -965,7 +957,7 @@ test('executeAccountSwap still confirms the quote when yes is set', async () => 
             getQuote: mock(async () => makeQuote()) as unknown as any,
             readNonce: mock(async () => 2n),
             confirmQuote,
-            prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1129,7 +1121,7 @@ test('executeAccountSwap does not force reconfirmation when refreshed quotes are
                 getQuote: getQuote as unknown as any,
                 confirmQuote,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1170,7 +1162,7 @@ test('executeAccountSwap maps bridge polling timeouts to typed errors', async ()
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
                 getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1214,7 +1206,7 @@ test('executeAccountSwap surfaces relayer auth codes from sendPreparedCalls', as
                 readTokenBalance: mock(async () => 2_000000n),
                 getQuote: mock(async () => makeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1304,7 +1296,7 @@ test('executeAccountSwap falls back to session.json when the root keystore is mi
                 readTokenBalance: mock(async () => 2_000000n),
                 getQuote: mock(async () => makeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1359,7 +1351,7 @@ test('executeAccountSwap falls back to session.json for login-profile root-key e
             readTokenBalance: mock(async () => 2_000000n),
             getQuote: mock(async () => makeQuote()) as unknown as any,
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1469,7 +1461,7 @@ test('executeAccountSwap maps bundle status 400 to INTENT_REVERTED', async () =>
                 readTokenBalance: mock(async () => 2_000000n),
                 getQuote: mock(async () => makeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1520,7 +1512,7 @@ test('executeAccountSwap maps bridge fill non-success to BRIDGE_FILL_FAILED', as
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
                 getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1560,7 +1552,7 @@ test('executeAccountSwap maps simulation failure JsonRpcClientError to SIMULATIO
                 readTokenBalance: mock(async () => 2_000000n),
                 getQuote: mock(async () => makeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -1600,7 +1592,7 @@ test('executeAccountSwap maps bundle wait timeouts to BUNDLE_TIMEOUT', async () 
                 readTokenBalance: mock(async () => 2_000000n),
                 getQuote: mock(async () => makeQuote()) as unknown as any,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async () => makePreparedCalls()) as unknown as any,
+                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,

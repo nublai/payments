@@ -2,6 +2,7 @@ import { expect, mock, test } from 'bun:test'
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
 import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'
+import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
@@ -138,11 +139,9 @@ function runQuote(input: {
     simulateQuoteCalls?: () => Promise<void>
 }) {
     const signTypedData = mock(async () => SIGNATURE)
-    const prepareCalls = mock(async () => ({
-        context: { quote: { quotes: [] } },
-        digest: '0xabc' as const,
-        typedData: { domain: {}, types: {}, primaryType: 'Intent', message: {} },
-    }))
+    const prepareCalls = mock(async (input: Parameters<typeof matchingPreparedCalls>[0]) =>
+        matchingPreparedCalls(input),
+    )
     const confirmQuote = input.confirmQuote ? mock(input.confirmQuote) : mock(async () => true)
     const result = executeAccountSwap(
         {

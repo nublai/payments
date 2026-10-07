@@ -35,6 +35,7 @@ export function createRelayerClient(params: CreateRelayerClientParams): CreatedR
         authTokenProvider: params.authTokenProvider,
         authSigner: params.authSigner,
         authSignOptions: params.authSignOptions,
+        allowInsecureHttp: params.allowInsecureHttp,
     }
 
     return createPublicClient({

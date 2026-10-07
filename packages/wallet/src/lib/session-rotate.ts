@@ -42,7 +42,12 @@ import {
     createEthHttpSigner,
     readAccountNonce,
 } from './relayer-client-utils'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
+} from './execute-calls'
 import { readActiveUsdcDaily } from './session-gates'
 import {
     buildPermissionDefaults,
@@ -122,6 +127,7 @@ export type SessionRotateResult = {
         status: string
         statusCode: number
     }
+    feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
 type SessionRotateDeps = {
@@ -156,21 +162,18 @@ type SessionRotateDeps = {
     }) => Promise<GetKeysResponse>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-            sessionKey?: Hex
-        },
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+        params: ExecuteSignedCallsParams,
+    ) => Promise<ExecuteSignedCallsResult>
     prepareCalls: (input: {
         network: CliNetworkConfig
         from: Address
         calls: Call[]
         nonce: bigint
         sessionKey?: Hex
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -320,6 +323,10 @@ function getDefaultDeps(): SessionRotateDeps {
                 chainId: input.network.chainId,
                 calls: input.calls,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
                 sessionKey: input.sessionKey,
             })
         },
@@ -472,6 +479,7 @@ export async function executeSessionRotate(
 
         let bundleId = intent.status === 'submitted' ? intent.bundleId : undefined
         let finalStatus: BundleStatusResponse | null = null
+        let feeCap: ExecuteSignedCallsResult['feeCap'] | undefined
 
         if (intent.status === 'pending') {
             if (options.narrow && options.fullAccess) {
@@ -679,6 +687,10 @@ export async function executeSessionRotate(
                                 from: input.from,
                                 calls: input.calls,
                                 nonce: input.nonce,
+                                expiry: input.expiry,
+                                payer: input.payer,
+                                paymentToken: input.paymentToken,
+                                paymentMaxAmount: input.paymentMaxAmount,
                                 sessionKey: input.sessionKey,
                             }),
                         signTypedData: deps.signTypedData,
@@ -696,10 +708,14 @@ export async function executeSessionRotate(
                         calls,
                         nonce,
                         signerPrivateKey: decryptedRoot.rootPrivateKey,
+                        chainId: signedNetwork.chainId,
+                        env: signedNetwork.env,
+                        rpcUrl: signedNetwork.rpcUrl,
                     },
                 )
                 bundleId = submission.id
                 finalStatus = submission.finalStatus
+                feeCap = submission.feeCap
                 for (const extra of extraCleanups) {
                     const extraNetwork = {
                         ...resolveNetworkConfig(options.env, extra.chainName),
@@ -720,6 +736,10 @@ export async function executeSessionRotate(
                                     from: input.from,
                                     calls: input.calls,
                                     nonce: input.nonce,
+                                    expiry: input.expiry,
+                                    payer: input.payer,
+                                    paymentToken: input.paymentToken,
+                                    paymentMaxAmount: input.paymentMaxAmount,
                                     sessionKey: input.sessionKey,
                                 }),
                             signTypedData: deps.signTypedData,
@@ -737,6 +757,8 @@ export async function executeSessionRotate(
                             calls: extra.calls,
                             nonce: extraNonce,
                             signerPrivateKey: decryptedRoot.rootPrivateKey,
+                            chainId: extraNetwork.chainId,
+                            env: extraNetwork.env,
                         },
                     )
                 }
@@ -842,6 +864,7 @@ export async function executeSessionRotate(
                 status: finalStatus.status ?? 'unknown',
                 statusCode: finalStatus.statusCode ?? 0,
             },
+            feeCap,
         }
     })
 }

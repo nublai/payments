@@ -1,6 +1,7 @@
 import { anvil, base, polygon } from 'viem/chains'
 import { zeroAddress, type Address } from 'viem'
-import type { EthHttpSigner } from '@nubl/relayer-client'
+import { getAddresses } from '@nubl/contracts/deployments'
+import { assertRelayerUrl, type EthHttpSigner } from '@nubl/relayer-client'
 
 export type EnvName = 'prod' | 'stage' | 'dev'
 export type ChainName = 'base' | 'polygon' | 'anvil'
@@ -80,17 +81,32 @@ export function getChainNameByChainId(chainId: number): ChainName | undefined {
     return chainNameByChainId[chainId]
 }
 
-export function getEnvRelayerUrl(env: EnvName): string {
-    if (env === 'dev') {
-        return readEnv('RELAYER_URL_DEV') ?? DEV_RELAYER_URL_DEFAULT
-    }
-    const key = env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE'
-    const value = readEnv(key)
+/**
+ * Plain http in dev is only for a local chain whose orchestrator is not in the
+ * deployments JSON. Loopback is always allowed by assertRelayerUrl. A published
+ * orchestrator, including dev on Base Sepolia, requires https unless the host is loopback.
+ */
+export function allowInsecureRelayerHttp(env: EnvName, chainId: number): boolean {
+    if (env !== 'dev') return false
+    if (chainId !== 31337 && chainId !== 41337) return false
+    if (getAddresses(env, chainId)?.orchestrator) return false
+    return true
+}
+
+export function getEnvRelayerUrl(env: EnvName, chainId?: number): string {
+    const value =
+        env === 'dev'
+            ? (readEnv('RELAYER_URL_DEV') ?? DEV_RELAYER_URL_DEFAULT)
+            : readEnv(env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE')
     if (!value) {
+        const key = env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE'
         throw new Error(
             `${key} is not set. Set it to the relayer base URL for the ${env} environment.`,
         )
     }
+    const allowInsecureHttp =
+        chainId !== undefined && allowInsecureRelayerHttp(env, chainId)
+    assertRelayerUrl(value, { allowInsecureHttp })
     return value
 }
 
@@ -161,18 +177,29 @@ export function resolveNetworkConfig(env: EnvName, chain: ChainName): CliNetwork
     const selected = getChainConfig(chain)
     return {
         env,
-        relayerUrl: getEnvRelayerUrl(env),
+        relayerUrl: getEnvRelayerUrl(env, selected.chainId),
         rpcUrl: selected.rpcUrl,
         chainId: selected.chainId,
     }
 }
 
+/**
+ * Circle native USDC for chains that have an orchestrator and account proxy in
+ * deployments JSON but are not CLI chain names.
+ * https://developers.circle.com/stablecoins/usdc-contract-addresses
+ */
+const circleUsdcByChainId: Record<number, Address> = {
+    42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+}
+
 export function getUsdcAddressByChainId(chainId: number, legacy = false): Address | undefined {
     const chain = getChainNameByChainId(chainId)
-    if (!chain) {
-        return undefined
+    if (chain) {
+        return getUsdcTokenConfig(chain, { legacy }).address
     }
-    return getUsdcTokenConfig(chain, { legacy }).address
+    if (legacy) return undefined
+    return circleUsdcByChainId[chainId]
 }
 
 export function normalizeChainName(value?: string): ChainName {
