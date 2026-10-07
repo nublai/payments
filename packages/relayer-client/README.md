@@ -139,7 +139,9 @@ When a delegated signer key (session/bot key) signs on behalf of an account:
 
 - Signer must sign an ERC-1271 transformed digest (`computeErc1271Digest`).
 - Signature should be wrapped with `wrapSignature` and key hash.
-- The new `signPreparedCalls` helper handles this flow.
+- The new `signPreparedCalls` helper handles this flow. It recomputes the EIP-712 digest (`Orchestrator` / `0.5.5`, the verifying contract, the requested calls, nonce, and fee caps) and refuses to sign if the relayer typed data, digest, or quote does not match. Pass `expected`.
+
+Relayer URLs must be `https` unless the host is loopback. Pass `allowInsecureHttp` only for local dev. On chain 31337, `executePreparedCalls` reads the orchestrator from `ORCHESTRATOR_31337` when `verifyingContract` is omitted.
 
 ```ts
 import {

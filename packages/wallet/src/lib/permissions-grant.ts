@@ -41,7 +41,11 @@ import {
     listSessionNames,
     parseSessionName,
 } from './session-common'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+} from './execute-calls'
 
 export type PermissionsGrantResult = {
     type: 'permissions_grant'
@@ -72,14 +76,7 @@ type PermissionsGrantDeps = {
     }) => Promise<GetKeysResponse>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-            sessionKey?: Hex
-        },
+        params: ExecuteSignedCallsParams,
     ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
     prepareCalls: (input: {
         network: CliNetworkConfig
@@ -307,6 +304,8 @@ export async function executePermissionsGrant(
                 ],
                 nonce,
                 signerPrivateKey: decryptedRoot.rootPrivateKey,
+                chainId: signedNetwork.chainId,
+                env: signedNetwork.env,
             },
         )
 

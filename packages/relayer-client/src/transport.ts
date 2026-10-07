@@ -44,6 +44,34 @@ export interface JsonRpcError {
 
 export interface JsonRpcTransportOptions {
     httpAuth?: HttpAuthOptions
+    /**
+     * Allow plain http to a non-loopback host.
+     * Wallet dev sets this. Prod and stage leave it unset.
+     */
+    allowInsecureHttp?: boolean
+}
+
+function isLoopbackHost(hostname: string): boolean {
+    const host = hostname.toLowerCase().replace(/\.$/, '')
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+}
+
+/**
+ * Prod and stage relayer URLs must be https unless the host is loopback.
+ * Local dev may pass allowInsecureHttp. Loopback http is always allowed.
+ */
+export function assertRelayerUrl(relayerUrl: string, options?: { allowInsecureHttp?: boolean }): void {
+    let url: URL
+    try {
+        url = new URL(relayerUrl)
+    } catch {
+        throw new Error(`Invalid relayer URL: ${relayerUrl}`)
+    }
+    if (url.protocol === 'https:') return
+    if (url.protocol === 'http:' && (isLoopbackHost(url.hostname) || options?.allowInsecureHttp)) return
+    throw new Error(
+        `Relayer URL must use https when the host is not loopback outside local dev. Refusing ${relayerUrl}`,
+    )
 }
 
 /**
@@ -153,6 +181,7 @@ export function createJsonRpcTransport(
     relayerUrl: string,
     options?: JsonRpcTransportOptions,
 ): JsonRpcTransport {
+    assertRelayerUrl(relayerUrl, options)
     let requestId = 0
 
     return {
@@ -237,5 +266,6 @@ export function createJsonRpcTransport(
 export function createRelayerTransport(client: RelayerPublicClient): JsonRpcTransport {
     return createJsonRpcTransport(client.relayerConfig.relayerUrl, {
         httpAuth: getHttpAuthOptions(client.relayerConfig),
+        allowInsecureHttp: client.relayerConfig.allowInsecureHttp,
     })
 }

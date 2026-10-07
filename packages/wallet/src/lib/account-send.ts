@@ -46,7 +46,11 @@ import {
     createEthHttpSigner,
     readAccountNonce,
 } from './relayer-client-utils'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+} from './execute-calls'
 import { isMissingFileError } from './fs-utils'
 import { hasLegacyRecipientAlias } from './legacy-recipient-aliases'
 import { RecipientResolutionError, resolveAddressOrEnsInput } from './recipient-resolver'
@@ -169,14 +173,7 @@ type AccountSendDeps = {
     waitForBundle: (input: { network: NetworkConfig; id: string }) => Promise<BundleStatusResponse>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            sessionKey?: Hex
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-        },
+        params: ExecuteSignedCallsParams,
     ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
 }
 
@@ -553,6 +550,8 @@ export async function executeAccountSend(
                     sessionKey: sessionPublicKey,
                     signerPrivateKey: signer.signerPrivateKey,
                     signerKeyHash: sessionKeyHash,
+                    chainId: network.chainId,
+                    env: network.env,
                 },
             )
         }

@@ -2,6 +2,7 @@ import { serializeSignature, type Address, type Hex, type Signature } from 'viem
 import type { PrepareCallsResponse } from '../actions/prepareCalls'
 import { computeErc1271Digest } from '../utils/erc1271'
 import { wrapSignature } from '../utils/signature'
+import { bindPreparedCalls, type PreparedCallsExpectation } from './bindPreparedCalls'
 
 type SignatureValue = Hex | Signature
 
@@ -33,6 +34,8 @@ export type SignPreparedCallsSigner = TypedDataSignerInput | DelegatedDigestSign
 export interface SignPreparedCallsParams {
     prepared: PrepareCallsResponse
     signer: SignPreparedCallsSigner
+    /** Calls, account, chain, verifying contract, nonce, and fee caps the caller agreed to. */
+    expected: PreparedCallsExpectation
 }
 
 export interface SignPreparedCallsResult {
@@ -63,7 +66,8 @@ function toSignatureHex(value: SignatureValue): Hex {
 export async function signPreparedCalls(
     params: SignPreparedCallsParams,
 ): Promise<SignPreparedCallsResult> {
-    const { prepared, signer } = params
+    const { prepared, signer, expected } = params
+    bindPreparedCalls(prepared, expected)
 
     if (signer.type === 'typedData') {
         const rawSignature = toSignatureHex(await signer.signTypedData(prepared.typedData))

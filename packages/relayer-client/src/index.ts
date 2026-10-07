@@ -95,6 +95,7 @@ export {
 export {
     createJsonRpcTransport,
     createRelayerTransport,
+    assertRelayerUrl,
     JsonRpcClientError,
     type JsonRpcTransport,
     type JsonRpcRequest,
@@ -189,6 +190,11 @@ export {
     type SignPreparedCallsSigner,
     type TypedDataSignerInput,
     type DelegatedDigestSignerInput,
+    bindPreparedCalls,
+    PreparedCallsBindingError,
+    ORCHESTRATOR_DOMAIN_NAME,
+    ORCHESTRATOR_DOMAIN_VERSION,
+    type PreparedCallsExpectation,
     type ExecutePreparedCallsParams,
     type ExecutePreparedCallsResult,
 } from './helpers'

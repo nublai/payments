@@ -1,10 +1,13 @@
 import {
+    bindPreparedCalls,
     wrapSignature,
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
 import type { Address, Hex } from 'viem'
+import type { EnvName } from './network-config'
+import { resolveOrchestratorAddress } from './orchestrator-address'
 
 export type ExecuteSignedCallsParams = {
     from: Address
@@ -13,6 +16,14 @@ export type ExecuteSignedCallsParams = {
     sessionKey?: Hex
     signerPrivateKey: Hex
     signerKeyHash?: Hex
+    chainId: number
+    env: EnvName
+    /** Overrides the orchestrator looked up for env/chainId. */
+    verifyingContract?: Address
+    payer?: Address
+    paymentToken?: Address
+    paymentMaxAmount?: bigint
+    expiry?: bigint
 }
 
 export type ExecuteSignedCallsDeps = {
@@ -42,6 +53,20 @@ export async function executeSignedCalls(
         calls: params.calls,
         nonce: params.nonce,
         sessionKey: params.sessionKey,
+    })
+
+    const verifyingContract =
+        params.verifyingContract ?? resolveOrchestratorAddress(params.env, params.chainId)
+    bindPreparedCalls(prepared, {
+        from: params.from,
+        calls: params.calls,
+        chainId: params.chainId,
+        verifyingContract,
+        nonce: params.nonce,
+        payer: params.payer,
+        paymentToken: params.paymentToken,
+        paymentMaxAmount: params.paymentMaxAmount,
+        expiry: params.expiry,
     })
 
     const signature = await deps.signTypedData({

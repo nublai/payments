@@ -1,4 +1,4 @@
-import type { Address, Hex } from 'viem'
+import { getAddress, type Address, type Hex } from 'viem'
 import type { BundleStatusResponse, Call, RelayerPublicClient } from '../types'
 import type { RelayerActions } from '../decorators/relayer'
 import { waitForBundle } from '../actions/waitForBundle'
@@ -8,6 +8,7 @@ import {
     type SignPreparedCallsResult,
     type SignPreparedCallsSigner,
 } from './signPreparedCalls'
+import { PreparedCallsBindingError } from './bindPreparedCalls'
 
 export interface ExecutePreparedCallsParams {
     client: RelayerPublicClient & RelayerActions
@@ -25,6 +26,8 @@ export interface ExecutePreparedCallsParams {
     payer?: Address
     paymentToken?: Address
     paymentMaxAmount?: bigint
+    /** Orchestrator address that must be the EIP-712 verifying contract. */
+    verifyingContract?: Address
     paymentSignature?: Hex
     signer: SignPreparedCallsSigner
     skipWait?: boolean
@@ -37,6 +40,16 @@ export interface ExecutePreparedCallsResult {
     prepared: PrepareCallsResponse
     signed: SignPreparedCallsResult
     finalStatus?: BundleStatusResponse
+}
+
+function readOrchestratorAddress(chainId: number): Address {
+    const raw = process.env[`ORCHESTRATOR_${chainId}`]?.trim()
+    if (!raw) {
+        throw new PreparedCallsBindingError(
+            `Refusing to sign prepared calls: set ORCHESTRATOR_${chainId} or pass verifyingContract`,
+        )
+    }
+    return getAddress(raw)
 }
 
 /**
@@ -62,9 +75,30 @@ export async function executePreparedCalls(
         paymentMaxAmount: params.paymentMaxAmount,
     })
 
+    const chainId = params.chainId ?? params.client.chain?.id ?? params.client.relayerConfig.chainId
+    if (chainId === undefined) {
+        throw new PreparedCallsBindingError(
+            'Refusing to sign prepared calls: chainId is required to bind the typed data',
+        )
+    }
+    const verifyingContract =
+        params.verifyingContract ?? readOrchestratorAddress(chainId)
     const signed = await signPreparedCalls({
         prepared,
         signer: params.signer,
+        expected: {
+            from: params.from,
+            calls: params.calls,
+            chainId,
+            verifyingContract,
+            nonce: params.nonce,
+            expiry: params.expiry,
+            settler: params.settler,
+            settlerContext: params.settlerContext,
+            payer: params.payer,
+            paymentToken: params.paymentToken,
+            paymentMaxAmount: params.paymentMaxAmount,
+        },
     })
 
     const submitted = await params.client.sendPreparedCalls({

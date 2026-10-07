@@ -95,6 +95,25 @@ echo "Deploying contracts (bun run deploy:local && bun run make-config)..."
   bun run make-config
 )
 
+# Local Anvil is not in addresses.json. Export ORCHESTRATOR_31337 (and the
+# other address keys) so tw can bind the EIP-712 verifying contract.
+LOCAL_ENV="$ROOT/packages/contracts/deployments/envs/local/.env"
+if [[ ! -f "$LOCAL_ENV" ]]; then
+  echo "Missing $LOCAL_ENV after make-config." >&2
+  exit 1
+fi
+exported=0
+while IFS= read -r line || [[ -n "$line" ]]; do
+  [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(0x[0-9a-fA-F]{40})$ ]] || continue
+  export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+  exported=$((exported + 1))
+done < "$LOCAL_ENV"
+if [[ -z "${ORCHESTRATOR_31337:-}" ]]; then
+  echo "ORCHESTRATOR_31337 was not set from $LOCAL_ENV" >&2
+  exit 1
+fi
+echo "Exported $exported local address keys"
+
 echo "Starting wrangler relayer..."
 RELAYER_PID="$(bash "$ROOT/packages/relayer/scripts/dev.sh" --background)"
 PIDS+=("$RELAYER_PID")

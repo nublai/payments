@@ -31,7 +31,11 @@ import {
     createEthHttpSigner,
     readAccountNonce,
 } from './relayer-client-utils'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+} from './execute-calls'
 import {
     computeSessionKeyHash,
     getChainKeys,
@@ -106,14 +110,7 @@ type SessionRevokeDeps = {
     sleep: (ms: number) => Promise<void>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-            sessionKey?: Hex
-        },
+        params: ExecuteSignedCallsParams,
     ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
     prepareCalls: (input: {
         network: CliNetworkConfig
@@ -393,6 +390,8 @@ export async function executeSessionRevoke(
                     calls,
                     nonce,
                     signerPrivateKey: decryptedRoot.rootPrivateKey,
+                    chainId: signedNetwork.chainId,
+                    env: signedNetwork.env,
                 },
             )
         } catch (error) {

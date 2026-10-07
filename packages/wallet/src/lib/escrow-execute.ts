@@ -270,6 +270,8 @@ export async function executeEscrowCallsWithFallback(params: {
             sessionKey: sessionPublicKey,
             signerPrivateKey: resolvedSigner.signerPrivateKey,
             signerKeyHash: sessionKeyHash,
+            chainId: signedNetwork.chainId,
+            env: signedNetwork.env,
         })
     } catch (error) {
         if (error instanceof SessionSignerExpiredError) {
@@ -321,6 +323,8 @@ export async function executeEscrowCallsWithFallback(params: {
             sessionKey: sessionPublicKey,
             signerPrivateKey: fallback.sessionPrivateKey,
             signerKeyHash: sessionKeyHash,
+            chainId: fallbackNetwork.chainId,
+            env: fallbackNetwork.env,
         })
     }
 
