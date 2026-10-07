@@ -1,10 +1,19 @@
-import { expect, test } from 'bun:test'
+import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { encodeFunctionData, zeroAddress, type Address, type Hex } from 'viem'
 import { INTENT_TYPES } from '@nubl/relayer-client'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { reviewRelayQuote } from '../src/lib/relay-allowlist'
 import type { RelayQuoteResponse } from '../src/lib/relay-link'
 import { reviewSwapSessionSignature } from '../src/lib/session-daemon-policy'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
 const EXPECTED = '0x4444444444444444444444444444444444444444' as Address

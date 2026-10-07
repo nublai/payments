@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,6 +19,15 @@ import { simulateRelayQuote } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address

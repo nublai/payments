@@ -1,10 +1,19 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address

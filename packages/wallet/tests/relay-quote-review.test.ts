@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
@@ -10,6 +10,15 @@ import { simulateRelayQuote, type SimulateRelayQuoteInput } from '../src/lib/rel
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
 const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
