@@ -98,7 +98,7 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
     return { valid: missing.length === 0, missing }
 }
 
-/** Stage and prod must name a non-zero fee recipient. Local may omit it. */
+/** Anything other than local must name a non-zero fee recipient. Local may omit it. */
 function isPaidFeeRecipient(value: string | undefined): boolean {
     const text = value?.trim()
     if (!text || !isAddress(text, { strict: false })) return false
