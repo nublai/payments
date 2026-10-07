@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
-import { decodeFunctionData, type Address, type Hex } from 'viem'
+import { decodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
 import { executeAccountUpdatePassword } from '../src/lib/account-update-password'
 import { executePermissionsList } from '../src/lib/permissions-list'
@@ -12,8 +13,10 @@ import { executeSessionRotate } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
-const oldAddress = '0x2222222222222222222222222222222222222222' as Address
-const newAddress = '0x3333333333333333333333333333333333333333' as Address
+const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+const oldAddress = privateKeyToAccount(oldSessionKey).address
+const newAddress = privateKeyToAccount(newSessionKey).address
 const rootPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
 const txHash = '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca' as Hex
 
@@ -92,6 +95,11 @@ function rotateDeps(keystorePath: string, overrides: Record<string, unknown> = {
         writeRootKeystoreFile: mock(async () => {}),
         generatePrivateKey: mock(() => rootPrivateKey),
         decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
+        decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
+            const session = getAddress(keystore.addresses.session as Address)
+            if (session === newAddress) return { sessionPrivateKey: newSessionKey }
+            return { sessionPrivateKey: oldSessionKey }
+        }),
         readNonce: mock(async () => 1n),
         readActiveUsdcDaily: mock(async () => 0n),
         getKeys: mock(async () => ({
@@ -340,6 +348,9 @@ test('rotation marker with fullAccess requires the human phrase on a plain resum
                     newKeyHash: hash,
                     narrow: false,
                     fullAccess: true,
+                    account,
+                    oldKeyHash: computeSessionKeyHash(oldAddress),
+                    permissions: { kind: 'fullAccess' },
                 },
                 null,
                 2,
@@ -386,6 +397,9 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
                     newKeyHash: hash,
                     narrow: false,
                     fullAccess: true,
+                    account,
+                    oldKeyHash: computeSessionKeyHash(oldAddress),
+                    permissions: { kind: 'fullAccess' },
                 },
                 null,
                 2,
@@ -611,6 +625,9 @@ test('resume after the pointer moved finishes cleanup and signs nothing', async 
                     newKeyHash: hash,
                     narrow: true,
                     fullAccess: false,
+                    account,
+                    oldKeyHash: computeSessionKeyHash(oldAddress),
+                    permissions: { kind: 'narrow' },
                 },
                 null,
                 2,

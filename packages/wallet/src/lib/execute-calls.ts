@@ -55,6 +55,11 @@ export type ExecuteSignedCallsParams = {
     /** Skip the RPC estimate and use this ceiling. */
     combinedGasCeiling?: bigint
     rpcUrl?: string
+    /**
+     * Called once sendPreparedCalls has returned an id, before the status wait.
+     * A throw here is still a post-send error: the id is attached to it.
+     */
+    onBundleSubmitted?: (bundleId: string) => Promise<void>
 }
 
 export type ExecuteSignedCallsDeps = {
@@ -181,15 +186,29 @@ export async function executeSignedCalls(
         signature: effectiveSignature,
     })
 
+    const tagBundle = (error: unknown): unknown => {
+        if (error instanceof Error) {
+            ;(error as Error & { bundleId?: string }).bundleId = submission.id
+            return error
+        }
+        const wrapped = new Error(String(error)) as Error & { bundleId?: string }
+        wrapped.bundleId = submission.id
+        return wrapped
+    }
+
+    try {
+        if (params.onBundleSubmitted) {
+            await params.onBundleSubmitted(submission.id)
+        }
+    } catch (error) {
+        throw tagBundle(error)
+    }
+
     let finalStatus: BundleStatusResponse
     try {
         finalStatus = await deps.waitForBundle({ id: submission.id })
     } catch (error) {
-        if (error instanceof Error && error.message.includes('Timeout waiting for bundle')) {
-            const timedOut = error as Error & { bundleId?: string }
-            timedOut.bundleId = submission.id
-        }
-        throw error
+        throw tagBundle(error)
     }
 
     return {

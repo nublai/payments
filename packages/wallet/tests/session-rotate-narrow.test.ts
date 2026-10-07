@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
-import { decodeFunctionData, type Address, type Hex } from 'viem'
+import { decodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { signedPaymentMaxForQuote } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
@@ -13,8 +14,10 @@ import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
-const oldAddress = '0x2222222222222222222222222222222222222222' as Address
-const newAddress = '0x3333333333333333333333333333333333333333' as Address
+const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+const oldAddress = privateKeyToAccount(oldSessionKey).address
+const newAddress = privateKeyToAccount(newSessionKey).address
 const rootPrivateKey =
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
 
@@ -69,6 +72,11 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 unlink: mock(async () => {}),
                 generatePrivateKey: mock(() => rootPrivateKey),
                 decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
+                decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
+                    const session = getAddress(keystore.addresses.session as Address)
+                    if (session === newAddress) return { sessionPrivateKey: newSessionKey }
+                    return { sessionPrivateKey: oldSessionKey }
+                }),
                 readNonce: mock(async () => 1n),
                 readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
                 readActiveUsdcDaily: mock(async () => 0n),
@@ -181,6 +189,11 @@ function rotateDeps(overrides: Record<string, unknown>) {
         unlink: mock(async () => {}),
         generatePrivateKey: mock(() => rootPrivateKey),
         decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
+        decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
+            const session = getAddress(keystore.addresses.session as Address)
+            if (session === newAddress) return { sessionPrivateKey: newSessionKey }
+            return { sessionPrivateKey: oldSessionKey }
+        }),
         readNonce: mock(async () => 1n),
         getKeys: mock(async () => ({
             '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
@@ -679,6 +692,9 @@ test('a tampered pending marker is not authorized', async () => {
                 newKeyHash: computeSessionKeyHash(attacker),
                 narrow: true,
                 fullAccess: false,
+                account,
+                oldKeyHash: computeSessionKeyHash(oldAddress),
+                permissions: { kind: 'narrow' },
             })),
             readSessionKeystoreFile: mock(async () => {
                 reads += 1
@@ -851,6 +867,9 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
                 newKeyHash: computeSessionKeyHash(newAddress),
                 narrow: true,
                 fullAccess: false,
+                account,
+                oldKeyHash: computeSessionKeyHash(oldAddress),
+                permissions: { kind: 'narrow' },
             })),
             readActiveUsdcDaily: daily,
             waitForBundle: mock(async () => ({

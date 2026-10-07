@@ -705,6 +705,16 @@ type WriteJsonAtomicOptions = {
     emptyMessage: string
 }
 
+/** Create `dir` as mode 0700, or tighten an existing looser directory to 0700. */
+export async function ensureOwnerOnlyDirectory(dir: string): Promise<void> {
+    await mkdir(dir, { recursive: true, mode: 0o700 })
+    if (process.platform === 'win32') return
+    const info = await stat(dir)
+    if ((info.mode & 0o777) !== 0o700) {
+        await chmod(dir, 0o700)
+    }
+}
+
 async function writeJsonAtomic(
     path: string,
     data: unknown,
@@ -769,6 +779,7 @@ export async function writeSessionKeystoreFile(
     keystore: AnySessionKeystore,
     options?: { overwrite?: boolean },
 ): Promise<void> {
+    await ensureOwnerOnlyDirectory(dirname(path))
     await writeJsonAtomic(path, keystore, {
         overwrite: options?.overwrite,
         existsMessage: `Session keystore already exists at ${path}`,

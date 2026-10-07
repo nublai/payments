@@ -1,12 +1,14 @@
-import { chmod, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { chmod, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { encodeFunctionData, getAddress, zeroAddress, type Address, type Hex } from 'viem'
+import { encodeFunctionData, getAddress, isAddress, zeroAddress, type Address, type Hex } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import {
     decodeIntentError,
     type GetKeysResponse,
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
+    type SpendPeriod,
 } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
 import {
@@ -18,12 +20,15 @@ import { getDefaultSessionPermissions, resolveKeystorePath } from './account-cre
 import {
     createSessionKeystore,
     decryptRootKeystore,
+    decryptSessionKeystore,
+    ensureOwnerOnlyDirectory,
     readKeystoreBundle,
     readSessionKeystoreFile,
     resolveSessionKeystorePath,
     withKeystoreLock,
     writeRootKeystoreFile,
     writeSessionKeystoreFile,
+    type AnySessionKeystore,
 } from './keystore'
 import {
     chainsForEnv,
@@ -62,6 +67,17 @@ import {
 } from './session-common'
 import { generatePrivateKey } from 'viem/accounts'
 
+type RotationPermissions =
+    | { kind: 'narrow' }
+    | { kind: 'fullAccess' }
+    | {
+          kind: 'custom'
+          target: Address
+          selectors: Hex[]
+          spendLimit: string
+          spendPeriod: SpendPeriod
+      }
+
 type RotationIntentBase = {
     oldSessionName: string
     newSessionName: string
@@ -71,6 +87,10 @@ type RotationIntentBase = {
     newKeyHash: Hex
     narrow: boolean
     fullAccess: boolean
+    /** Present on markers written by this code. Older markers omit it and are refused before signing. */
+    account?: Address
+    oldKeyHash?: Hex
+    permissions?: RotationPermissions
 }
 
 type PendingRotationIntent = RotationIntentBase & {
@@ -150,6 +170,7 @@ type SessionRotateDeps = {
     writeSessionKeystoreFile: typeof writeSessionKeystoreFile
     writeRootKeystoreFile: typeof writeRootKeystoreFile
     decryptRootKeystore: typeof decryptRootKeystore
+    decryptSessionKeystore: typeof decryptSessionKeystore
     generatePrivateKey: typeof generatePrivateKey
     unlink: (path: string) => Promise<void>
     readRotationIntent: (
@@ -243,7 +264,7 @@ async function defaultWriteRotationIntent(
     const finalFileName = fileName ?? ROTATION_MARKER_NAME
     const finalPath = join(dir, finalFileName)
     const tempPath = `${finalPath}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    await mkdir(dir, { recursive: true })
+    await ensureOwnerOnlyDirectory(dir)
     await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
     await rename(tempPath, finalPath)
     if (process.platform !== 'win32') {
@@ -262,6 +283,100 @@ function withRotationIntentFileName(
     return { ...intent, fileName }
 }
 
+const SPEND_PERIODS = ['minute', 'hour', 'day', 'week', 'month', 'year', 'forever'] as const
+
+function isSpendPeriod(value: unknown): value is SpendPeriod {
+    return typeof value === 'string' && (SPEND_PERIODS as readonly string[]).includes(value)
+}
+
+function parseMarkerAccount(value: unknown): Address | undefined {
+    if (value === undefined) return undefined
+    if (typeof value !== 'string' || !isAddress(value)) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker account is not a valid address.',
+        )
+    }
+    return getAddress(value)
+}
+
+function parseMarkerOldKeyHash(value: unknown): Hex | undefined {
+    if (value === undefined) return undefined
+    if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker old key hash must be 0x followed by 64 hex characters.',
+        )
+    }
+    return value as Hex
+}
+
+function parseRotationPermissions(value: unknown): RotationPermissions | undefined {
+    if (value === undefined) return undefined
+    if (typeof value !== 'object' || value === null) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permissions.',
+        )
+    }
+    const kind = (value as { kind?: unknown }).kind
+    if (kind === 'narrow') return { kind: 'narrow' }
+    if (kind === 'fullAccess') return { kind: 'fullAccess' }
+    if (kind !== 'custom') {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permissions.',
+        )
+    }
+    const custom = value as {
+        target?: unknown
+        selectors?: unknown
+        spendLimit?: unknown
+        spendPeriod?: unknown
+    }
+    if (typeof custom.target !== 'string' || !isAddress(custom.target)) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permissions.',
+        )
+    }
+    if (!Array.isArray(custom.selectors) || custom.selectors.length === 0) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permissions.',
+        )
+    }
+    const selectors: Hex[] = []
+    for (const selector of custom.selectors) {
+        if (typeof selector !== 'string' || !/^0x[0-9a-fA-F]{8}$/.test(selector)) {
+            throw new SessionRotateError(
+                'ROTATION_MARKER_MISMATCH',
+                'Rotation marker is missing its permissions.',
+            )
+        }
+        selectors.push(selector as Hex)
+    }
+    if (typeof custom.spendLimit !== 'string' || !/^\d+$/.test(custom.spendLimit)) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permissions.',
+        )
+    }
+    if (!isSpendPeriod(custom.spendPeriod)) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permissions.',
+        )
+    }
+    return {
+        kind: 'custom',
+        target: getAddress(custom.target),
+        selectors,
+        spendLimit: custom.spendLimit,
+        spendPeriod: custom.spendPeriod,
+    }
+}
+
 function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
     if (typeof value !== 'object' || value === null) {
         throw new Error('Invalid rotation intent payload.')
@@ -276,6 +391,9 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
         newKeyHash?: unknown
         narrow?: unknown
         fullAccess?: unknown
+        account?: unknown
+        oldKeyHash?: unknown
+        permissions?: unknown
     }
     if (typeof maybe.oldSessionName !== 'string' || typeof maybe.newSessionName !== 'string') {
         throw new Error('Invalid rotation intent payload.')
@@ -304,6 +422,9 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
             'Rotation marker is missing its permission flags.',
         )
     }
+    const account = parseMarkerAccount(maybe.account)
+    const oldKeyHash = parseMarkerOldKeyHash(maybe.oldKeyHash)
+    const permissions = parseRotationPermissions(maybe.permissions)
     const bound = {
         oldSessionName: maybe.oldSessionName,
         newSessionName: maybe.newSessionName,
@@ -312,6 +433,9 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
         newKeyHash: maybe.newKeyHash as Hex,
         narrow: maybe.narrow,
         fullAccess: maybe.fullAccess,
+        ...(account ? { account } : {}),
+        ...(oldKeyHash ? { oldKeyHash } : {}),
+        ...(permissions ? { permissions } : {}),
     }
     if (maybe.status === 'pending') {
         return { ...bound, status: 'pending' }
@@ -334,6 +458,9 @@ function markRotationIntentSubmitted(
         newKeyHash: intent.newKeyHash,
         narrow: intent.narrow,
         fullAccess: intent.fullAccess,
+        ...(intent.account ? { account: intent.account } : {}),
+        ...(intent.oldKeyHash ? { oldKeyHash: intent.oldKeyHash } : {}),
+        ...(intent.permissions ? { permissions: intent.permissions } : {}),
         status: 'submitted',
         bundleId,
     }
@@ -355,6 +482,7 @@ function getDefaultDeps(): SessionRotateDeps {
         writeSessionKeystoreFile,
         writeRootKeystoreFile,
         decryptRootKeystore,
+        decryptSessionKeystore,
         generatePrivateKey,
         unlink,
         readRotationIntent: defaultReadRotationIntent,
@@ -522,11 +650,12 @@ function bundleWaitTimeoutId(error: unknown): string | undefined {
     return match?.[1]
 }
 
-function rotationSubmittedError(bundleId: string | undefined): SessionRotateError {
+function rotationSubmittedError(bundleId: string | undefined, timedOut = false): SessionRotateError {
     const which = bundleId ? `bundle ${bundleId} ` : ''
+    const why = timedOut ? 'confirmation timed out' : 'confirmation did not finish'
     return new SessionRotateError(
         'ROTATION_SUBMITTED',
-        `Session rotation ${which}was submitted, but confirmation timed out. The new session file was kept. Resume with \`tw session rotate --resume\`.`,
+        `Session rotation ${which}was submitted, but ${why}. The new session file was kept. Resume with \`tw session rotate --resume\`.`,
         {
             recoveryCommand: 'tw session rotate --resume',
             details: bundleId ? { bundleId } : undefined,
@@ -549,6 +678,155 @@ function requireRotateFullAccessPhrase(
             CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
         )}${rerun}`,
     )
+}
+
+function requireMarkerBinding(intent: RotationIntent): asserts intent is RotationIntent & {
+    account: Address
+    oldKeyHash: Hex
+    permissions: RotationPermissions
+} {
+    if (!intent.account) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing the account.',
+        )
+    }
+    if (!intent.oldKeyHash) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing the old key hash.',
+        )
+    }
+    if (!intent.permissions) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permissions.',
+        )
+    }
+    if (intent.permissions.kind === 'fullAccess' && intent.fullAccess !== true) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker permissions do not match its full-access flag.',
+        )
+    }
+    if (intent.permissions.kind === 'narrow' && intent.narrow !== true) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker permissions do not match its narrow flag.',
+        )
+    }
+    if (intent.permissions.kind === 'custom' && (intent.narrow || intent.fullAccess)) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker permissions do not match its permission flags.',
+        )
+    }
+}
+
+function isEnoent(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+    )
+}
+
+function hashListed(keys: { hash?: string }[], hash: string | undefined): boolean {
+    if (!hash) return false
+    const needle = hash.toLowerCase()
+    return keys.some(
+        (entry) => typeof entry.hash === 'string' && entry.hash.toLowerCase() === needle,
+    )
+}
+
+async function requireDecryptedSessionAddress(
+    deps: SessionRotateDeps,
+    session: AnySessionKeystore,
+    password: string,
+): Promise<Address> {
+    let decrypted: { sessionPrivateKey: Hex }
+    try {
+        decrypted = await deps.decryptSessionKeystore(session, password)
+    } catch (error) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Could not decrypt the session key. Refusing to authorize or revoke.',
+            { cause: error },
+        )
+    }
+    const derived = privateKeyToAccount(decrypted.sessionPrivateKey).address
+    const claimed = getAddress(session.addresses.session)
+    if (derived.toLowerCase() !== claimed.toLowerCase()) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Session file address does not match the decrypted session key. Refusing to authorize or revoke.',
+        )
+    }
+    return derived
+}
+
+function resolveRotationPermissions(
+    options: {
+        narrow?: boolean
+        fullAccess?: boolean
+        target?: Address
+        selectors?: Hex[]
+        spendLimit?: bigint
+        spendPeriod?: SpendPeriod
+    },
+    chain: ChainName,
+): RotationPermissions {
+    const narrow = options.narrow === true
+    const fullAccess = options.fullAccess === true
+    if (narrow && fullAccess) {
+        throw new SessionRotateError(
+            'ROTATION_FAILED',
+            '--narrow cannot be combined with full access.',
+        )
+    }
+    if (narrow) return { kind: 'narrow' }
+    if (fullAccess) return { kind: 'fullAccess' }
+    const defaults = buildPermissionDefaults({
+        fullAccess: false,
+        chain,
+        target: options.target,
+        selectors: options.selectors,
+        spendLimit: options.spendLimit,
+        spendPeriod: options.spendPeriod,
+    })
+    return {
+        kind: 'custom',
+        target: defaults.target,
+        selectors: defaults.selectors,
+        spendLimit: defaults.spendLimit.toString(),
+        spendPeriod: defaults.spendPeriod,
+    }
+}
+
+type StoredPermissionDefaults = {
+    target: Address
+    selectors: Hex[]
+    spendToken: Address
+    spendLimit: bigint
+    spendPeriod: SpendPeriod
+}
+
+function storedPermissionDefaults(
+    permissions: RotationPermissions,
+    chain: ChainName,
+): StoredPermissionDefaults | undefined {
+    if (permissions.kind === 'narrow') return undefined
+    if (permissions.kind === 'fullAccess') {
+        return buildPermissionDefaults({ fullAccess: true, chain })
+    }
+    return {
+        target: permissions.target,
+        selectors: permissions.selectors,
+        spendToken: getUsdcTokenConfig(chain).address,
+        spendLimit: BigInt(permissions.spendLimit),
+        spendPeriod: permissions.spendPeriod,
+    }
 }
 
 export async function executeSessionRotate(
@@ -600,9 +878,9 @@ export async function executeSessionRotate(
             activeSessionName,
             bundle.root.sessionRef.dir,
         )
+        await ensureOwnerOnlyDirectory(rotationDir(keystorePath, bundle.root.sessionRef.dir))
         const oldSession = await deps.readSessionKeystoreFile(oldSessionPath)
-        const oldSessionAddress = getAddress(oldSession.addresses.session)
-        const oldKeyHash = computeSessionKeyHash(oldSessionAddress)
+        let oldKeyHash = computeSessionKeyHash(getAddress(oldSession.addresses.session))
 
         let intent = await deps.readRotationIntent(keystorePath, bundle.root.sessionRef.dir)
         let resumed = false
@@ -627,12 +905,19 @@ export async function executeSessionRotate(
         if (intent && !options.resume) {
             throw new SessionRotateError(
                 'ROTATION_IN_PROGRESS',
-                'A session rotation is already in progress. The new session file was kept. Resume with `tw session rotate --resume`.',
+                'A session rotation is already in progress. Resume with `tw session rotate --resume`.',
                 { recoveryCommand: 'tw session rotate --resume' },
             )
         }
 
         if (!intent || !options.resume) {
+            const activeDerived = await requireDecryptedSessionAddress(
+                deps,
+                oldSession,
+                options.password,
+            )
+            oldKeyHash = computeSessionKeyHash(activeDerived)
+            const permissions = resolveRotationPermissions(options, chain)
             const newSessionName = options.newName
                 ? parseSessionName(options.newName)
                 : `${activeSessionName}-${Math.floor(Date.now() / 1000)}`
@@ -660,6 +945,9 @@ export async function executeSessionRotate(
                 newKeyHash: computeSessionKeyHash(getAddress(newSession.addresses.session)),
                 narrow: options.narrow === true,
                 fullAccess: options.fullAccess === true,
+                account: accountAddress,
+                oldKeyHash,
+                permissions,
             })
         } else {
             resumed = true
@@ -670,7 +958,47 @@ export async function executeSessionRotate(
             intent.newSessionName,
             bundle.root.sessionRef.dir,
         )
-        const newSession = await deps.readSessionKeystoreFile(newSessionPath)
+        let newSession: AnySessionKeystore
+        try {
+            newSession = await deps.readSessionKeystoreFile(newSessionPath)
+        } catch (error) {
+            if (resumed && isEnoent(error)) {
+                const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+                const signedNetwork = {
+                    ...network,
+                    authSigner: createEthHttpSigner(decryptedRoot.rootPrivateKey, network.chainId),
+                }
+                const keysNow = await deps.getKeys({
+                    network: signedNetwork,
+                    account: accountAddress,
+                    chainId: network.chainId,
+                })
+                const present = getChainKeys(keysNow, network.chainId)
+                const newAuthorized = hashListed(present, intent.newKeyHash)
+                const oldKnown = typeof intent.oldKeyHash === 'string'
+                const oldLive = oldKnown && hashListed(present, intent.oldKeyHash)
+                const newText = newAuthorized ? 'authorized' : 'not authorized'
+                const oldText = !oldKnown
+                    ? 'not loaded from this marker'
+                    : oldLive
+                      ? 'still live'
+                      : 'not live'
+                const next =
+                    !newAuthorized && oldLive
+                        ? 'The new key is not on chain and the old key is still live. After you confirm that, remove the rotation marker and start a new rotation. Nothing was signed.'
+                        : newAuthorized && oldKnown && !oldLive
+                          ? 'The new key is authorized and the old key is not live, but the new session file is gone so this wallet cannot use that key. Nothing was signed.'
+                          : newAuthorized && oldLive
+                            ? 'Both keys are still on chain. Restore the missing session file before resuming. Nothing was signed.'
+                            : 'Nothing was signed.'
+                throw new SessionRotateError(
+                    'ROTATION_VERIFICATION_FAILED',
+                    `The new session file ${intent.newSessionName} is missing, so this rotation cannot sign. On-chain, the new key is ${newText} and the old key is ${oldText}. ${next}`,
+                    { recoveryCommand: 'tw session rotate --resume' },
+                )
+            }
+            throw error
+        }
         const newSessionAddress = getAddress(newSession.addresses.session)
         const newKeyHash = computeSessionKeyHash(newSessionAddress)
         if (resumed) {
@@ -710,8 +1038,53 @@ export async function executeSessionRotate(
                     'Resume asked for full access, but this rotation marker is not full access.',
                 )
             }
+            requireMarkerBinding(intent)
+            if (getAddress(intent.account) !== accountAddress) {
+                throw new SessionRotateError(
+                    'ROTATION_MARKER_MISMATCH',
+                    'Rotation marker account does not match this keystore.',
+                )
+            }
+        }
+        const newDerived = await requireDecryptedSessionAddress(deps, newSession, options.password)
+        if (computeSessionKeyHash(newDerived).toLowerCase() !== newKeyHash.toLowerCase()) {
+            throw new SessionRotateError(
+                'ROTATION_MARKER_MISMATCH',
+                'Session file address does not match the decrypted session key. Refusing to authorize or revoke.',
+            )
         }
         if (resumed && activeSessionName === intent.newSessionName) {
+            requireRotateFullAccessPhrase(intent.fullAccess, options.fullAccessPhraseConfirmed, true)
+            const previousSessionPath = resolveSessionKeystorePath(
+                keystorePath,
+                intent.oldSessionName,
+                bundle.root.sessionRef.dir,
+            )
+            let previousSession: AnySessionKeystore
+            try {
+                previousSession = await deps.readSessionKeystoreFile(previousSessionPath)
+            } catch (error) {
+                if (isEnoent(error)) {
+                    throw new SessionRotateError(
+                        'ROTATION_VERIFICATION_FAILED',
+                        'The previous session file is missing, so this rotation cannot finish cleanup. The marker was kept. Nothing was signed.',
+                        { recoveryCommand: 'tw session rotate --resume' },
+                    )
+                }
+                throw error
+            }
+            const previousDerived = await requireDecryptedSessionAddress(
+                deps,
+                previousSession,
+                options.password,
+            )
+            const previousHash = computeSessionKeyHash(previousDerived)
+            if (previousHash.toLowerCase() !== intent.oldKeyHash!.toLowerCase()) {
+                throw new SessionRotateError(
+                    'ROTATION_MARKER_MISMATCH',
+                    'Rotation marker old key does not match the previous session file. Refusing to delete it.',
+                )
+            }
             const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
             const signedNetwork = {
                 ...network,
@@ -723,23 +1096,20 @@ export async function executeSessionRotate(
                 chainId: network.chainId,
             })
             const present = getChainKeys(keysNow, network.chainId)
-            const hasNew = present.some(
-                (entry: { hash?: string }) =>
-                    typeof entry.hash === 'string' &&
-                    entry.hash.toLowerCase() === newKeyHash.toLowerCase(),
-            )
-            if (!hasNew) {
+            if (!hashListed(present, newKeyHash)) {
                 throw new SessionRotateError(
                     'ROTATION_VERIFICATION_FAILED',
                     'Rotation confirmation failed on-chain verification.',
                     { recoveryCommand: 'tw session list --on-chain --json' },
                 )
             }
-            const previousSessionPath = resolveSessionKeystorePath(
-                keystorePath,
-                intent.oldSessionName,
-                bundle.root.sessionRef.dir,
-            )
+            if (hashListed(present, intent.oldKeyHash)) {
+                throw new SessionRotateError(
+                    'ROTATION_VERIFICATION_FAILED',
+                    'The previous session key is still authorized on chain. The session file was kept. Nothing was signed.',
+                    { recoveryCommand: 'tw session rotate --resume' },
+                )
+            }
             await deps.writeSessionKeystoreFile(
                 newSessionPath,
                 { ...newSession, checkpoint: 'authorized' },
@@ -751,7 +1121,7 @@ export async function executeSessionRotate(
                 intent.fileName,
             )
             if (previousSessionPath !== newSessionPath) {
-                await deps.unlink(previousSessionPath).catch(() => undefined)
+                await deps.unlink(previousSessionPath)
             }
             const finishedId = intent.status === 'submitted' ? intent.bundleId : 'already-complete'
             return {
@@ -772,6 +1142,15 @@ export async function executeSessionRotate(
                 },
             }
         }
+        requireMarkerBinding(intent)
+        const activeDerived = await requireDecryptedSessionAddress(deps, oldSession, options.password)
+        oldKeyHash = computeSessionKeyHash(activeDerived)
+        if (oldKeyHash.toLowerCase() !== intent.oldKeyHash.toLowerCase()) {
+            throw new SessionRotateError(
+                'ROTATION_MARKER_MISMATCH',
+                'Rotation marker old key does not match the active session. Refusing to revoke.',
+            )
+        }
         requireRotateFullAccessPhrase(
             intent.fullAccess,
             options.fullAccessPhraseConfirmed,
@@ -789,8 +1168,8 @@ export async function executeSessionRotate(
         let extraCleanups: { chainName: ChainName; calls: Call[] }[] = []
 
         if (intent.status === 'pending') {
-            const narrow = resumed ? intent.narrow === true : options.narrow === true
-            const fullAccess = resumed ? intent.fullAccess === true : options.fullAccess === true
+            const narrow = intent.permissions!.kind === 'narrow'
+            const fullAccess = intent.permissions!.kind === 'fullAccess'
             if (narrow && fullAccess) {
                 throw new SessionRotateError(
                     'ROTATION_FAILED',
@@ -826,16 +1205,7 @@ export async function executeSessionRotate(
             const narrowPermissions = narrow
                 ? getDefaultSessionPermissions(network.chainId, { env: options.env })
                 : undefined
-            const permissionDefaults = narrow
-                ? undefined
-                : buildPermissionDefaults({
-                      fullAccess,
-                      chain,
-                      target: options.target,
-                      selectors: options.selectors,
-                      spendLimit: options.spendLimit,
-                      spendPeriod: options.spendPeriod,
-                  })
+            const permissionDefaults = storedPermissionDefaults(intent.permissions!, chain)
             if (!options.fullAccessPhraseConfirmed) {
                 const usdc = getUsdcTokenConfig(chain).address
                 const spendToken = narrowPermissions
@@ -1048,23 +1418,33 @@ export async function executeSessionRotate(
                         chainId: signedNetwork.chainId,
                         env: signedNetwork.env,
                         rpcUrl: signedNetwork.rpcUrl,
+                        onBundleSubmitted: async (id) => {
+                            intent = await deps.writeRotationIntent(
+                                keystorePath,
+                                bundle.root.sessionRef.dir,
+                                markRotationIntentSubmitted(intent, id),
+                                intent.fileName,
+                            )
+                        },
                     },
                 )
                 bundleId = submission.id
                 finalStatus = submission.finalStatus
                 feeCap = submission.feeCap
             } catch (error) {
-                if (isBundleWaitTimeout(error)) {
-                    const timeoutBundleId = bundleWaitTimeoutId(error)
-                    if (timeoutBundleId) {
+                const submittedId =
+                    bundleWaitTimeoutId(error) ??
+                    (intent.status === 'submitted' ? intent.bundleId : undefined)
+                if (submittedId) {
+                    if (intent.status !== 'submitted' || intent.bundleId !== submittedId) {
                         intent = await deps.writeRotationIntent(
                             keystorePath,
                             bundle.root.sessionRef.dir,
-                            markRotationIntentSubmitted(intent, timeoutBundleId),
+                            markRotationIntentSubmitted(intent, submittedId),
                             intent.fileName,
                         )
                     }
-                    throw rotationSubmittedError(timeoutBundleId)
+                    throw rotationSubmittedError(submittedId, isBundleWaitTimeout(error))
                 }
                 await deps.unlink(newSessionPath).catch(() => undefined)
                 await deps
@@ -1108,10 +1488,7 @@ export async function executeSessionRotate(
                     id: intent.bundleId,
                 })
             } catch (error) {
-                if (isBundleWaitTimeout(error)) {
-                    throw rotationSubmittedError(intent.bundleId)
-                }
-                throw error
+                throw rotationSubmittedError(intent.bundleId, isBundleWaitTimeout(error))
             }
             bundleId = intent.bundleId
         }
@@ -1144,20 +1521,12 @@ export async function executeSessionRotate(
                 keystorePath,
                 excludeSessionName: activeSessionName,
             })
-            if (!options.fullAccessPhraseConfirmed && !intent.fullAccess) {
-                const permissions = intent.narrow
-                    ? getDefaultSessionPermissions(network.chainId, { env: options.env })
-                    : undefined
-                const defaults = intent.narrow
-                    ? undefined
-                    : buildPermissionDefaults({
-                          fullAccess: false,
-                          chain,
-                          target: options.target,
-                          selectors: options.selectors,
-                          spendLimit: options.spendLimit,
-                          spendPeriod: options.spendPeriod,
-                      })
+            if (!options.fullAccessPhraseConfirmed && !intent.fullAccess && intent.permissions) {
+                const permissions =
+                    intent.permissions.kind === 'narrow'
+                        ? getDefaultSessionPermissions(network.chainId, { env: options.env })
+                        : undefined
+                const defaults = storedPermissionDefaults(intent.permissions, chain)
                 const usdc = getUsdcTokenConfig(chain).address
                 const spend = permissions?.find((permission) => permission.type === 'spend')
                 const spendToken = permissions ? spend?.token : defaults?.spendToken
