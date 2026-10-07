@@ -3,19 +3,26 @@
 
 stdin and stdout are the terminal, so Node reports them as TTYs. stderr stays
 a pipe. After the child writes a line ending in "to confirm:", this writes
-PHRASE and a newline to the terminal. Echo is turned off so the phrase is not
-mixed into the JSON the command prints on stdout.
+PHRASE and Enter (CR) to the terminal. The child is the foreground process of
+that terminal so readline can leave raw mode and exit. Echo is turned off so
+the phrase is not mixed into the JSON the command prints on stdout.
 
 MCP stdio and a non-TTY `tw` cannot use this. Local e2e scripts are the operator
 for `tw send` and oracle-key `tw escrow settle`.
 """
 
+import fcntl
 import os
 import pty
 import select
 import subprocess
 import sys
 import termios
+
+
+def become_foreground_tty(slave_fd: int) -> None:
+    os.setsid()
+    fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
 
 
 def main() -> int:
@@ -35,7 +42,7 @@ def main() -> int:
         stdin=slave,
         stdout=slave,
         stderr=subprocess.PIPE,
-        start_new_session=True,
+        preexec_fn=lambda: become_foreground_tty(slave),
     )
     os.close(slave)
 
@@ -47,62 +54,68 @@ def main() -> int:
         nonlocal sent
         if sent or b"to confirm:" not in stderr:
             return
-        os.write(master, (phrase + "\n").encode())
+        # Readline on a TTY treats Enter as CR. A newline is not a line ending there.
+        os.write(master, (phrase + "\r").encode())
         sent = True
 
-    while True:
-        if proc.poll() is not None:
+    master_open = True
+    stderr_open = proc.stderr is not None
+
+    def watch_fds() -> list[int]:
+        fds: list[int] = []
+        if master_open:
+            fds.append(master)
+        if stderr_open and proc.stderr is not None:
+            fds.append(proc.stderr.fileno())
+        return fds
+
+    def consume(stream: int) -> None:
+        nonlocal master_open, stderr_open
+        if stream == master:
+            try:
+                chunk = os.read(master, 65536)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                master_open = False
+                return
+            stdout.extend(chunk)
+            return
+        if proc.stderr is None:
+            stderr_open = False
+            return
+        chunk = os.read(proc.stderr.fileno(), 65536)
+        if not chunk:
+            stderr_open = False
+            return
+        stderr.extend(chunk)
+        sys.stderr.buffer.write(chunk)
+        sys.stderr.buffer.flush()
+        send_phrase_if_prompted()
+
+    while proc.poll() is None:
+        watch = watch_fds()
+        if not watch:
             break
-        watch = [master]
-        if proc.stderr is not None:
-            watch.append(proc.stderr)
         readable, _, _ = select.select(watch, [], [], 60)
         if not readable:
             proc.kill()
             print("timed out waiting for terminal confirmation", file=sys.stderr)
             return 1
         for stream in readable:
-            if stream == master:
-                try:
-                    chunk = os.read(master, 65536)
-                except OSError:
-                    chunk = b""
-                if chunk:
-                    stdout.extend(chunk)
-                continue
-            chunk = os.read(proc.stderr.fileno(), 65536)
-            if not chunk:
-                continue
-            stderr.extend(chunk)
-            sys.stderr.buffer.write(chunk)
-            sys.stderr.buffer.flush()
-            send_phrase_if_prompted()
+            consume(stream)
 
-    deadline = 0
-    while deadline < 20:
-        watch = [master]
-        if proc.stderr is not None:
-            watch.append(proc.stderr)
+    # The child has exited. Drain leftover bytes, and stop when a fd hits EOF
+    # so a closed PTY cannot reset the wait forever.
+    for _ in range(20):
+        watch = watch_fds()
+        if not watch:
+            break
         readable, _, _ = select.select(watch, [], [], 0.1)
         if not readable:
-            deadline += 1
-            continue
-        deadline = 0
+            break
         for stream in readable:
-            if stream == master:
-                try:
-                    chunk = os.read(master, 65536)
-                except OSError:
-                    chunk = b""
-                if chunk:
-                    stdout.extend(chunk)
-                continue
-            chunk = os.read(proc.stderr.fileno(), 65536)
-            if chunk:
-                stderr.extend(chunk)
-                sys.stderr.buffer.write(chunk)
-                sys.stderr.buffer.flush()
-                send_phrase_if_prompted()
+            consume(stream)
 
     status = proc.wait()
     sys.stdout.buffer.write(stdout)
