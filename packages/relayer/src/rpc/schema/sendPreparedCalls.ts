@@ -1,4 +1,5 @@
 import type { Hex } from 'viem'
+import type { PaidUpgradeFeeAuthorization } from './paid-upgrade-fee'
 import type { PaidUpgradeQuote, PrepareCallsContext } from './prepareCalls'
 
 /**
@@ -17,6 +18,13 @@ export interface SendPreparedCallsParams {
      * the HMAC'd quote. The transaction is built from the quote, not from this copy.
      */
     accountUpgrade?: Partial<PaidUpgradeQuote>
+    /**
+     * EIP-3009 `receiveWithAuthorization` for the paid-upgrade fee.
+     * The relayer checks `value`, `to`, `from`, `validBefore`, and the nonce
+     * against the quote. Those fields are not taken from this object:
+     * it carries the validity window, the nonce, and the signature.
+     */
+    feeAuthorization?: PaidUpgradeFeeAuthorization
 }
 
 /**

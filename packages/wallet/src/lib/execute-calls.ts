@@ -4,6 +4,7 @@ import {
     clampPaymentCeiling,
     firstQuotePaymentAmount,
     INTENT_EXPIRY_TTL_SECONDS,
+    paidUpgradeFeeAuthorizationToSign,
     PreparedCallsBindingError,
     refuseLonePayerOrToken,
     requirePayerAndToken,
@@ -114,6 +115,11 @@ export type ExecuteSignedCallsParams = {
     combinedGasCeiling?: bigint
     rpcUrl?: string
     /**
+     * Relayer `FEE_RECIPIENT` the wallet expects on a paid upgrade.
+     * Required when the quote carries `accountUpgrade`.
+     */
+    expectedFeeRecipient?: Address
+    /**
      * Called once sendPreparedCalls has returned an id, before the status wait.
      * A throw here is still a post-send error: the id is attached to it.
      */
@@ -129,6 +135,12 @@ export type ExecuteSignedCallsDeps = {
     sendPreparedCalls: (input: {
         context: PrepareCallsResponse['context']
         signature: Hex
+        feeAuthorization?: {
+            validAfter: string
+            validBefore: string
+            nonce: Hex
+            signature: Hex
+        }
     }) => Promise<{ id: string }>
     waitForBundle: (input: { id: string }) => Promise<BundleStatusResponse>
 }
@@ -230,6 +242,46 @@ export async function executeSignedCalls(
         combinedGasCeiling,
     })
 
+    const quoted = prepared.context.quote?.quotes[0]
+    let feeAuthorization:
+        | {
+              validAfter: string
+              validBefore: string
+              nonce: Hex
+              signature: Hex
+          }
+        | undefined
+    if (quoted?.accountUpgrade) {
+        if (!params.expectedFeeRecipient) {
+            throw new PreparedCallsBindingError(
+                'Refusing to sign prepared calls: fee recipient does not match',
+            )
+        }
+        const paymentToken = quoted.intent.paymentToken
+        if (!paymentToken) {
+            throw new PreparedCallsBindingError(
+                'Refusing to sign prepared calls: fee amount does not match the quote',
+            )
+        }
+        const fee = paidUpgradeFeeAuthorizationToSign({
+            account: params.from,
+            chainId: params.chainId,
+            token: paymentToken,
+            quoteSignature: prepared.context.quote.signature,
+            quoteTtl: prepared.context.quote.ttl,
+            paymentAmount: BigInt(quoted.paymentAmount),
+            paymentMaxAmount: BigInt(quoted.intent.paymentMaxAmount ?? '0'),
+            quoteFeeRecipient: quoted.feeRecipient,
+            expectedFeeRecipient: params.expectedFeeRecipient,
+            now,
+        })
+        const feeSignature = await deps.signTypedData({
+            privateKey: params.signerPrivateKey,
+            typedData: fee.typedData as PrepareCallsResponse['typedData'],
+        })
+        feeAuthorization = { ...fee.authorization, signature: feeSignature }
+    }
+
     const signature = await deps.signTypedData({
         privateKey: params.signerPrivateKey,
         typedData: bound.typedData,
@@ -246,6 +298,7 @@ export async function executeSignedCalls(
         submission = await deps.sendPreparedCalls({
             context: prepared.context,
             signature: effectiveSignature,
+            ...(feeAuthorization ? { feeAuthorization } : {}),
         })
     } catch (error) {
         if (isDefinitivePreBroadcastRefusal(error)) throw error

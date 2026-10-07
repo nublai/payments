@@ -208,6 +208,22 @@ export const DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT = 60
 export const PAID_UPGRADE_GAS_HOLD = 500_000n
 
 /**
+ * The fee pull signs at most the reservation. A larger estimate is capped so
+ * `gasUsed` cannot settle above the hold and push the daily books past the
+ * budget that was checked before the reserve. Anvil measured a successful
+ * pull at 84,541 gas signed and used, and a reverted pull at 57,461 gas used.
+ */
+export function capPaidUpgradeSignedGas(
+    estimate: bigint,
+    reservation: bigint = PAID_UPGRADE_GAS_HOLD,
+): bigint {
+    if (estimate <= 0n || reservation <= 0n) {
+        throw new Error('Paid upgrade fee pull gas limit exceeds cap')
+    }
+    return estimate > reservation ? reservation : estimate
+}
+
+/**
  * Gas limit signed for a paid-upgrade type-4. Equal to the estimate when
  * that estimate fits in the reserved hold. Above the hold, refuse. The
  * sponsored path keeps the separate 1,500,000 cap.
@@ -377,6 +393,14 @@ export async function assertPaidUpgrade(args: {
     maxPayment: bigint
     paymentAmount: bigint
     publicClient: PublicClient
+    /** Balance that must be present. Zero skips the read on a retry after the fee was pulled. */
+    requiredBalance?: bigint
+    /**
+     * The fee is already on file and a previous upgrade broadcast may have
+     * applied the delegation even though the intent reverted. The retry sends
+     * the intent without a second authorization.
+     */
+    allowExistingDelegation?: boolean
 }): Promise<CheckedPaidUpgrade> {
     const eoa = getAddress(args.eoa)
     const payer = args.payer ? getAddress(args.payer) : zeroAddress
@@ -487,27 +511,36 @@ export async function assertPaidUpgrade(args: {
         logger.error({ error, address: eoa }, 'failed to read account before paid upgrade')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
-    if (isEip7702Delegated(code)) {
+    const alreadyDelegated =
+        isEip7702Delegated(code) &&
+        code?.toLowerCase() === eip7702DelegationCode(args.accountProxy).toLowerCase()
+    if (isEip7702Delegated(code) && !alreadyDelegated) {
         throw new RpcError(INVALID_PARAMS, 'Account is already delegated')
     }
-    if (pendingNonce !== authorization.nonce) {
+    if (alreadyDelegated && !args.allowExistingDelegation) {
+        throw new RpcError(INVALID_PARAMS, 'Account is already delegated')
+    }
+    if (!alreadyDelegated && pendingNonce !== authorization.nonce) {
         throw new RpcError(INVALID_PARAMS, 'Authorization nonce does not match the account nonce')
     }
 
-    let balance: bigint
-    try {
-        balance = await args.publicClient.readContract({
-            address: args.usdc,
-            abi: erc20Abi,
-            functionName: 'balanceOf',
-            args: [eoa],
-        })
-    } catch (error) {
-        logger.error({ error, address: eoa }, 'failed to read USDC balance before paid upgrade')
-        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
-    }
-    if (balance < args.paymentAmount) {
-        throw new RpcError(INSUFFICIENT_FUNDS, 'Insufficient USDC balance')
+    const requiredBalance = args.requiredBalance ?? args.paymentAmount
+    if (requiredBalance > 0n) {
+        let balance: bigint
+        try {
+            balance = await args.publicClient.readContract({
+                address: args.usdc,
+                abi: erc20Abi,
+                functionName: 'balanceOf',
+                args: [eoa],
+            })
+        } catch (error) {
+            logger.error({ error, address: eoa }, 'failed to read USDC balance before paid upgrade')
+            throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+        }
+        if (balance < requiredBalance) {
+            throw new RpcError(INSUFFICIENT_FUNDS, 'Insufficient USDC balance')
+        }
     }
 
     const normalized: PaidUpgradeQuote = {
@@ -685,6 +718,16 @@ async function postPaidUpgradeGas(
     }
 }
 
+/** Non-mutating check: spent + held + the reservation still fits today's budget. */
+export async function paidUpgradeGasReservationFits(env: Env, chainId: number): Promise<boolean> {
+    paidUpgradeDailyGasBudget(env)
+    const result = await postPaidUpgradeGas(env, chainId, {
+        action: 'fits-gas',
+        gas: PAID_UPGRADE_GAS_HOLD.toString(),
+    })
+    return result.allowed
+}
+
 export async function reservePaidUpgradeGas(env: Env, chainId: number): Promise<void> {
     paidUpgradeDailyGasBudget(env)
     const result = await postPaidUpgradeGas(env, chainId, {
@@ -856,7 +899,7 @@ export async function assertPaidUpgradeSimulation(args: {
     publicClient: PublicClient
     orchestrator: Address
     intent: IntentStruct
-    authorization: SignedAuthorization
+    authorization?: SignedAuthorization
     feeRecipient: string | undefined
     env: { RELAYER_MNEMONIC?: string; RELAYER_COUNT?: string }
 }): Promise<void> {
@@ -876,7 +919,7 @@ export async function assertPaidUpgradeSimulation(args: {
             account: broadcaster,
             to: args.orchestrator,
             data,
-            authorizationList: [args.authorization],
+            ...(args.authorization ? { authorizationList: [args.authorization] } : {}),
         })
         returned = result.data
     } catch (error) {

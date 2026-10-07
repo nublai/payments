@@ -1,4 +1,4 @@
-import { createPublicClient, http, type Address, type SignedAuthorization } from 'viem'
+import { createPublicClient, http, type Address } from 'viem'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type {
@@ -14,15 +14,11 @@ import { createIntentNonceProvider } from '../../services/relayer'
 import {
     RpcError,
     INVALID_PARAMS,
-    INVALID_SIGNATURE,
-    INSUFFICIENT_FUNDS,
-    CONTRACT_ERROR,
     SERVICE_UNAVAILABLE,
     INTERNAL_ERROR,
     INTENT_EXPIRED,
 } from '../errors'
 import type { SendPreparedCallsParams, SendPreparedCallsResult } from '../schema/sendPreparedCalls'
-import type { PaidUpgradeQuote, Quote } from '../schema/prepareCalls'
 import {
     getChainIdFromContext,
     getSignerName,
@@ -33,24 +29,19 @@ import {
 } from './shared/calls-helpers'
 import { getSignerPool } from './shared/signer-pool'
 import {
-    assertPaidUpgrade,
-    assertPaidUpgradeIntentSigner,
-    assertPaidUpgradeSimulation,
-    chainUsdcAddress,
     enqueuePaidUpgradeReceipt,
     assertPaidUpgradeOidcOwner,
-    paidUpgradeFieldsMatch,
     paidUpgradeFromQuote,
-    paidUpgradeMaxPayment,
-    paidUpgradeReceiptOutcome,
     paidUpgradeReceiptWaitMs,
     releasePaidUpgradeGas,
     releasePaidUpgradeRateLimit,
     requirePaidUpgradeClientIp,
-    reservePaidUpgradeGas,
-    reservePaidUpgradeRateLimit,
-    settlePaidUpgradeGas,
 } from './shared/paid-upgrade'
+import {
+    bindAndPullPaidUpgrade,
+    notePaidUpgradeReceipt,
+    notePaidUpgradeSubmitted,
+} from './shared/paid-upgrade-fee-flow'
 
 export type { SendPreparedCallsParams, SendPreparedCallsResult } from '../schema/sendPreparedCalls'
 export type { SignedQuotes, Quote, QuoteIntent } from '../schema/prepareCalls'
@@ -76,124 +67,6 @@ function buildBundleTrackingUnavailableError(bundleId: string): RpcError {
         'Intent submitted but bundle tracking unavailable; retry status lookup later',
         { bundleId },
     )
-}
-
-function echoedUpgradeMatches(
-    echo: Partial<PaidUpgradeQuote> | undefined,
-    quoted: PaidUpgradeQuote,
-): boolean {
-    if (!echo?.authorization || !echo.preCall) return false
-    const authorization = echo.authorization
-    const preCall = echo.preCall
-    if (
-        !authorization.contractAddress ||
-        !Number.isInteger(authorization.chainId) ||
-        !Number.isInteger(authorization.nonce) ||
-        !authorization.signature ||
-        !preCall.eoa ||
-        !preCall.executionData ||
-        preCall.nonce === undefined ||
-        !preCall.signature
-    ) {
-        return false
-    }
-    return paidUpgradeFieldsMatch(
-        { authorization, preCall },
-        quoted,
-    )
-}
-
-/**
- * Re-check a quoted user-paid upgrade and reserve its per-address slot.
- * The authorization on the execute-intent transaction comes from the HMAC'd
- * quote. A side-field echo has to match that quote or send refuses.
- */
-async function bindPaidUpgrade(args: {
-    env: Env
-    params: SendPreparedCallsParams
-    intent: IntentStruct
-    chainId: number
-    ip: string
-    config: { rpcUrl: string; contracts: { orchestrator: Address; accountProxy: Address } }
-    quote: Quote
-}): Promise<{ reservedAt: number; authorization: SignedAuthorization } | undefined> {
-    const upgrade = paidUpgradeFromQuote(args.quote)
-    if (!upgrade) return undefined
-
-    if (
-        args.params.accountUpgrade !== undefined &&
-        !echoedUpgradeMatches(args.params.accountUpgrade, upgrade)
-    ) {
-        throw new RpcError(INVALID_PARAMS, 'Authorization or pre-call does not match the quote')
-    }
-
-    let paymentAmount: bigint
-    try {
-        paymentAmount = BigInt(args.intent.paymentAmount ?? '0')
-    } catch {
-        throw new RpcError(INVALID_PARAMS, 'Paid upgrade fee must be greater than zero')
-    }
-
-    const publicClient = createPublicClient({ transport: http(args.config.rpcUrl) })
-    const checked = await assertPaidUpgrade({
-        eoa: args.intent.eoa,
-        payer: args.intent.payer,
-        paymentToken: args.intent.paymentToken,
-        paymentMaxAmount:
-            args.intent.paymentMaxAmount === undefined
-                ? undefined
-                : String(args.intent.paymentMaxAmount),
-        upgrade,
-        encodedPreCalls: args.intent.encodedPreCalls,
-        chainId: args.chainId,
-        orchestrator: args.config.contracts.orchestrator,
-        accountProxy: args.config.contracts.accountProxy,
-        usdc: chainUsdcAddress(args.chainId),
-        maxPayment: paidUpgradeMaxPayment(args.env),
-        paymentAmount,
-        publicClient,
-    })
-
-    await assertPaidUpgradeIntentSigner({
-        intent: args.intent,
-        chainId: args.chainId,
-        orchestrator: args.config.contracts.orchestrator,
-    })
-
-    const reservedAt = await reservePaidUpgradeRateLimit(
-        args.env,
-        args.chainId,
-        args.intent.eoa,
-        args.ip,
-    )
-    try {
-        await assertPaidUpgradeSimulation({
-            publicClient,
-            orchestrator: args.config.contracts.orchestrator,
-            intent: args.intent,
-            authorization: checked.authorization,
-            feeRecipient: args.env.FEE_RECIPIENT,
-            env: args.env,
-        })
-        await reservePaidUpgradeGas(args.env, args.chainId)
-    } catch (error) {
-        const stored =
-            error instanceof RpcError &&
-            (error.code === INVALID_SIGNATURE ||
-                error.code === INSUFFICIENT_FUNDS ||
-                error.code === CONTRACT_ERROR)
-        if (!stored) {
-            await releasePaidUpgradeRateLimit(
-                args.env,
-                args.chainId,
-                args.intent.eoa,
-                args.ip,
-                reservedAt,
-            )
-        }
-        throw error
-    }
-    return { reservedAt, authorization: checked.authorization }
 }
 
 /**
@@ -248,23 +121,30 @@ export async function handleSendPreparedCalls(
         intent,
     }
 
-    const quoted = 'quote' in context && context.quote ? context.quote.quotes[0] : undefined
-    const paidUpgradeIp =
-        quoted && paidUpgradeFromQuote(quoted)
-            ? requirePaidUpgradeClientIp(ctx.request, env)
-            : 'unknown'
-    const paidUpgrade = quoted
-        ? await bindPaidUpgrade({
-              env,
-              params: typedParams,
-              intent,
-              chainId,
-              ip: paidUpgradeIp,
-              config,
-              quote: quoted,
-          })
-        : undefined
-    if (paidUpgrade) {
+    const signedQuotes = 'quote' in context && context.quote ? context.quote : undefined
+    const quoted = signedQuotes?.quotes[0]
+    const paidUpgradeIp = quoted?.accountUpgrade
+        ? requirePaidUpgradeClientIp(ctx.request, env)
+        : 'unknown'
+    const paidUpgrade =
+        quoted?.accountUpgrade && signedQuotes
+            ? await bindAndPullPaidUpgrade({
+                  env,
+                  params: typedParams,
+                  intent,
+                  chainId,
+                  ip: paidUpgradeIp,
+                  config,
+                  quote: quoted,
+                  quoteSignature: signedQuotes.signature,
+                  quoteTtl: signedQuotes.ttl,
+                  bundleId,
+              })
+            : undefined
+    if (paidUpgrade?.kind === 'confirmed') {
+        return { id: bundleId }
+    }
+    if (paidUpgrade?.kind === 'ready' && paidUpgrade.authorization) {
         tx.authorization = paidUpgrade.authorization
     }
 
@@ -277,14 +157,16 @@ export async function handleSendPreparedCalls(
             body: JSON.stringify(tx),
         })
     } catch (error) {
-        if (paidUpgrade) {
-            await releasePaidUpgradeRateLimit(
-                env,
-                chainId,
-                intent.eoa,
-                paidUpgradeIp,
-                paidUpgrade.reservedAt,
-            )
+        if (paidUpgrade?.kind === 'ready') {
+            if (paidUpgrade.releaseRate && paidUpgrade.reservedAt !== undefined) {
+                await releasePaidUpgradeRateLimit(
+                    env,
+                    chainId,
+                    intent.eoa,
+                    paidUpgradeIp,
+                    paidUpgrade.reservedAt,
+                )
+            }
             await releasePaidUpgradeGas(env, chainId)
             logger.error({ error, eoa: intent.eoa }, 'paid upgrade pool unavailable')
             throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
@@ -298,14 +180,16 @@ export async function handleSendPreparedCalls(
             code?: string
             broadcastAttempted?: boolean
         }
-        if (paidUpgrade && error.broadcastAttempted === false) {
-            await releasePaidUpgradeRateLimit(
-                env,
-                chainId,
-                intent.eoa,
-                paidUpgradeIp,
-                paidUpgrade.reservedAt,
-            )
+        if (paidUpgrade?.kind === 'ready' && error.broadcastAttempted === false) {
+            if (paidUpgrade.releaseRate && paidUpgrade.reservedAt !== undefined) {
+                await releasePaidUpgradeRateLimit(
+                    env,
+                    chainId,
+                    intent.eoa,
+                    paidUpgradeIp,
+                    paidUpgrade.reservedAt,
+                )
+            }
             await releasePaidUpgradeGas(env, chainId)
         }
         logger.warn({ eoa: intent.eoa, error: error.error }, 'intent execution failed')
@@ -318,32 +202,39 @@ export async function handleSendPreparedCalls(
     }
 
     const result = (await response.json()) as SendResult
-    if (paidUpgrade) {
+    if (paidUpgrade?.kind === 'ready') {
+        const pending = { ...paidUpgrade.record, upgradeTx: result.txHash }
         try {
+            await notePaidUpgradeSubmitted(
+                env,
+                chainId,
+                signedQuotes!.signature,
+                paidUpgrade.record,
+                result.txHash,
+                { nonce: result.nonce, signerName: result.signerName },
+            )
             const receiptClient = createPublicClient({ transport: http(config.rpcUrl) })
             const receipt = await receiptClient.waitForTransactionReceipt({
                 hash: result.txHash,
                 timeout: paidUpgradeReceiptWaitMs(env),
             })
-            const outcome = paidUpgradeReceiptOutcome(receipt)
-            if (outcome.failure) {
-                logger.warn(
-                    {
-                        eoa: intent.eoa,
-                        txHash: result.txHash,
-                        errorName: outcome.errorName,
-                        selector: outcome.selector,
-                        gasUsed: outcome.gasUsed.toString(),
-                    },
-                    'paid upgrade receipt stored an intent error',
+            const noted = await notePaidUpgradeReceipt(
+                env,
+                chainId,
+                signedQuotes!.signature,
+                pending,
+                receipt.status,
+                receipt.gasUsed,
+                receipt,
+            )
+            if (noted === 'failed') {
+                throw new RpcError(
+                    SERVICE_UNAVAILABLE,
+                    'Paid upgrade was not included; retry will not charge the fee again',
                 )
             }
-            await settlePaidUpgradeGas(env, chainId, {
-                gasUsed: outcome.gasUsed,
-                failure: outcome.failure,
-                txHash: result.txHash,
-            })
         } catch (error) {
+            if (error instanceof RpcError) throw error
             logger.error(
                 { error, eoa: intent.eoa, txHash: result.txHash },
                 'paid upgrade receipt was not settled; gas hold remains until reconcile',

@@ -52,3 +52,9 @@ export {
     type ExecutePreparedCallsParams,
     type ExecutePreparedCallsResult,
 } from './executePreparedCalls'
+
+export {
+    paidUpgradeFeeAuthorizationToSign,
+    paidUpgradeFeeNonce,
+    verifyPaidUpgradeFeeTypedData,
+} from './paidUpgradeFee'

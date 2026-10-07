@@ -32,6 +32,7 @@ import type {
     PrepareCallsContext,
     PrepareCallsResult,
 } from '../schema/prepareCalls'
+import { paidUpgradeFeeRecipient } from './shared/paid-upgrade-fee-flow'
 import {
     assertPaidUpgrade,
     assertPaidUpgradeOidcOwner,
@@ -307,6 +308,8 @@ export async function handlePrepareCalls(
         upgradePreCallEncoding = checked.encodedPreCalls
     }
 
+    const feeRecipient = requestedUpgrade ? paidUpgradeFeeRecipient(env) : undefined
+
     const quoteIntent: QuoteIntent = {
         eoa: typedParams.from,
         calls: normalizedCalls,
@@ -344,6 +347,7 @@ export async function handlePrepareCalls(
             txGas: result.txGas,
             paymentEnabled,
         },
+        ...(feeRecipient ? { feeRecipient } : {}),
         accountUpgrade,
     }
 

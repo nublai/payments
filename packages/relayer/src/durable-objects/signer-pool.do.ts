@@ -15,7 +15,7 @@
  */
 
 import { DurableObject } from 'cloudflare:workers'
-import { createPublicClient, http, type Address, type Hex } from 'viem'
+import { createPublicClient, getAddress, http, type Address, type Hex } from 'viem'
 
 import type { Env } from '../types/env'
 import type {
@@ -31,6 +31,11 @@ import type {
 import { getErrorMessage, logger } from '../lib/logger'
 import { getChainRpcUrl } from '../lib/multi-chain-client'
 import { selectSignerForEoa } from '../lib/pool-utils'
+import {
+    isPaidUpgradeFeeStatus,
+    type PaidUpgradeFeeRecord,
+    type PaidUpgradeFeeStatus,
+} from '../rpc/schema/paid-upgrade-fee'
 import { poolSendBroadcastAttempted, signerSendDisposition } from './signer-pool-send'
 import {
     consumeRateLimit,
@@ -127,6 +132,18 @@ export class SignerPoolDO extends DurableObject<Env> {
                     return Response.json(result)
                 }
 
+                case '/paid-upgrade-fee': {
+                    if (request.method !== 'POST') {
+                        return new Response('Method not allowed', { status: 405 })
+                    }
+                    const body = (await request.json()) as {
+                        action?: string
+                        quoteKey?: string
+                        record?: unknown
+                    }
+                    return Response.json(this.consumePaidUpgradeFee(body))
+                }
+
                 case '/upgrade-rate-limit': {
                     if (request.method !== 'POST') {
                         return new Response('Method not allowed', { status: 405 })
@@ -137,6 +154,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                             | 'reserve-gas'
                             | 'release-gas'
                             | 'settle-gas'
+                            | 'fits-gas'
                             | 'enqueue-receipt'
                             | 'reconcile-receipt'
                             | 'reconcile-pending'
@@ -166,6 +184,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                         (body.action === 'reserve-gas' ||
                             body.action === 'release-gas' ||
                             body.action === 'settle-gas' ||
+                            body.action === 'fits-gas' ||
                             body.action === 'enqueue-receipt' ||
                             body.action === 'reconcile-receipt' ||
                             body.action === 'track-replacement')
@@ -438,7 +457,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     )
                 }
                 const books = this.readGasBooks(sql, dayStart)
-                return { allowed: true, gas: books.gasSpent, held: books.held, failures: books.failures }
+                return { allowed: true, gas: books.gasSpent, held: books.heldGas, failures: books.failures }
             })
         }
 
@@ -488,6 +507,14 @@ export class SignerPoolDO extends DurableObject<Env> {
         return this.ctx.storage.transactionSync(() => {
             const books = this.readGasBooks(sql, dayStart)
             let { gasSpent, heldGas, failures } = books
+            if (body.action === 'fits-gas') {
+                return {
+                    allowed: BigInt(gasSpent) + BigInt(heldGas) + BigInt(gas) <= budget,
+                    gas: gasSpent,
+                    held: heldGas,
+                    failures,
+                }
+            }
             if (body.action === 'reserve-gas') {
                 // The signed gas limit cannot exceed this reservation, and the
                 // reservation cannot exceed the approved hold. spent + held +
@@ -607,6 +634,156 @@ export class SignerPoolDO extends DurableObject<Env> {
             )
             return { allowed: true, gas: gasSpent, held: heldGas, failures }
         })
+    }
+
+    /**
+     * One row per quote HMAC. Insert is insert-if-absent so two sends of the
+     * same quote cannot both pull. A missing or malformed body fails closed.
+     */
+    private consumePaidUpgradeFee(body: {
+        action?: string
+        quoteKey?: string
+        record?: unknown
+    }): { allowed: boolean; inserted?: boolean; record?: PaidUpgradeFeeRecord | null } {
+        const quoteKey = body.quoteKey
+        if (
+            typeof quoteKey !== 'string' ||
+            !/^0x[0-9a-f]{64}$/.test(quoteKey) ||
+            (body.action !== 'get' &&
+                body.action !== 'insert' &&
+                body.action !== 'update' &&
+                body.action !== 'delete')
+        ) {
+            return { allowed: false }
+        }
+        const sql = this.ensureUpgradeRateSchema()
+        if (body.action === 'get') {
+            return { allowed: true, record: this.readPaidUpgradeFeeRow(sql, quoteKey) }
+        }
+        if (body.action === 'delete') {
+            sql.exec(`DELETE FROM paid_upgrade_fee_pull WHERE quote_key = ?`, quoteKey)
+            return { allowed: true, record: null }
+        }
+        const record = this.parsePaidUpgradeFeeRecord(body.record)
+        if (!record) return { allowed: false }
+        return this.ctx.storage.transactionSync(() => {
+            const existing = this.readPaidUpgradeFeeRow(sql, quoteKey)
+            if (body.action === 'insert') {
+                if (existing) return { allowed: true, inserted: false, record: existing }
+                this.writePaidUpgradeFeeRow(sql, quoteKey, record)
+                return { allowed: true, inserted: true, record }
+            }
+            if (!existing) return { allowed: true, inserted: false, record: null }
+            this.writePaidUpgradeFeeRow(sql, quoteKey, record)
+            return { allowed: true, inserted: false, record }
+        })
+    }
+
+    private parsePaidUpgradeFeeRecord(value: unknown): PaidUpgradeFeeRecord | null {
+        if (!value || typeof value !== 'object') return null
+        const body = value as Record<string, unknown>
+        if (!isPaidUpgradeFeeStatus(body.status)) return null
+        if (typeof body.fee !== 'string' || typeof body.nonce !== 'string') return null
+        if (!/^0x[0-9a-fA-F]{64}$/.test(body.nonce)) return null
+        if (body.pullTx !== undefined && typeof body.pullTx !== 'string') return null
+        if (body.upgradeTx !== undefined && typeof body.upgradeTx !== 'string') return null
+        if (body.bundleId !== undefined && typeof body.bundleId !== 'string') return null
+        if (body.signerNonce !== undefined && (typeof body.signerNonce !== 'number' || !Number.isInteger(body.signerNonce) || body.signerNonce < 0)) {
+            return null
+        }
+        if (body.signerName !== undefined && typeof body.signerName !== 'string') return null
+        try {
+            return {
+                status: body.status,
+                fee: body.fee,
+                from: getAddress(String(body.from)),
+                to: getAddress(String(body.to)),
+                nonce: body.nonce as Hex,
+                pullTx: typeof body.pullTx === 'string' ? (body.pullTx as Hex) : undefined,
+                upgradeTx: typeof body.upgradeTx === 'string' ? (body.upgradeTx as Hex) : undefined,
+                bundleId: typeof body.bundleId === 'string' ? body.bundleId : undefined,
+                ...(typeof body.signerNonce === 'number' ? { signerNonce: body.signerNonce } : {}),
+                ...(typeof body.signerName === 'string' && body.signerName ? { signerName: body.signerName } : {}),
+            }
+        } catch {
+            return null
+        }
+    }
+
+    private readPaidUpgradeFeeRow(sql: SqlStorage, quoteKey: string): PaidUpgradeFeeRecord | null {
+        const rows = sql
+            .exec<{
+                status: string
+                fee: string
+                from_addr: string
+                to_addr: string
+                nonce: string
+                pull_tx: string | null
+                upgrade_tx: string | null
+                bundle_id: string | null
+                signer_nonce: number | null
+                signer_name: string | null
+            }>(
+                `SELECT status, fee, from_addr, to_addr, nonce, pull_tx, upgrade_tx, bundle_id, signer_nonce, signer_name
+                 FROM paid_upgrade_fee_pull WHERE quote_key = ?`,
+                quoteKey,
+            )
+            .toArray()
+        const row = rows[0]
+        if (!row || !isPaidUpgradeFeeStatus(row.status)) return null
+        try {
+            return {
+                status: row.status as PaidUpgradeFeeStatus,
+                fee: row.fee,
+                from: getAddress(row.from_addr),
+                to: getAddress(row.to_addr),
+                nonce: row.nonce as Hex,
+                pullTx: row.pull_tx ? (row.pull_tx as Hex) : undefined,
+                upgradeTx: row.upgrade_tx ? (row.upgrade_tx as Hex) : undefined,
+                bundleId: row.bundle_id ?? undefined,
+                ...(row.signer_nonce != null ? { signerNonce: row.signer_nonce } : {}),
+                ...(row.signer_name ? { signerName: row.signer_name } : {}),
+            }
+        } catch {
+            return null
+        }
+    }
+
+    private writePaidUpgradeFeeRow(
+        sql: SqlStorage,
+        quoteKey: string,
+        record: PaidUpgradeFeeRecord,
+    ): void {
+        sql.exec(
+            `INSERT INTO paid_upgrade_fee_pull (
+                quote_key, status, fee, from_addr, to_addr, nonce, pull_tx, upgrade_tx, bundle_id, updated_at,
+                signer_nonce, signer_name
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(quote_key) DO UPDATE SET
+                status = excluded.status,
+                fee = excluded.fee,
+                from_addr = excluded.from_addr,
+                to_addr = excluded.to_addr,
+                nonce = excluded.nonce,
+                pull_tx = excluded.pull_tx,
+                upgrade_tx = excluded.upgrade_tx,
+                bundle_id = excluded.bundle_id,
+                updated_at = excluded.updated_at,
+                signer_nonce = excluded.signer_nonce,
+                signer_name = excluded.signer_name`,
+            quoteKey,
+            record.status,
+            record.fee,
+            record.from,
+            record.to,
+            record.nonce,
+            record.pullTx ?? null,
+            record.upgradeTx ?? null,
+            record.bundleId ?? null,
+            Date.now(),
+            record.signerNonce ?? null,
+            record.signerName ?? null,
+        )
     }
 
     private readGasBooks(
@@ -915,6 +1092,22 @@ export class SignerPoolDO extends DurableObject<Env> {
                 )
             `)
             sql.exec(`
+                CREATE TABLE IF NOT EXISTS paid_upgrade_fee_pull (
+                    quote_key TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    fee TEXT NOT NULL,
+                    from_addr TEXT NOT NULL,
+                    to_addr TEXT NOT NULL,
+                    nonce TEXT NOT NULL,
+                    pull_tx TEXT,
+                    upgrade_tx TEXT,
+                    bundle_id TEXT,
+                    updated_at INTEGER NOT NULL,
+                    signer_nonce INTEGER,
+                    signer_name TEXT
+                )
+            `)
+            sql.exec(`
                 CREATE TABLE IF NOT EXISTS paid_upgrade_pending_receipt (
                     tx_hash TEXT PRIMARY KEY,
                     chain_id INTEGER NOT NULL,
@@ -935,6 +1128,18 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
             if (!columns.has('signer_name')) {
                 sql.exec(`ALTER TABLE paid_upgrade_pending_receipt ADD COLUMN signer_name TEXT`)
+            }
+            const feeColumns = new Set(
+                sql
+                    .exec<{ name: string }>(`PRAGMA table_info(paid_upgrade_fee_pull)`)
+                    .toArray()
+                    .map((column) => column.name),
+            )
+            if (!feeColumns.has('signer_nonce')) {
+                sql.exec(`ALTER TABLE paid_upgrade_fee_pull ADD COLUMN signer_nonce INTEGER`)
+            }
+            if (!feeColumns.has('signer_name')) {
+                sql.exec(`ALTER TABLE paid_upgrade_fee_pull ADD COLUMN signer_name TEXT`)
             }
             this.upgradeRateSchemaReady = true
         }

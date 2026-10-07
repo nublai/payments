@@ -31,7 +31,13 @@ import {
 import {
     encodeSignedPreCall,
     paidUpgradeRateBuckets,
+    signedPaymentMaxForQuote,
 } from '../../src/rpc/methods/shared/paid-upgrade'
+import {
+    paidUpgradeFeeNonce,
+    paidUpgradeFeeTypedData,
+    type PaidUpgradeFeeRecord,
+} from '../../src/rpc/schema/paid-upgrade-fee'
 import {
     consumeRateLimit,
     peekRateLimit,
@@ -94,6 +100,9 @@ const ISSUER = 'https://issuer.example'
 const NATIVE_RATE = (3000n * 10n ** 18n).toString()
 const OWNER = privateKeyToAccount(OWNER_KEY).address
 const OTHER = privateKeyToAccount(OTHER_KEY).address
+const FEE_RECIPIENT = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
+const PULL_HASH = `0x${'11'.repeat(32)}` as Hex
+const UPGRADE_HASH = `0x${'ab'.repeat(32)}` as Hex
 
 const rpc = {
     balance: 20_000_000n,
@@ -102,7 +111,8 @@ const rpc = {
 
 const gasLog: Array<Record<string, unknown>> = []
 const rateBodies: Array<Record<string, unknown>> = []
-let captures: unknown[] = []
+const feeStore = new Map<string, PaidUpgradeFeeRecord>()
+let captures: Array<Record<string, unknown>> = []
 let gasSpent = 0n
 let gasHeld = 0n
 const rateStore = new Map<string, number>()
@@ -113,6 +123,35 @@ function word(value: bigint): Hex {
 
 function jsonResponse(body: unknown, ok = true): Response {
     return { ok, json: async () => body } as Response
+}
+
+function applyFee(body: Record<string, unknown>): {
+    allowed: boolean
+    inserted?: boolean
+    record: PaidUpgradeFeeRecord | null
+} {
+    const quoteKey = typeof body.quoteKey === 'string' ? body.quoteKey : ''
+    const record = body.record as PaidUpgradeFeeRecord | undefined
+    if (body.action === 'get') {
+        return { allowed: true, record: feeStore.get(quoteKey) ?? null }
+    }
+    if (body.action === 'delete') {
+        feeStore.delete(quoteKey)
+        return { allowed: true, record: null }
+    }
+    if (body.action === 'insert') {
+        const existing = feeStore.get(quoteKey)
+        if (existing) return { allowed: true, inserted: false, record: existing }
+        if (!record) return { allowed: false, record: null }
+        feeStore.set(quoteKey, record)
+        return { allowed: true, inserted: true, record }
+    }
+    if (body.action === 'update') {
+        if (!feeStore.has(quoteKey) || !record) return { allowed: true, record: null }
+        feeStore.set(quoteKey, record)
+        return { allowed: true, record }
+    }
+    return { allowed: false, record: null }
 }
 
 function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: number } {
@@ -139,6 +178,9 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
     if (url.includes('upgrade-rate-limit')) {
+        if (body.action === 'fits-gas') {
+            return Promise.resolve(jsonResponse({ allowed: true, gas: Number(gasSpent) }))
+        }
         if (
             body.action === 'reserve-gas' ||
             body.action === 'release-gas' ||
@@ -169,10 +211,16 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         const decision = consumeRateLimit(rateStore, buckets, now)
         return Promise.resolve(jsonResponse({ allowed: decision.allowed, reservedAt: now }))
     }
+    if (url.includes('paid-upgrade-fee')) {
+        return Promise.resolve(jsonResponse(applyFee(body)))
+    }
     captures.push(body)
+    const txHash = body.type === 'pull-paid-upgrade-fee' ? PULL_HASH : UPGRADE_HASH
+    const nonce = body.type === 'pull-paid-upgrade-fee' ? 4 : 5
     return Promise.resolve(
         jsonResponse({
-            txHash: `0x${'ab'.repeat(32)}`,
+            txHash,
+            nonce,
             signer: '0x123',
             signerName: 'signer-8453-0',
         }),
@@ -191,6 +239,7 @@ function createCtx(): RpcContext {
             RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
             RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: SECRET,
+            FEE_RECIPIENT,
             ORCHESTRATOR_8453: ORCHESTRATOR,
             SIMPLE_FUNDER_8453: '0x41D23D227C6D0F732D41eE5c203C48d96292A48B',
             SIMULATOR_8453: '0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65',
@@ -329,7 +378,7 @@ async function sendParams(): Promise<unknown> {
             encodedPreCalls: encoded,
             payer: OWNER,
             paymentToken: USDC,
-            paymentMaxAmount: (paymentAmount + (paymentAmount * 500n) / 10_000n).toString(),
+            paymentMaxAmount: signedPaymentMaxForQuote(paymentAmount).toString(),
         },
         orchestrator: ORCHESTRATOR,
         extraPayment: '0x0',
@@ -342,6 +391,7 @@ async function sendParams(): Promise<unknown> {
         authSigner: OWNER,
         feeTokenDeficit: '0x0',
         assetDeficits: [],
+        feeRecipient: FEE_RECIPIENT,
         accountUpgrade: upgrade,
     }
     const signed: SignedQuotes = {
@@ -350,6 +400,26 @@ async function sendParams(): Promise<unknown> {
         ttl: Math.floor(Date.now() / 1000) + 300,
     }
     signed.signature = await signQuotes(signed, SECRET)
+    const feeValue = signedPaymentMaxForQuote(paymentAmount)
+    const feeNonce = paidUpgradeFeeNonce({
+        quoteSignature: signed.signature,
+        chainId: CHAIN_ID,
+        from: OWNER,
+        to: FEE_RECIPIENT,
+        value: feeValue,
+    })
+    const feeSignature = await privateKeyToAccount(OWNER_KEY).signTypedData(
+        paidUpgradeFeeTypedData({
+            chainId: CHAIN_ID,
+            token: USDC,
+            from: OWNER,
+            to: FEE_RECIPIENT,
+            value: feeValue,
+            validAfter: 0n,
+            validBefore: BigInt(signed.ttl),
+            nonce: feeNonce,
+        }),
+    )
     const intent = quote.intent
     const digest = hashTypedData({
         domain: {
@@ -382,7 +452,68 @@ async function sendParams(): Promise<unknown> {
     return {
         context: { quote: signed },
         signature: await privateKeyToAccount(OWNER_KEY).sign({ hash: digest }),
+        feeAuthorization: {
+            validAfter: '0',
+            validBefore: signed.ttl.toString(),
+            nonce: feeNonce,
+            signature: feeSignature,
+        },
     }
+}
+
+function transferLog(value: bigint) {
+    return {
+        address: USDC,
+        topics: encodeEventTopics({
+            abi: [
+                {
+                    type: 'event',
+                    name: 'Transfer',
+                    inputs: [
+                        { name: 'from', type: 'address', indexed: true },
+                        { name: 'to', type: 'address', indexed: true },
+                        { name: 'value', type: 'uint256', indexed: false },
+                    ],
+                },
+            ],
+            eventName: 'Transfer',
+            args: { from: OWNER, to: FEE_RECIPIENT, value },
+        }),
+        data: word(value),
+        logIndex: '0x0',
+        transactionIndex: '0x0',
+        transactionHash: PULL_HASH,
+        blockHash: `0x${'cd'.repeat(32)}`,
+        blockNumber: '0x1',
+        removed: false,
+    }
+}
+
+function pullReceipt() {
+    const pull = [...captures].reverse().find((body) => body.type === 'pull-paid-upgrade-fee')
+    const value = BigInt(typeof pull?.value === 'string' ? pull.value : '0')
+    return {
+        transactionHash: PULL_HASH,
+        transactionIndex: '0x0',
+        blockHash: `0x${'cd'.repeat(32)}`,
+        blockNumber: '0x1',
+        from: FEE_RECIPIENT,
+        to: USDC,
+        cumulativeGasUsed: '0x5208',
+        gasUsed: '0x5208',
+        contractAddress: null,
+        logs: [transferLog(value)],
+        logsBloom: `0x${'00'.repeat(256)}`,
+        status: '0x1',
+        effectiveGasPrice: '0x3b9aca00',
+        type: '0x2',
+    }
+}
+
+function expectOnePullAndOneUpgrade() {
+    expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')).toHaveLength(1)
+    expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(1)
+    expect(captures).toHaveLength(2)
 }
 
 function intentExecutedLog() {
@@ -413,6 +544,7 @@ beforeEach(() => {
     gasSpent = 0n
     gasHeld = 0n
     rateStore.clear()
+    feeStore.clear()
     mockPrepareIntent.mockReset()
     mockPrepareIntent.mockImplementation(async () => preparedIntent(OWNER))
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -423,13 +555,18 @@ beforeEach(() => {
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
             let result: unknown = '0x'
             const tx = call.params?.[0] as { authorizationList?: unknown } | undefined
+            const data = (tx as { data?: string } | undefined)?.data
             if (call.method === 'eth_getCode') result = '0x'
             else if (call.method === 'eth_getTransactionCount') result = '0x0'
             else if (call.method === 'eth_call' && tx?.authorizationList) result = word(0n)
+            else if (call.method === 'eth_call' && data?.startsWith('0xe94a0102')) result = word(0n)
             else if (call.method === 'eth_call') result = word(rpc.balance)
             else if (call.method === 'eth_chainId') result = '0x2105'
             else if (call.method === 'eth_getTransactionReceipt') {
-                result = {
+                if (call.params?.[0] === PULL_HASH) {
+                    result = pullReceipt()
+                } else {
+                    result = {
                     transactionHash: `0x${'ab'.repeat(32)}`,
                     transactionIndex: '0x0',
                     blockHash: `0x${'cd'.repeat(32)}`,
@@ -444,6 +581,7 @@ beforeEach(() => {
                     status: '0x1',
                     effectiveGasPrice: '0x3b9aca00',
                     type: '0x4',
+                    }
                 }
             }
             return { jsonrpc: '2.0', id: call.id ?? 1, result }
@@ -518,7 +656,7 @@ describe('paid upgrade OIDC ownership', () => {
             handleSendPreparedCalls(send, createCtx()),
         )
         expect(sent.id).toEqual(expect.any(String))
-        expect(captures).toHaveLength(1)
+        expectOnePullAndOneUpgrade()
     })
 
     it('prepares and sends a paid upgrade for Privy without a binding', async () => {
@@ -534,7 +672,7 @@ describe('paid upgrade OIDC ownership', () => {
             handleSendPreparedCalls(send, createCtx()),
         )
         expect(sent.id).toEqual(expect.any(String))
-        expect(captures).toHaveLength(1)
+        expectOnePullAndOneUpgrade()
     })
 
     it('prepares and sends a paid upgrade for a wallet-signed caller', async () => {
@@ -548,6 +686,6 @@ describe('paid upgrade OIDC ownership', () => {
         const send = await sendParams()
         const sent = await runWithAuthIdentity(identity, () => handleSendPreparedCalls(send, ctx))
         expect(sent.id).toEqual(expect.any(String))
-        expect(captures).toHaveLength(1)
+        expectOnePullAndOneUpgrade()
     })
 })

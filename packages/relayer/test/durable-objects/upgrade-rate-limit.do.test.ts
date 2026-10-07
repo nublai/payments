@@ -312,4 +312,58 @@ describe('SignerPoolDO upgrade rate limit', () => {
         })
         expect(await missing.json()).toMatchObject({ allowed: true, gas: 0, held: 500000 })
     })
+
+    it('does not release a fee pull when its replacement for the same nonce is still pending', async () => {
+        const poolName = 'pool-8453-fee-pull-replacement'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+        const original = `0x${'44'.repeat(32)}`
+        const replacement = `0x${'55'.repeat(32)}`
+        const post = (body: Record<string, unknown>) =>
+            stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind: 'paid-upgrade', chainId: 8453, ...body }),
+            })
+
+        expect(await (await post({ action: 'reserve-gas', gas: '500000' })).json()).toMatchObject({
+            allowed: true,
+            held: 500000,
+        })
+        expect(
+            await (
+                await post({
+                    action: 'enqueue-receipt',
+                    txHash: original,
+                    nonce: 4,
+                    signerName: 'signer-8453-0',
+                })
+            ).json(),
+        ).toMatchObject({ allowed: true })
+        expect(
+            await (
+                await post({
+                    action: 'track-replacement',
+                    priorHash: original,
+                    txHash: replacement,
+                    nonce: 4,
+                    signerName: 'signer-8453-0',
+                })
+            ).json(),
+        ).toMatchObject({ allowed: true, held: 500000 })
+        const missing = await post({
+            action: 'reconcile-receipt',
+            txHash: original,
+            found: false,
+        })
+        expect(await missing.json()).toMatchObject({ allowed: true, gas: 0, held: 500000 })
+        const mined = await post({
+            action: 'reconcile-receipt',
+            txHash: replacement,
+            found: true,
+            gas: '600000',
+            failure: false,
+        })
+        expect(await mined.json()).toMatchObject({ allowed: true, gas: 500000, held: 0 })
+    })
 })
