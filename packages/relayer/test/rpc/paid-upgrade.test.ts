@@ -38,6 +38,7 @@ import {
     encodeSignedPreCall,
     eip7702DelegationCode,
     PAID_UPGRADE_ADDRESS_LIMIT,
+    PAID_UPGRADE_GAS_HOLD,
     paidUpgradeRateBuckets,
     recordPaidUpgradeRateLimit,
     signedPaymentMaxForQuote,
@@ -101,6 +102,7 @@ let captures: Array<Record<string, unknown>> = []
 const rateBodies: Array<Record<string, unknown>> = []
 const rateStore = new Map<string, number>()
 const feeStore = new Map<string, PaidUpgradeFeeRecord>()
+const feeLog: PaidUpgradeFeeRecord[] = []
 
 function applyFee(body: Record<string, unknown>): { allowed: boolean; inserted?: boolean; record: PaidUpgradeFeeRecord | null } {
     const quoteKey = typeof body.quoteKey === 'string' ? body.quoteKey : ''
@@ -117,11 +119,13 @@ function applyFee(body: Record<string, unknown>): { allowed: boolean; inserted?:
         if (existing) return { allowed: true, inserted: false, record: existing }
         if (!record) return { allowed: false, record: null }
         feeStore.set(quoteKey, record)
+        feeLog.push({ ...record })
         return { allowed: true, inserted: true, record }
     }
     if (body.action === 'update') {
         if (!feeStore.has(quoteKey) || !record) return { allowed: true, record: null }
         feeStore.set(quoteKey, record)
+        feeLog.push({ ...record })
         return { allowed: true, record }
     }
     return { allowed: false, record: null }
@@ -553,6 +557,7 @@ beforeEach(() => {
     gasHeld = 0n
     gasFailures = 0
     rateStore.clear()
+    feeLog.length = 0
     rpc.code = '0x'
     rpc.nonce = '0x0'
     rpc.balance = 20_000_000n
@@ -1081,6 +1086,24 @@ describe('paid upgrade send refusals', () => {
         expect(again.id).toBe(retried.id)
         expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(2)
         expect(gasSpent).toBe(spentAfterRetry)
+    })
+
+    it('sends only the upgrade when authorizationState is already true and the fee row is missing', async () => {
+        rpc.authUsed = true
+        gasHeld = PAID_UPGRADE_GAS_HOLD
+        const { params } = await signedParams({ callData: '0xcf' })
+        await handleSendPreparedCalls(params, createCtx())
+        expect(captures.filter((body) => body.type === 'pull-paid-upgrade-fee')).toHaveLength(0)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(1)
+        expect(captures).toHaveLength(1)
+        const collected = feeLog.find((row) => row.status === 'fee_collected')
+        expect(collected).toMatchObject({ status: 'fee_collected' })
+        expect(collected?.pullTx).toBeUndefined()
+        expect([...feeStore.values()][0]?.pullTx).toBeUndefined()
+        const releases = gasLog.filter((entry) => entry.action === 'release-gas')
+        expect(releases).toHaveLength(1)
+        expect(releases[0]?.gas).toBe(PAID_UPGRADE_GAS_HOLD.toString())
+        expect(gasHeld).toBe(0n)
     })
 
     it('retries a stuck delegation without a second authorization', async () => {
