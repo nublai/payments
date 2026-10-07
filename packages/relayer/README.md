@@ -102,9 +102,19 @@ Protected JSON-RPC methods are controlled by a shared policy used by all enabled
 
 `wallet_prepareUpgradeAccount`, `wallet_upgradeAccount`, `wallet_issueBindNonce`, and `wallet_bindAccount` are always authenticated. Upgrade methods spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. The authenticated identity must be the account (ERC-8128), a Privy user with a linked account of type `wallet` whose address checksum-matches that account, or an OIDC user whose binding contains that account. A wallets claim counts only when `OIDC_WALLETS_CLAIM_ENABLED=true`. A Privy smart wallet does not match. The delegation must be the configured account proxy, the authorization nonce must be the account's pending nonce, and arbitrary preCalls are rejected. Key initialization (`authorize`, `setCanExecute`, `setSpendLimit`) is still allowed because `tw account create` / `tw account delegate` and the local payment and escrow flows submit it. Gas, max fee, and priority fee are capped before the upgrade is signed. An upgrade reserves its identity, IP, IPv6 /56, and chain slots in the same step that decides to broadcast, and releases them only when the signer returns before `eth_sendRawTransaction`. Per 10-minute window the upgrade ceilings are 5 per identity, 100 per IP, and 2,000 per chain. Prepare is 10, 400, and 2,000. Identity buckets are `privy:<user id>` and `oidc:<issuer>:<sub>`. A deploy that changes Privy's bucket from the raw user id to `privy:<user id>` resets in-flight windows once. IPv6 is bucketed by /64 and by /56, both at that IP ceiling, after the text form is normalized. An IPv4 or IPv4-mapped address keeps a single IP bucket and has no /56 bucket. No extra env var is required for the numeric ceilings.
 
+Those ceilings come from `src/rpc/methods/shared/upgrade-rate-limit.ts`. The per-transaction cap is in `src/rpc/methods/shared/upgrade-gas.ts`: 1,500,000 gas, a 100 gwei max fee, and a 2 gwei priority fee, so one sponsored upgrade can cost at most 0.15 ETH. The sponsored path has no daily gas or ETH budget. For launch, the relayer signer balance is kept low on purpose, and that balance is the spend limit.
+
 | Name                     | Default                    | Description                                |
 | ------------------------ | -------------------------- | ------------------------------------------ |
 | `AUTH_PROTECTED_METHODS` | `wallet_sendPreparedCalls` | Comma-separated protected JSON-RPC methods |
+
+#### Paid first upgrade (off at launch)
+
+Launch is sponsored-only. Every first upgrade goes through `wallet_prepareUpgradeAccount` and `wallet_upgradeAccount`, which is what `tw account create` and `tw account delegate` use. The USDC-paid first upgrade (`capabilities.accountUpgrade` on `wallet_prepareCalls`, then `wallet_sendPreparedCalls`) stays in the code behind `PAID_UPGRADE_ENABLED`. It is off by default. Only the exact string `true` turns it on. Unset, empty, `false`, or any other value is off. While it is off, a paid prepare and a paid send are both refused with `-32602` before any rate-limit bucket, gas hold, fee capture, simulation, or broadcast. A send is refused even if its quote was signed while the flag was on. The reconcile cron keeps running, so a hold taken earlier still settles. The paid path's `PAID_UPGRADE_*` limits and daily gas budget apply only when it is on.
+
+| Name                   | Default     | Description                                                             |
+| ---------------------- | ----------- | ----------------------------------------------------------------------- |
+| `PAID_UPGRADE_ENABLED` | unset (off) | `true` enables the USDC-paid first upgrade. Anything else leaves it off |
 
 #### ERC-8128 HTTP Signatures
 
