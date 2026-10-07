@@ -570,14 +570,10 @@ contract GuardedExecutorTest is BaseTest {
             u.executionData = abi.encode(calls);
             u.signature = _sig(k, u);
 
-            // If first 4bytes are 0xdfc924d5, then it's "anotherTransfer" call, and the spend limit
-            // will not catch it.
-            if (
-                (calls[0].data[0] == bytes1(uint8(0xdf)) &&
-                    calls[0].data[1] == bytes1(uint8(0xc9)) &&
-                    calls[0].data[2] == bytes1(uint8(0x24)) &&
-                    calls[0].data[3] == bytes1(uint8(0xd5))) || amount == 0
-            ) {
+            // Intentional behavior change: a non-zero outflow is spend even when the
+            // selector is not `transfer` (anotherTransfer is 0xdfc924d5). A zero amount
+            // does not move the balance and is not charged.
+            if (amount == 0) {
                 assertEq(oc.execute(abi.encode(u)), 0);
             } else {
                 assertEq(oc.execute(abi.encode(u)), bytes4(keccak256("NoSpendPermissions()")));

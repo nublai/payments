@@ -215,13 +215,31 @@ abstract contract GuardedExecutor is ERC7821 {
     }
 
     /// @dev The `_execute` function imposes spending limits with the following:
-    /// 1. For every token with a spending limit, the
-    ///    `max(sum(outgoingAmounts), balanceBefore - balanceAfter)`
-    ///    will be added to the spent limit.
-    /// 2. Any token that is granted a non-zero approval will have the approval
-    ///    reset to zero after the calls.
-    /// 3. Except for the EOA and super admins, a spend limit has to be set for the
-    ///    `keyHash` in order for it to spend tokens.
+    /// 1. For every guarded token, `max(sum(outgoing amounts), balanceBefore - balanceAfter)`
+    ///    is added to the spent amount. Guarded tokens are:
+    ///    - every token that already has a spend period for `keyHash` (a third party can
+    ///      pull these with an existing allowance, and the decrease is still charged)
+    ///    - the target of a call whose selector is not a recognized transfer or allowance
+    ///      method, when that target is a contract other than this account
+    ///    - up to 8 address-shaped words in the first 32 argument words of such a call
+    ///      (values below 2^16 are treated as offsets or amounts, not token addresses)
+    /// 2. Non-zero `approve`, `increaseAllowance`, and `increaseApproval` are counted as
+    ///    spend and the allowance is reset to zero after the batch. Permit2 `approve` is
+    ///    counted and locked down.
+    /// 3. Except for the EOA and super admins, the token needs a spend period for `keyHash`
+    ///    or the batch reverts `NoSpendPermissions`.
+    ///
+    /// Still uncovered. There is no stored catalogue of every token the account might hold,
+    /// and the calldata scan is bounded so gas stays finite:
+    /// - a spender that pulls a token which is not a called target, has no spend period,
+    ///   and whose address is outside the watched prefix (hardcoded in the spender, past
+    ///   the first 32 words, past the 8-address cap, or below 2^16)
+    /// - signature permits (EIP-2612, DAI `permit`, Permit2 `permit`) submitted by anyone
+    ///   outside this batch. An in-batch signature cannot be distinguished from one that
+    ///   will be relayed later, so those selectors are not revoked here.
+    ///
+    /// `ANY_FN_SEL` on a token stays allowed. The balance snapshot charges the outflow, so
+    /// refusing the wildcard is unnecessary and would reject sessions that already have a limit.
     /// Note: Called internally in ERC7821, which coalesce zero-address `target`s to
     /// `address(this)`.
     function _execute(Call[] calldata calls, bytes32 keyHash) internal virtual override {
@@ -246,52 +264,14 @@ abstract contract GuardedExecutor is ERC7821 {
             }
         }
 
-        // We will only filter based on functions that are known to use `msg.sender`.
-        // For signature-based approvals (e.g. permit), we can't do anything
-        // to guard, as anyone else can directly submit the calldata and the signature.
+        // Recognized selectors are priced from calldata. Anything else can still move a
+        // token, so unrecognized calls also snapshot the target and address-shaped words.
+        // Signature permits are not revoked: anyone can submit the signature later.
         uint256 totalNativeSpend;
         for (uint256 i; i < calls.length; ++i) {
             (address target, uint256 value, bytes calldata data) = _get(calls, i);
             if (value != 0) totalNativeSpend += value;
-            if (data.length < 4) continue;
-            uint32 fnSel = uint32(bytes4(LibBytes.loadCalldata(data, 0x00)));
-            // `transfer(address,uint256)`.
-            if (fnSel == 0xa9059cbb) {
-                t.erc20s.p(target);
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24)); // `amount`.
-            }
-            // `transferFrom(address,address,uint256)`.
-            // The account may have existing ERC20 allowances. If `transferFrom` is used
-            // to transfer to an account that is not `address(this)`, treat it as outflow.
-            if (fnSel == 0x23b872dd) {
-                // `transferFrom(address from, address to, uint256 amount)`.
-                if (LibBytes.loadCalldata(data, 0x24).lsbToAddress() == address(this)) continue;
-                if (LibBytes.loadCalldata(data, 0x44) == 0) continue; // `amount == 0`.
-                t.erc20s.p(target);
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44)); // `amount`.
-            }
-            // `approve(address,uint256)`.
-            // We have to revoke any new approvals after the batch, else a bad app can
-            // leave an approval to let them drain unlimited tokens after the batch.
-            if (fnSel == 0x095ea7b3) {
-                if (LibBytes.loadCalldata(data, 0x24) == 0) continue; // `amount == 0`.
-                t.approvedERC20s.p(target);
-                t.approvalSpenders.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress()); // `spender`.
-                t.erc20s.p(target); // `token`.
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24)); // `amount`.
-            }
-            // The only Permit2 method that requires `msg.sender` to approve.
-            // `approve(address,address,uint160,uint48)`.
-            // For ERC20 tokens giving Permit2 infinite approvals by default,
-            // the approve method on Permit2 acts like a approve method on the ERC20.
-            if (fnSel == 0x87517c45) {
-                if (target != _PERMIT2) continue;
-                if (LibBytes.loadCalldata(data, 0x44) == 0) continue; // `amount == 0`.
-                t.permit2ERC20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress()); // `token`.
-                t.permit2Spenders.p(LibBytes.loadCalldata(data, 0x24).lsbToAddress()); // `spender`.
-                t.erc20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress()); // `token`.
-                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44)); // `amount`.
-            }
+            _accountForCall(t, target, data);
         }
 
         // Sum transfer amounts, grouped by the ERC20s. In-place.
@@ -346,6 +326,99 @@ abstract contract GuardedExecutor is ERC7821 {
                     )
                 )
             );
+        }
+    }
+
+    /// @dev First 32 argument words scanned for token addresses on an unrecognized call.
+    uint256 internal constant _SPEND_CALLDATA_WORDS = 32;
+
+    /// @dev Most address-shaped words from one call that are added to the balance snapshot.
+    uint256 internal constant _SPEND_CALLDATA_ADDRS = 8;
+
+    /// @dev Records spend for one call.
+    /// Recognized outflow and allowance selectors are priced from their arguments and are
+    /// not also scanned. Other calls snapshot the target contract, plus a bounded set of
+    /// addresses in calldata, so a later balance decrease is charged.
+    function _accountForCall(
+        _ExecuteTemps memory t,
+        address target,
+        bytes calldata data
+    ) internal view {
+        if (data.length >= 4) {
+            uint32 fnSel = uint32(bytes4(LibBytes.loadCalldata(data, 0x00)));
+            // `transfer(address,uint256)`.
+            if (fnSel == 0xa9059cbb) {
+                t.erc20s.p(target);
+                t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24)); // `amount`.
+                return;
+            }
+            // `transferFrom(address,address,uint256)`.
+            // Existing allowances can be spent by this key. A transfer into this account
+            // is inflow. A zero amount is not spend.
+            if (fnSel == 0x23b872dd) {
+                if (LibBytes.loadCalldata(data, 0x24).lsbToAddress() != address(this)) {
+                    if (LibBytes.loadCalldata(data, 0x44) != 0) {
+                        t.erc20s.p(target);
+                        t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44)); // `amount`.
+                    }
+                }
+                return;
+            }
+            // `approve(address,uint256)`, `increaseAllowance(address,uint256)`,
+            // `increaseApproval(address,uint256)`.
+            // Reset after the batch so a leftover allowance cannot drain the account,
+            // and count the amount or the increment against the spend limit.
+            if (fnSel == 0x095ea7b3 || fnSel == 0x39509351 || fnSel == 0xd73dd623) {
+                if (LibBytes.loadCalldata(data, 0x24) != 0) {
+                    t.approvedERC20s.p(target);
+                    t.approvalSpenders.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress());
+                    t.erc20s.p(target);
+                    t.transferAmounts.p(LibBytes.loadCalldata(data, 0x24));
+                }
+                return;
+            }
+            // Permit2 `approve(address,address,uint160,uint48)`.
+            // For tokens that give Permit2 infinite approval, this is the ERC20 approve.
+            if (fnSel == 0x87517c45 && target == _PERMIT2) {
+                if (LibBytes.loadCalldata(data, 0x44) != 0) {
+                    t.permit2ERC20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress());
+                    t.permit2Spenders.p(LibBytes.loadCalldata(data, 0x24).lsbToAddress());
+                    t.erc20s.p(LibBytes.loadCalldata(data, 0x04).lsbToAddress());
+                    t.transferAmounts.p(LibBytes.loadCalldata(data, 0x44));
+                }
+                return;
+            }
+        }
+
+        // Custom token methods (for example `anotherTransfer`) and third-party spenders.
+        if (target == address(this) || target.code.length == 0) return;
+        t.erc20s.p(target);
+        t.transferAmounts.p(uint256(0));
+        _watchCalldataAddresses(t, target, data);
+    }
+
+    /// @dev Adds address-shaped calldata words so a spender told which token to pull
+    /// is measured. The loop is capped so a long payload cannot grow the snapshot
+    /// without a bound.
+    function _watchCalldataAddresses(
+        _ExecuteTemps memory t,
+        address target,
+        bytes calldata data
+    ) internal view {
+        if (data.length < 36) return;
+        uint256 words = (data.length - 4) >> 5;
+        if (words > _SPEND_CALLDATA_WORDS) words = _SPEND_CALLDATA_WORDS;
+        uint256 found;
+        for (uint256 w; w < words && found < _SPEND_CALLDATA_ADDRS; ++w) {
+            uint256 word = uint256(LibBytes.loadCalldata(data, 4 + (w << 5)));
+            // High 96 bits clear means the word can be an address. Tiny values are
+            // ABI offsets, lengths, and small amounts, not token contracts.
+            if (word < 0x10000 || word >> 160 != 0) continue;
+            address candidate = address(uint160(word));
+            if (candidate == address(this) || candidate == target) continue;
+            t.erc20s.p(candidate);
+            t.transferAmounts.p(uint256(0));
+            ++found;
         }
     }
 
