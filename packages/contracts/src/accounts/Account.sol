@@ -52,7 +52,8 @@ contract Account is IAccount, EIP712, GuardedExecutor {
         KeyType keyType;
         /// @dev Whether the key is a super admin key.
         /// Super admin keys are allowed to call into super admin functions such as
-        /// `authorize` and `revoke` via `execute`.
+        /// `authorize` and `revoke` via `execute`. Other keys cannot, even when
+        /// granted `ANY_TARGET` or `ANY_FN_SEL`.
         bool isSuperAdmin;
         /// @dev Public key in encoded form.
         bytes publicKey;
@@ -793,6 +794,20 @@ contract Account is IAccount, EIP712, GuardedExecutor {
     ////////////////////////////////////////////////////////////////////////
     // GuardedExecutor
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Account `onlyThis` admin selectors. Kept with the GuardedExecutor set so
+    /// `canExecute` / `setCanExecute` reject them for every non-super-admin key.
+    function _isPrivilegedFnSel(bytes4 fnSel) internal pure virtual override returns (bool) {
+        return
+            fnSel == this.authorize.selector ||
+            fnSel == this.revoke.selector ||
+            fnSel == this.setLabel.selector ||
+            fnSel == this.setSignatureCheckerApproval.selector ||
+            fnSel == this.invalidateNonce.selector ||
+            fnSel == this.upgradeProxyAccount.selector ||
+            fnSel == this.upgradeHook.selector ||
+            super._isPrivilegedFnSel(fnSel);
+    }
 
     /// @dev Returns if `keyHash` corresponds to a super admin key.
     function _isSuperAdmin(bytes32 keyHash) internal view virtual override returns (bool) {
