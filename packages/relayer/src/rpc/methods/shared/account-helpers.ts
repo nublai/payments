@@ -1,12 +1,16 @@
 import {
+    type AbiFunction,
     type Address,
     type Hex,
     type PublicClient,
+    decodeAbiParameters,
     encodeFunctionData,
     getAddress,
     keccak256,
     encodeAbiParameters,
     parseAbiParameters,
+    toFunctionSelector,
+    verifyTypedData,
 } from 'viem'
 import { hashAuthorization, hashTypedData, verifyAuthorization } from 'viem/utils'
 import { accountAbi } from '@nubl/contracts/abis'
@@ -321,6 +325,122 @@ export async function authorizationSignerMatchesAccount(args: {
         })
     } catch {
         return false
+    }
+}
+
+const MAX_UPGRADE_PRECALL_CALLS = 8
+const MAX_UPGRADE_PRECALL_CALLDATA_BYTES = 256
+/** Same nonce prepareUpgradeAccount puts on a key-initialization preCall. */
+export const UPGRADE_PRECALL_NONCE = (1n << 64n) | 0n
+
+const UPGRADE_PRECALL_SELECTORS = new Set(
+    (['authorize', 'setCanExecute', 'setSpendLimit'] as const).map((name) => {
+        const item = accountAbi.find((entry) => entry.type === 'function' && entry.name === name)
+        if (!item) {
+            throw new Error(`Account ABI is missing ${name}`)
+        }
+        return toFunctionSelector(item as AbiFunction).toLowerCase()
+    }),
+)
+
+export interface AllowedUpgradePreCall {
+    eoa: Address
+    executionData: Hex
+    nonce: string
+    signature: Hex
+}
+
+/**
+ * Wallet account create/delegate and the local e2e flows submit one
+ * key-initialization preCall (authorize, plus optional setCanExecute and
+ * setSpendLimit). Anything else is rejected so the relayer does not pay
+ * for an arbitrary executePreCalls payload.
+ */
+export async function assertAllowedUpgradePreCall(args: {
+    account: Address
+    chainId: number
+    orchestrator: Address
+    executionData: Hex
+    eoa: Address
+    nonce: string
+    execSignature: Hex
+}): Promise<AllowedUpgradePreCall | undefined> {
+    if (args.executionData === '0x') return undefined
+
+    let calls: Array<{ to: Address; value: bigint; data: Hex }>
+    try {
+        const decoded = decodeAbiParameters(
+            parseAbiParameters('(address to, uint256 value, bytes data)[]'),
+            args.executionData,
+        )[0]
+        calls = decoded.map((call) => ({
+            to: getAddress(call.to),
+            value: call.value,
+            data: call.data,
+        }))
+        const reencoded = encodeAbiParameters(
+            parseAbiParameters('(address to, uint256 value, bytes data)[]'),
+            [calls],
+        )
+        if (reencoded.toLowerCase() !== args.executionData.toLowerCase()) {
+            throw new Error('execution data mismatch')
+        }
+    } catch {
+        throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
+    }
+
+    if (calls.length === 0 || calls.length > MAX_UPGRADE_PRECALL_CALLS) {
+        throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
+    }
+    if (getAddress(args.eoa) !== getAddress(args.account)) {
+        throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
+    }
+    if (args.nonce !== UPGRADE_PRECALL_NONCE.toString()) {
+        throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
+    }
+
+    const account = getAddress(args.account)
+    for (const call of calls) {
+        const dataBytes = (call.data.length - 2) / 2
+        const selector = call.data.slice(0, 10).toLowerCase()
+        if (
+            call.to !== account ||
+            call.value !== 0n ||
+            !Number.isInteger(dataBytes) ||
+            dataBytes > MAX_UPGRADE_PRECALL_CALLDATA_BYTES ||
+            !UPGRADE_PRECALL_SELECTORS.has(selector)
+        ) {
+            throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
+        }
+    }
+
+    let signatureMatches = false
+    try {
+        signatureMatches = await verifyTypedData({
+            address: account,
+            domain: getSignedCallDomain(args.chainId, args.orchestrator),
+            types: SIGNED_CALL_TYPES,
+            primaryType: 'SignedCall',
+            message: {
+                multichain: false,
+                eoa: account,
+                calls,
+                nonce: UPGRADE_PRECALL_NONCE,
+            },
+            signature: args.execSignature,
+        })
+    } catch {
+        signatureMatches = false
+    }
+    if (!signatureMatches) {
+        throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
+    }
+
+    return {
+        eoa: account,
+        executionData: args.executionData,
+        nonce: args.nonce,
+        signature: args.execSignature,
     }
 }
 

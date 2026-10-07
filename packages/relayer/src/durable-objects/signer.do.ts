@@ -52,6 +52,10 @@ import type {
 import { getContractAddresses } from '../config/addresses'
 import { getPaymentRecipient } from '../services/fees'
 import {
+    assertAccountUpgradeFee,
+    assertAccountUpgradeGas,
+} from '../rpc/methods/shared/upgrade-gas'
+import {
     mapStoredTxStatusToPublicStatus as mapStoredTxStatusToPublicStatusImpl,
     computeReplacementFees,
     shouldApplyFinalization,
@@ -79,6 +83,7 @@ interface PreparedBroadcastTransaction {
     data: Hex
     value: bigint
     authorizationList?: SignedAuthorization[]
+    gas?: bigint
 }
 
 interface FeeParams {
@@ -1386,13 +1391,16 @@ export class SignerDO extends DurableObject<Env> {
         chainId: number,
         feeParams: FeeParams,
     ): Promise<Hex> {
+        const capped = await this.applyCreateAccountCaps(txParams, nonce, chainId, feeParams)
+        const broadcastParams = capped.txParams
+        const broadcastFees = capped.feeParams
         const { publicClient, walletClient, account } = this.ensureClients(chainId)
         try {
             return await this.sendWithPrimaryPath(
-                txParams,
+                broadcastParams,
                 nonce,
                 chainId,
-                feeParams,
+                broadcastFees,
                 walletClient,
                 account,
             )
@@ -1412,10 +1420,10 @@ export class SignerDO extends DurableObject<Env> {
 
             try {
                 const txHash = await this.sendWithRawFallback(
-                    txParams,
+                    broadcastParams,
                     nonce,
                     chainId,
-                    feeParams,
+                    broadcastFees,
                     publicClient,
                     walletClient,
                     account,
@@ -1435,6 +1443,64 @@ export class SignerDO extends DurableObject<Env> {
                     'BROADCAST_FAILED',
                 )
             }
+        }
+    }
+
+    /**
+     * Account upgrades are the only type-4 broadcasts. Estimate first, then
+     * refuse to sign if gas or maxFeePerGas is above the upgrade cap.
+     */
+    private async applyCreateAccountCaps(
+        txParams: PreparedBroadcastTransaction,
+        nonce: number,
+        chainId: number,
+        feeParams: FeeParams,
+    ): Promise<{ txParams: PreparedBroadcastTransaction; feeParams: FeeParams }> {
+        if (!txParams.authorizationList || txParams.authorizationList.length === 0) {
+            return { txParams, feeParams }
+        }
+
+        try {
+            assertAccountUpgradeFee(feeParams.maxFeePerGas, feeParams.maxPriorityFeePerGas)
+        } catch (error) {
+            throw new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED')
+        }
+
+        const { publicClient, account } = this.ensureClients(chainId)
+        let gas: bigint
+        try {
+            gas = await publicClient.estimateGas({
+                account: account.address,
+                to: txParams.to,
+                data: txParams.data,
+                value: txParams.value,
+                nonce,
+                maxFeePerGas: feeParams.maxFeePerGas,
+                maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
+                authorizationList: txParams.authorizationList,
+            })
+        } catch (error) {
+            throw new SignerDOError(
+                `Failed to estimate account upgrade: ${getErrorMessage(error)}`,
+                'BROADCAST_FAILED',
+            )
+        }
+
+        try {
+            const capped = assertAccountUpgradeGas({
+                gas,
+                maxFeePerGas: feeParams.maxFeePerGas,
+                maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
+            })
+            return {
+                txParams: { ...txParams, gas: capped.gas },
+                feeParams: {
+                    maxFeePerGas: capped.maxFeePerGas,
+                    maxPriorityFeePerGas: capped.maxPriorityFeePerGas,
+                },
+            }
+        } catch (error) {
+            throw new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED')
         }
     }
 
@@ -1465,16 +1531,18 @@ export class SignerDO extends DurableObject<Env> {
         walletClient: WalletClient,
         account: PrivateKeyAccount,
     ): Promise<Hex> {
-        const gas = await publicClient.estimateGas({
-            account: account.address,
-            to: txParams.to,
-            data: txParams.data,
-            value: txParams.value,
-            nonce,
-            maxFeePerGas: feeParams.maxFeePerGas,
-            maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
-            authorizationList: txParams.authorizationList,
-        })
+        const gas =
+            txParams.gas ??
+            (await publicClient.estimateGas({
+                account: account.address,
+                to: txParams.to,
+                data: txParams.data,
+                value: txParams.value,
+                nonce,
+                maxFeePerGas: feeParams.maxFeePerGas,
+                maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
+                authorizationList: txParams.authorizationList,
+            }))
 
         const request = buildRawFallbackBroadcastRequest({
             txParams,

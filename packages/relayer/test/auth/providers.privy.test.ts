@@ -3,10 +3,12 @@ import type { Env } from '../../src/types/env'
 
 const privyClientMock = vi.hoisted(() => vi.fn())
 const verifyAuthTokenMock = vi.hoisted(() => vi.fn())
+const getUserByWalletAddressMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@privy-io/server-auth', () => ({
     PrivyClient: privyClientMock.mockImplementation(() => ({
         verifyAuthToken: verifyAuthTokenMock,
+        getUserByWalletAddress: getUserByWalletAddressMock,
     })),
 }))
 
@@ -24,6 +26,7 @@ describe('privy auth provider', () => {
     beforeEach(() => {
         privyClientMock.mockClear()
         verifyAuthTokenMock.mockReset()
+        getUserByWalletAddressMock.mockReset()
     })
 
     it('is enabled only when PRIVY_ENABLED=true', () => {
@@ -225,5 +228,87 @@ describe('privy auth provider', () => {
         expect(verifyAuthTokenMock).toHaveBeenCalledTimes(2)
         expect(verifyAuthTokenMock).toHaveBeenNthCalledWith(1, 'token_1')
         expect(verifyAuthTokenMock).toHaveBeenNthCalledWith(2, 'token_2')
+    })
+
+    it('rejects an upgrade when the Privy user is not linked to the account', async () => {
+        verifyAuthTokenMock.mockResolvedValueOnce({
+            appId: 'app_123',
+            userId: 'did:privy:user_1',
+        })
+        getUserByWalletAddressMock.mockResolvedValueOnce(null)
+
+        const provider = createPrivyProvider()
+        const result = await provider.verify(
+            new Request('https://relayer.example.com/', {
+                method: 'POST',
+                headers: {
+                    Authorization: 'Bearer token_1',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'wallet_upgradeAccount',
+                    params: [
+                        {
+                            context: {
+                                address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                            },
+                        },
+                    ],
+                }),
+            }),
+            {
+                env: makeEnv(),
+                nowSeconds: 1_700_000_000,
+            },
+        )
+
+        expect(result).toEqual({
+            ok: false,
+            code: 'NO_LINKED_WALLET',
+            message: 'Privy user is not bound to the account',
+        })
+    })
+
+    it('binds a Privy upgrade to the linked wallet', async () => {
+        verifyAuthTokenMock.mockResolvedValueOnce({
+            appId: 'app_123',
+            userId: 'did:privy:user_1',
+        })
+        getUserByWalletAddressMock.mockResolvedValueOnce({ id: 'did:privy:user_1' })
+
+        const provider = createPrivyProvider()
+        const result = await provider.verify(
+            new Request('https://relayer.example.com/', {
+                method: 'POST',
+                headers: {
+                    Authorization: 'Bearer token_1',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'wallet_upgradeAccount',
+                    params: [
+                        {
+                            context: {
+                                address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                            },
+                        },
+                    ],
+                }),
+            }),
+            {
+                env: makeEnv(),
+                nowSeconds: 1_700_000_000,
+            },
+        )
+
+        expect(result).toEqual({
+            ok: true,
+            userId: 'did:privy:user_1',
+            boundAccounts: ['0x70997970C51812dc3A010C7d01b50e0d17dc79C8'],
+        })
     })
 })

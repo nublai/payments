@@ -32,9 +32,9 @@ import type {
 import { selectSignerForEoa } from '../lib/pool-utils'
 import {
     consumeRateLimit,
-    rateWindowId,
-    rateWindowStart,
+    peekRateLimit,
     upgradeRateBuckets,
+    type UpgradeRateAction,
     type UpgradeRateKind,
 } from '../rpc/methods/shared/upgrade-rate-limit'
 
@@ -94,10 +94,12 @@ export class SignerPoolDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
                     const body = (await request.json()) as {
+                        action?: UpgradeRateAction
                         kind?: UpgradeRateKind
                         chainId?: number
                         account?: string
                         ip?: string
+                        identity?: string
                     }
                     const result = this.consumeUpgradeRateLimit(body)
                     return Response.json(result)
@@ -113,71 +115,87 @@ export class SignerPoolDO extends DurableObject<Env> {
     }
 
     /**
-     * Fixed-window limit for account upgrade prepare/broadcast.
+     * Sliding-window limit for account upgrade prepare/broadcast.
      * State lives here because SignerPoolDO is already bound on every chain.
+     * `peek` does not consume a slot. Missing action commits, which is what
+     * a successful submit records.
      */
     private consumeUpgradeRateLimit(body: {
+        action?: UpgradeRateAction
         kind?: UpgradeRateKind
         chainId?: number
         account?: string
         ip?: string
+        identity?: string
     }): { allowed: boolean } {
         if (
             (body.kind !== 'prepare' && body.kind !== 'upgrade') ||
             typeof body.chainId !== 'number' ||
             !Number.isInteger(body.chainId) ||
             typeof body.account !== 'string' ||
-            typeof body.ip !== 'string'
+            typeof body.ip !== 'string' ||
+            (body.identity !== undefined && typeof body.identity !== 'string') ||
+            (body.action !== undefined && body.action !== 'peek' && body.action !== 'commit')
         ) {
             return { allowed: false }
         }
 
+        const action = body.action ?? 'commit'
         const nowSeconds = Math.floor(Date.now() / 1000)
         const buckets = upgradeRateBuckets({
             kind: body.kind,
             chainId: body.chainId,
             account: body.account,
             ip: body.ip,
+            identity: body.identity,
         })
         const sql = this.ensureUpgradeRateSchema()
 
         return this.ctx.storage.transactionSync(() => {
             const store = new Map<string, number>()
             for (const bucket of buckets) {
-                const windowStart = rateWindowStart(nowSeconds, bucket.windowSeconds)
-                const row = sql
-                    .exec<{ hits: number }>(
-                        'SELECT hits FROM upgrade_rate_windows WHERE bucket_key = ? AND window_start = ?',
-                        bucket.key,
-                        windowStart,
+                const earliest = nowSeconds - bucket.windowSeconds
+                const rows = sql
+                    .exec<{ window_start: number; hits: number }>(
+                        `SELECT window_start, hits FROM upgrade_rate_windows
+                         WHERE bucket_key = ? AND window_start > ?`,
+                        `${bucket.key}#sec`,
+                        earliest,
                     )
                     .toArray()
-                    .at(0)
-                if (row && Number.isFinite(row.hits)) {
-                    store.set(rateWindowId(bucket.key, windowStart), row.hits)
+                for (const row of rows) {
+                    if (!Number.isFinite(row.hits) || !Number.isFinite(row.window_start)) continue
+                    store.set(`${bucket.key}#${row.window_start}`, row.hits)
                 }
             }
 
-            const decision = consumeRateLimit(store, buckets, nowSeconds)
-            if (!decision.allowed) {
-                return { allowed: false }
+            const decision =
+                action === 'peek'
+                    ? peekRateLimit(store, buckets, nowSeconds)
+                    : consumeRateLimit(store, buckets, nowSeconds)
+            if (!decision.allowed || action === 'peek') {
+                return { allowed: decision.allowed }
             }
 
-            for (const bucket of buckets) {
-                const windowStart = rateWindowStart(nowSeconds, bucket.windowSeconds)
-                const hits = store.get(rateWindowId(bucket.key, windowStart))
-                if (hits === undefined) continue
+            for (const [id, hits] of store) {
+                const splitAt = id.lastIndexOf('#')
+                if (splitAt < 0) continue
+                const second = Number(id.slice(splitAt + 1))
+                if (!Number.isInteger(second)) continue
                 sql.exec(
                     `INSERT INTO upgrade_rate_windows (bucket_key, window_start, hits)
                      VALUES (?, ?, ?)
                      ON CONFLICT(bucket_key, window_start) DO UPDATE SET hits = excluded.hits`,
-                    bucket.key,
-                    windowStart,
+                    `${id.slice(0, splitAt)}#sec`,
+                    second,
                     hits,
                 )
             }
 
-            sql.exec('DELETE FROM upgrade_rate_windows WHERE window_start < ?', nowSeconds - 3600)
+            sql.exec(
+                'DELETE FROM upgrade_rate_windows WHERE window_start <= ?',
+                nowSeconds - 3600,
+            )
             return { allowed: true }
         })
     }

@@ -27,6 +27,8 @@ export interface AuthSuccess {
     ok: true
     userId?: Address | string
     provider?: string
+    /** Accounts this identity may upgrade. Set for Privy after the wallet link check. */
+    boundAccounts?: Address[]
 }
 
 export type AuthResult = AuthSuccess | AuthFailure

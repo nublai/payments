@@ -3,6 +3,7 @@ import type { MiddlewareHandler } from 'hono'
 import { logger } from '../lib/logger'
 import type { Env } from '../types/env'
 import { authorizeRequest } from './engine'
+import { runWithAuthIdentity } from './identity'
 import { extractAuthRequirement, resolveAuthProtectedMethods } from './policy'
 import type { AuthFailure, AuthProvider } from './types'
 
@@ -89,6 +90,13 @@ export function authMiddleware(deps: MiddlewareDeps = {}): MiddlewareHandler<{
             'auth middleware authorized',
         )
 
-        await next()
+        return runWithAuthIdentity(
+            {
+                provider: result.provider ?? '',
+                userId: typeof result.userId === 'string' ? result.userId : '',
+                boundAccounts: result.boundAccounts,
+            },
+            () => next(),
+        )
     }
 }

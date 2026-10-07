@@ -7,12 +7,17 @@ import type {
     PrepareUpgradeResult,
     PrepareUpgradeParams,
 } from '../schema/upgradeAccount'
-import { RpcError, INTERNAL_ERROR } from '../errors'
+import { getAddress } from 'viem'
+import { RpcError, INTERNAL_ERROR, INVALID_PARAMS } from '../errors'
 import { getChainConfig } from '../../config'
 import { logger } from '../../lib/logger'
 import { createRelayerPublicClient, toHexChainId } from '../../lib/viem-utils'
 import { requireParam, validateAddress, unwrapParams } from '../../lib/rpc-utils'
-import { enforceUpgradeRateLimit } from './shared/upgrade-rate-limit'
+import { authIdentityOwnsAccount, upgradeRateIdentity } from '../../auth/identity'
+import {
+    assertUpgradeRateCapacity,
+    recordUpgradeRateLimit,
+} from './shared/upgrade-rate-limit'
 import {
     MULTICHAIN_NONCE_PREFIX,
     SIGNED_CALL_TYPES,
@@ -52,15 +57,24 @@ export async function handlePrepareUpgradeAccount(
     const typedParams = unwrapParams<PrepareUpgradeParams>(params)
 
     const accountAddress = validateAddress(requireParam(typedParams?.address, 'address'), 'address')
-    const delegation = requireParam(typedParams?.delegation, 'delegation')
+    const delegation = validateAddress(requireParam(typedParams?.delegation, 'delegation'), 'delegation')
 
     const chainId = resolveChainId(env, typedParams?.chainId)
     const config = getChainConfig(env, chainId)
     const hexChainId = toHexChainId(config.chainId)
 
-    await enforceUpgradeRateLimit(env, chainId, ctx, {
+    if (!authIdentityOwnsAccount(accountAddress)) {
+        throw new RpcError(INVALID_PARAMS, 'Authenticated identity is not bound to the account')
+    }
+    if (getAddress(delegation) !== getAddress(config.contracts.accountProxy)) {
+        throw new RpcError(INVALID_PARAMS, 'Delegation target is not the account proxy')
+    }
+
+    const rateIdentity = upgradeRateIdentity(accountAddress)
+    await assertUpgradeRateCapacity(env, chainId, ctx, {
         kind: 'prepare',
         account: accountAddress,
+        identity: rateIdentity,
     })
 
     const authorizeKeys = typedParams?.capabilities?.authorizeKeys ?? []
@@ -139,6 +153,12 @@ export async function handlePrepareUpgradeAccount(
         },
         'prepared account upgrade with keys',
     )
+
+    await recordUpgradeRateLimit(env, chainId, ctx, {
+        kind: 'prepare',
+        account: accountAddress,
+        identity: rateIdentity,
+    })
 
     return {
         chainId: hexChainId,

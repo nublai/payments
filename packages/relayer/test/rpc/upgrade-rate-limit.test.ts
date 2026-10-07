@@ -64,6 +64,36 @@ describe('upgrade rate limit', () => {
         expect(consumeRateLimit(store, prepare, now).allowed).toBe(true)
     })
 
+    it('does not grant a second quota on the first second of the next fixed window', () => {
+        const buckets = upgradeRateBuckets({
+            kind: 'upgrade',
+            chainId: 8453,
+            account: '0xABC',
+            ip: '203.0.113.5',
+        })
+        const windowSeconds = buckets[0].windowSeconds
+        const windowStart = rateWindowStart(1_700_000_000, windowSeconds)
+        const endOfWindow = windowStart + windowSeconds - 1
+        const store = new Map<string, number>()
+
+        for (let i = 0; i < buckets[0].limit; i++) {
+            expect(consumeRateLimit(store, buckets, endOfWindow).allowed).toBe(true)
+        }
+
+        expect(consumeRateLimit(store, buckets, windowStart + windowSeconds).allowed).toBe(false)
+    })
+
+    it('keeps the global ceiling above one caller quota', () => {
+        const buckets = upgradeRateBuckets({
+            kind: 'upgrade',
+            chainId: 8453,
+            account: '0xABC',
+            ip: '203.0.113.5',
+        })
+        expect(buckets[2].limit).toBeGreaterThan(buckets[0].limit * 100)
+        expect(buckets[1].limit).toBeGreaterThan(buckets[0].limit * 100)
+    })
+
     it('rejects at the global cap before a fresh account is exhausted', () => {
         const store = new Map<string, number>()
         const now = 1_700_000_200

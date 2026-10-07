@@ -97,7 +97,7 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 
 Protected JSON-RPC methods are controlled by a shared policy used by all enabled auth mechanisms.
 
-`wallet_prepareUpgradeAccount` and `wallet_upgradeAccount` are always authenticated. They spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. No extra env var is required.
+`wallet_prepareUpgradeAccount` and `wallet_upgradeAccount` are always authenticated. They spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. The authenticated identity must be the account (ERC-8128) or a Privy user linked to that wallet. The delegation must be the configured account proxy, the authorization nonce must be the account's pending nonce, and arbitrary preCalls are rejected. Key initialization (`authorize`, `setCanExecute`, `setSpendLimit`) is still allowed because `tw account create` / `tw account delegate` and the local payment and escrow flows submit it. Gas and max fee are capped before the upgrade is signed. No extra env var is required.
 
 | Name                     | Default                    | Description                                |
 | ------------------------ | -------------------------- | ------------------------------------------ |

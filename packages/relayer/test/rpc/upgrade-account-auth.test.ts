@@ -8,7 +8,7 @@
  * for eth_sendRawTransaction.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
 import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -32,6 +32,7 @@ const LEAKY_POOL_ERROR = [
 const DUMMY_AUTH = `0x${'11'.repeat(32)}${'22'.repeat(32)}1b` as Hex
 const VICTIM = '0x1111111111111111111111111111111111111111' as Address
 const DELEGATION = '0x2222222222222222222222222222222222222222' as Address
+const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
 const CHAIN_ID = 8453
 
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
@@ -110,7 +111,26 @@ const acceptingProvider: AuthProvider = {
     verify: async () => ({ ok: true, userId: VICTIM }),
 }
 
-function upgradeBody(auth: Hex, account: Address) {
+function providerFor(userId: string): AuthProvider {
+    return {
+        name: 'test',
+        enabled: () => true,
+        verify: async () => ({ ok: true, userId }),
+    }
+}
+
+function stubPendingNonce() {
+    vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = typeof init?.body === 'string' ? init.body : ''
+        const result = body.includes('eth_getTransactionCount') ? '0x0' : '0x'
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        })
+    })
+}
+
+function upgradeBody(auth: Hex, account: Address, delegation: Address = DELEGATION) {
     return {
         jsonrpc: '2.0' as const,
         id: 1,
@@ -121,7 +141,7 @@ function upgradeBody(auth: Hex, account: Address) {
                     address: account,
                     chainId: '0x2105',
                     authorization: {
-                        contractAddress: DELEGATION,
+                        contractAddress: delegation,
                         chainId: CHAIN_ID,
                         nonce: 0,
                     },
@@ -220,16 +240,24 @@ describe('C1 wallet_upgradeAccount', () => {
         const owner = privateKeyToAccount(OWNER_KEY)
         const auth = await owner.sign({
             hash: hashAuthorization({
-                contractAddress: DELEGATION,
+                contractAddress: ACCOUNT_PROXY,
                 chainId: CHAIN_ID,
                 nonce: 0,
             }),
         })
 
         const capture: BroadcastCapture = { broadcasts: [] }
-        const result = await post(createEnv(capture), upgradeBody(auth, owner.address), [
-            acceptingProvider,
-        ])
+        stubPendingNonce()
+        let result: Awaited<ReturnType<typeof post>>
+        try {
+            result = await post(
+                createEnv(capture),
+                upgradeBody(auth, owner.address, ACCOUNT_PROXY),
+                [providerFor(owner.address)],
+            )
+        } finally {
+            vi.unstubAllGlobals()
+        }
 
         expect(result.status).toBe(200)
         expect(capture.broadcasts).toHaveLength(1)
@@ -246,18 +274,24 @@ describe('C1 wallet_upgradeAccount', () => {
         const owner = privateKeyToAccount(OWNER_KEY)
         const auth = await owner.sign({
             hash: hashAuthorization({
-                contractAddress: DELEGATION,
+                contractAddress: ACCOUNT_PROXY,
                 chainId: CHAIN_ID,
                 nonce: 0,
             }),
         })
 
         const capture: BroadcastCapture = { broadcasts: [] }
-        const result = await post(
-            createEnv(capture, {}, { upgradeAllowed: false }),
-            upgradeBody(auth, owner.address),
-            [acceptingProvider],
-        )
+        stubPendingNonce()
+        let result: Awaited<ReturnType<typeof post>>
+        try {
+            result = await post(
+                createEnv(capture, {}, { upgradeAllowed: false }),
+                upgradeBody(auth, owner.address, ACCOUNT_PROXY),
+                [providerFor(owner.address)],
+            )
+        } finally {
+            vi.unstubAllGlobals()
+        }
 
         expect(capture.broadcasts).toEqual([])
         expectNoLeak(result.text)

@@ -1,12 +1,8 @@
-import type { Address, Hex } from 'viem'
+import { getAddress, type Address, type Hex } from 'viem'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { CreateAccountTransaction, SendResult } from '../../types/pool'
-import type {
-    SignedCall,
-    UpgradeAccountParams,
-    UpgradeAccountResult,
-} from '../schema/upgradeAccount'
+import type { UpgradeAccountParams, UpgradeAccountResult } from '../schema/upgradeAccount'
 import {
     RpcError,
     INVALID_PARAMS,
@@ -18,14 +14,16 @@ import { getChainConfig } from '../../config'
 import { logger } from '../../lib/logger'
 import { createRelayerPublicClient, isEip7702Delegated } from '../../lib/viem-utils'
 import { requireParam, unwrapParams, validateAddress } from '../../lib/rpc-utils'
+import { authIdentityOwnsAccount, upgradeRateIdentity } from '../../auth/identity'
 import {
     waitForDelegationCode,
     parseSignature,
     resolveChainId,
     authorizationSignerMatchesAccount,
+    assertAllowedUpgradePreCall,
 } from './shared/account-helpers'
 import { getSignerPool } from './shared/signer-pool'
-import { enforceUpgradeRateLimit } from './shared/upgrade-rate-limit'
+import { assertUpgradeRateCapacity, recordUpgradeRateLimit } from './shared/upgrade-rate-limit'
 
 export type {
     UpgradeAccountParams,
@@ -87,23 +85,53 @@ export async function handleUpgradeAccount(
         throw new RpcError(INVALID_SIGNATURE, 'Invalid authorization signature')
     }
 
-    await enforceUpgradeRateLimit(env, chainId, ctx, {
+    if (!authIdentityOwnsAccount(accountAddress)) {
+        throw new RpcError(INVALID_PARAMS, 'Authenticated identity is not bound to the account')
+    }
+
+    if (getAddress(delegation) !== getAddress(config.contracts.accountProxy)) {
+        throw new RpcError(INVALID_PARAMS, 'Delegation target is not the account proxy')
+    }
+
+    const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
+    let pendingNonce: number
+    try {
+        pendingNonce = await publicClient.getTransactionCount({
+            address: accountAddress,
+            blockTag: 'pending',
+        })
+    } catch (error) {
+        logger.error({ error, address: accountAddress }, 'failed to fetch account nonce')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
+    }
+    if (pendingNonce !== context.authorization.nonce) {
+        throw new RpcError(INVALID_PARAMS, 'Authorization nonce does not match the account nonce')
+    }
+
+    const allowedPreCall = await assertAllowedUpgradePreCall({
+        account: accountAddress,
+        chainId: config.chainId,
+        orchestrator: config.contracts.orchestrator,
+        executionData: context.preCall.executionData,
+        eoa: context.preCall.eoa,
+        nonce: context.preCall.nonce,
+        execSignature: signatures.exec,
+    })
+
+    const rateIdentity = upgradeRateIdentity(accountAddress)
+    await assertUpgradeRateCapacity(env, chainId, ctx, {
         kind: 'upgrade',
         account: accountAddress,
+        identity: rateIdentity,
     })
 
     const signedAuth = {
-        address: context.authorization.contractAddress,
+        address: delegation,
         chainId: config.chainId,
         nonce: context.authorization.nonce,
         r: parsedAuthSig.r,
         s: parsedAuthSig.s,
         yParity: parsedAuthSig.yParity,
-    }
-
-    const signedPreCall: SignedCall = {
-        ...context.preCall,
-        signature: signatures.exec,
     }
 
     const tx: CreateAccountTransaction = {
@@ -112,15 +140,7 @@ export async function handleUpgradeAccount(
         accountAddress,
         ownerAddress: accountAddress,
         authorization: signedAuth,
-        preCall:
-            signedPreCall.executionData !== '0x'
-                ? {
-                      eoa: signedPreCall.eoa,
-                      executionData: signedPreCall.executionData,
-                      nonce: signedPreCall.nonce,
-                      signature: signedPreCall.signature,
-                  }
-                : undefined,
+        preCall: allowedPreCall,
     }
 
     const pool = getSignerPool(env, chainId)
@@ -143,6 +163,12 @@ export async function handleUpgradeAccount(
         throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
 
+    await recordUpgradeRateLimit(env, chainId, ctx, {
+        kind: 'upgrade',
+        account: accountAddress,
+        identity: rateIdentity,
+    })
+
     const result = (await response.json()) as SendResult
     logger.info(
         {
@@ -152,8 +178,6 @@ export async function handleUpgradeAccount(
         },
         'account upgrade submitted, waiting for confirmation',
     )
-
-    const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
 
     try {
         const receipt = await publicClient.waitForTransactionReceipt({
