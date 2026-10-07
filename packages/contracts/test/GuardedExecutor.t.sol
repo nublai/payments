@@ -5,11 +5,18 @@ import "./Base.t.sol";
 import "./utils/SoladyTest.sol";
 import "./utils/mocks/MockCallChecker.sol";
 import "./utils/mocks/MockCounter.sol";
+import {EnumerableSetLib} from "solady/utils/EnumerableSetLib.sol";
 
 contract GuardedExecutorTest is BaseTest {
     mapping(uint256 => mapping(address => uint256)) expectedSpents;
     mapping(uint256 => mapping(address => bool)) hasApproval;
     mapping(uint256 => mapping(address => bool)) hasPermit2Approval;
+
+    /// @dev Private Solady `EnumerableSetLib._ZERO_SENTINEL`.
+    /// `uint72(bytes9(keccak256(bytes("_ZERO_SENTINEL"))))` = 0xfbb67fda52d4bfb8bf.
+    /// Address-keyed sets revert `ValueIsZeroSentinel` for this value.
+    uint256 internal constant _ENUMERABLE_SET_ZERO_SENTINEL =
+        uint256(uint72(bytes9(keccak256(bytes("_ZERO_SENTINEL")))));
 
     function setUp() public virtual override {
         super.setUp();
@@ -163,6 +170,42 @@ contract GuardedExecutorTest is BaseTest {
     }
 
     function testSetAndGetCanExecute(address target, bytes4 fnSel, bytes32) public {
+        // `canExecute` looks this address up in an `EnumerableSetLib.AddressSet` after the
+        // permission is removed, and that lookup reverts `ValueIsZeroSentinel`.
+        vm.assume(uint160(target) != _ENUMERABLE_SET_ZERO_SENTINEL);
+        _setAndGetCanExecute(target, fnSel);
+    }
+
+    /// @dev Concrete sentinel input. The unfiltered body reverts `ValueIsZeroSentinel`.
+    /// `testSetAndGetCanExecute` discards that input (`FOUNDRY::ASSUME`) before the body.
+    /// Without the `vm.assume` above, this test fails on that revert.
+    function testSetAndGetCanExecuteZeroSentinelReverts() public {
+        address target = address(uint160(_ENUMERABLE_SET_ZERO_SENTINEL));
+        bytes4 fnSel = 0x01020304;
+        // These calldata seeds take the "remove permission, then canExecute" branch.
+        // The two calls hash different selectors, so the seeds differ.
+        bytes32 bodySeed = bytes32(uint256(14));
+        bytes32 entrySeed = bytes32(uint256(3));
+
+        try this.setAndGetCanExecuteBody(target, fnSel, bodySeed) {
+            revert("sentinel body returned");
+        } catch (bytes memory reason) {
+            assertEq(bytes4(reason), EnumerableSetLib.ValueIsZeroSentinel.selector);
+        }
+
+        try this.testSetAndGetCanExecute(target, fnSel, entrySeed) {
+            revert("sentinel was accepted");
+        } catch (bytes memory reason) {
+            assertEq(reason, bytes("FOUNDRY::ASSUME"));
+        }
+    }
+
+    /// @dev `testSetAndGetCanExecute` without the sentinel `vm.assume`.
+    function setAndGetCanExecuteBody(address target, bytes4 fnSel, bytes32) external {
+        _setAndGetCanExecute(target, fnSel);
+    }
+
+    function _setAndGetCanExecute(address target, bytes4 fnSel) internal {
         DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
         PassKey memory k = _randomSecp256k1PassKey();
 

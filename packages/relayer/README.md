@@ -102,9 +102,21 @@ Protected JSON-RPC methods are controlled by a shared policy used by all enabled
 
 `wallet_prepareUpgradeAccount`, `wallet_upgradeAccount`, `wallet_issueBindNonce`, and `wallet_bindAccount` are always authenticated. Upgrade methods spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. The authenticated identity must be the account (ERC-8128), a Privy user with a linked account of type `wallet` whose address checksum-matches that account, or an OIDC user whose binding contains that account. A wallets claim counts only when `OIDC_WALLETS_CLAIM_ENABLED=true`. A Privy smart wallet does not match. The delegation must be the configured account proxy, the authorization nonce must be the account's pending nonce, and arbitrary preCalls are rejected. Key initialization (`authorize`, `setCanExecute`, `setSpendLimit`) is still allowed because `tw account create` / `tw account delegate` and the local payment and escrow flows submit it. Gas, max fee, and priority fee are capped before the upgrade is signed. An upgrade reserves its identity, IP, IPv6 /56, and chain slots in the same step that decides to broadcast, and releases them only when the signer returns before `eth_sendRawTransaction`. Per 10-minute window the upgrade ceilings are 5 per identity, 100 per IP, and 2,000 per chain. Prepare is 10, 400, and 2,000. Identity buckets are `privy:<user id>` and `oidc:<issuer>:<sub>`. A deploy that changes Privy's bucket from the raw user id to `privy:<user id>` resets in-flight windows once. IPv6 is bucketed by /64 and by /56, both at that IP ceiling, after the text form is normalized. An IPv4 or IPv4-mapped address keeps a single IP bucket and has no /56 bucket. No extra env var is required for the numeric ceilings.
 
+Those ceilings come from `src/rpc/methods/shared/upgrade-rate-limit.ts`. The per-transaction cap is in `src/rpc/methods/shared/upgrade-gas.ts`: 1,500,000 gas, a 100 gwei max fee, and a 2 gwei priority fee, so one sponsored upgrade can cost at most 0.15 ETH. The sponsored path has no daily gas or ETH budget. For launch, the relayer signer balance is kept low on purpose, and that balance is the spend limit.
+
+Tradeoff: stage and prod set `ERC8128_ENABLED=true`, and an ERC-8128 key may call both upgrade methods for its own address without being on `ERC8128_ALLOWED_SIGNERS`. That is how `tw account create` and `tw account delegate` work for a new user. It also means any fresh key can get a sponsored upgrade. The per-identity ceiling does not bind someone who generates new keys. What bounds the spend is 100 upgrades per IP and 2,000 per chain per 10 minutes (`src/rpc/methods/shared/upgrade-rate-limit.ts`), the 1,500,000 gas cap at a 100 gwei max fee (`src/rpc/methods/shared/upgrade-gas.ts`, at most 0.15 ETH per upgrade), and the relayer signer balance, which is kept low on purpose. There is no daily gas or ETH budget on this path.
+
 | Name                     | Default                    | Description                                |
 | ------------------------ | -------------------------- | ------------------------------------------ |
 | `AUTH_PROTECTED_METHODS` | `wallet_sendPreparedCalls` | Comma-separated protected JSON-RPC methods |
+
+#### Paid first upgrade (off at launch)
+
+Launch is sponsored-only. Every first upgrade goes through `wallet_prepareUpgradeAccount` and `wallet_upgradeAccount`, which is what `tw account create` and `tw account delegate` use. The USDC-paid first upgrade (`capabilities.accountUpgrade` on `wallet_prepareCalls`, then `wallet_sendPreparedCalls`) stays in the code behind `PAID_UPGRADE_ENABLED`. It is off by default. Only the exact string `true` turns it on. Unset, empty, `false`, or any other value is off. While it is off, a paid prepare and a paid send are both refused with `-32602` before any rate-limit bucket, gas hold, fee capture, simulation, or broadcast. A send is refused even if its quote was signed while the flag was on. The reconcile cron keeps running, so a hold taken earlier still settles. The paid path's `PAID_UPGRADE_*` limits and daily gas budget apply only when it is on.
+
+| Name                   | Default     | Description                                                             |
+| ---------------------- | ----------- | ----------------------------------------------------------------------- |
+| `PAID_UPGRADE_ENABLED` | unset (off) | `true` enables the USDC-paid first upgrade. Anything else leaves it off |
 
 #### ERC-8128 HTTP Signatures
 
@@ -118,10 +130,10 @@ Protected JSON-RPC methods are controlled by a shared policy used by all enabled
 Outside `local` and `dev`, a recovered ERC-8128 key is accepted only when one of these is true:
 
 - the address is in `ERC8128_ALLOWED_SIGNERS`, or
-- the address is the intent EOA (`from` on prepare, `intent.eoa` on send), or
+- the address is the intent EOA (`from` on prepare, `intent.eoa` on send) or the account being upgraded (`address` on `wallet_prepareUpgradeAccount`, `context.address` on `wallet_upgradeAccount`), or
 - the address is a live secp256k1 key registered on that account (`Account.getKey`). The relayer reads this from its own RPC. A client-supplied `session_key` or quote `authSigner` is not accepted by itself.
 
-`prepareCalls` writes `authSigner` only when `session_key` is that EOA or a live on-chain key. Send checks the HTTP signer against the quote only after the quote HMAC verifies. In one JSON-RPC batch, every protected method other than `wallet_prepareCalls` and `wallet_sendPreparedCalls` requires the allowlist. A prepare or send binding does not authorize those methods. An empty allowlist is not "any key". `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Local and dev accept any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
+`prepareCalls` writes `authSigner` only when `session_key` is that EOA or a live on-chain key. Send checks the HTTP signer against the quote only after the quote HMAC verifies. In one JSON-RPC batch, every protected method other than `wallet_prepareCalls`, `wallet_sendPreparedCalls`, `wallet_prepareUpgradeAccount`, and `wallet_upgradeAccount` requires the allowlist. A prepare, send, or upgrade binding does not authorize those methods. An empty allowlist is not "any key". `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Local and dev accept any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
 
 #### Privy Access Tokens
 

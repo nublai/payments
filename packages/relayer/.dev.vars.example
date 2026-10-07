@@ -81,5 +81,9 @@ CONTEXT=local
 # OIDC_WALLETS_CLAIM_ENABLED=false
 # OIDC_WALLETS_CLAIM=wallets
 
+# USDC-paid first upgrade (wallet_prepareCalls accountUpgrade). Off unless exactly
+# "true". Launch is sponsored-only: wallet_prepareUpgradeAccount / wallet_upgradeAccount.
+# PAID_UPGRADE_ENABLED=false
+
 # CORS (optional). Comma-separated origins. Unset or "*" allows every origin.
 # CORS_ALLOWED_ORIGINS=
