@@ -169,6 +169,8 @@ export class SessionDaemonClient {
         durationSeconds: number
         kind?: string
         encryptionDevice?: Hex
+        phraseConfirmed?: boolean
+        env?: 'dev' | 'stage' | 'prod'
     }): Promise<SessionDaemonRpcResponse<{ name: string; address: Address; expiresAt: number }>> {
         const response = await this.request({
             id: randomUUID(),
@@ -180,6 +182,8 @@ export class SessionDaemonClient {
                 durationSeconds: input.durationSeconds,
                 kind: input.kind,
                 encryptionDevice: input.encryptionDevice,
+                phraseConfirmed: input.phraseConfirmed,
+                env: input.env,
             },
         })
         if (!response || !response.ok) {

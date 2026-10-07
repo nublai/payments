@@ -203,6 +203,8 @@ export async function executeSessionUnlock(
         durationSeconds,
         kind: options.device ? 'agent' : undefined,
         encryptionDevice: encryptionDeviceHex,
+        phraseConfirmed: options.humanConfirmed === true,
+        env: options.env,
     })
 
     if (response === null) {

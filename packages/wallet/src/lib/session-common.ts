@@ -390,6 +390,7 @@ export function storedPermissionsRequirePhrase(
 ): boolean {
     if (permissions.length === 0) return true
     let daily = 0n
+    let sawUsdcSpend = false
     for (const permission of permissions) {
         if (permission.type === 'call') {
             if (
@@ -423,9 +424,13 @@ export function storedPermissionsRequirePhrase(
             return true
         }
         if (permission.token && isChainUsdc(permission.token, usdcAddress)) {
+            sawUsdcSpend = true
             daily += normalizedDailyUsdcUnits(limit, permission.period)
         }
     }
+    // A call list with no USDC spend limit is elevated. The spend guard does not
+    // count every selector those calls can use.
+    if (!sawUsdcSpend) return true
     return daily > DEFAULT_SESSION_SPEND_LIMIT
 }
 

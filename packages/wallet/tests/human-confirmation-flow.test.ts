@@ -1003,6 +1003,16 @@ const sessionAddress = privateKeyToAccount(sessionPrivateKey).address
 const sessionKeyHash = computeSessionKeyHash(sessionAddress)
 const getKeysSelector = toFunctionSelector('getKeys()')
 const spendInfosSelector = toFunctionSelector('spendAndExecuteInfos(bytes32[])')
+const packedInfosSelector = toFunctionSelector('canExecutePackedInfos(bytes32)')
+const callCheckerSelector = toFunctionSelector('callCheckerInfos(bytes32)')
+const ANY_KEYHASH =
+    '0x3232323232323232323232323232323232323232323232323232323232323232' as Hex
+
+type ChainScript = {
+    keys: ScriptedKey[]
+    anyCalls?: { target: Address; selector: Hex }[]
+    checkers?: { keyHash: Hex; target: Address; checker: Address }[]
+}
 
 type ScriptedKey = {
     hash: Hex
@@ -1149,7 +1159,7 @@ async function serveJson(
     }
 }
 
-function chainResponder(keys: ScriptedKey[] | 'error') {
+function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
     return (message: { id?: unknown; method?: string; params?: unknown }) => {
         const id = message.id ?? null
         if (message.method === 'eth_chainId') {
@@ -1167,12 +1177,47 @@ function chainResponder(keys: ScriptedKey[] | 'error') {
         }
         const params = message.params as [{ data?: string }] | undefined
         const data = (params?.[0]?.data ?? '').toLowerCase()
-        const view = encodeChainView(keys)
+        const script: ChainScript = Array.isArray(keys) ? { keys } : keys
+        const view = encodeChainView(script.keys)
         if (data.startsWith(getKeysSelector)) {
             return { jsonrpc: '2.0', id, result: view.getKeys }
         }
         if (data.startsWith(spendInfosSelector)) {
             return { jsonrpc: '2.0', id, result: view.spend }
+        }
+        if (data.startsWith(packedInfosSelector)) {
+            const hash = `0x${data.slice(10, 74)}`
+            const packed =
+                hash === ANY_KEYHASH.toLowerCase()
+                    ? (script.anyCalls ?? []).map((call) => packCall(call.target, call.selector))
+                    : []
+            return {
+                jsonrpc: '2.0',
+                id,
+                result: encodeFunctionResult({
+                    abi: accountAbi,
+                    functionName: 'canExecutePackedInfos',
+                    result: packed,
+                }),
+            }
+        }
+        if (data.startsWith(callCheckerSelector)) {
+            const hash = `0x${data.slice(10, 74)}`
+            const rows = (script.checkers ?? []).filter(
+                (checker) => checker.keyHash.toLowerCase() === hash,
+            )
+            return {
+                jsonrpc: '2.0',
+                id,
+                result: encodeFunctionResult({
+                    abi: accountAbi,
+                    functionName: 'callCheckerInfos',
+                    result: rows.map((checker) => ({
+                        target: checker.target,
+                        checker: checker.checker,
+                    })),
+                }),
+            }
         }
         return {
             jsonrpc: '2.0',
@@ -1196,7 +1241,7 @@ function relayerResponder(result: unknown | 'error') {
 }
 
 async function expectUnlockRequiresPhrase(
-    chain: ScriptedKey[] | 'error' | 'down',
+    chain: ScriptedKey[] | ChainScript | 'error' | 'down',
     relayer: unknown | 'error',
 ) {
     const chainServer = chain === 'down' ? undefined : await serveJson(8545, chainResponder(chain))
@@ -1294,7 +1339,7 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
             expect(listed.result.keys.map((key) => key.name)).toContain('default')
         }
         const signed = await daemon.client.sign('default', orchestratorIntent)
-        expect(signed?.ok).toBe(true)
+        expect(signed?.ok).toBe(false)
         expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
     } finally {
         await daemon.stop()
@@ -1314,7 +1359,7 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
         expect(output).toContain('"status":"complete"')
         expect(output).not.toContain('"isError":true')
         const mcpSigned = await mcpDaemon.client.sign('default', orchestratorIntent)
-        expect(mcpSigned?.ok).toBe(true)
+        expect(mcpSigned?.ok).toBe(false)
     } finally {
         await mcpDaemon.stop()
     }
@@ -1322,6 +1367,84 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
         await chainServer.close()
         await relayerServer.close()
     }
+}, 60_000)
+
+test('ANY_KEYHASH wildcard behind a narrow key requires the unlock phrase', async () => {
+    await expectUnlockRequiresPhrase(
+        {
+            keys: [narrowOnChain],
+            anyCalls: [{ target: ANY_TARGET, selector: ANY_FUNCTION_SELECTOR }],
+        },
+        relayerKeys(narrowRelayerPermissions),
+    )
+}, 60_000)
+
+test('a call checker behind a narrow key requires the unlock phrase', async () => {
+    await expectUnlockRequiresPhrase(
+        {
+            keys: [narrowOnChain],
+            checkers: [
+                {
+                    keyHash: sessionKeyHash,
+                    target: ANY_TARGET,
+                    checker: '0x4444444444444444444444444444444444444444',
+                },
+            ],
+        },
+        relayerKeys(narrowRelayerPermissions),
+    )
+}, 60_000)
+
+test('allowlisted escrow calls with no spend limit require the unlock phrase', async () => {
+    const previous = {
+        ORCHESTRATOR_31337: process.env.ORCHESTRATOR_31337,
+        SIMPLE_FUNDER_31337: process.env.SIMPLE_FUNDER_31337,
+        SIMULATOR_31337: process.env.SIMULATOR_31337,
+        ACCOUNT_31337: process.env.ACCOUNT_31337,
+        ACCOUNT_PROXY_31337: process.env.ACCOUNT_PROXY_31337,
+        SIMPLE_SETTLER_31337: process.env.SIMPLE_SETTLER_31337,
+        ESCROW_31337: process.env.ESCROW_31337,
+        MULTI_SIG_SIGNER_31337: process.env.MULTI_SIG_SIGNER_31337,
+    }
+    const escrow = '0x05f9597eed844410b7c0746A1C584188d0644730'
+    process.env.ORCHESTRATOR_31337 = '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC'
+    process.env.SIMPLE_FUNDER_31337 = '0x0000000000000000000000000000000000000002'
+    process.env.SIMULATOR_31337 = '0x0000000000000000000000000000000000000003'
+    process.env.ACCOUNT_31337 = '0x0000000000000000000000000000000000000004'
+    process.env.ACCOUNT_PROXY_31337 = '0x0000000000000000000000000000000000000005'
+    process.env.SIMPLE_SETTLER_31337 = '0x0000000000000000000000000000000000000006'
+    process.env.ESCROW_31337 = escrow
+    process.env.MULTI_SIG_SIGNER_31337 = '0x0000000000000000000000000000000000000007'
+    try {
+        await expectUnlockRequiresPhrase(
+            [
+                {
+                    hash: sessionKeyHash,
+                    calls: [{ target: escrow as Address, selector: '0x657061bf' }],
+                    spends: [],
+                },
+            ],
+            relayerKeys([{ type: 'call', to: escrow, selector: '0x657061bf' }]),
+        )
+    } finally {
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+        }
+    }
+}, 60_000)
+
+test('USDC calls with no spend limit require the unlock phrase', async () => {
+    await expectUnlockRequiresPhrase(
+        [
+            {
+                hash: sessionKeyHash,
+                calls: [{ target: usdc as Address, selector: '0xa9059cbb' }],
+                spends: [],
+            },
+        ],
+        relayerKeys([{ type: 'call', to: usdc, selector: '0xa9059cbb' }]),
+    )
 }, 60_000)
 
 test('two session creates started together authorize at most one 10 USDC/day key without the phrase', async () => {

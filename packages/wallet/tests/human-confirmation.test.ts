@@ -173,6 +173,15 @@ test('an empty permission list is elevated', () => {
     expect(storedPermissionsRequirePhrase([], usdc)).toBe(true)
 })
 
+test('a call list with no USDC spend limit is elevated', () => {
+    expect(
+        storedPermissionsRequirePhrase(
+            [{ type: 'call', to: usdc, selector: '0xa9059cbb' }],
+            usdc,
+        ),
+    ).toBe(true)
+})
+
 test('permissionNeedsFullAccessConfirmation treats increaseAllowance on USDC as full access', () => {
     expect(
         permissionNeedsFullAccessConfirmation({

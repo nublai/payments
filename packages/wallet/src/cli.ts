@@ -1,3 +1,4 @@
+import { getAddress } from 'viem'
 import { Cli, z } from 'incur'
 import { readFileSync } from 'node:fs'
 import {
@@ -55,7 +56,7 @@ import { executeSessionUnlock, resolveSessionUnlockPassword } from './lib/sessio
 import { executePermissionsGrant } from './lib/permissions-grant'
 import { parseSpendLimitUnits } from './lib/permissions-common'
 import { executePermissionsList } from './lib/permissions-list'
-import { executePermissionsRevoke } from './lib/permissions-revoke'
+import { executePermissionsRevoke, revokeLeavesElevated } from './lib/permissions-revoke'
 import { executePermissionsShow } from './lib/permissions-show'
 import {
     DEFAULT_SESSION_SPEND_LIMIT,
@@ -74,6 +75,7 @@ import { readKeystoreBundle } from './lib/keystore'
 import {
     getUsdcTokenConfig,
     normalizeChainName,
+    resolveNetworkConfig,
     selectDefaultChain,
     type ChainName,
 } from './lib/network-config'
@@ -1671,12 +1673,14 @@ session.command('rotate', {
                     '--narrow cannot be combined with --full-access, --target, --selector, or a custom spend.',
             })
         }
+        let phraseConfirmed = false
         if (options.narrow) {
             await confirmHuman(
                 reportError,
                 'Rotating a legacy session onto the narrowed default',
                 CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
             )
+            phraseConfirmed = true
         } else {
             let excludeSessionName: string | undefined
             try {
@@ -1691,7 +1695,7 @@ session.command('rotate', {
             } catch {
                 excludeSessionName = undefined
             }
-            await confirmElevatedPermission(
+            phraseConfirmed = await confirmElevatedPermission(
                 reportError,
                 'Rotating to a full-access session',
                 CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
@@ -1743,6 +1747,7 @@ session.command('rotate', {
             }),
             spendPeriod: options.spendPeriod,
             narrow: options.narrow,
+            fullAccessPhraseConfirmed: phraseConfirmed,
             password,
         })
     },
@@ -2222,7 +2227,78 @@ permissions.command('revoke', {
             description: 'Revoke all rules for a key',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        const chain = selectDefaultChain(options.env, options.chain)
+        const network = resolveNetworkConfig(options.env, chain)
+        const keystorePath = resolveKeystorePath({
+            env: options.env,
+            name: options.profile,
+            keystorePath: options.keystorePath,
+        })
+        let phraseConfirmed = false
+        try {
+            const bundle = await readKeystoreBundle(keystorePath)
+            const accountAddress = getAddress(
+                bundle.root.addresses.delegated ?? bundle.root.addresses.root,
+            )
+            const { readSessionChainGuard } = await import('./lib/session-chain-permissions')
+            const { computeSessionKeyHash, getChainKeys, listSessionNames, parseSessionName } =
+                await import('./lib/session-common')
+            const { readSessionKeystoreFile, resolveSessionKeystorePath } = await import(
+                './lib/keystore'
+            )
+            const { createCliRelayerClient } = await import('./lib/relayer-client-utils')
+            const client = createCliRelayerClient(network)
+            const keysResponse = await client.getKeys({
+                address: accountAddress,
+                chainIds: [network.chainId],
+            })
+            const localNames = await listSessionNames(keystorePath, bundle.root.sessionRef.dir)
+            const localKeys = []
+            for (const rawName of localNames) {
+                const name = parseSessionName(rawName)
+                const session = await readSessionKeystoreFile(
+                    resolveSessionKeystorePath(keystorePath, name, bundle.root.sessionRef.dir),
+                )
+                const address = getAddress(session.addresses.session)
+                localKeys.push({ name, address, hash: computeSessionKeyHash(address) })
+            }
+            const { resolveSelectedKey } = await import('./lib/permissions-common')
+            const selected = resolveSelectedKey({
+                selector: {
+                    positional: args.keyRef,
+                    keyName: options.keyName,
+                    keyHash: options.keyHash as `0x${string}` | undefined,
+                },
+                keys: getChainKeys(keysResponse, network.chainId),
+                localKeys,
+            })
+            if (options.rule || options.all) {
+                phraseConfirmed = await revokeLeavesElevated({
+                    env: options.env,
+                    chain,
+                    chainId: network.chainId,
+                    account: accountAddress,
+                    keyHash: selected.key.hash,
+                    all: options.all,
+                    rule: options.rule,
+                    readSessionChainGuard,
+                })
+            }
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            // Key resolution failures are reported by executePermissionsRevoke.
+            phraseConfirmed = false
+        }
+        if (phraseConfirmed) {
+            await confirmHuman(
+                reportError,
+                'Revoking this permission leaves the key with full access',
+                CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -2236,18 +2312,26 @@ permissions.command('revoke', {
             },
         )
 
-        return executePermissionsRevoke({
-            env: options.env,
-            chain: options.chain as ChainName | undefined,
-            name: options.profile,
-            keystorePath: options.keystorePath,
-            keyRef: args.keyRef,
-            keyName: options.keyName,
-            keyHash: options.keyHash as `0x${string}` | undefined,
-            rule: options.rule,
-            all: options.all,
-            password,
-        })
+        try {
+            return await executePermissionsRevoke({
+                env: options.env,
+                chain: options.chain as ChainName | undefined,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                keyRef: args.keyRef,
+                keyName: options.keyName,
+                keyHash: options.keyHash as `0x${string}` | undefined,
+                rule: options.rule,
+                all: options.all,
+                password,
+                phraseConfirmed,
+            })
+        } catch (error) {
+            if (error instanceof HumanConfirmationError) {
+                reportError({ code: error.code, message: error.message })
+            }
+            throw error
+        }
     },
 })
 
