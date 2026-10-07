@@ -79,11 +79,11 @@ export async function executeSignedCalls(
     const expiry = params.expiry ?? now + INTENT_EXPIRY_TTL_SECONDS
     const policy = resolveIntentPayment(params.env, params.chainId, params.from)
     // An explicit cap is a ceiling, not the signed value, and it cannot exceed
-    // the policy ceiling. Payer and token are required together. Off local they
-    // must be a non-zero payer and that chain's native USDC, so a zero pair
-    // cannot sign native ETH and a raw 5_000_000 cap cannot apply to WBTC.
-    // Omitting the cap still uses the policy ceiling when both payer and token
-    // are passed, or when neither is.
+    // the policy ceiling. Payer and token are required together. Off the local
+    // chain ids they must be a non-zero payer and that chain's native USDC, so
+    // a zero pair cannot sign native ETH and a raw 5_000_000 cap cannot apply
+    // to WBTC. Omitting the cap still uses the policy ceiling when both payer
+    // and token are passed, or when neither is.
     const zeroFee = isLocalFeeChain(params.env, params.chainId)
     refuseLonePayerOrToken(params.payer, params.paymentToken, params.paymentMaxAmount)
     if (params.paymentMaxAmount !== undefined) {
@@ -97,7 +97,9 @@ export async function executeSignedCalls(
               : clampPaymentCeiling(params.paymentMaxAmount, policy.paymentMaxAmount)
     const payer = params.payer ?? policy.payer
     const paymentToken = params.paymentToken ?? policy.paymentToken
-    if (!zeroFee) assertOffLocalFeeToken(params.chainId, payer, paymentToken)
+    // Zero payer/token is legal only on local chain ids 31337 and 41337.
+    const localFeeChain = params.chainId === 31337 || params.chainId === 41337
+    if (!localFeeChain) assertOffLocalFeeToken(params.chainId, payer, paymentToken)
     const payment = { payer, paymentToken, paymentMaxAmount: ceiling }
     const combinedGasCeiling =
         params.combinedGasCeiling ??
@@ -173,7 +175,16 @@ export async function executeSignedCalls(
         signature: effectiveSignature,
     })
 
-    const finalStatus = await deps.waitForBundle({ id: submission.id })
+    let finalStatus: BundleStatusResponse
+    try {
+        finalStatus = await deps.waitForBundle({ id: submission.id })
+    } catch (error) {
+        if (error instanceof Error && error.message.includes('Timeout waiting for bundle')) {
+            const timedOut = error as Error & { bundleId?: string }
+            timedOut.bundleId = submission.id
+        }
+        throw error
+    }
 
     return {
         id: submission.id,

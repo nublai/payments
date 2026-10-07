@@ -447,6 +447,21 @@ test('a local zero quote signs cap 0 with a zero payer and says so', async () =>
     })
 })
 
+test('dev on a non-local chain refuses a zero payer and token', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '0', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 8453,
+            env: 'dev',
+            paymentMaxAmount: 100_000_000n,
+            payer: zeroAddress,
+            paymentToken: zeroAddress,
+        }),
+    ).rejects.toThrow(/zero address/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
 test('prod send returns the fee cap for human and json output', async () => {
     const signTypedData = mock(async () => SIG)
     const result = await executeAccountSend(

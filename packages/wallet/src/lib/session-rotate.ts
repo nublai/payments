@@ -1,4 +1,4 @@
-import { readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { encodeFunctionData, getAddress, zeroAddress, type Address, type Hex } from 'viem'
 import {
@@ -54,13 +54,13 @@ import {
     computeSessionKeyHash,
     DEFAULT_SESSION_SPEND_LIMIT,
     getChainKeys,
+    isRotationMarkerFileName,
     normalizedDailyUsdcUnits,
     parseSessionName,
+    ROTATION_MARKER_NAME,
     toSpendPeriodEnum,
 } from './session-common'
 import { generatePrivateKey } from 'viem/accounts'
-
-const ROTATION_MARKER_NAME = '.rotation.json'
 
 type RotationIntentBase = {
     oldSessionName: string
@@ -94,6 +94,7 @@ type SessionRotateErrorCode =
     | 'PASSWORD_REQUIRED'
     | 'ROTATION_FAILED'
     | 'ROTATION_PARTIAL'
+    | 'ROTATION_SUBMITTED'
     | 'ROTATION_MARKER_AMBIGUOUS'
     | 'ROTATION_MARKER_MISMATCH'
     | 'ROTATION_WRONG_CHAIN'
@@ -215,12 +216,7 @@ async function defaultReadRotationIntent(
     const dir = rotationDir(rootKeystorePath, sessionsDir)
     const entries = await readdir(dir, { withFileTypes: true })
     const candidates = entries
-        .filter(
-            (entry) =>
-                entry.isFile() &&
-                entry.name.startsWith('.rotation-') &&
-                entry.name.endsWith('.json'),
-        )
+        .filter((entry) => entry.isFile() && isRotationMarkerFileName(entry.name))
         .map((entry) => entry.name)
     if (candidates.length === 0) return null
     if (candidates.length > 1) {
@@ -244,9 +240,14 @@ async function defaultWriteRotationIntent(
 ): Promise<RotationIntent> {
     const dir = rotationDir(rootKeystorePath, sessionsDir)
     const finalFileName = fileName ?? ROTATION_MARKER_NAME
-    await writeFile(join(dir, finalFileName), `${JSON.stringify(value, null, 2)}\n`, {
-        mode: 0o600,
-    })
+    const finalPath = join(dir, finalFileName)
+    const tempPath = `${finalPath}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    await mkdir(dir, { recursive: true })
+    await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+    await rename(tempPath, finalPath)
+    if (process.platform !== 'win32') {
+        await chmod(finalPath, 0o600)
+    }
     return withRotationIntentFileName(value, finalFileName)
 }
 
@@ -290,10 +291,10 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
             'Rotation marker is missing its chain id.',
         )
     }
-    if (typeof maybe.newKeyHash !== 'string' || !maybe.newKeyHash.startsWith('0x')) {
+    if (typeof maybe.newKeyHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(maybe.newKeyHash)) {
         throw new SessionRotateError(
             'ROTATION_MARKER_MISMATCH',
-            'Rotation marker is missing the new key hash.',
+            'Rotation marker newKeyHash must be 0x followed by 64 hex characters.',
         )
     }
     if (typeof maybe.narrow !== 'boolean' || typeof maybe.fullAccess !== 'boolean') {
@@ -506,6 +507,42 @@ function partialRotationError(chain: ChainName, failed: ChainName[]): SessionRot
     )
 }
 
+function isBundleWaitTimeout(error: unknown): boolean {
+    return error instanceof Error && error.message.includes('Timeout waiting for bundle')
+}
+
+function bundleWaitTimeoutId(error: unknown): string | undefined {
+    if (typeof error === 'object' && error !== null && 'bundleId' in error) {
+        const id = (error as { bundleId?: unknown }).bundleId
+        if (typeof id === 'string' && id.length > 0) return id
+    }
+    if (!(error instanceof Error)) return undefined
+    const match = error.message.match(/Timeout waiting for bundle (\S+) to reach final status/)
+    return match?.[1]
+}
+
+function rotationSubmittedError(bundleId: string | undefined): SessionRotateError {
+    const which = bundleId ? `bundle ${bundleId} ` : ''
+    return new SessionRotateError(
+        'ROTATION_SUBMITTED',
+        `Session rotation ${which}was submitted, but confirmation timed out. The new session file was kept. Resume with \`tw session rotate --resume\`.`,
+        {
+            recoveryCommand: 'tw session rotate --resume',
+            details: bundleId ? { bundleId } : undefined,
+        },
+    )
+}
+
+function requireRotateFullAccessPhrase(fullAccess: boolean, confirmed: boolean | undefined): void {
+    if (!fullAccess || confirmed) return
+    throw new HumanConfirmationError(
+        humanConfirmationMessage(
+            'Rotating to a full-access session',
+            CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+        ),
+    )
+}
+
 export async function executeSessionRotate(
     options: {
         env: EnvName
@@ -658,6 +695,7 @@ export async function executeSessionRotate(
                 )
             }
         }
+        requireRotateFullAccessPhrase(intent.fullAccess, options.fullAccessPhraseConfirmed)
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
         const signedNetwork = {
             ...network,
@@ -935,6 +973,18 @@ export async function executeSessionRotate(
                 finalStatus = submission.finalStatus
                 feeCap = submission.feeCap
             } catch (error) {
+                if (isBundleWaitTimeout(error)) {
+                    const timeoutBundleId = bundleWaitTimeoutId(error)
+                    if (timeoutBundleId) {
+                        intent = await deps.writeRotationIntent(
+                            keystorePath,
+                            bundle.root.sessionRef.dir,
+                            markRotationIntentSubmitted(intent, timeoutBundleId),
+                            intent.fileName,
+                        )
+                    }
+                    throw rotationSubmittedError(timeoutBundleId)
+                }
                 await deps.unlink(newSessionPath).catch(() => undefined)
                 await deps
                     .deleteRotationIntent(keystorePath, bundle.root.sessionRef.dir, intent.fileName)
@@ -971,7 +1021,17 @@ export async function executeSessionRotate(
         }
 
         if (intent.status === 'submitted' && !finalStatus) {
-            finalStatus = await deps.waitForBundle({ network: signedNetwork, id: intent.bundleId })
+            try {
+                finalStatus = await deps.waitForBundle({
+                    network: signedNetwork,
+                    id: intent.bundleId,
+                })
+            } catch (error) {
+                if (isBundleWaitTimeout(error)) {
+                    throw rotationSubmittedError(intent.bundleId)
+                }
+                throw error
+            }
             bundleId = intent.bundleId
         }
 
