@@ -42,6 +42,7 @@ function createMockEnv(overrides: Partial<Record<string, string>> = {}): Env {
         CONTEXT: 'stage',
         // Stage requires a quote HMAC secret. This is a fixture placeholder, not a deployed secret.
         QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
+        FEE_RECIPIENT: '0x1111111111111111111111111111111111111111',
         ORCHESTRATOR_84532: '0x3456789012345678901234567890123456789012',
         SIMPLE_FUNDER_84532: '0x4567890123456789012345678901234567890123',
         SIMULATOR_84532: '0x5678901234567890123456789012345678901234',
@@ -171,6 +172,65 @@ describe('validateEnv', () => {
         })
         const result = validateEnv(env)
         expect(result.valid).toBe(true)
+    })
+
+    it('requires every OIDC value when OIDC_ENABLED=true', () => {
+        const env = createMockEnv({ OIDC_ENABLED: 'true' })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(false)
+        expect(result.missing).toEqual(
+            expect.arrayContaining(['OIDC_ISSUER', 'OIDC_JWKS_URL', 'OIDC_CLIENT_ID']),
+        )
+    })
+
+    it('rejects an OIDC issuer that is not an http(s) URL', () => {
+        const env = createMockEnv({
+            OIDC_ENABLED: 'true',
+            OIDC_ISSUER: 'not a url',
+            OIDC_JWKS_URL: 'https://issuer.example/jwks',
+            OIDC_CLIENT_ID: 'client_123',
+        })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(false)
+        expect(result.missing).toContain('OIDC_ISSUER')
+    })
+
+    it('accepts OIDC config when issuer, JWKS URL, and client id are set', () => {
+        const env = createMockEnv({
+            OIDC_ENABLED: 'true',
+            OIDC_ISSUER: 'https://issuer.example/realms/app',
+            OIDC_JWKS_URL: 'https://issuer.example/jwks',
+            OIDC_CLIENT_ID: 'client_123',
+        })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(true)
+    })
+
+    it('accepts OIDC-only mode without Privy credentials', () => {
+        const env = createMockEnv({
+            PRIVY_ENABLED: 'false',
+            OIDC_ENABLED: 'true',
+            OIDC_ISSUER: 'https://issuer.example',
+            OIDC_JWKS_URL: 'https://issuer.example/jwks',
+            OIDC_CLIENT_ID: 'client_123',
+        })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(true)
+    })
+
+    it('requires FEE_RECIPIENT outside local', () => {
+        const missing = validateEnv(createMockEnv({ FEE_RECIPIENT: '' }))
+        expect(missing.valid).toBe(false)
+        expect(missing.missing).toContain('FEE_RECIPIENT')
+
+        const zero = validateEnv(
+            createMockEnv({ FEE_RECIPIENT: '0x0000000000000000000000000000000000000000' }),
+        )
+        expect(zero.valid).toBe(false)
+        expect(zero.missing).toContain('FEE_RECIPIENT')
+
+        const local = validateEnv(createMockEnv({ CONTEXT: 'local', FEE_RECIPIENT: '' }))
+        expect(local.valid).toBe(true)
     })
 
     it('requires QUOTE_SIGNING_SECRET outside local', () => {

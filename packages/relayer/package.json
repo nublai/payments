@@ -32,20 +32,21 @@
         "telemetry:summary:stage": "wrangler tail --env stage --format json | bun run scripts/telemetry-summary.ts",
         "telemetry:summary:prod": "wrangler tail --env prod --format json | bun run scripts/telemetry-summary.ts",
         "test": "vitest",
-        "test:run": "vitest run"
+        "test:run": "vitest run && bun ./test/integration/paid-upgrade-anvil.ts"
     },
     "dependencies": {
         "@hono/zod-validator": "0.7.6",
+        "@nubl/contracts": "workspace:^",
+        "@privy-io/server-auth": "^1.9.1",
         "@scure/bip32": "2.0.1",
         "@scure/bip39": "2.0.1",
         "@slicekit/erc8128": "^0.1.0",
-        "@nubl/contracts": "workspace:^",
         "hono": "^4.11.7",
+        "jose": "^6.2.12",
         "oxlint": "^1.41.0",
         "pino": "^10.3.1",
         "viem": "2.45.1",
-        "zod": "^4.3.6",
-        "@privy-io/server-auth": "^1.9.1"
+        "zod": "^4.3.6"
     },
     "devDependencies": {
         "@cloudflare/vitest-pool-workers": "^0.12.18",

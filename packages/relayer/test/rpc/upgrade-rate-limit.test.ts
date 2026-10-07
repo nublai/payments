@@ -124,4 +124,61 @@ describe('upgrade rate limit', () => {
         })
         expect(consumeRateLimit(store, overflow, now).allowed).toBe(false)
     })
+
+    it('keeps the Privy upgrade cap after the bucket key is namespaced', () => {
+        const did = 'did:privy:user_1'
+        const now = 1_700_000_300
+        const privy = upgradeRateBuckets({
+            kind: 'upgrade',
+            chainId: 8453,
+            account: '0xabc',
+            ip: '203.0.113.5',
+            identity: `privy:${did}`,
+        })
+        const raw = upgradeRateBuckets({
+            kind: 'upgrade',
+            chainId: 8453,
+            account: '0xabc',
+            ip: '203.0.113.5',
+            identity: did,
+        })
+        const oidc = upgradeRateBuckets({
+            kind: 'upgrade',
+            chainId: 8453,
+            account: '0xabc',
+            ip: '203.0.113.5',
+            identity: `oidc:https://issuer-a.example:${did}`,
+        })
+        const otherIssuer = upgradeRateBuckets({
+            kind: 'upgrade',
+            chainId: 8453,
+            account: '0xabc',
+            ip: '203.0.113.5',
+            identity: `oidc:https://issuer-b.example:${did}`,
+        })
+        const prepare = upgradeRateBuckets({
+            kind: 'prepare',
+            chainId: 8453,
+            account: '0xabc',
+            ip: '203.0.113.5',
+            identity: `privy:${did}`,
+        })
+
+        expect(privy[0].key).toBe(`upgrade:identity:8453:privy:${did}`)
+        expect(privy[0].key).not.toBe(raw[0].key)
+        expect(privy[0].key).not.toBe(oidc[0].key)
+        expect(oidc[0].key).not.toBe(otherIssuer[0].key)
+        expect(privy[0].limit).toBe(5)
+        expect(privy[0].windowSeconds).toBe(10 * 60)
+        expect(prepare[0].limit).toBe(10)
+
+        const store = new Map<string, number>()
+        for (let attempt = 0; attempt < privy[0].limit; attempt++) {
+            expect(consumeRateLimit(store, privy, now).allowed).toBe(true)
+        }
+        expect(consumeRateLimit(store, privy, now).allowed).toBe(false)
+        expect(consumeRateLimit(store, oidc, now).allowed).toBe(true)
+        expect(consumeRateLimit(store, otherIssuer, now).allowed).toBe(true)
+        expect(consumeRateLimit(store, prepare, now).allowed).toBe(true)
+    })
 })

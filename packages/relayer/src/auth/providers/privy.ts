@@ -1,8 +1,10 @@
 import { getAddress, isAddress, type Address } from 'viem'
+import { PrivyClient } from '@privy-io/server-auth'
 
 import type { Env } from '../../types/env'
-import type { AuthProvider, AuthResult } from '../types'
-import { PrivyClient } from '@privy-io/server-auth'
+import { authProviderFromIdentity, type IdentityProvider, type IdentityResult } from '../identity-provider'
+import { isPrivyEnabled, tokenTargetsOidc } from '../oidc-config'
+import type { AuthProvider } from '../types'
 
 function parseBearerToken(
     request: Request,
@@ -122,7 +124,19 @@ async function bindPrivyAccounts(
     return { ok: true, accounts }
 }
 
-export function createPrivyProvider(): AuthProvider {
+function requestFromIdentityInput(input: Request | string): Request {
+    if (typeof input !== 'string') return input
+    return new Request('https://relayer.local/', {
+        headers: { Authorization: `Bearer ${input}` },
+    })
+}
+
+/**
+ * Privy is the only identity provider in this process. `verify` returns the
+ * identity shape (`provider`, `userId`, `boundAccounts`) so another provider
+ * can sit beside it in the registry without a change to the identity gate.
+ */
+export function createPrivyIdentityProvider(): IdentityProvider {
     let client: PrivyClient | undefined
 
     function getClient(env: Env): PrivyClient {
@@ -136,15 +150,33 @@ export function createPrivyProvider(): AuthProvider {
     return {
         name: 'privy',
         enabled(env: Env): boolean {
-            return env.PRIVY_ENABLED === 'true'
+            return isPrivyEnabled(env)
         },
-        async verify(request: Request, ctx: { env: Env; nowSeconds: number }): Promise<AuthResult> {
+        async verify(input: Request | string, ctx: { env: Env; nowSeconds: number }): Promise<IdentityResult> {
+            const request = requestFromIdentityInput(input)
             const parsed = parseBearerToken(request)
             if (!parsed.ok) {
                 return {
                     ok: false,
                     code: 'INVALID_TOKEN',
                     message: parsed.message,
+                }
+            }
+
+            if (tokenTargetsOidc(parsed.token, ctx.env)) {
+                return {
+                    ok: false,
+                    code: 'INVALID_TOKEN',
+                    message: 'Token issuer mismatch',
+                    routingMiss: true,
+                }
+            }
+
+            if (!ctx.env.PRIVY_APP_ID || !ctx.env.PRIVY_APP_SECRET) {
+                return {
+                    ok: false,
+                    code: 'INVALID_TOKEN',
+                    message: 'Privy is not configured',
                 }
             }
 
@@ -184,12 +216,13 @@ export function createPrivyProvider(): AuthProvider {
                     if (!linked.ok) return linked
                     return {
                         ok: true,
+                        provider: 'privy',
                         userId: claims.userId,
                         boundAccounts: linked.accounts,
                     }
                 }
 
-                return { ok: true, userId: claims.userId }
+                return { ok: true, provider: 'privy', userId: claims.userId, boundAccounts: [] }
             } catch (error) {
                 const classified = classifyPrivyError(error)
 
@@ -217,4 +250,9 @@ export function createPrivyProvider(): AuthProvider {
             }
         },
     }
+}
+
+/** HTTP auth adapter. Existing callers and tests keep the AuthProvider result shape. */
+export function createPrivyProvider(): AuthProvider {
+    return authProviderFromIdentity(createPrivyIdentityProvider())
 }

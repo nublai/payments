@@ -24,6 +24,10 @@ import { accountAbi, simulatorAbi } from '@nubl/contracts/abis'
 import type { IntentNonceDO } from '../durable-objects/intent-nonce.do'
 import type { RelayerConfig, GasConfig } from '../types/env'
 import { createRelayerPublicClient, isEip7702Delegated } from '../lib/viem-utils'
+import {
+    eip7702DelegationCode,
+    PAID_UPGRADE_AUTHORIZATION_GAS,
+} from '../rpc/methods/shared/paid-upgrade'
 import { getErrorMessage } from '../lib/logger'
 import type { Logger } from '../lib/logger'
 import { INTENT_TYPES } from '../rpc/schema/intentTypes'
@@ -62,6 +66,12 @@ interface SimulateIntentInput {
     paymentSignature?: string
     supportedAccountImplementation?: string
     sessionKey?: Hex
+    /**
+     * Delegation target for a user-paid first upgrade. When the EOA is not yet
+     * delegated, simulation state-overrides its code to `0xef0100 || accountProxy`
+     * instead of returning DELEGATION_PENDING.
+     */
+    delegation?: string
 }
 
 /**
@@ -82,6 +92,8 @@ interface PrepareIntentInput {
     paymentMaxAmount?: string
     prepareKey?: string
     sessionKey?: Hex
+    /** Account-proxy address when this prepare is a user-paid first upgrade. */
+    paidUpgradeDelegation?: string
 }
 
 /**
@@ -582,16 +594,30 @@ export class RelayerService {
             // Check if account has EIP-7702 delegation code before simulating
             const code = await this.publicClient.getCode({ address: request.eoa as Address })
 
+            let delegationCode: Hex | undefined
             if (!isEip7702Delegated(code)) {
-                this.logger.warn(
-                    { eoa: request.eoa, code: code ?? '0x' },
-                    'account not delegated yet',
-                )
-                return {
-                    success: false,
-                    error: 'Account delegation pending',
-                    errorCode: 'DELEGATION_PENDING',
+                const delegation = request.delegation
+                if (!delegation) {
+                    this.logger.warn(
+                        { eoa: request.eoa, code: code ?? '0x' },
+                        'account not delegated yet',
+                    )
+                    return {
+                        success: false,
+                        error: 'Account delegation pending',
+                        errorCode: 'DELEGATION_PENDING',
+                    }
                 }
+                if (
+                    delegation.toLowerCase() !==
+                    this.config.contracts.accountProxy.toLowerCase()
+                ) {
+                    return {
+                        success: false,
+                        error: 'Delegation target is not the account proxy',
+                    }
+                }
+                delegationCode = eip7702DelegationCode(this.config.contracts.accountProxy)
             }
 
             // Build the calls for simulation (JSON-RPC format: to, value as hex)
@@ -705,6 +731,16 @@ export class RelayerService {
                 const result = await this.publicClient.call({
                     to: this.config.contracts.simulator,
                     data: calldata,
+                    ...(delegationCode
+                        ? {
+                              stateOverride: [
+                                  {
+                                      address: request.eoa as Address,
+                                      code: delegationCode,
+                                  },
+                              ],
+                          }
+                        : {}),
                 })
 
                 // If successful, decode the returned gasUsed value
@@ -830,6 +866,7 @@ export class RelayerService {
                 paymentToken: request.paymentToken,
                 paymentMaxAmount: request.paymentMaxAmount,
                 sessionKey: request.sessionKey,
+                delegation: request.paidUpgradeDelegation,
             })
 
             /**
@@ -869,6 +906,11 @@ export class RelayerService {
                 const gasForForwarding =
                     combinedGas + this.gasConfig.orchestratorOverhead + this.gasConfig.txGasBuffer
                 txGas = (gasForForwarding * 64n) / 63n + intrinsicGas
+                // Authorization gas is charged on the type-4 tx, outside the
+                // simulator call. Pre-call gas is already inside simulationGas.
+                if (request.paidUpgradeDelegation) {
+                    txGas += PAID_UPGRADE_AUTHORIZATION_GAS
+                }
             } else {
                 // Simulation failed
                 simulationError = simulateResult.error ?? 'Simulation returned zero gas'
@@ -892,7 +934,9 @@ export class RelayerService {
                 // Fallback allowed - use conservative defaults but warn
                 simulationFailed = true
                 combinedGas = 500_000n
-                txGas = 700_000n
+                txGas = request.paidUpgradeDelegation
+                    ? 700_000n + PAID_UPGRADE_AUTHORIZATION_GAS
+                    : 700_000n
                 this.logger.warn(
                     {
                         eoa: request.eoa,

@@ -20,10 +20,8 @@ import {
     createWalletClient,
     http,
     encodeFunctionData,
-    encodeAbiParameters,
     bytesToHex,
     parseEther,
-    zeroAddress,
     type Address,
     type Hex,
     type PublicClient,
@@ -35,7 +33,7 @@ import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import { orchestratorAbi, simpleFunderAbi } from '@nubl/contracts/abis'
 import { createChain } from '../lib/viem-utils'
 import { getChainRpcUrl } from '../lib/multi-chain-client'
-import { getErrorMessage } from '../lib/logger'
+import { getErrorMessage, logger } from '../lib/logger'
 import { isPendingTransactionIdUniqueConstraintError } from '../lib/sqlite-errors'
 
 import type { Env } from '../types/env'
@@ -51,6 +49,8 @@ import type {
 } from '../types/pool'
 import { getContractAddresses } from '../config/addresses'
 import { getPaymentRecipient } from '../services/fees'
+import { encodeIntentCalldata } from '../services/encode-intent'
+import { paidUpgradeSignedGas } from '../rpc/methods/shared/paid-upgrade'
 import {
     assertAccountUpgradeFee,
     assertAccountUpgradeGas,
@@ -84,6 +84,8 @@ interface PreparedBroadcastTransaction {
     value: bigint
     authorizationList?: SignedAuthorization[]
     gas?: bigint
+    /** User-paid upgrade. The signed gas limit cannot exceed the 500k hold. */
+    paidUpgrade?: boolean
 }
 
 interface FeeParams {
@@ -230,6 +232,14 @@ export class SignerDO extends DurableObject<Env> {
                     return Response.json(result)
                 }
 
+                case '/paid-upgrade-tx': {
+                    const nonce = Number(url.searchParams.get('nonce'))
+                    if (!Number.isInteger(nonce) || nonce < 0) {
+                        return Response.json({ error: 'nonce is required' }, { status: 400 })
+                    }
+                    return Response.json(this.paidUpgradeBroadcast(nonce))
+                }
+
                 case '/status': {
                     const status = await this.getStatus()
                     return Response.json(status)
@@ -330,6 +340,13 @@ export class SignerDO extends DurableObject<Env> {
         ALTER TABLE pending_transactions ADD COLUMN last_replacement_at INTEGER NOT NULL DEFAULT 0;
         CREATE INDEX IF NOT EXISTS idx_pending_replacement ON pending_transactions(status, sent_at);
         UPDATE schema_version SET version = 3 WHERE id = 1;
+      `)
+        }
+
+        if (currentVersion < 4) {
+            this.sql.exec(`
+        ALTER TABLE pending_transactions ADD COLUMN paid_upgrade INTEGER NOT NULL DEFAULT 0;
+        UPDATE schema_version SET version = 4 WHERE id = 1;
       `)
         }
     }
@@ -1104,7 +1121,7 @@ export class SignerDO extends DurableObject<Env> {
             `
           UPDATE pending_transactions
           SET tx_hash = ?, tx_to = ?, tx_data = ?, tx_value = ?, tx_authorization_list = ?,
-              max_fee_per_gas = ?, max_priority_fee_per_gas = ?
+              max_fee_per_gas = ?, max_priority_fee_per_gas = ?, paid_upgrade = ?
           WHERE id = ?
         `,
             txHash,
@@ -1114,6 +1131,7 @@ export class SignerDO extends DurableObject<Env> {
             this.serializeAuthorizationList(txParams.authorizationList),
             usedFeeParams.maxFeePerGas.toString(),
             usedFeeParams.maxPriorityFeePerGas.toString(),
+            txParams.paidUpgrade ? 1 : 0,
             tx.id,
         )
 
@@ -1211,6 +1229,80 @@ export class SignerDO extends DurableObject<Env> {
             await new Promise((resolve) => setTimeout(resolve, DUPLICATE_TX_WAIT_POLL_MS))
         }
         return ''
+    }
+
+    /**
+     * Current paid-upgrade broadcast for a signer nonce. The pool asks after
+     * a restart, when the replacement hash may not be in its table yet.
+     */
+    private paidUpgradeBroadcast(nonce: number): {
+        txHash: string
+        nonce: number
+        status: string
+        address: string
+        paidUpgrade: boolean
+    } | null {
+        const rows = this.sql
+            .exec(
+                `
+          SELECT tx_hash, nonce, status, paid_upgrade
+          FROM pending_transactions
+          WHERE nonce = ? AND paid_upgrade = 1
+          ORDER BY sent_at DESC
+          LIMIT 1
+        `,
+                nonce,
+            )
+            .toArray()
+        const row = rows[0]
+        if (!row) return null
+        const state = this.sql
+            .exec('SELECT address FROM signer_state WHERE id = 1')
+            .toArray()[0]
+        return {
+            txHash: (row.tx_hash as string) ?? '',
+            nonce: row.nonce as number,
+            status: row.status as string,
+            address: (state?.address as string) ?? '',
+            paidUpgrade: true,
+        }
+    }
+
+    /**
+     * Tell the pool about a replacement hash. A failure leaves the signer row
+     * as the source of truth; reconcile asks `/paid-upgrade-tx` before it
+     * releases a hold.
+     */
+    private async trackPaidUpgradeReplacement(input: {
+        chainId: number
+        priorHash: Hex
+        txHash: Hex
+        nonce: number
+    }): Promise<void> {
+        const signerName = this.getSignerName()
+        if (!signerName) return
+        try {
+            const poolId = this.env.SIGNER_POOL.idFromName(`pool-${input.chainId}`)
+            const pool = this.env.SIGNER_POOL.get(poolId)
+            await pool.fetch(`http://do/upgrade-rate-limit?poolName=pool-${input.chainId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    kind: 'paid-upgrade',
+                    action: 'track-replacement',
+                    chainId: input.chainId,
+                    priorHash: input.priorHash,
+                    txHash: input.txHash,
+                    nonce: input.nonce,
+                    signerName,
+                }),
+            })
+        } catch (error) {
+            logger.error(
+                { error, chainId: input.chainId, txHash: input.txHash },
+                'paid upgrade replacement was not tracked',
+            )
+        }
     }
 
     private async enqueueMonitorJob(
@@ -1366,6 +1458,9 @@ export class SignerDO extends DurableObject<Env> {
                         args: [encodedIntent],
                     }),
                     value: 0n,
+                    ...(tx.authorization
+                        ? { authorizationList: [tx.authorization], paidUpgrade: true }
+                        : {}),
                 }
             }
 
@@ -1508,6 +1603,12 @@ export class SignerDO extends DurableObject<Env> {
         }
 
         try {
+            if (txParams.paidUpgrade) {
+                return {
+                    txParams: { ...txParams, gas: paidUpgradeSignedGas(gas) },
+                    feeParams,
+                }
+            }
             const capped = assertAccountUpgradeGas({
                 gas,
                 maxFeePerGas: feeParams.maxFeePerGas,
@@ -1588,86 +1689,7 @@ export class SignerDO extends DurableObject<Env> {
      * Encode an intent to bytes for the Orchestrator.execute() call
      */
     private encodeIntentToBytes(intent: IntentStruct): Hex {
-        // Convert calls array to Call[] struct format
-        const calls = intent.calls.map((call) => ({
-            to: call.to as Address,
-            value: call.value ? BigInt(call.value) : 0n,
-            data: (call.data ?? '0x') as Hex,
-        }))
-
-        // Encode calls as executionData (abi.encode(calls))
-        const executionData = encodeAbiParameters(
-            [
-                {
-                    type: 'tuple[]',
-                    components: [
-                        { name: 'to', type: 'address' },
-                        { name: 'value', type: 'uint256' },
-                        { name: 'data', type: 'bytes' },
-                    ],
-                },
-            ],
-            [calls],
-        )
-
-        // Build the Intent struct matching ICommon.Intent
-        const intentForContract = {
-            // EIP-712 Fields
-            eoa: intent.eoa as Address,
-            executionData,
-            nonce: BigInt(intent.nonce),
-            payer: (intent.payer ?? zeroAddress) as Address,
-            paymentToken: (intent.paymentToken ?? zeroAddress) as Address,
-            paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? '0'),
-            combinedGas: BigInt(intent.combinedGas),
-            encodedPreCalls: (intent.encodedPreCalls ?? []) as Hex[],
-            encodedFundTransfers: (intent.encodedFundTransfers ?? []) as Hex[],
-            settler: (intent.settler ?? zeroAddress) as Address,
-            expiry: BigInt(intent.expiry ?? '0'),
-            // Additional Fields (not in EIP-712)
-            isMultichain: intent.isMultichain ?? false,
-            funder: (intent.funder ?? zeroAddress) as Address,
-            funderSignature: (intent.funderSignature ?? '0x') as Hex,
-            settlerContext: (intent.settlerContext ?? '0x') as Hex,
-            paymentAmount: BigInt(intent.paymentAmount ?? '0'),
-            paymentRecipient: (intent.paymentRecipient ?? zeroAddress) as Address,
-            signature: intent.signature as Hex,
-            paymentSignature: (intent.paymentSignature ?? '0x') as Hex,
-            supportedAccountImplementation: (intent.supportedAccountImplementation ??
-                zeroAddress) as Address,
-        }
-
-        // ABI-encode the full Intent struct as bytes
-        return encodeAbiParameters(
-            [
-                {
-                    type: 'tuple',
-                    components: [
-                        { name: 'eoa', type: 'address' },
-                        { name: 'executionData', type: 'bytes' },
-                        { name: 'nonce', type: 'uint256' },
-                        { name: 'payer', type: 'address' },
-                        { name: 'paymentToken', type: 'address' },
-                        { name: 'paymentMaxAmount', type: 'uint256' },
-                        { name: 'combinedGas', type: 'uint256' },
-                        { name: 'encodedPreCalls', type: 'bytes[]' },
-                        { name: 'encodedFundTransfers', type: 'bytes[]' },
-                        { name: 'settler', type: 'address' },
-                        { name: 'expiry', type: 'uint256' },
-                        { name: 'isMultichain', type: 'bool' },
-                        { name: 'funder', type: 'address' },
-                        { name: 'funderSignature', type: 'bytes' },
-                        { name: 'settlerContext', type: 'bytes' },
-                        { name: 'paymentAmount', type: 'uint256' },
-                        { name: 'paymentRecipient', type: 'address' },
-                        { name: 'signature', type: 'bytes' },
-                        { name: 'paymentSignature', type: 'bytes' },
-                        { name: 'supportedAccountImplementation', type: 'address' },
-                    ],
-                },
-            ],
-            [intentForContract],
-        )
+        return encodeIntentCalldata(intent)
     }
 
     /**
@@ -1707,6 +1729,7 @@ export class SignerDO extends DurableObject<Env> {
           WHERE id = ? AND status = 'pending'
           RETURNING
             nonce,
+            tx_hash,
             tx_to,
             tx_data,
             tx_value,
@@ -1714,7 +1737,8 @@ export class SignerDO extends DurableObject<Env> {
             max_fee_per_gas,
             max_priority_fee_per_gas,
             replacement_attempts,
-            last_replacement_at
+            last_replacement_at,
+            paid_upgrade
         `,
                 txId,
             )
@@ -1830,6 +1854,7 @@ export class SignerDO extends DurableObject<Env> {
                     return 'abandoned' as const
                 }
 
+                const paidUpgrade = Number(claimed.paid_upgrade) === 1
                 const txParams: PreparedBroadcastTransaction = {
                     to: txTo as Address,
                     data: txData as Hex,
@@ -1837,10 +1862,12 @@ export class SignerDO extends DurableObject<Env> {
                     authorizationList: this.deserializeAuthorizationList(
                         claimed.tx_authorization_list as string | undefined,
                     ),
+                    ...(paidUpgrade ? { paidUpgrade: true } : {}),
                 }
 
                 try {
                     const nonce = claimed.nonce as number
+                    const priorHash = (claimed.tx_hash as string | undefined) ?? ''
                     const replacementHash = await this.signAndBroadcastPrepared(
                         txParams,
                         nonce,
@@ -1870,6 +1897,14 @@ export class SignerDO extends DurableObject<Env> {
                         txId,
                     )
                     await this.enqueueMonitorJob(txId, replacementHash, signerName, chainId)
+                    if (paidUpgrade && priorHash) {
+                        await this.trackPaidUpgradeReplacement({
+                            chainId,
+                            priorHash: priorHash as Hex,
+                            txHash: replacementHash,
+                            nonce,
+                        })
+                    }
                     return 'replaced' as const
                 } catch {
                     const terminal = nextAttempts >= config.maxAttempts

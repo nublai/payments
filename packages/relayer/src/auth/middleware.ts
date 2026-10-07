@@ -83,6 +83,7 @@ export function authMiddleware(deps: MiddlewareDeps = {}): MiddlewareHandler<{
         setRpcCaller(c.req.raw, {
             provider: result.provider,
             userId: typeof result.userId === 'string' ? result.userId : undefined,
+            issuer: result.issuer,
         })
 
         logger.info(
@@ -100,6 +101,7 @@ export function authMiddleware(deps: MiddlewareDeps = {}): MiddlewareHandler<{
             {
                 provider: result.provider ?? '',
                 userId: typeof result.userId === 'string' ? result.userId : '',
+                issuer: result.issuer,
                 boundAccounts: result.boundAccounts,
             },
             () => next(),

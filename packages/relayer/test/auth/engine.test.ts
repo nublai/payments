@@ -110,4 +110,53 @@ describe('auth engine', () => {
             message: 'No auth providers enabled',
         })
     })
+
+    it('returns IDP_UNAVAILABLE when the OIDC provider throws', async () => {
+        const result = await authorizeRequest({
+            request,
+            env,
+            nowSeconds: 1_700_000_000,
+            providers: [
+                createProvider({ name: 'oidc', throws: true }),
+                createProvider({
+                    name: 'erc8128',
+                    result: { ok: false, code: 'BAD_SIGNATURE', message: 'bad sig' },
+                }),
+            ],
+        })
+
+        expect(result).toEqual({
+            ok: false,
+            code: 'IDP_UNAVAILABLE',
+            message: 'oidc failed',
+        })
+    })
+
+    it('still returns PRIVY_API_UNAVAILABLE as the alias when that is the failure', async () => {
+        const result = await authorizeRequest({
+            request,
+            env,
+            nowSeconds: 1_700_000_000,
+            providers: [
+                createProvider({
+                    name: 'privy',
+                    result: {
+                        ok: false,
+                        code: 'PRIVY_API_UNAVAILABLE',
+                        message: 'Privy API unavailable',
+                    },
+                }),
+                createProvider({
+                    name: 'erc8128',
+                    result: { ok: false, code: 'BAD_SIGNATURE', message: 'bad sig' },
+                }),
+            ],
+        })
+
+        expect(result).toEqual({
+            ok: false,
+            code: 'PRIVY_API_UNAVAILABLE',
+            message: 'Privy API unavailable',
+        })
+    })
 })

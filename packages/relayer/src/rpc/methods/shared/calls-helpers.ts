@@ -115,6 +115,10 @@ export function hashQuotes(signedQuotes: SignedQuotes, config: RelayerConfig): H
         const feeTokenDeficit = BigInt(quote.feeTokenDeficit || '0x0')
         const hasDeficit = feeTokenDeficit !== 0n || (quote.assetDeficits?.length ?? 0) > 0
         bytes.push(new Uint8Array([hasDeficit ? 1 : 0]))
+
+        if (quote.accountUpgrade) {
+            bytes.push(toBytes(keccak256(toBytes(JSON.stringify(quote.accountUpgrade)))))
+        }
     }
 
     const totalLength = bytes.reduce((sum, arr) => sum + arr.length, 0)
