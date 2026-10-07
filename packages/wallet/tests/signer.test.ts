@@ -106,6 +106,8 @@ test('resolveSessionSigner uses daemon signer when key is loaded', async () => {
         privateKey: TEST_PRIVATE_KEY,
         address: account.address,
         durationSeconds: 10,
+        phraseConfirmed: true,
+        env: 'prod',
     })
     expect(load?.ok).toBe(true)
 

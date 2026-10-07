@@ -15,12 +15,21 @@ import {
     withKeystoreLock,
 } from './keystore'
 import {
+    getUsdcTokenConfig,
     resolveNetworkConfig,
+    rpcUrlForChain,
     selectDefaultChain,
     type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
+import {
+    CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
+    HumanConfirmationError,
+    humanConfirmationMessage,
+} from './human-confirmation'
+import { accountStateRequiresPhrase } from './session-gates'
+import { narrowCallAllowlist, readSessionChainGuard } from './session-chain-permissions'
 import {
     parsePeriod,
     parseRuleId,
@@ -106,6 +115,7 @@ type PermissionsRevokeDeps = {
         id: string
     }) => Promise<BundleStatusResponse>
     withKeystoreLock: typeof withKeystoreLock
+    readSessionChainGuard: typeof readSessionChainGuard
 }
 
 function getDefaultDeps(): PermissionsRevokeDeps {
@@ -154,6 +164,69 @@ function getDefaultDeps(): PermissionsRevokeDeps {
             })
         },
         withKeystoreLock,
+        readSessionChainGuard,
+    }
+}
+
+function sameAddress(left: string | undefined, right: string): boolean {
+    if (!left) return false
+    try {
+        return getAddress(left).toLowerCase() === getAddress(right).toLowerCase()
+    } catch {
+        return false
+    }
+}
+
+/** True when the permissions left after this revoke are above the narrow gate. */
+export async function revokeLeavesElevated(input: {
+    env: EnvName
+    chain: ChainName
+    chainId: number
+    account: Address
+    keyHash: Hex
+    all?: boolean
+    rule?: string
+    readSessionChainGuard: typeof readSessionChainGuard
+}): Promise<boolean> {
+    try {
+        const guard = await input.readSessionChainGuard({
+            rpcUrl: rpcUrlForChain(input.chain),
+            chainId: input.chainId,
+            account: input.account,
+            keyHash: input.keyHash,
+        })
+        if (!guard.key) return true
+        let remaining = guard.key.permissions
+        if (input.all) {
+            remaining = []
+        } else if (input.rule) {
+            const parsed = parseRuleId(input.rule)
+            remaining = guard.key.permissions.filter((permission) => {
+                if (parsed.kind === 'call' && permission.type === 'call') {
+                    return !(
+                        sameAddress(permission.to, parsed.target) &&
+                        permission.selector?.toLowerCase() === parsed.selector.toLowerCase()
+                    )
+                }
+                if (parsed.kind === 'spend' && permission.type === 'spend') {
+                    return !(
+                        sameAddress(permission.token, parsed.token) &&
+                        permission.period === parsed.period
+                    )
+                }
+                return true
+            })
+        }
+        return accountStateRequiresPhrase({
+            permissions: remaining,
+            anyCalls: guard.anyCalls,
+            checkerCount: guard.checkerCount,
+            usdcAddress: getUsdcTokenConfig(input.chain).address,
+            allowedCalls: narrowCallAllowlist(input.env, input.chainId),
+        })
+    } catch (error) {
+        if (error instanceof PermissionsError) throw error
+        return true
     }
 }
 
@@ -192,6 +265,8 @@ export async function executePermissionsRevoke(
         rule?: string
         all?: boolean
         password: string
+        /** Set only after REVOKE FULL ACCESS SESSION was typed. */
+        phraseConfirmed?: boolean
     },
     depsArg?: Partial<PermissionsRevokeDeps>,
 ): Promise<PermissionsRevokeResult> {
@@ -307,6 +382,27 @@ export async function executePermissionsRevoke(
                         args: [selected.key.hash, parsed.token, periodToEnum(parsed.period)],
                     }),
                 })
+            }
+        }
+
+        if (!options.phraseConfirmed && calls.length > 0) {
+            const leavesElevated = await revokeLeavesElevated({
+                env: options.env,
+                chain,
+                chainId: network.chainId,
+                account: accountAddress,
+                keyHash: selected.key.hash,
+                all: options.all,
+                rule: options.rule,
+                readSessionChainGuard: deps.readSessionChainGuard,
+            })
+            if (leavesElevated) {
+                throw new HumanConfirmationError(
+                    humanConfirmationMessage(
+                        'Revoking this permission leaves the key with full access',
+                        CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
+                    ),
+                )
             }
         }
 

@@ -83,20 +83,19 @@ function getDefaultDeps(): AccountExportDeps {
 export async function assertCanExportPrivateKeys(input: {
     showPrivate: boolean
     isInteractive: boolean
-    allowNonInteractive: boolean
+    mcp?: boolean
     promptForTypedConfirmation: (expected: string) => Promise<boolean>
 }): Promise<void> {
     if (!input.showPrivate) {
         return
     }
 
-    if (!input.isInteractive) {
-        if (input.allowNonInteractive) {
-            return
-        }
+    // A password source is not confirmation. MCP stdio and any non-TTY caller
+    // cannot type the phrase, including when TW_PASSWORD or --password-stdin is set.
+    if (input.mcp || !input.isInteractive) {
         throw new AccountExportError(
             'PRIVATE_EXPORT_CONFIRMATION_REQUIRED',
-            'Private key export requires an interactive terminal for confirmation.',
+            `PRIVATE_EXPORT_CONFIRMATION_REQUIRED: Private key export requires an interactive terminal. Type "${PRIVATE_EXPORT_CONFIRMATION_PHRASE}" when prompted. TW_PASSWORD and --password-stdin do not skip this confirmation, and MCP callers cannot confirm it.`,
         )
     }
 

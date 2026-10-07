@@ -9,19 +9,18 @@ import {
 } from 'viem'
 import {
     ANY_FUNCTION_SELECTOR,
+    ANY_TARGET,
     computeKeyHash,
     encodeSecp256k1Key,
     getChain,
     type GetKeysResponse,
 } from '@nubl/relayer-client'
-import {
-    AccountCreateError,
-    getDefaultSessionPermissions,
-    resolveKeystorePath,
-} from './account-create'
+import { AccountCreateError, resolveKeystorePath } from './account-create'
+import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
 import { readKeystoreBundle } from './keystore'
 import {
     getChainConfig,
+    getUsdcAddressByChainId,
     getUsdcTokenConfig,
     resolveNetworkConfig,
     selectDefaultChain,
@@ -42,7 +41,6 @@ type NetworkConfig = CliNetworkConfig
 type PermissionLevel = 'pass' | 'warn' | 'fail'
 
 type PermissionExpectation = {
-    wildcardSelector: Hex
     spend?: {
         token: Address
         period: string
@@ -213,17 +211,13 @@ function toDecimalStringFromHex(value: string): string | null {
 }
 
 function getExpectedPermissionConfig(chainId: number, legacy?: boolean): PermissionExpectation {
-    const defaults = getDefaultSessionPermissions(chainId, { legacy })
-    const callPermission = defaults.find((permission) => permission.type === 'call')
-    const spendPermission = defaults.find((permission) => permission.type === 'spend')
-
+    const token = getUsdcAddressByChainId(chainId, legacy ?? false)
     return {
-        wildcardSelector: normalizeHex(callPermission?.selector ?? ANY_FUNCTION_SELECTOR),
-        spend: spendPermission
+        spend: token
             ? {
-                  token: normalizeAddress(spendPermission.token),
-                  period: spendPermission.period,
-                  limit: spendPermission.limit,
+                  token: normalizeAddress(token),
+                  period: 'day',
+                  limit: DEFAULT_SESSION_SPEND_LIMIT.toString(),
               }
             : undefined,
     }
@@ -367,19 +361,21 @@ export async function executeAccountStatus(
                     'Session key permissions found.',
                 )
 
-                const hasWildcard = callSelectors.some(
-                    (selector) =>
-                        selector.toLowerCase() ===
-                        expectedPermissions.wildcardSelector.toLowerCase(),
-                )
-                if (!hasWildcard) {
+                const hasWildcard = sessionKey.permissions.some((permission) => {
+                    if (permission.type !== 'call') return false
+                    return (
+                        normalizeHex(permission.selector).toLowerCase() ===
+                            ANY_FUNCTION_SELECTOR.toLowerCase() ||
+                        permission.to.toLowerCase() === ANY_TARGET.toLowerCase()
+                    )
+                })
+                if (hasWildcard) {
                     addCheck(
                         checks,
                         'session.permissions.callWildcard',
                         'warn',
-                        'Session key wildcard call selector does not match expected policy.',
+                        'This session holds full access (ANY_TARGET or ANY_FN_SEL). The daemon can spend it once unlocked. Fix it with `tw session rotate --narrow` and type ROTATE FULL ACCESS SESSION, or `tw session revoke <name> --force` and type REVOKE FULL ACCESS SESSION.',
                         {
-                            expected: expectedPermissions.wildcardSelector,
                             actual: callSelectors,
                         },
                     )
@@ -388,7 +384,24 @@ export async function executeAccountStatus(
                         checks,
                         'session.permissions.callWildcard',
                         'pass',
-                        'Wildcard call selector matches expected policy.',
+                        'Session call permissions do not include a wildcard.',
+                    )
+                }
+
+                const spendAboveDaily = spendPermissions.some((permission) => {
+                    if (permission.period === 'minute' || permission.period === 'hour') return true
+                    try {
+                        return BigInt(permission.limit) > DEFAULT_SESSION_SPEND_LIMIT
+                    } catch {
+                        return true
+                    }
+                })
+                if (spendAboveDaily) {
+                    addCheck(
+                        checks,
+                        'session.permissions.spendAboveDaily',
+                        'warn',
+                        'This session holds a USDC spend above 10 per day. The daemon can spend it once unlocked. Fix it with `tw session rotate --narrow` and type ROTATE FULL ACCESS SESSION, or `tw session revoke <name> --force` and type REVOKE FULL ACCESS SESSION.',
                     )
                 }
 

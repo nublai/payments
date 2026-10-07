@@ -172,7 +172,6 @@ test('assertCanExportPrivateKeys rejects non-interactive export', async () => {
         assertCanExportPrivateKeys({
             showPrivate: true,
             isInteractive: false,
-            allowNonInteractive: false,
             promptForTypedConfirmation: async () => true,
         }),
     ).rejects.toMatchObject({
@@ -180,17 +179,35 @@ test('assertCanExportPrivateKeys rejects non-interactive export', async () => {
     })
 })
 
-test('assertCanExportPrivateKeys allows non-interactive export with explicit password source', async () => {
+test('assertCanExportPrivateKeys rejects non-interactive export even when a password is available', async () => {
+    const prompt = mock(async () => {
+        throw new Error('should not ask for typed confirmation')
+    })
     await expect(
         assertCanExportPrivateKeys({
             showPrivate: true,
             isInteractive: false,
-            allowNonInteractive: true,
-            promptForTypedConfirmation: async () => {
-                throw new Error('should not ask for typed confirmation')
-            },
+            promptForTypedConfirmation: prompt,
         }),
-    ).resolves.toBeUndefined()
+    ).rejects.toMatchObject({
+        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED',
+    })
+    expect(prompt).not.toHaveBeenCalled()
+})
+
+test('assertCanExportPrivateKeys rejects MCP export even on a TTY', async () => {
+    const prompt = mock(async () => true)
+    await expect(
+        assertCanExportPrivateKeys({
+            showPrivate: true,
+            isInteractive: true,
+            mcp: true,
+            promptForTypedConfirmation: prompt,
+        }),
+    ).rejects.toMatchObject({
+        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED',
+    })
+    expect(prompt).not.toHaveBeenCalled()
 })
 
 test('assertCanExportPrivateKeys rejects failed confirmation', async () => {
@@ -198,7 +215,6 @@ test('assertCanExportPrivateKeys rejects failed confirmation', async () => {
         assertCanExportPrivateKeys({
             showPrivate: true,
             isInteractive: true,
-            allowNonInteractive: false,
             promptForTypedConfirmation: async () => false,
         }),
     ).rejects.toMatchObject({

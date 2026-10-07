@@ -558,9 +558,23 @@ function runCli(
     args: string[],
     env: Record<string, string>,
     timeoutMs = 90_000,
+    phrase?: string,
 ): Promise<{ status: number; stdout: string; stderr: string }> {
     return new Promise((resolvePromise, reject) => {
-        const child = spawn('bun', ['src/cli.ts', ...args], {
+        // PR 17 reads the confirmation phrase from a TTY. This is the same
+        // helper passkey-flow and the local e2e scripts use. Assertions are unchanged.
+        const child = spawn(
+            phrase ? 'python3' : 'bun',
+            phrase
+                ? [
+                      resolve(walletDir, '../../scripts/tw-tty-confirm.py'),
+                      phrase,
+                      'bun',
+                      'src/cli.ts',
+                      ...args,
+                  ]
+                : ['src/cli.ts', ...args],
+            {
             cwd: walletDir,
             env: {
                 ...process.env,
@@ -642,6 +656,8 @@ beforeAll(async () => {
                 'json',
             ],
             {},
+            90_000,
+            'CREATE FULL ACCESS SESSION',
         )
         if (result.status !== 0) {
             throw new Error(
@@ -664,6 +680,12 @@ function devEnv(url: string): Record<string, string> {
         RELAYER_URL_DEV: url,
         ACCOUNT_PROXY_31337: LOCAL_PROXY,
         ORCHESTRATOR_31337: LOCAL_ORCH,
+        ACCOUNT_31337: '0x0000000000000000000000000000000000000003',
+        SIMPLE_FUNDER_31337: '0x0000000000000000000000000000000000000004',
+        SIMULATOR_31337: '0x0000000000000000000000000000000000000005',
+        SIMPLE_SETTLER_31337: '0x0000000000000000000000000000000000000006',
+        ESCROW_31337: '0x0000000000000000000000000000000000000007',
+        MULTI_SIG_SIGNER_31337: '0x0000000000000000000000000000000000000008',
     }
 }
 
@@ -685,6 +707,8 @@ async function runCreate(mode: UpgradeMode, keystore: string) {
                 'json',
             ],
             {},
+            90_000,
+            'CREATE FULL ACCESS SESSION',
         )
         return { server, result }
     })
@@ -707,6 +731,8 @@ async function runDelegate(mode: UpgradeMode) {
                     'json',
                 ],
                 devEnv(url),
+                90_000,
+                'CREATE FULL ACCESS SESSION',
             )
             return { server, result }
         }),
@@ -808,6 +834,8 @@ async function runSend(mode: SendMode) {
                     'json',
                 ],
                 devEnv(url),
+                90_000,
+                'SEND USDC',
             )
             return { server, result }
         }),
@@ -838,10 +866,20 @@ function frame(message: unknown): string {
     return `${JSON.stringify(message)}\n`
 }
 
-test('MCP send refuses expiry 0 and a huge combined gas', async () => {
+test('CLI send refuses expiry 0 and a huge combined gas', async () => {
+    // PR 17 refuses MCP send before the relayer is contacted, so this stays on the interactive CLI.
+    for (const mode of ['expiry-zero', 'huge-gas'] as const) {
+        const { server, result } = await runSend(mode)
+        const output = `${result.stdout}\n${result.stderr}\n${server.methods.join(',')}`
+        expect(server.submitted(), output).toBe(false)
+        expect(server.signed(), output).toBe(false)
+        expect(output).toMatch(/expiry|combined gas|Refusing/)
+    }
+}, 120_000)
+
+test('MCP send is refused before the relayer is contacted', async () => {
     await locked(async () => {
-        for (const mode of ['expiry-zero', 'huge-gas'] as const) {
-            await withServer(mode, 8545, 31337, LOCAL_ORCH, LOCAL_PROXY, async (server, url) => {
+        await withServer('honest-send', 8545, 31337, LOCAL_ORCH, LOCAL_PROXY, async (server, url) => {
                 const child = spawn('bun', ['src/cli.ts', '--mcp'], {
                     cwd: walletDir,
                     env: {
@@ -909,10 +947,8 @@ test('MCP send refuses expiry 0 and a huge combined gas', async () => {
                     child.kill('SIGTERM')
                 }
                 const output = `${stdout}\n${stderr}\n${server.methods.join(',')}`
-                expect(server.submitted(), output).toBe(false)
-                expect(server.signed(), output).toBe(false)
-                expect(output).toMatch(/expiry|combined gas|Refusing/)
+                expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+                expect(server.methods, output).toEqual([])
             })
-        }
     })
 }, 120_000)

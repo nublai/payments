@@ -198,7 +198,9 @@ export async function executeAccountDelegate(
                     rootPrivateKey: decryptedRoot.rootPrivateKey,
                     sessionAddress,
                     network,
-                    permissions: getDefaultSessionPermissions(network.chainId),
+                    permissions: getDefaultSessionPermissions(network.chainId, {
+                        env: options.env,
+                    }),
                 })
                 hasDelegatedAtLeastOne = true
                 results.push({

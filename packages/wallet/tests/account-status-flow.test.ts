@@ -246,6 +246,75 @@ test('executeAccountStatus reports non-delegation code as fail', async () => {
     expect(delegationCheck?.message).toContain('not an EIP-7702')
 })
 
+test('executeAccountStatus warns when a legacy wildcard session is present', async () => {
+    const sessionAddress = '0x2222222222222222222222222222222222222222' as const
+    const sessionKeyHash = computeKeyHash('secp256k1', encodeSecp256k1Key(sessionAddress))
+    const result = await executeAccountStatus(
+        {
+            env: 'dev',
+            chain: 'anvil',
+            keystorePath: '/tmp/alice.json',
+        },
+        {
+            readKeystoreBundle: mock(
+                async () =>
+                    ({
+                        format: 'split',
+                        root: {
+                            addresses: {
+                                root: '0x1111111111111111111111111111111111111111',
+                                delegated: '0x1111111111111111111111111111111111111111',
+                            },
+                            checkpoint: 'complete',
+                        },
+                        session: {
+                            addresses: { session: sessionAddress },
+                            name: 'default',
+                        },
+                    }) as any,
+            ),
+            getDelegatedCode: mock(async () => '0xef0100abcdef' as const),
+            readNonce: mock(async () => 1n),
+            readUsdcBalance: mock(async () => 0n),
+            getAuthorizedKeys: mock(
+                async () =>
+                    ({
+                        '0x7a69': [
+                            {
+                                hash: sessionKeyHash,
+                                expiry: '0x0',
+                                type: 'secp256k1',
+                                role: 'normal',
+                                publicKey:
+                                    '0x0000000000000000000000002222222222222222222222222222222222222222',
+                                permissions: [
+                                    {
+                                        type: 'call',
+                                        to: '0x3232323232323232323232323232323232323232',
+                                        selector: '0x32323232',
+                                    },
+                                    {
+                                        type: 'spend',
+                                        token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                                        period: 'forever',
+                                        limit: (2n ** 256n - 1n).toString(),
+                                        spent: '0',
+                                    },
+                                ],
+                            },
+                        ],
+                    }) as any,
+            ),
+        },
+    )
+
+    const wildcard = result.checks.find((check) => check.id === 'session.permissions.callWildcard')
+    expect(wildcard?.level).toBe('warn')
+    expect(wildcard?.message).toContain('full access')
+    expect(wildcard?.message).toContain('session rotate --narrow')
+    expect(result.readiness).toBe(true)
+})
+
 test('executeAccountStatus reports session key not found as warning', async () => {
     const result = await executeAccountStatus(
         {

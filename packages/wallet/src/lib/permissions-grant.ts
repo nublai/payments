@@ -15,6 +15,7 @@ import {
     withKeystoreLock,
 } from './keystore'
 import {
+    getUsdcTokenConfig,
     resolveNetworkConfig,
     selectDefaultChain,
     type ChainName,
@@ -36,9 +37,17 @@ import {
     readAccountNonce,
 } from './relayer-client-utils'
 import {
+    CONFIRM_FULL_ACCESS_PHRASE,
+    HumanConfirmationError,
+    humanConfirmationMessage,
+} from './human-confirmation'
+import { readActiveUsdcDaily } from './session-gates'
+import {
     computeSessionKeyHash,
+    DEFAULT_SESSION_SPEND_LIMIT,
     getChainKeys,
     listSessionNames,
+    normalizedDailyUsdcUnits,
     parseSessionName,
 } from './session-common'
 import {
@@ -195,6 +204,8 @@ export async function executePermissionsGrant(
         spendLimit?: bigint
         period?: ReturnType<typeof parsePeriod>
         password: string
+        /** Set only after the caller collected CREATE FULL ACCESS SESSION. */
+        fullAccessPhraseConfirmed?: boolean
     },
     depsArg?: Partial<PermissionsGrantDeps>,
 ): Promise<PermissionsGrantResult> {
@@ -274,6 +285,30 @@ export async function executePermissionsGrant(
                     options.spendLimit,
                 ],
             })
+            if (!options.fullAccessPhraseConfirmed) {
+                const usdc = getUsdcTokenConfig(chain).address
+                if (options.token.toLowerCase() === usdc.toLowerCase()) {
+                    const proposed = normalizedDailyUsdcUnits(options.spendLimit, options.period)
+                    const existing = await readActiveUsdcDaily({
+                        env: options.env,
+                        chain,
+                        name: options.name,
+                        keystorePath,
+                        excludeKeyHash: selected.key.hash,
+                    })
+                    if (
+                        existing === 'unreadable' ||
+                        existing + proposed > DEFAULT_SESSION_SPEND_LIMIT
+                    ) {
+                        throw new HumanConfirmationError(
+                            humanConfirmationMessage(
+                                'Granting a full-access permission',
+                                CONFIRM_FULL_ACCESS_PHRASE,
+                            ),
+                        )
+                    }
+                }
+            }
         }
 
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
