@@ -1,5 +1,5 @@
 import { test, expect, mock } from 'bun:test'
-import type { Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import {
     AccountCreateError,
     assertAccountCreateCanInitialize,
@@ -10,6 +10,7 @@ import {
     resolveAccountCreatePassword,
     type AccountCreateOptions,
 } from '../src/lib/account-create'
+import { FirstUpgradeError } from '../src/lib/first-upgrade'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 
 function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRootKeystoreV2 {
@@ -512,4 +513,54 @@ test('executeAccountCreate surfaces session write errors before delegation', asy
         name: 'AccountCreateError',
         code: 'UNKNOWN',
     })
+})
+
+test('executeAccountCreate keeps the delegated checkpoint when permission install is still pending', async () => {
+    const rootPrivateKey =
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+    const rootKeystore = makeRootKeystore({
+        addresses: {
+            root: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+        },
+    })
+    const sessionKeystore = makeSessionKeystore()
+    const checkpoints: Array<string | undefined> = []
+
+    await expect(
+        executeAccountCreate(
+            {
+                env: 'prod',
+                password: 'password',
+                keystorePath: '/tmp/test-keystore.json',
+            },
+            {
+                generatePrivateKey: mock(() => rootPrivateKey),
+                createRootKeystore: mock(async () => rootKeystore),
+                createSessionKeystore: mock(async () => sessionKeystore),
+                writeRootKeystoreFile: mock(async (_path, keystore) => {
+                    checkpoints.push(keystore.checkpoint)
+                }),
+                writeSessionKeystoreFile: mock(async () => {}),
+                delegateAccount: mock(async (input) => {
+                    await input.onKeyAuthorized?.(
+                        '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address,
+                    )
+                    throw new FirstUpgradeError(
+                        'PERMISSIONS_PENDING',
+                        'The session key is authorized, but its permissions are not installed yet. It cannot execute or spend until you resume. tw account create --resume --keystore-path "/tmp/test-keystore.json"',
+                        {
+                            recoveryCommand:
+                                'tw account create --resume --keystore-path "/tmp/test-keystore.json"',
+                        },
+                    )
+                }),
+            },
+        ),
+    ).rejects.toMatchObject({
+        code: 'PERMISSIONS_PENDING',
+        recoveryCommand: expect.stringContaining('--resume'),
+    })
+
+    expect(checkpoints).toEqual(['initialized', 'delegated'])
+    expect(rootKeystore.checkpoint).toBe('delegated')
 })

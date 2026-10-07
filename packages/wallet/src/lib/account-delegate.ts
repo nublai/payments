@@ -1,5 +1,5 @@
 import { getAddress, type Address, type Hex } from 'viem'
-import { encodeSecp256k1Key, type AuthorizeKey, type Permission } from '@nubl/relayer-client'
+import { type Permission } from '@nubl/relayer-client'
 import {
     AccountCreateError,
     getDefaultSessionPermissions,
@@ -17,11 +17,13 @@ import {
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
+import { hasDelegationCode, readAccountCode } from './delegation-utils'
 import {
-    delegateAccountWithAuthorizeKeys,
-    hasDelegationCode,
-    readAccountCode,
-} from './delegation-utils'
+    FirstUpgradeError,
+    paidUpgradeMarkerPath,
+    readPaidUpgradeMarker,
+    runFirstUpgrade,
+} from './first-upgrade'
 
 type AccountDelegateErrorCode =
     | 'MISSING_ARGUMENT'
@@ -103,7 +105,10 @@ type AccountDelegateDeps = {
         sessionAddress: Address
         network: CliNetworkConfig
         permissions: Permission[]
-    }) => Promise<{ accountAddress: Address; txHash?: Hex }>
+        keystorePath?: string
+        sessionsDir?: string
+        onKeyAuthorized?: (accountAddress: Address) => Promise<void>
+    }) => Promise<{ accountAddress: Address; txHash?: Hex; permissionsTxHash?: Hex }>
 }
 
 function getDefaultDeps(): AccountDelegateDeps {
@@ -113,21 +118,30 @@ function getDefaultDeps(): AccountDelegateDeps {
         decryptSessionKeystore,
         writeRootKeystoreFile,
         getDelegatedCode: ({ network, address }) => readAccountCode({ network, address }),
-        delegateAccount: async ({ rootPrivateKey, sessionAddress, network, permissions }) =>
-            delegateAccountWithAuthorizeKeys({
+        delegateAccount: async ({
+            rootPrivateKey,
+            sessionAddress,
+            network,
+            permissions,
+            keystorePath,
+            sessionsDir,
+            onKeyAuthorized,
+        }) => {
+            const result = await runFirstUpgrade({
                 rootPrivateKey,
                 sessionAddress,
                 network,
-                authorizeKeys: [
-                    {
-                        expiry: '0',
-                        type: 'secp256k1',
-                        role: 'normal',
-                        publicKey: encodeSecp256k1Key(sessionAddress),
-                        permissions,
-                    } satisfies AuthorizeKey,
-                ],
-            }),
+                permissions,
+                keystorePath,
+                sessionsDir,
+                onKeyAuthorized,
+            })
+            return {
+                accountAddress: result.accountAddress,
+                txHash: result.txHash,
+                permissionsTxHash: result.permissionsTxHash,
+            }
+        },
     }
 }
 
@@ -186,12 +200,23 @@ export async function executeAccountDelegate(
             try {
                 const code = await deps.getDelegatedCode({ network, address: rootAddress })
                 if (hasDelegationCode(code)) {
-                    results.push({
-                        chain,
-                        chainId: network.chainId,
-                        status: 'already_delegated',
-                    })
-                    continue
+                    const marker = await readPaidUpgradeMarker(
+                        paidUpgradeMarkerPath(
+                            keystorePath,
+                            bundle.root.sessionRef.dir,
+                            network.chainId,
+                        ),
+                    )
+                    const resumePermissions =
+                        marker?.sessionAddress.toLowerCase() === sessionAddress.toLowerCase()
+                    if (!resumePermissions) {
+                        results.push({
+                            chain,
+                            chainId: network.chainId,
+                            status: 'already_delegated',
+                        })
+                        continue
+                    }
                 }
 
                 const delegation = await deps.delegateAccount({
@@ -201,6 +226,15 @@ export async function executeAccountDelegate(
                     permissions: getDefaultSessionPermissions(network.chainId, {
                         env: options.env,
                     }),
+                    keystorePath,
+                    sessionsDir: bundle.root.sessionRef.dir,
+                    onKeyAuthorized: async () => {
+                        bundle.root.checkpoint = 'delegated'
+                        bundle.root.addresses.delegated = rootAddress
+                        await deps.writeRootKeystoreFile(keystorePath, bundle.root, {
+                            overwrite: true,
+                        })
+                    },
                 })
                 hasDelegatedAtLeastOne = true
                 results.push({
@@ -247,6 +281,13 @@ function toAccountDelegateError(
 ): AccountDelegateError {
     if (error instanceof AccountDelegateError) {
         return error
+    }
+
+    if (error instanceof FirstUpgradeError) {
+        if (error.code === 'PERMISSIONS_PENDING') {
+            return new AccountDelegateError('PARTIAL_FAILURE', error.message, { cause: error })
+        }
+        return new AccountDelegateError('DELEGATION_FAILED', error.message, { cause: error })
     }
 
     if (error instanceof AccountCreateError && error.code === 'INVALID_NAME') {
