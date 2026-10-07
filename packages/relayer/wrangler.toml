@@ -76,7 +76,9 @@ bindings = [
 # Do not commit the address.
 # PRIVY_ENABLED is set explicitly. Startup then requires PRIVY_APP_ID and
 # PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
-vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
+# ERC8128_ENABLED lets `tw account create` / `tw account delegate` sign the
+# sponsored upgrade with the new account's own key, without the allowlist.
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true" }
 preview_urls = false
 
 [env.stage.observability]
@@ -117,7 +119,9 @@ crons = ["*/5 * * * *"]
 # Do not commit the address.
 # PRIVY_ENABLED is set explicitly. Startup then requires PRIVY_APP_ID and
 # PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
-vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
+# ERC8128_ENABLED lets `tw account create` / `tw account delegate` sign the
+# sponsored upgrade with the new account's own key, without the allowlist.
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true" }
 preview_urls = false
 
 [env.prod.observability]

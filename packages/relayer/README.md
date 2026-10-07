@@ -104,6 +104,8 @@ Protected JSON-RPC methods are controlled by a shared policy used by all enabled
 
 Those ceilings come from `src/rpc/methods/shared/upgrade-rate-limit.ts`. The per-transaction cap is in `src/rpc/methods/shared/upgrade-gas.ts`: 1,500,000 gas, a 100 gwei max fee, and a 2 gwei priority fee, so one sponsored upgrade can cost at most 0.15 ETH. The sponsored path has no daily gas or ETH budget. For launch, the relayer signer balance is kept low on purpose, and that balance is the spend limit.
 
+Tradeoff: stage and prod set `ERC8128_ENABLED=true`, and an ERC-8128 key may call both upgrade methods for its own address without being on `ERC8128_ALLOWED_SIGNERS`. That is how `tw account create` and `tw account delegate` work for a new user. It also means any fresh key can get a sponsored upgrade. The per-identity ceiling does not bind someone who generates new keys. What bounds the spend is 100 upgrades per IP and 2,000 per chain per 10 minutes (`src/rpc/methods/shared/upgrade-rate-limit.ts`), the 1,500,000 gas cap at a 100 gwei max fee (`src/rpc/methods/shared/upgrade-gas.ts`, at most 0.15 ETH per upgrade), and the relayer signer balance, which is kept low on purpose. There is no daily gas or ETH budget on this path.
+
 | Name                     | Default                    | Description                                |
 | ------------------------ | -------------------------- | ------------------------------------------ |
 | `AUTH_PROTECTED_METHODS` | `wallet_sendPreparedCalls` | Comma-separated protected JSON-RPC methods |
@@ -128,10 +130,10 @@ Launch is sponsored-only. Every first upgrade goes through `wallet_prepareUpgrad
 Outside `local` and `dev`, a recovered ERC-8128 key is accepted only when one of these is true:
 
 - the address is in `ERC8128_ALLOWED_SIGNERS`, or
-- the address is the intent EOA (`from` on prepare, `intent.eoa` on send), or
+- the address is the intent EOA (`from` on prepare, `intent.eoa` on send) or the account being upgraded (`address` on `wallet_prepareUpgradeAccount`, `context.address` on `wallet_upgradeAccount`), or
 - the address is a live secp256k1 key registered on that account (`Account.getKey`). The relayer reads this from its own RPC. A client-supplied `session_key` or quote `authSigner` is not accepted by itself.
 
-`prepareCalls` writes `authSigner` only when `session_key` is that EOA or a live on-chain key. Send checks the HTTP signer against the quote only after the quote HMAC verifies. In one JSON-RPC batch, every protected method other than `wallet_prepareCalls` and `wallet_sendPreparedCalls` requires the allowlist. A prepare or send binding does not authorize those methods. An empty allowlist is not "any key". `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Local and dev accept any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
+`prepareCalls` writes `authSigner` only when `session_key` is that EOA or a live on-chain key. Send checks the HTTP signer against the quote only after the quote HMAC verifies. In one JSON-RPC batch, every protected method other than `wallet_prepareCalls`, `wallet_sendPreparedCalls`, `wallet_prepareUpgradeAccount`, and `wallet_upgradeAccount` requires the allowlist. A prepare, send, or upgrade binding does not authorize those methods. An empty allowlist is not "any key". `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Local and dev accept any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
 
 #### Privy Access Tokens
 
