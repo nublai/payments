@@ -69,7 +69,9 @@ export interface Env {
     CONTEXT?: string // Deployment context: "prod", "stage", "local" (default: "prod")
 
     // Fee configuration
-    FEE_RECIPIENT?: string // Address to receive fees (defaults to signer address)
+    // Required when CONTEXT is not local/dev. Simulation and broadcast must pay
+    // the same address. Unset locally falls back to the broadcasting signer.
+    FEE_RECIPIENT?: string
     PRIORITY_FEE_PERCENTILE?: string // Percentile from fee history (default: "50")
     QUOTE_TTL_SECONDS?: string // Quote TTL in seconds (default: "300")
 
@@ -113,6 +115,29 @@ export interface Env {
     PRIVY_ENABLED?: string
     PRIVY_APP_ID?: string
     PRIVY_APP_SECRET?: string
+
+    /**
+     * Cap on paymentMaxAmount for a USDC-paid first upgrade, in fee-token base
+     * units. Unset uses 5 USDC (6 decimals), the same ceiling as the wallet
+     * paid-fee cap. See DEFAULT_PAID_UPGRADE_MAX_PAYMENT.
+     */
+    PAID_UPGRADE_MAX_PAYMENT?: string
+    /**
+     * Paid-upgrade sends accepted per chain per 10 minutes. Prepares do not
+     * count. Unset uses DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT (60).
+     */
+    PAID_UPGRADE_GLOBAL_LIMIT?: string
+    /**
+     * Gas units a chain may spend on paid-upgrade broadcasts per UTC day.
+     * Unset uses DEFAULT_PAID_UPGRADE_DAILY_GAS_BUDGET. A missing or unreadable
+     * budget refuses the broadcast.
+     */
+    PAID_UPGRADE_DAILY_GAS_BUDGET?: string
+    /**
+     * How long a paid-upgrade send waits for its receipt before leaving the
+     * gas hold for the reconciler. Unset is 20 seconds.
+     */
+    PAID_UPGRADE_RECEIPT_WAIT_MS?: string
 
     // Price oracle configuration
     PRICE_ORACLE_PROVIDER?: string // Default: "coingecko"

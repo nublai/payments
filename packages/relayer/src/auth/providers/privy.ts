@@ -1,7 +1,8 @@
 import { getAddress, isAddress, type Address } from 'viem'
 
 import type { Env } from '../../types/env'
-import type { AuthProvider, AuthResult } from '../types'
+import { authProviderFromIdentity, type IdentityProvider, type IdentityResult } from '../identity-provider'
+import type { AuthProvider } from '../types'
 import { PrivyClient } from '@privy-io/server-auth'
 
 function parseBearerToken(
@@ -122,7 +123,19 @@ async function bindPrivyAccounts(
     return { ok: true, accounts }
 }
 
-export function createPrivyProvider(): AuthProvider {
+function requestFromIdentityInput(input: Request | string): Request {
+    if (typeof input !== 'string') return input
+    return new Request('https://relayer.local/', {
+        headers: { Authorization: `Bearer ${input}` },
+    })
+}
+
+/**
+ * Privy is the only identity provider in this process. `verify` returns the
+ * identity shape (`provider`, `userId`, `boundAccounts`) so another provider
+ * can sit beside it in the registry without a change to the identity gate.
+ */
+export function createPrivyIdentityProvider(): IdentityProvider {
     let client: PrivyClient | undefined
 
     function getClient(env: Env): PrivyClient {
@@ -138,7 +151,8 @@ export function createPrivyProvider(): AuthProvider {
         enabled(env: Env): boolean {
             return env.PRIVY_ENABLED === 'true'
         },
-        async verify(request: Request, ctx: { env: Env; nowSeconds: number }): Promise<AuthResult> {
+        async verify(input: Request | string, ctx: { env: Env; nowSeconds: number }): Promise<IdentityResult> {
+            const request = requestFromIdentityInput(input)
             const parsed = parseBearerToken(request)
             if (!parsed.ok) {
                 return {
@@ -184,12 +198,13 @@ export function createPrivyProvider(): AuthProvider {
                     if (!linked.ok) return linked
                     return {
                         ok: true,
+                        provider: 'privy',
                         userId: claims.userId,
                         boundAccounts: linked.accounts,
                     }
                 }
 
-                return { ok: true, userId: claims.userId }
+                return { ok: true, provider: 'privy', userId: claims.userId, boundAccounts: [] }
             } catch (error) {
                 const classified = classifyPrivyError(error)
 
@@ -217,4 +232,9 @@ export function createPrivyProvider(): AuthProvider {
             }
         },
     }
+}
+
+/** HTTP auth adapter. Existing callers and tests keep the AuthProvider result shape. */
+export function createPrivyProvider(): AuthProvider {
+    return authProviderFromIdentity(createPrivyIdentityProvider())
 }

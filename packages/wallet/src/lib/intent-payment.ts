@@ -120,10 +120,13 @@ export function reviewQuotePayment(input: {
 }
 
 export function discloseFeeCap(token: Address, amount: bigint): FeeCapDisclosure {
+    const native = getAddress(token) === zeroAddress
     return {
         token,
-        symbol: token === zeroAddress ? 'none' : 'USDC',
-        amountUsdc: formatUsdcAmount(amount),
+        symbol: native ? 'none' : 'USDC',
+        // Native value is wei. A zero native cap stays "0" so local dev output
+        // is unchanged. Any other native amount is labeled in wei, not 6-decimal USDC.
+        amountUsdc: native ? (amount === 0n ? '0' : `${amount.toString()} wei`) : formatUsdcAmount(amount),
         expiresIn: '1h',
     }
 }
