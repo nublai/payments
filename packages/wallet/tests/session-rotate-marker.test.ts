@@ -11,6 +11,7 @@ import { executeSessionList } from '../src/lib/session-list'
 import { executeSessionRevoke } from '../src/lib/session-revoke'
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
+import { installFormerProdDeployments, installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
@@ -55,9 +56,13 @@ function rootBundle() {
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
+    const restoreProd = installFormerProdDeployments()
     try {
         return await fn()
     } finally {
+        restoreProd()
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }

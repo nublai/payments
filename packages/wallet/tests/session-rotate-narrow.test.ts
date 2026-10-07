@@ -12,7 +12,7 @@ import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
-import { installFormerStageDeployments } from './helpers/former-deployment-env'
+import { installFormerProdDeployments, installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
@@ -221,7 +221,7 @@ function rotateDeps(overrides: Record<string, unknown>) {
         }),
         readNonce: mock(async () => 1n),
         getKeys: mock(async () => ({
-            '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
+            '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
         })),
         executeSignedCalls: mock(async () => ({
             id: 'bundle-narrow',
@@ -268,6 +268,9 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                 fullAccessPhraseConfirmed: true,
             },
             rotateDeps({
+                getKeys: mock(async () => ({
+                    '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
+                })),
                 readGuardCleanup: mock(async () => ({
                     anyCalls: [
                         {
@@ -575,6 +578,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
 test('a failed extra-chain bundle is a partial rotation and keeps both session files', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
     try {
         await expect(
@@ -586,6 +590,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
         expect(harness.unlinked.some((path) => path.endsWith('default.json'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -594,6 +599,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
 test('a thrown extra-chain wait keeps the new session file', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('throw')
     try {
         await expect(
@@ -604,6 +610,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
         })
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -612,6 +619,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
 test('resuming a partial rotation finishes the extra-chain cleanup', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
     try {
         await expect(
@@ -631,6 +639,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
         )
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -641,7 +650,11 @@ const attacker = '0x4444444444444444444444444444444444444444' as Address
 function stageEnv<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
+    const restoreProd = installFormerProdDeployments()
     return fn().finally(() => {
+        restoreProd()
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     })

@@ -12,6 +12,7 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { installFormerProdDeployments, installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import type { Call } from '@nubl/relayer-client'
 
@@ -91,9 +92,13 @@ async function stageDir(prefix: string) {
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
+    const restoreProd = installFormerProdDeployments()
     try {
         return await fn()
     } finally {
+        restoreProd()
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
