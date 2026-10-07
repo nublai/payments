@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
 import { decodeFunctionData, type Address, type Hex } from 'viem'
 import { signedPaymentMaxForQuote } from '@nubl/relayer-client'
@@ -590,4 +593,289 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
+})
+
+const attacker = '0x4444444444444444444444444444444444444444' as Address
+
+function stageEnv<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = process.env.RELAYER_URL_STAGE
+    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    return fn().finally(() => {
+        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
+        else process.env.RELAYER_URL_STAGE = previous
+    })
+}
+
+test('resume after a successful rotation does not start another rotation', async () => {
+    await stageEnv(async () => {
+        let intent: Record<string, unknown> | null = null
+        const signed: string[] = []
+        const deps = rotateDeps({
+            readRotationIntent: mock(async () => intent),
+            writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
+                intent = { ...value, fileName: fileName ?? '.rotation.json' }
+                return intent
+            }),
+            deleteRotationIntent: mock(async () => {
+                intent = null
+            }),
+            executeSignedCalls: mock(async () => {
+                signed.push('authorize')
+                return {
+                    id: 'bundle-once',
+                    finalStatus: {
+                        success: true,
+                        statusCode: 200,
+                        status: 'confirmed',
+                        receipt: {
+                            transactionHash:
+                                '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
+                        },
+                    },
+                }
+            }),
+        })
+        const first = await executeSessionRotate(
+            {
+                env: 'stage',
+                chain: 'base',
+                keystorePath: '/tmp/resume-noop.json',
+                password: 'pw',
+                narrow: true,
+                newName: 'default-next',
+            },
+            deps as never,
+        )
+        expect(first.status).toBe('complete')
+        expect(signed).toEqual(['authorize'])
+        const again = await executeSessionRotate(
+            {
+                env: 'stage',
+                chain: 'base',
+                keystorePath: '/tmp/resume-noop.json',
+                password: 'pw',
+                resume: true,
+            },
+            deps as never,
+        )
+        expect(again.resumed).toBe(true)
+        expect(again.newSessionName).toBe(again.oldSessionName)
+        expect(signed).toEqual(['authorize'])
+    })
+})
+
+test('a tampered pending marker is not authorized', async () => {
+    await stageEnv(async () => {
+        const signed: Hex[] = []
+        let reads = 0
+        const deps = rotateDeps({
+            readRotationIntent: mock(async () => ({
+                oldSessionName: 'default',
+                newSessionName: 'attacker',
+                status: 'pending',
+                fileName: '.rotation-9000.json',
+                chain: 'base',
+                chainId: 8453,
+                newKeyHash: computeSessionKeyHash(attacker),
+                narrow: true,
+                fullAccess: false,
+            })),
+            readSessionKeystoreFile: mock(async () => {
+                reads += 1
+                if (reads === 1) {
+                    return {
+                        addresses: { session: oldAddress, delegated: account },
+                        name: 'default',
+                    }
+                }
+                return {
+                    addresses: { session: attacker, delegated: account },
+                    name: 'attacker',
+                }
+            }),
+            getKeys: mock(async () => ({
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
+            executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                for (const call of params.calls) signed.push(call.data)
+                return {
+                    id: 'bundle-tamper',
+                    finalStatus: { success: true, statusCode: 200, status: 'confirmed' },
+                }
+            }),
+        })
+        await expect(
+            executeSessionRotate(
+                {
+                    env: 'stage',
+                    chain: 'base',
+                    keystorePath: '/tmp/tamper-rotate.json',
+                    password: 'pw',
+                    resume: true,
+                },
+                deps as never,
+            ),
+        ).rejects.toMatchObject({ code: 'ROTATION_MARKER_MISMATCH' })
+        expect(signed).toEqual([])
+    })
+})
+
+test('two rotation markers are refused instead of using the lexicographic last', async () => {
+    await stageEnv(async () => {
+        const rootDir = await mkdtemp(join(tmpdir(), 'rotation-markers-'))
+        const sessions = join(rootDir, 'sessions')
+        await mkdir(sessions)
+        const marker = {
+            oldSessionName: 'default',
+            newSessionName: 'default-next',
+            chain: 'base',
+            chainId: 8453,
+            newKeyHash: computeSessionKeyHash(newAddress),
+            narrow: true,
+            fullAccess: false,
+        }
+        await writeFile(
+            join(sessions, '.rotation-2000.json'),
+            `${JSON.stringify({ ...marker, status: 'submitted', bundleId: 'legit' })}\n`,
+        )
+        await writeFile(
+            join(sessions, '.rotation-9000.json'),
+            `${JSON.stringify({
+                ...marker,
+                newSessionName: 'attacker',
+                newKeyHash: computeSessionKeyHash(attacker),
+                status: 'pending',
+            })}\n`,
+        )
+        const signed: string[] = []
+        const { readRotationIntent: _ignored, ...deps } = rotateDeps({
+            readKeystoreBundle: mock(async () => ({
+                root: {
+                    addresses: { root: account, delegated: account },
+                    sessionRef: { active: 'default', dir: 'sessions' },
+                },
+            })),
+            executeSignedCalls: mock(async () => {
+                signed.push('signed')
+                return {
+                    id: 'bundle-lex',
+                    finalStatus: { success: true, statusCode: 200, status: 'confirmed' },
+                }
+            }),
+        })
+        void _ignored
+        await expect(
+            executeSessionRotate(
+                {
+                    env: 'stage',
+                    chain: 'base',
+                    keystorePath: join(rootDir, 'alice.json'),
+                    password: 'pw',
+                    resume: true,
+                },
+                deps as never,
+            ),
+        ).rejects.toMatchObject({ code: 'ROTATION_MARKER_AMBIGUOUS' })
+        expect(signed).toEqual([])
+    })
+})
+
+test('resume --chain refuses a marker for a different chain', async () => {
+    await stageEnv(async () => {
+        const signed: string[] = []
+        const deps = rotateDeps({
+            readRotationIntent: mock(async () => ({
+                oldSessionName: 'default',
+                newSessionName: 'default-next',
+                status: 'submitted',
+                bundleId: 'bundle-base',
+                fileName: '.rotation.json',
+                chain: 'base',
+                chainId: 8453,
+                newKeyHash: computeSessionKeyHash(newAddress),
+                narrow: true,
+                fullAccess: false,
+            })),
+            getKeys: mock(async () => ({
+                '0x89': [{ hash: computeSessionKeyHash(newAddress) }],
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
+            waitForBundle: mock(async () => ({
+                success: true,
+                statusCode: 200,
+                status: 'confirmed',
+                receipt: {
+                    transactionHash:
+                        '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
+                },
+            })),
+            executeSignedCalls: mock(async () => {
+                signed.push('signed')
+                return {
+                    id: 'bundle-wrong-chain',
+                    finalStatus: { success: true, statusCode: 200, status: 'confirmed' },
+                }
+            }),
+        })
+        await expect(
+            executeSessionRotate(
+                {
+                    env: 'stage',
+                    chain: 'polygon',
+                    keystorePath: '/tmp/wrong-chain-rotate.json',
+                    password: 'pw',
+                    resume: true,
+                },
+                deps as never,
+            ),
+        ).rejects.toMatchObject({
+            code: 'ROTATION_WRONG_CHAIN',
+            details: { markerChain: 'base', requestedChain: 'polygon' },
+        })
+        expect(signed).toEqual([])
+    })
+})
+
+test('a submitted resume re-reads the daily USDC total under the lock', async () => {
+    await stageEnv(async () => {
+        const daily = mock(async () => 0n)
+        const deps = rotateDeps({
+            readRotationIntent: mock(async () => ({
+                oldSessionName: 'default',
+                newSessionName: 'default-next',
+                status: 'submitted',
+                bundleId: 'bundle-base',
+                fileName: '.rotation.json',
+                chain: 'base',
+                chainId: 8453,
+                newKeyHash: computeSessionKeyHash(newAddress),
+                narrow: true,
+                fullAccess: false,
+            })),
+            readActiveUsdcDaily: daily,
+            waitForBundle: mock(async () => ({
+                success: true,
+                statusCode: 200,
+                status: 'confirmed',
+                receipt: {
+                    transactionHash:
+                        '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
+                },
+            })),
+            readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
+        })
+        const result = await executeSessionRotate(
+            {
+                env: 'stage',
+                chain: 'base',
+                keystorePath: '/tmp/daily-resume.json',
+                password: 'pw',
+                resume: true,
+                narrow: true,
+            },
+            deps as never,
+        )
+        expect(result.status).toBe('complete')
+        expect(daily).toHaveBeenCalled()
+    })
 })

@@ -60,10 +60,17 @@ import {
 } from './session-common'
 import { generatePrivateKey } from 'viem/accounts'
 
+const ROTATION_MARKER_NAME = '.rotation.json'
+
 type RotationIntentBase = {
     oldSessionName: string
     newSessionName: string
     fileName: string
+    chain: ChainName
+    chainId: number
+    newKeyHash: Hex
+    narrow: boolean
+    fullAccess: boolean
 }
 
 type PendingRotationIntent = RotationIntentBase & {
@@ -87,6 +94,9 @@ type SessionRotateErrorCode =
     | 'PASSWORD_REQUIRED'
     | 'ROTATION_FAILED'
     | 'ROTATION_PARTIAL'
+    | 'ROTATION_MARKER_AMBIGUOUS'
+    | 'ROTATION_MARKER_MISMATCH'
+    | 'ROTATION_WRONG_CHAIN'
     | 'ROTATION_VERIFICATION_FAILED'
     | 'KEYSTORE_LOCKED'
     | 'UNKNOWN'
@@ -212,12 +222,18 @@ async function defaultReadRotationIntent(
                 entry.name.endsWith('.json'),
         )
         .map((entry) => entry.name)
-        .sort()
-    const latest = candidates.at(-1)
-    if (!latest) return null
-    const content = await readFile(join(dir, latest), 'utf8')
+    if (candidates.length === 0) return null
+    if (candidates.length > 1) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_AMBIGUOUS',
+            `Refusing to resume: found ${candidates.length} rotation markers (${candidates.join(', ')}). Keep the one rotation you started.`,
+            { details: { files: candidates } },
+        )
+    }
+    const markerName = candidates[0]!
+    const content = await readFile(join(dir, markerName), 'utf8')
     const parsed = parseRotationIntentPayload(JSON.parse(content))
-    return withRotationIntentFileName(parsed, latest)
+    return withRotationIntentFileName(parsed, markerName)
 }
 
 async function defaultWriteRotationIntent(
@@ -227,7 +243,7 @@ async function defaultWriteRotationIntent(
     fileName?: string,
 ): Promise<RotationIntent> {
     const dir = rotationDir(rootKeystorePath, sessionsDir)
-    const finalFileName = fileName ?? `.rotation-${Date.now()}.json`
+    const finalFileName = fileName ?? ROTATION_MARKER_NAME
     await writeFile(join(dir, finalFileName), `${JSON.stringify(value, null, 2)}\n`, {
         mode: 0o600,
     })
@@ -253,24 +269,53 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
         newSessionName?: unknown
         status?: unknown
         bundleId?: unknown
+        chain?: unknown
+        chainId?: unknown
+        newKeyHash?: unknown
+        narrow?: unknown
+        fullAccess?: unknown
     }
     if (typeof maybe.oldSessionName !== 'string' || typeof maybe.newSessionName !== 'string') {
         throw new Error('Invalid rotation intent payload.')
     }
+    if (maybe.chain !== 'base' && maybe.chain !== 'polygon' && maybe.chain !== 'anvil') {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing the chain it was started on.',
+        )
+    }
+    if (typeof maybe.chainId !== 'number' || !Number.isInteger(maybe.chainId)) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its chain id.',
+        )
+    }
+    if (typeof maybe.newKeyHash !== 'string' || !maybe.newKeyHash.startsWith('0x')) {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing the new key hash.',
+        )
+    }
+    if (typeof maybe.narrow !== 'boolean' || typeof maybe.fullAccess !== 'boolean') {
+        throw new SessionRotateError(
+            'ROTATION_MARKER_MISMATCH',
+            'Rotation marker is missing its permission flags.',
+        )
+    }
+    const bound = {
+        oldSessionName: maybe.oldSessionName,
+        newSessionName: maybe.newSessionName,
+        chain: maybe.chain,
+        chainId: maybe.chainId,
+        newKeyHash: maybe.newKeyHash as Hex,
+        narrow: maybe.narrow,
+        fullAccess: maybe.fullAccess,
+    }
     if (maybe.status === 'pending') {
-        return {
-            oldSessionName: maybe.oldSessionName,
-            newSessionName: maybe.newSessionName,
-            status: 'pending',
-        }
+        return { ...bound, status: 'pending' }
     }
     if (maybe.status === 'submitted' && typeof maybe.bundleId === 'string' && maybe.bundleId) {
-        return {
-            oldSessionName: maybe.oldSessionName,
-            newSessionName: maybe.newSessionName,
-            status: 'submitted',
-            bundleId: maybe.bundleId,
-        }
+        return { ...bound, status: 'submitted', bundleId: maybe.bundleId }
     }
     throw new Error('Invalid rotation intent payload.')
 }
@@ -282,6 +327,11 @@ function markRotationIntentSubmitted(
     return {
         oldSessionName: intent.oldSessionName,
         newSessionName: intent.newSessionName,
+        chain: intent.chain,
+        chainId: intent.chainId,
+        newKeyHash: intent.newKeyHash,
+        narrow: intent.narrow,
+        fullAccess: intent.fullAccess,
         status: 'submitted',
         bundleId,
     }
@@ -477,8 +527,8 @@ export async function executeSessionRotate(
     depsArg?: Partial<SessionRotateDeps>,
 ): Promise<SessionRotateResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
-    const chain = selectDefaultChain(options.env, options.chain)
-    const network = resolveNetworkConfig(options.env, chain)
+    let chain = selectDefaultChain(options.env, options.chain)
+    let network = resolveNetworkConfig(options.env, chain)
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -512,6 +562,23 @@ export async function executeSessionRotate(
         let intent = await deps.readRotationIntent(keystorePath, bundle.root.sessionRef.dir)
         let resumed = false
 
+        if (options.resume && !intent) {
+            await deps.decryptRootKeystore(bundle.root, options.password)
+            return {
+                type: 'session_rotate',
+                status: 'complete',
+                resumed: true,
+                keystorePath,
+                network,
+                accountAddress,
+                oldSessionName: activeSessionName,
+                newSessionName: activeSessionName,
+                oldSessionPath,
+                newSessionPath: oldSessionPath,
+                bundle: { id: 'noop', status: 'already-complete', statusCode: 0 },
+            }
+        }
+
         if (!intent || !options.resume) {
             const newSessionName = options.newName
                 ? parseSessionName(options.newName)
@@ -535,6 +602,11 @@ export async function executeSessionRotate(
                 oldSessionName: activeSessionName,
                 newSessionName,
                 status: 'pending',
+                chain,
+                chainId: network.chainId,
+                newKeyHash: computeSessionKeyHash(getAddress(newSession.addresses.session)),
+                narrow: options.narrow === true,
+                fullAccess: options.fullAccess === true,
             })
         } else {
             resumed = true
@@ -548,6 +620,44 @@ export async function executeSessionRotate(
         const newSession = await deps.readSessionKeystoreFile(newSessionPath)
         const newSessionAddress = getAddress(newSession.addresses.session)
         const newKeyHash = computeSessionKeyHash(newSessionAddress)
+        if (resumed) {
+            if (intent.newKeyHash.toLowerCase() !== newKeyHash.toLowerCase()) {
+                throw new SessionRotateError(
+                    'ROTATION_MARKER_MISMATCH',
+                    'Rotation marker key does not match the new session file. Refusing to authorize.',
+                    { details: { markerKeyHash: intent.newKeyHash, sessionKeyHash: newKeyHash } },
+                )
+            }
+            if (options.chain && options.chain !== intent.chain) {
+                throw new SessionRotateError(
+                    'ROTATION_WRONG_CHAIN',
+                    `This rotation was started on ${intent.chain}. Refusing to resume it on ${options.chain}.`,
+                    { details: { markerChain: intent.chain, requestedChain: options.chain } },
+                )
+            }
+            if (intent.chain !== chain) {
+                chain = intent.chain
+                network = resolveNetworkConfig(options.env, chain)
+            }
+            if (intent.chainId !== network.chainId) {
+                throw new SessionRotateError(
+                    'ROTATION_MARKER_MISMATCH',
+                    'Rotation marker chain id does not match the chain.',
+                )
+            }
+            if (options.narrow === true && intent.narrow !== true) {
+                throw new SessionRotateError(
+                    'ROTATION_MARKER_MISMATCH',
+                    'Resume asked for --narrow, but this rotation marker is not narrow.',
+                )
+            }
+            if (options.fullAccess === true && intent.fullAccess !== true) {
+                throw new SessionRotateError(
+                    'ROTATION_MARKER_MISMATCH',
+                    'Resume asked for full access, but this rotation marker is not full access.',
+                )
+            }
+        }
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
         const signedNetwork = {
             ...network,
@@ -560,7 +670,9 @@ export async function executeSessionRotate(
         let extraCleanups: { chainName: ChainName; calls: Call[] }[] = []
 
         if (intent.status === 'pending') {
-            if (options.narrow && options.fullAccess) {
+            const narrow = resumed ? intent.narrow === true : options.narrow === true
+            const fullAccess = resumed ? intent.fullAccess === true : options.fullAccess === true
+            if (narrow && fullAccess) {
                 throw new SessionRotateError(
                     'ROTATION_FAILED',
                     '--narrow cannot be combined with full access.',
@@ -592,13 +704,13 @@ export async function executeSessionRotate(
                     args: [oldKeyHash],
                 }),
             }
-            const narrowPermissions = options.narrow
+            const narrowPermissions = narrow
                 ? getDefaultSessionPermissions(network.chainId, { env: options.env })
                 : undefined
-            const permissionDefaults = options.narrow
+            const permissionDefaults = narrow
                 ? undefined
                 : buildPermissionDefaults({
-                      fullAccess: options.fullAccess ?? false,
+                      fullAccess,
                       chain,
                       target: options.target,
                       selectors: options.selectors,
@@ -671,7 +783,7 @@ export async function executeSessionRotate(
             }
 
             let calls: Call[]
-            if (options.narrow) {
+            if (narrow) {
                 const permissions = narrowPermissions ?? []
                 const spend = permissions.find((permission) => permission.type === 'spend')
                 if (!spend || spend.type !== 'spend') {
@@ -754,6 +866,34 @@ export async function executeSessionRotate(
                 ]
             }
 
+            let skipSelectedAuthorize = false
+            if (resumed) {
+                const keysNow = await deps.getKeys({
+                    network: signedNetwork,
+                    account: accountAddress,
+                    chainId: network.chainId,
+                })
+                const present = getChainKeys(keysNow, network.chainId)
+                const hasNew = present.some(
+                    (entry: { hash?: string }) =>
+                        typeof entry.hash === 'string' &&
+                        entry.hash.toLowerCase() === newKeyHash.toLowerCase(),
+                )
+                const hasOld = present.some(
+                    (entry: { hash?: string }) =>
+                        typeof entry.hash === 'string' &&
+                        entry.hash.toLowerCase() === oldKeyHash.toLowerCase(),
+                )
+                if (hasNew && !hasOld) skipSelectedAuthorize = true
+                else if (!(!hasNew && hasOld)) {
+                    throw new SessionRotateError(
+                        'ROTATION_MARKER_MISMATCH',
+                        'On-chain keys do not match this rotation marker. Refusing to authorize.',
+                    )
+                }
+            }
+
+            if (!skipSelectedAuthorize) {
             const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
 
             try {
@@ -819,6 +959,15 @@ export async function executeSessionRotate(
                 markRotationIntentSubmitted(intent, bundleId),
                 intent.fileName,
             )
+            } else {
+                finalStatus = {
+                    id: 'already-authorized',
+                    success: true,
+                    status: 'confirmed',
+                    statusCode: 200,
+                }
+                bundleId = 'already-authorized'
+            }
         }
 
         if (intent.status === 'submitted' && !finalStatus) {
@@ -844,6 +993,61 @@ export async function executeSessionRotate(
                     },
                 },
             )
+        }
+
+        if (resumed && intent.status === 'submitted') {
+            const existing = await deps.readActiveUsdcDaily({
+                env: options.env,
+                chain,
+                name: options.name,
+                keystorePath,
+                excludeSessionName: activeSessionName,
+            })
+            if (!options.fullAccessPhraseConfirmed && !intent.fullAccess) {
+                const permissions = intent.narrow
+                    ? getDefaultSessionPermissions(network.chainId, { env: options.env })
+                    : undefined
+                const defaults = intent.narrow
+                    ? undefined
+                    : buildPermissionDefaults({
+                          fullAccess: false,
+                          chain,
+                          target: options.target,
+                          selectors: options.selectors,
+                          spendLimit: options.spendLimit,
+                          spendPeriod: options.spendPeriod,
+                      })
+                const usdc = getUsdcTokenConfig(chain).address
+                const spend = permissions?.find((permission) => permission.type === 'spend')
+                const spendToken = permissions ? spend?.token : defaults?.spendToken
+                const spendLimit = permissions
+                    ? BigInt(spend && spend.type === 'spend' ? spend.limit : '0')
+                    : defaults?.spendLimit
+                const spendPeriod = permissions
+                    ? spend && spend.type === 'spend'
+                        ? spend.period
+                        : undefined
+                    : defaults?.spendPeriod
+                if (
+                    spendToken &&
+                    spendLimit !== undefined &&
+                    spendPeriod &&
+                    spendToken.toLowerCase() === usdc.toLowerCase()
+                ) {
+                    const proposed = normalizedDailyUsdcUnits(spendLimit, spendPeriod)
+                    if (
+                        existing === 'unreadable' ||
+                        existing + proposed > DEFAULT_SESSION_SPEND_LIMIT
+                    ) {
+                        throw new HumanConfirmationError(
+                            humanConfirmationMessage(
+                                'Rotating to a full-access session',
+                                CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+                            ),
+                        )
+                    }
+                }
+            }
         }
 
         if (resumed) {

@@ -5,6 +5,7 @@ import { hashTypedData } from 'viem/utils'
 import { INTENT_TYPES, type Call } from '@nubl/relayer-client'
 import { executeAccountSend } from '../src/lib/account-send'
 import { executeSignedCalls } from '../src/lib/execute-calls'
+import { discloseFeeCap } from '../src/lib/intent-payment'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from '../src/lib/gas-ceiling'
 import { getEnvRelayerUrl, getUsdcAddressByChainId } from '../src/lib/network-config'
 import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
@@ -305,6 +306,94 @@ test('a caller cap without payer or token is refused', async () => {
         }),
     ).rejects.toThrow(/payer and paymentToken/)
     expect(signTypedData).not.toHaveBeenCalled()
+})
+
+const USDC_E = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as Address
+const WBTC = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' as Address
+
+test('an explicit zero payer and token is refused off local', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 100_000_000n,
+            payer: zeroAddress,
+            paymentToken: zeroAddress,
+        }),
+    ).rejects.toThrow(/zero address/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('a payer or token without a cap is refused off local', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, payer: zeroAddress }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, paymentToken: zeroAddress }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('a non-USDC fee token is refused off local', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 100_000_000n,
+            payer: EOA,
+            paymentToken: WBTC,
+        }),
+    ).rejects.toThrow(/native USDC/)
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 137,
+            paymentMaxAmount: 1001n,
+            payer: EOA,
+            paymentToken: USDC_E,
+        }),
+    ).rejects.toThrow(/native USDC/)
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 137,
+            paymentMaxAmount: 1001n,
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/native USDC/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('polygon native USDC is the only fee token accepted on polygon', async () => {
+    const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
+        preparedQuote(input, '1', 137),
+    )
+    await executeSignedCalls(deps, {
+        ...prodParams,
+        chainId: 137,
+        paymentMaxAmount: 100_000_000n,
+        payer: EOA,
+        paymentToken: POLYGON_USDC,
+    })
+    expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signedCap(signTypedData)).toBe(1001n)
+})
+
+test('discloseFeeCap does not format native wei as USDC', () => {
+    expect(discloseFeeCap(zeroAddress, 1001n)).toEqual({
+        token: zeroAddress,
+        symbol: 'none',
+        amountUsdc: '1001 wei',
+        expiresIn: '1h',
+    })
+    expect(discloseFeeCap(zeroAddress, 0n)).toEqual({
+        token: zeroAddress,
+        symbol: 'none',
+        amountUsdc: '0',
+        expiresIn: '1h',
+    })
 })
 
 test('an explicit 5 USDC ceiling still signs the quote plus margin', async () => {

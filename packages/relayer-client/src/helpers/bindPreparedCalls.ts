@@ -30,12 +30,28 @@ export class PreparedCallsBindingError extends Error {
 /** Off-local hard ceiling. A caller cap above this is clamped down to it. */
 export const PAID_FEE_CAP = 5_000_000n
 
-export class PaymentCapError extends Error {
-    readonly code = 'PAYMENT_CAP_INCOMPLETE' as const
+/**
+ * Circle native USDC. The 5 USDC ceiling is this token's 6-decimal units.
+ * USDC.e, WBTC, and native ETH are not this token.
+ * Keep in step with wallet `getUsdcAddressByChainId`.
+ */
+const NATIVE_USDC_BY_CHAIN_ID: Record<number, Address> = {
+    8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+    42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+}
 
-    constructor(message: string) {
+export class PaymentCapError extends Error {
+    readonly code: 'PAYMENT_CAP_INCOMPLETE' | 'PAYMENT_FEE_REFUSED'
+
+    constructor(
+        message: string,
+        code: 'PAYMENT_CAP_INCOMPLETE' | 'PAYMENT_FEE_REFUSED' = 'PAYMENT_CAP_INCOMPLETE',
+    ) {
         super(message)
         this.name = 'PaymentCapError'
+        this.code = code
     }
 }
 
@@ -43,6 +59,38 @@ export function requirePayerAndToken(payer: Address | undefined, paymentToken: A
     if (payer === undefined || paymentToken === undefined) {
         throw new PaymentCapError(
             'Refusing to sign prepared calls: paymentMaxAmount requires payer and paymentToken',
+        )
+    }
+}
+
+/** A lone payer or token must not override the policy while the cap is omitted. */
+export function refuseLonePayerOrToken(
+    payer: Address | undefined,
+    paymentToken: Address | undefined,
+    paymentMaxAmount: bigint | undefined,
+): void {
+    const hasPayer = payer !== undefined
+    const hasToken = paymentToken !== undefined
+    if (hasPayer !== hasToken && paymentMaxAmount === undefined) {
+        throw new PaymentCapError(
+            'Refusing to sign prepared calls: payer and paymentToken must be passed together',
+        )
+    }
+}
+
+/** Off local, the fee token is that chain's native USDC and the payer is not native ETH. */
+export function assertOffLocalFeeToken(chainId: number, payer: Address, paymentToken: Address): void {
+    if (getAddress(payer) === zeroAddress || getAddress(paymentToken) === zeroAddress) {
+        throw new PaymentCapError(
+            'Refusing to sign prepared calls: payer and paymentToken must not be the zero address off local chains',
+            'PAYMENT_FEE_REFUSED',
+        )
+    }
+    const usdc = NATIVE_USDC_BY_CHAIN_ID[chainId]
+    if (!usdc || getAddress(paymentToken) !== getAddress(usdc)) {
+        throw new PaymentCapError(
+            `Refusing to sign prepared calls: paymentToken must be native USDC on chain ${chainId}`,
+            'PAYMENT_FEE_REFUSED',
         )
     }
 }

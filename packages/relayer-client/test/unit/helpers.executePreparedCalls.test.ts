@@ -208,4 +208,59 @@ describe('executePreparedCalls fee cap', () => {
             }),
         ).rejects.toThrow(/payer and paymentToken/);
     });
+
+    it('refuses a zero payer and token off local', async () => {
+        const { relayer } = client('1');
+        await expect(
+            executePreparedCalls({
+                client: relayer as never,
+                from: EOA,
+                calls: CALLS,
+                chainId: 8453,
+                nonce: 1n,
+                verifyingContract: ORCHESTRATOR,
+                payer: zeroAddress,
+                paymentToken: zeroAddress,
+                paymentMaxAmount: 100_000_000n,
+                signer,
+                skipWait: true,
+            }),
+        ).rejects.toThrow(/zero address/);
+    });
+
+    it('refuses a fee token that is not native USDC for the chain', async () => {
+        const wbtc = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' as Address;
+        const { relayer } = client('1');
+        await expect(
+            executePreparedCalls({
+                client: relayer as never,
+                from: EOA,
+                calls: CALLS,
+                chainId: 8453,
+                nonce: 1n,
+                verifyingContract: ORCHESTRATOR,
+                payer: EOA,
+                paymentToken: wbtc,
+                paymentMaxAmount: 1001n,
+                signer,
+                skipWait: true,
+            }),
+        ).rejects.toThrow(/native USDC/);
+        const usdce = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as Address;
+        await expect(
+            executePreparedCalls({
+                client: relayer as never,
+                from: EOA,
+                calls: CALLS,
+                chainId: 137,
+                nonce: 1n,
+                verifyingContract: ORCHESTRATOR,
+                payer: EOA,
+                paymentToken: usdce,
+                paymentMaxAmount: 1001n,
+                signer,
+                skipWait: true,
+            }),
+        ).rejects.toThrow(/native USDC/);
+    });
 });

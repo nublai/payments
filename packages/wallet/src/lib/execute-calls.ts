@@ -1,9 +1,11 @@
 import {
     bindPreparedCalls,
+    assertOffLocalFeeToken,
     clampPaymentCeiling,
     firstQuotePaymentAmount,
     INTENT_EXPIRY_TTL_SECONDS,
     PreparedCallsBindingError,
+    refuseLonePayerOrToken,
     requirePayerAndToken,
     resolveSignedFeeCap,
     wrapSignature,
@@ -77,13 +79,16 @@ export async function executeSignedCalls(
     const expiry = params.expiry ?? now + INTENT_EXPIRY_TTL_SECONDS
     const policy = resolveIntentPayment(params.env, params.chainId, params.from)
     // An explicit cap is a ceiling, not the signed value, and it cannot exceed
-    // the policy ceiling. Payer and token are required with a cap so an omitted
-    // pair cannot fall through to native ETH. Omitting the cap still uses the
-    // policy ceiling, including when the caller passes payer and token.
+    // the policy ceiling. Payer and token are required together. Off local they
+    // must be a non-zero payer and that chain's native USDC, so a zero pair
+    // cannot sign native ETH and a raw 5_000_000 cap cannot apply to WBTC.
+    // Omitting the cap still uses the policy ceiling when both payer and token
+    // are passed, or when neither is.
+    const zeroFee = isLocalFeeChain(params.env, params.chainId)
+    refuseLonePayerOrToken(params.payer, params.paymentToken, params.paymentMaxAmount)
     if (params.paymentMaxAmount !== undefined) {
         requirePayerAndToken(params.payer, params.paymentToken)
     }
-    const zeroFee = isLocalFeeChain(params.env, params.chainId)
     const ceiling =
         params.paymentMaxAmount === undefined
             ? policy.paymentMaxAmount
@@ -92,6 +97,7 @@ export async function executeSignedCalls(
               : clampPaymentCeiling(params.paymentMaxAmount, policy.paymentMaxAmount)
     const payer = params.payer ?? policy.payer
     const paymentToken = params.paymentToken ?? policy.paymentToken
+    if (!zeroFee) assertOffLocalFeeToken(params.chainId, payer, paymentToken)
     const payment = { payer, paymentToken, paymentMaxAmount: ceiling }
     const combinedGasCeiling =
         params.combinedGasCeiling ??

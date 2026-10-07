@@ -21,6 +21,8 @@ export {
     PaymentCapError,
     PAID_FEE_CAP,
     requirePayerAndToken,
+    refuseLonePayerOrToken,
+    assertOffLocalFeeToken,
     clampPaymentCeiling,
     ORCHESTRATOR_DOMAIN_NAME,
     ORCHESTRATOR_DOMAIN_VERSION,
