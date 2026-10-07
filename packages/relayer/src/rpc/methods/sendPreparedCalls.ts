@@ -56,6 +56,20 @@ export type { SendPreparedCallsParams, SendPreparedCallsResult } from '../schema
 export type { SignedQuotes, Quote, QuoteIntent } from '../schema/prepareCalls'
 export { getSignerName, hashQuotes, buildIntentFromParams }
 
+/**
+ * A broadcast that already started is never a definitive pre-send expiry,
+ * even when the node text contains "Intent expired". Expiry is the signer's
+ * INTENT_EXPIRED code only when broadcastAttempted is not true.
+ */
+function rpcCodeForPoolSendFailure(error: {
+    code?: string
+    broadcastAttempted?: boolean
+}): number {
+    if (error.broadcastAttempted === true) return SERVICE_UNAVAILABLE
+    if (error.code === 'INTENT_EXPIRED') return INTENT_EXPIRED
+    return SERVICE_UNAVAILABLE
+}
+
 function getSeqKeyForDraftMark(
     intentNonce: string | bigint,
     seqKeyFromContext?: string,
@@ -310,11 +324,7 @@ export async function handleSendPreparedCalls(
         }
         logger.warn({ eoa: intent.eoa, error: error.error }, 'intent execution failed')
 
-        if (error.code === 'INTENT_EXPIRED' || error.error?.includes('Intent expired')) {
-            throw new RpcError(INTENT_EXPIRED, error.error)
-        }
-
-        throw new RpcError(SERVICE_UNAVAILABLE, error.error)
+        throw new RpcError(rpcCodeForPoolSendFailure(error), error.error)
     }
 
     const result = (await response.json()) as SendResult
@@ -630,16 +640,17 @@ export async function handleBatchSendPreparedCalls(
     })
 
     if (!response.ok) {
-        const error = (await response.json()) as { error: string; code?: string }
+        const error = (await response.json()) as {
+            error: string
+            code?: string
+            broadcastAttempted?: boolean
+        }
         logger.warn(
             { count: parsedRequests.length, error: error.error },
             'batch intent execution failed',
         )
 
-        const errorCode =
-            error.code === 'INTENT_EXPIRED' || error.error?.includes('Intent expired')
-                ? INTENT_EXPIRED
-                : SERVICE_UNAVAILABLE
+        const errorCode = rpcCodeForPoolSendFailure(error)
 
         return requests.map((req) => {
             const validationError = validationErrors.get(req.id)
