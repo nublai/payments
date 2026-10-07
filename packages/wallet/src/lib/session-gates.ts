@@ -249,5 +249,5 @@ export async function sessionHasWildcardCall(
 }
 
 export function fullAccessSessionHowTo(kind: 'swap' | 'bridge'): string {
-    return `${kind} needs a full-access session. The default session can only transfer and approve this chain's USDC and call escrow (escrow, refund, settler write, and settle), with a 10 USDC daily spend. Create one with \`tw session create <name> --full-access\` and type CREATE FULL ACCESS SESSION.`
+    return `${kind} needs a dedicated swap session, not the payment key and not a wildcard. Create one with \`tw session create <name> --swap --chain <chain>\` and type CREATE FULL ACCESS SESSION. Pass it with --session <name>. The payment session stays active.`
 }

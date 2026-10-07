@@ -2,6 +2,7 @@ import { expect, mock, test } from 'bun:test'
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
@@ -171,6 +172,12 @@ function runQuote(input: {
             simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
             installQuoteSpendLimit: async () => async () => {},
             readAllowance: async () => 0n,
+            readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+            readErc721ApprovedForAll: async () => false,
+            readErc721GetApproved: async () => zeroAddress,
+            readErc1155ApprovedForAll: async () => false,
+            readErc4626ShareBalance: async () => 0n,
+            readErc4626ShareAllowance: async () => 0n,
             getKeys: async () => ({
                 '0x2105': [
                     {
@@ -179,7 +186,7 @@ function runQuote(input: {
                         type: 'secp256k1' as const,
                         role: 'normal' as const,
                         publicKey: '0x' as const,
-                        permissions: [],
+                        permissions: relaySessionCallPermissions(8453),
                     },
                 ],
             }),

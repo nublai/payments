@@ -308,7 +308,7 @@ async function refuseUnboundedSessionForQuote(
     if (wildcard) {
         throw new AccountSwapError(
             'QUOTE_FAILED',
-            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Use a session whose calls name the relay contracts.`,
+            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Create a dedicated swap session with \`tw session create <name> --swap\` and pass it with --session <name>.`,
         )
     }
 }
@@ -1372,7 +1372,13 @@ session.command('create', {
             .boolean()
             .optional()
             .describe(
-                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing CREATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for a period shorter than a day or a spend above 10 USDC. MCP cannot confirm it.',
+                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, --spend-period, or --swap. Requires typing CREATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for a period shorter than a day or a spend above 10 USDC. MCP cannot confirm it.',
+            ),
+        swap: z
+            .boolean()
+            .optional()
+            .describe(
+                'Create a dedicated swap session for this chain: the Relay router, approval proxy, and depository entrypoints, plus a minute spend of 0 on native, USDC, legacy USDC when it differs, and WETH. Does not install the 10 USDC/day default and does not replace the active payment session. Input-token approve is granted only for a quote, then revoked. Requires CREATE FULL ACCESS SESSION because the period is one minute. Cannot be combined with --full-access, --activate, --target, --selector, or a spend limit.',
             ),
         target: z
             .string()
@@ -1417,6 +1423,14 @@ session.command('create', {
         bundle: z.object({ id: z.string() }),
         txHash: z.string().optional(),
         feeCap: feeCapOutput,
+        swap: z
+            .object({
+                calls: z.array(z.object({ target: z.string(), selector: z.string() })),
+                spend: z.array(
+                    z.object({ token: z.string(), limit: z.string(), period: z.string() }),
+                ),
+            })
+            .optional(),
     }),
     examples: [
         {
@@ -1426,9 +1440,25 @@ session.command('create', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
+        if (
+            options.swap &&
+            (options.fullAccess ||
+                options.activate ||
+                options.target ||
+                options.selector ||
+                options.spendLimit ||
+                options.spendLimitRaw ||
+                options.spendPeriod)
+        ) {
+            return reportError({
+                code: 'INVALID_ARGUMENT',
+                message:
+                    '--swap cannot be combined with --full-access, --activate, --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. The swap session stays inactive so the payment key remains the active session.',
+            })
+        }
         const phraseConfirmed = await confirmElevatedPermission(
             reportError,
-            'Creating a full-access session',
+            options.swap ? 'Creating a swap session' : 'Creating a full-access session',
             CONFIRM_FULL_ACCESS_PHRASE,
             {
                 env: options.env,
@@ -1439,9 +1469,9 @@ session.command('create', {
                 selector: options.selector,
                 spendLimit: options.spendLimit,
                 spendLimitRaw: options.spendLimitRaw,
-                spendPeriod: options.spendPeriod,
+                spendPeriod: options.swap ? 'minute' : options.spendPeriod,
                 chain: options.chain,
-                defaultUsdcSpend: true,
+                defaultUsdcSpend: options.swap ? false : true,
                 stack: 'create',
                 parseHumanAmount: parseSpendLimit,
             },
@@ -1480,6 +1510,7 @@ session.command('create', {
                 expiry: options.expiry,
                 password,
                 fullAccessPhraseConfirmed: phraseConfirmed,
+                swap: options.swap,
             })
         } catch (error) {
             if (error instanceof HumanConfirmationError) {

@@ -8,6 +8,7 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { hashRelayOrder } from '../src/lib/relay-order'
 import { simulateRelayQuote, type SimulateRelayQuoteInput } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
@@ -348,6 +349,12 @@ function run(input: {
                     }
                 }),
             readAllowance: input.readAllowance ?? (async () => 0n),
+            readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+            readErc721ApprovedForAll: async () => false,
+            readErc721GetApproved: async () => zeroAddress,
+            readErc1155ApprovedForAll: async () => false,
+            readErc4626ShareBalance: async () => 0n,
+            readErc4626ShareAllowance: async () => 0n,
             getKeys: (input.getKeys ??
                 (async () => ({
                     '0x2105': [
@@ -357,7 +364,7 @@ function run(input: {
                             type: 'secp256k1',
                             role: 'normal',
                             publicKey: '0x',
-                            permissions: [],
+                            permissions: relaySessionCallPermissions(8453),
                         },
                     ],
                 }))) as any,

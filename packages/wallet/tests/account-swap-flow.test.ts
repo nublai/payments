@@ -45,6 +45,12 @@ function executeAccountSwap(
         simulateQuoteCalls: async () => {},
         installQuoteSpendLimit: async () => async () => {},
         readAllowance: async () => 0n,
+        readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+        readErc721ApprovedForAll: async () => false,
+        readErc721GetApproved: async () => zeroAddress,
+        readErc1155ApprovedForAll: async () => false,
+        readErc4626ShareBalance: async () => 0n,
+        readErc4626ShareAllowance: async () => 0n,
         getKeys: async () => {
             const key = {
                 hash: computeSessionKeyHash(
@@ -54,7 +60,7 @@ function executeAccountSwap(
                 type: 'secp256k1' as const,
                 role: 'normal' as const,
                 publicKey: '0x' as const,
-                permissions: [] as [],
+                permissions: relaySessionCallPermissions(8453),
             }
             return { '0x2105': [key], '0x89': [key], '0x7a69': [key] }
         },
@@ -67,6 +73,7 @@ import { LoginProfileError } from '../src/lib/keystore'
 import { PromptCancelledError } from '../src/lib/password-readline'
 import { RelayLinkError } from '../src/lib/relay-link'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
@@ -251,12 +258,13 @@ function makeKeys(input?: {
                 publicKey: '0x',
                 permissions: input?.nativeSpendLimit
                     ? [
+                          ...relaySessionCallPermissions(8453),
                           {
-                              type: 'spend',
+                              type: 'spend' as const,
                               token: zeroAddress,
                               limit: input.nativeSpendLimit,
                               spent: input.nativeSpent ?? '0x0',
-                              period: 'forever',
+                              period: 'forever' as const,
                           },
                       ]
                     : [],

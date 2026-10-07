@@ -17,6 +17,7 @@ import { executeSignedCalls } from '../src/lib/execute-calls'
 import { readKeystoreBundle } from '../src/lib/keystore'
 import { simulateRelayQuote } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
@@ -102,7 +103,7 @@ function narrowKeys(role: 'normal' | 'admin' = 'normal', wildcard = false) {
                 publicKey: '0x' as const,
                 permissions: wildcard
                     ? [{ type: 'call' as const, to: ANY_TARGET, selector: ANY_FN }]
-                    : [],
+                    : relaySessionCallPermissions(8453),
             },
         ],
     }
@@ -190,6 +191,12 @@ function run(input: {
             simulateQuoteCalls: async () => {},
             installQuoteSpendLimit: input.installQuoteSpendLimit ?? (async () => async () => {}),
             readAllowance: async () => 0n,
+            readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+            readErc721ApprovedForAll: async () => false,
+            readErc721GetApproved: async () => zeroAddress,
+            readErc1155ApprovedForAll: async () => false,
+            readErc4626ShareBalance: async () => 0n,
+            readErc4626ShareAllowance: async () => 0n,
             executeSignedCalls: (input.executeSignedCalls ??
                 (async () => ({
                     id: 'bundle-1',
@@ -516,6 +523,12 @@ test('the second simulation runs on the calls about to be signed, after prepare 
             },
             installQuoteSpendLimit: async () => async () => {},
             readAllowance: async () => 0n,
+            readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
+            readErc721ApprovedForAll: async () => false,
+            readErc721GetApproved: async () => zeroAddress,
+            readErc1155ApprovedForAll: async () => false,
+            readErc4626ShareBalance: async () => 0n,
+            readErc4626ShareAllowance: async () => 0n,
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',

@@ -1,10 +1,11 @@
 import { access, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import { getAddress, isAddress, type Address, type Hex } from 'viem'
+import { getAddress, isAddress, isHex, type Address, type Hex } from 'viem'
 import type { EnvName } from './network-config'
 import {
     quoteSpendRestoreCalls,
     type QuoteSpendSlot,
 } from './quote-spend'
+import type { SwapCallGrant } from './swap-session'
 
 export const PENDING_QUOTE_LIMIT_VERSION = 1
 
@@ -21,6 +22,12 @@ export type PendingQuoteLimitRecord = {
         previousLimit: string | null
         installedLimit: string
     }>
+    /**
+     * canExecute rows this quote added. Missing on records written before
+     * grants were tracked. Release and crash recovery revoke each one.
+     * A grant the key already had is not recorded here.
+     */
+    callGrants?: Array<{ target: Address; selector: Hex }>
 }
 
 export function pendingQuoteLimitPath(keystorePath: string): string {
@@ -54,6 +61,14 @@ export async function readPendingQuoteLimit(
     if (!isAddress(parsed.account) || !Array.isArray(parsed.slots)) {
         throw new Error(`Pending quote limit at ${path} is incomplete.`)
     }
+    if (parsed.callGrants !== undefined && !Array.isArray(parsed.callGrants)) {
+        throw new Error(`Pending quote limit at ${path} has invalid call grants.`)
+    }
+    for (const grant of parsed.callGrants ?? []) {
+        if (!isAddress(grant.target) || !isHex(grant.selector) || grant.selector.length !== 10) {
+            throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
+        }
+    }
     return parsed
 }
 
@@ -84,6 +99,7 @@ export function pendingRecordFromSlots(input: {
     rpcUrl: string
     relayerUrl: string
     slots: readonly QuoteSpendSlot[]
+    callGrants?: readonly SwapCallGrant[]
 }): PendingQuoteLimitRecord {
     return {
         version: PENDING_QUOTE_LIMIT_VERSION,
@@ -98,7 +114,18 @@ export function pendingRecordFromSlots(input: {
             previousLimit: slot.previousLimit === null ? null : slot.previousLimit.toString(),
             installedLimit: slot.installedLimit.toString(),
         })),
+        callGrants: (input.callGrants ?? []).map((grant) => ({
+            target: getAddress(grant.target),
+            selector: grant.selector,
+        })),
     }
+}
+
+export function grantsFromPending(record: PendingQuoteLimitRecord): SwapCallGrant[] {
+    return (record.callGrants ?? []).map((grant) => ({
+        target: getAddress(grant.target),
+        selector: grant.selector,
+    }))
 }
 
 export function slotsFromPending(record: PendingQuoteLimitRecord): QuoteSpendSlot[] {

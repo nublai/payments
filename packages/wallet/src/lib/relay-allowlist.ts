@@ -50,6 +50,9 @@ import type { RelayCurrencyAmount, RelayQuoteResponse } from './relay-link'
  *   Inner calls are allowlisted, not denylisted: only cleanupErc20s (0x9bb43718)
  *   and cleanupNative (0xa6bd8c96) on an allowlisted relay contract are signed.
  *   Any other inner selector, including 0x12345678, is refused.
+ *   Those inner selectors are not canExecute rows. A swap session's canExecute
+ *   is the outer entrypoints below, plus the quoted input token's approve
+ *   (and transfer only when that quote's outer calls include it).
  */
 
 const APPROVE_SELECTOR = '0x095ea7b3'
@@ -106,6 +109,31 @@ const RELAY_DEPOSITORY: RelayContract = {
 const CALL_ALLOWLIST: Record<number, readonly RelayContract[]> = {
     8453: [RELAY_V3_ROUTER, RELAY_V3_APPROVAL_PROXY, RELAY_DEPOSITORY],
     137: [RELAY_V3_ROUTER, RELAY_V3_APPROVAL_PROXY, RELAY_DEPOSITORY],
+}
+
+export type RelayEntryPoint = {
+    target: Address
+    selector: Hex
+    contractName: string
+    functionName: string
+}
+
+/** Outer Relay entrypoints a swap session may call. Empty when the chain has no allowlist. */
+export function relayEntryPoints(chainId: number): RelayEntryPoint[] {
+    const contracts = CALL_ALLOWLIST[chainId]
+    if (!contracts) return []
+    const points: RelayEntryPoint[] = []
+    for (const contract of contracts) {
+        for (const [selector, functionName] of Object.entries(contract.selectors)) {
+            points.push({
+                target: contract.address,
+                selector: selector as Hex,
+                contractName: contract.name,
+                functionName,
+            })
+        }
+    }
+    return points
 }
 
 const multicallAbi = [
@@ -556,8 +584,8 @@ export function formatQuotedBuy(amount?: RelayCurrencyAmount): string {
 
 /**
  * Tokens other than the quoted input that this wallet can name.
- * A standing allowance of any of them to a Relay spender is refused.
- * An unknown ERC-20 is not in this list. That is the residual.
+ * The swap standing-rights check uses `knownErc20Tokens`, which also includes
+ * the quoted input. An unknown ERC-20 is not in either list. That is the residual.
  */
 export function foreignAllowanceTokens(chainId: number, inputToken: Address | undefined): Address[] {
     const candidates = [

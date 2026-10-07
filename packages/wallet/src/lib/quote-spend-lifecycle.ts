@@ -44,6 +44,7 @@ import {
 } from './quote-spend'
 import {
     clearPendingQuoteLimit,
+    grantsFromPending,
     pendingQuoteLimitExists,
     pendingRecordFromSlots,
     readPendingQuoteLimit,
@@ -51,6 +52,7 @@ import {
     writePendingQuoteLimit,
     type PendingQuoteLimitRecord,
 } from './quote-spend-pending'
+import { canExecuteChangeCalls, type SwapCallGrant } from './swap-session'
 
 type NetworkConfig = CliNetworkConfig
 
@@ -145,9 +147,10 @@ export async function recoverPendingQuoteSpend(
             `Pending quote spend limit does not match the chain: ${planned.unexpected}`,
         )
     }
-    if (planned.calls.length > 0) {
+    const calls = releaseCalls(record, planned.calls)
+    if (calls.length > 0) {
         if (options?.submit) {
-            await options.submit(record, planned.calls)
+            await options.submit(record, calls)
         } else {
             const password = await resolveRecoveryPassword(options)
             await submitRootCalls({
@@ -155,7 +158,7 @@ export async function recoverPendingQuoteSpend(
                 password,
                 network: networkFromRecord(record),
                 account: record.account,
-                calls: planned.calls,
+                calls,
                 failure: 'The pending quote spend limit could not be restored.',
             })
         }
@@ -169,6 +172,8 @@ export async function installTrackedQuoteSpendLimit(input: {
     password: string
     keystorePath: string
     sessionFile?: string
+    /** Input-token canExecute rows to add for this quote and revoke afterwards. */
+    callGrants?: readonly SwapCallGrant[]
 }): Promise<() => Promise<void>> {
     return withoutQuoteSpendRecovery(() => installTrackedQuoteSpendLimitNow(input))
 }
@@ -179,6 +184,7 @@ async function installTrackedQuoteSpendLimitNow(input: {
     password: string
     keystorePath: string
     sessionFile?: string
+    callGrants?: readonly SwapCallGrant[]
 }): Promise<() => Promise<void>> {
     if (input.sessionFile) {
         throw new QuoteSpendError(
@@ -210,6 +216,7 @@ async function installTrackedQuoteSpendLimitNow(input: {
         rpcUrl: input.network.rpcUrl,
         relayerUrl: input.network.relayerUrl,
         slots,
+        callGrants: input.callGrants,
     })
     await writePendingQuoteLimit(input.keystorePath, record)
     try {
@@ -218,11 +225,19 @@ async function installTrackedQuoteSpendLimitNow(input: {
             password: input.password,
             network: input.network,
             account: input.bound.account,
-            calls: quoteSpendSetCalls({
-                keyHash: input.bound.keyHash,
-                account: input.bound.account,
-                slots,
-            }),
+            calls: [
+                ...quoteSpendSetCalls({
+                    keyHash: input.bound.keyHash,
+                    account: input.bound.account,
+                    slots,
+                }),
+                ...canExecuteChangeCalls({
+                    account: input.bound.account,
+                    keyHash: input.bound.keyHash,
+                    grants: input.callGrants ?? [],
+                    allowed: true,
+                }),
+            ],
             failure: 'The per-quote spend limit could not be set. Refusing to sign.',
         })
     } catch (error) {
@@ -263,17 +278,30 @@ async function releaseInstalledQuoteSpendLimit(
             `The per-quote spend limit could not be restored: ${planned.unexpected}`,
         )
     }
-    if (planned.calls.length > 0) {
+    const calls = releaseCalls(current ?? record, planned.calls)
+    if (calls.length > 0) {
         await submitRootCalls({
             keystorePath: input.keystorePath,
             password: input.password,
             network: input.network,
             account: input.bound.account,
-            calls: planned.calls,
+            calls,
             failure: 'The per-quote spend limit could not be restored after the swap.',
         })
     }
     await clearPendingQuoteLimit(input.keystorePath)
+}
+
+function releaseCalls(record: PendingQuoteLimitRecord, spendCalls: Call[]): Call[] {
+    return [
+        ...spendCalls,
+        ...canExecuteChangeCalls({
+            account: record.account,
+            keyHash: record.keyHash,
+            grants: grantsFromPending(record),
+            allowed: false,
+        }),
+    ]
 }
 
 function networkFromRecord(record: PendingQuoteLimitRecord): NetworkConfig {

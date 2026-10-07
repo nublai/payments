@@ -63,11 +63,9 @@ import {
     type RelayQuoteResponse,
 } from './relay-link'
 import {
-    foreignAllowanceTokens,
     formatQuotedBuy,
     quoteExecutionFingerprint,
     quotedOutputMinimum,
-    relayAllowanceSpenders,
     RelayQuoteRejected,
     reviewRelayQuote,
     type RelayQuoteReview,
@@ -105,6 +103,21 @@ import {
     type TokenSymbol,
 } from './network-config'
 import { callsIncludeWildcard, getChainKeys, parseSessionName } from './session-common'
+import {
+    isExactRelaySession,
+    planSwapSessionUse,
+    SwapSessionRejected,
+    type SwapCallGrant,
+} from './swap-session'
+import {
+    assertNoStandingRights,
+    chainStandingRightsReaders,
+    knownErc20Tokens,
+    relayStandingTargets,
+    StandingRightsRejected,
+    type Permit2Allowance,
+    type StandingRightsRegistry,
+} from './standing-rights'
 import { isRecord } from './type-guards'
 import { resolveSessionSigner, SessionSignerDaemonError, SessionSignerExpiredError } from './signer'
 import type { ResolvedSessionSigner } from './signer'
@@ -264,6 +277,7 @@ type AccountSwapDeps = {
         password: string
         keystorePath: string
         sessionFile?: string
+        callGrants?: readonly SwapCallGrant[]
     }) => Promise<() => Promise<void>>
     /** Serializes quote spend-limit installs for one account. */
     withAccountLock: <T>(keystorePath: string, action: () => Promise<T>) => Promise<T>
@@ -273,6 +287,18 @@ type AccountSwapDeps = {
         owner: Address
         spender: Address
     }) => Promise<bigint>
+    readPermit2Allowance: (input: {
+        network: NetworkConfig
+        owner: Address
+        token: Address
+        spender: Address
+    }) => Promise<Permit2Allowance>
+    standingRightsRegistry?: StandingRightsRegistry
+    readErc721ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
+    readErc721GetApproved?: (token: Address, tokenId: bigint) => Promise<Address>
+    readErc1155ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
+    readErc4626ShareBalance?: (vault: Address) => Promise<bigint>
+    readErc4626ShareAllowance?: (vault: Address, spender: Address) => Promise<bigint>
 }
 
 function normalizeChain(value: string | undefined, env: EnvName): ChainName {
@@ -436,39 +462,64 @@ function quoteWatches(input: {
     return watches
 }
 
-async function assertNoForeignAllowance(input: {
-    deps: Pick<AccountSwapDeps, 'readAllowance'>
+async function assertNoStandingRightsForQuote(input: {
+    deps: AccountSwapDeps
     network: NetworkConfig
     chainId: number
     owner: Address
     inputToken: Address | undefined
 }): Promise<void> {
-    const tokens = foreignAllowanceTokens(input.chainId, input.inputToken)
-    const spenders = relayAllowanceSpenders(input.chainId)
-    for (const token of tokens) {
-        for (const spender of spenders) {
-            let allowance: bigint
-            try {
-                allowance = await input.deps.readAllowance({
-                    network: input.network,
-                    token,
-                    owner: input.owner,
-                    spender,
-                })
-            } catch (error) {
-                throw new AccountSwapError(
-                    'QUOTE_FAILED',
-                    'Could not read token allowances. Refusing to sign.',
-                    { cause: error },
-                )
-            }
-            if (allowance > 0n) {
-                throw new AccountSwapError(
-                    'QUOTE_FAILED',
-                    `The account has a standing allowance of ${token} to ${spender} for a token other than the quoted input. Refusing to sign.`,
-                )
-            }
+    const chainReaders = chainStandingRightsReaders({
+        network: input.network,
+        owner: input.owner,
+    })
+    try {
+        await assertNoStandingRights({
+            chainId: input.chainId,
+            owner: input.owner,
+            targets: relayStandingTargets(input.chainId),
+            tokens: knownErc20Tokens(input.chainId, input.inputToken),
+            registry: input.deps.standingRightsRegistry,
+            readers: {
+                readErc20Allowance: (token, spender) =>
+                    input.deps.readAllowance({
+                        network: input.network,
+                        token,
+                        owner: input.owner,
+                        spender,
+                    }),
+                readPermit2Allowance: (token, spender) =>
+                    input.deps.readPermit2Allowance({
+                        network: input.network,
+                        owner: input.owner,
+                        token,
+                        spender,
+                    }),
+                readErc721ApprovedForAll:
+                    input.deps.readErc721ApprovedForAll ??
+                    ((token, operator) => chainReaders.readErc721ApprovedForAll(token, operator)),
+                readErc721GetApproved:
+                    input.deps.readErc721GetApproved ??
+                    ((token, tokenId) => chainReaders.readErc721GetApproved(token, tokenId)),
+                readErc1155ApprovedForAll:
+                    input.deps.readErc1155ApprovedForAll ??
+                    ((token, operator) => chainReaders.readErc1155ApprovedForAll(token, operator)),
+                readErc4626ShareBalance:
+                    input.deps.readErc4626ShareBalance ??
+                    ((vault) => chainReaders.readErc4626ShareBalance(vault)),
+                readErc4626ShareAllowance:
+                    input.deps.readErc4626ShareAllowance ??
+                    ((vault, spender) => chainReaders.readErc4626ShareAllowance(vault, spender)),
+            },
+        })
+    } catch (error) {
+        if (error instanceof StandingRightsRejected) {
+            throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
         }
+        if (error instanceof AccountSwapError) throw error
+        throw new AccountSwapError('QUOTE_FAILED', 'Could not read standing rights. Refusing to sign.', {
+            cause: error,
+        })
     }
 }
 
@@ -567,6 +618,31 @@ function assertEthSpendPermission(input: {
     const sessionKey = getChainKeys(input.keys, input.chainId).find(
         (key) => key.hash.toLowerCase() === input.sessionKeyHash.toLowerCase(),
     )
+    // A resting swap session has a minute limit of 0 on native. The quote
+    // installer raises that minute slot to the input before signing. A
+    // non-minute native period is still required to cover the amount, because
+    // the guard checks every period. Keys that are not the exact Relay set
+    // keep the previous check.
+    if (sessionKey && isExactRelaySession(sessionKey.permissions, input.chainId)) {
+        const nonMinute = sessionKey.permissions.filter(
+            (permission) =>
+                permission.type === 'spend' &&
+                permission.token.toLowerCase() === ETH_ADDRESS.toLowerCase() &&
+                permission.period !== 'minute',
+        )
+        for (const permission of nonMinute) {
+            if (permission.type !== 'spend') continue
+            const limit = BigInt(permission.limit)
+            const spent = BigInt(permission.spent)
+            if (limit - spent < input.amount) {
+                throw new AccountSwapError(
+                    'MISSING_NATIVE_SPEND_PERMISSION',
+                    `Session key native ETH spend permission on ${input.sourceChain} has insufficient remaining limit for ${formatUnits(input.amount, 18)} ETH.`,
+                )
+            }
+        }
+        return
+    }
     const nativeSpend = sessionKey?.permissions.find(
         (permission) =>
             permission.type === 'spend' &&
@@ -671,6 +747,11 @@ function getDefaultDeps(): AccountSwapDeps {
                 args: [input.owner, input.spender],
             })
         },
+        readPermit2Allowance: async (input) =>
+            chainStandingRightsReaders({
+                network: input.network,
+                owner: input.owner,
+            }).readPermit2Allowance(input.token, input.spender),
     }
 }
 
@@ -1042,6 +1123,28 @@ export async function executeAccountSwap(
             slippageBps,
             quoteLimits,
         )
+        const swapChainLabel = getChainNameByChainId(quoteRequest.originChainId) ?? sourceChain
+        let swapGrants: SwapCallGrant[] = []
+        const bindSwapKey = (current: RelayQuoteResponse) => {
+            const sessionKey = getChainKeys(keys, effectiveNetwork.chainId).find(
+                (key) => key.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
+            )
+            try {
+                swapGrants = planSwapSessionUse({
+                    chainId: quoteRequest.originChainId,
+                    permissions: sessionKey?.permissions ?? [],
+                    inputToken: fromToken === 'ETH' ? undefined : quoteRequest.originCurrency,
+                    quoteCalls: stepsToRelayerCalls(current.steps),
+                    chainLabel: swapChainLabel,
+                })
+            } catch (error) {
+                if (error instanceof SwapSessionRejected) {
+                    throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
+                }
+                throw error
+            }
+        }
+        bindSwapKey(quote)
         const sameChain = quoteRequest.originChainId === quoteRequest.destinationChainId
         const deployed = getAddressesWithFallback(options.env, quoteRequest.originChainId)
         if (!deployed?.orchestrator || !deployed.accountProxy) {
@@ -1062,7 +1165,7 @@ export async function executeAccountSwap(
             nonce: bigint,
             callsOverride?: Call[],
         ) => {
-            await assertNoForeignAllowance({
+            await assertNoStandingRightsForQuote({
                 deps,
                 network: effectiveNetwork,
                 chainId: quoteRequest.originChainId,
@@ -1143,6 +1246,7 @@ export async function executeAccountSwap(
                 slippageBps,
                 quoteLimits,
             )
+            bindSwapKey(quote)
             if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
                 throw new AccountSwapError(
                     'QUOTE_FAILED',
@@ -1190,6 +1294,7 @@ export async function executeAccountSwap(
             password: await resolvePassword(),
             keystorePath,
             sessionFile: options.sessionFile,
+            callGrants: swapGrants,
         })
         let released = false
         const releaseOnce = async () => {
