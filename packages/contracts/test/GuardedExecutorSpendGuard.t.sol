@@ -1065,6 +1065,47 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
     }
 
+    /// @dev `pay` fails closed when `balanceOf` reverts. The orchestrator is the caller.
+    function testPayBalanceOfRevertIsSpendBalanceReadFailed() public {
+        _payBalanceReadFails(1, address(0));
+    }
+
+    /// @dev `pay` fails closed when `balanceOf` returns fewer than 32 bytes.
+    function testPayBalanceOfShortIsSpendBalanceReadFailed() public {
+        _payBalanceReadFails(2, address(0));
+    }
+
+    /// @dev `pay` fails closed when the metered token has no code.
+    function testPayBalanceOfNonContractIsSpendBalanceReadFailed() public {
+        _payBalanceReadFails(0, address(0xDEAD));
+    }
+
+    /// @dev `pay` fails closed when `balanceOf` burns the gas of the staticcall.
+    function testPayBalanceOfGasGriefIsSpendBalanceReadFailed() public {
+        _payBalanceReadFails(3, address(0));
+    }
+
+    function _payBalanceReadFails(uint8 mode, address bare) internal {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        address token = bare;
+        if (bare == address(0)) {
+            MockBrokenBalanceToken broken = new MockBrokenBalanceToken();
+            broken.setMode(mode);
+            broken.mint(d.eoa, 10 ether);
+            token = address(broken);
+        }
+        _limit(d, k.keyHash, token, GuardedExecutor.SpendPeriod.Day, 100 ether);
+        u.eoa = d.eoa;
+        u.paymentToken = token;
+        u.paymentAmount = 1 ether;
+        u.paymentMaxAmount = 1 ether;
+        u.paymentRecipient = _BEEF;
+        bytes memory encoded = abi.encode(u);
+        vm.prank(d.d.ORCHESTRATOR());
+        vm.expectRevert(_BALANCE_READ_FAILED);
+        d.d.pay(1 ether, k.keyHash, bytes32(0), encoded);
+    }
+
     /// @dev Intentional. A narrow key with only `Escrow.escrow`, and no `ANY_FN_SEL`,
     /// drains an unperioded token that already has a standing Escrow allowance.
     /// The metered token is untouched, so its spent stays 0.
@@ -1309,6 +1350,9 @@ contract MockBrokenBalanceToken is MockPaymentToken {
                 mstore(0x00, 0x01)
                 return(0x00, 0x01)
             }
+        }
+        if (mode == 3) {
+            while (true) {}
         }
         return super.balanceOf(owner);
     }

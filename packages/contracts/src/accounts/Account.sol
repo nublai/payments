@@ -735,20 +735,27 @@ contract Account is IAccount, EIP712, GuardedExecutor {
         // max(paymentAmount, this account's balance decrease). Root and super-admin
         // skip the guard. Native value is the exact amount sent.
         bool limited = !(keyHash == bytes32(0) || _isSuperAdmin(keyHash));
-        _MeterSnap memory paySnap;
-        bool meterPay;
-        if (limited) (paySnap, meterPay) = _snapPayment(keyHash, intent.paymentToken);
+        uint256 beforeBal;
+        bool meterPay = limited &&
+            intent.paymentToken != address(0) &&
+            _getGuardedExecutorKeyStorage(keyHash).spends.spends[intent.paymentToken].periods.length() !=
+            0;
+        if (meterPay) beforeBal = _accountBalance(intent.paymentToken);
 
         TokenTransferLib.safeTransfer(intent.paymentToken, intent.paymentRecipient, paymentAmount);
 
         if (limited) {
             uint256 charge = paymentAmount;
             if (meterPay) {
-                _meter(paySnap, 1);
-                charge = Math.max(paymentAmount, paySnap.buf[0]);
+                uint256 afterBal = _accountBalance(intent.paymentToken);
+                uint256 dec = beforeBal > afterBal ? beforeBal - afterBal : 0;
+                if (dec > charge) charge = dec;
             }
-            SpendStorage storage spends = _getGuardedExecutorKeyStorage(keyHash).spends;
-            _incrementSpent(spends.spends[intent.paymentToken], intent.paymentToken, charge);
+            _incrementSpent(
+                _getGuardedExecutorKeyStorage(keyHash).spends.spends[intent.paymentToken],
+                intent.paymentToken,
+                charge
+            );
         }
 
         // Done to avoid compiler warnings.

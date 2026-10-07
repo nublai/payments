@@ -409,23 +409,6 @@ abstract contract GuardedExecutor is ERC7821 {
         }
     }
 
-    /// @dev Snapshot a metered payment token before `pay` transfers. Native and
-    /// unperioded tokens are not read. A bad `balanceOf` reverts `SpendBalanceReadFailed`.
-    function _snapPayment(
-        bytes32 keyHash,
-        address token
-    ) internal view returns (_MeterSnap memory snap, bool meter) {
-        if (token == address(0)) return (snap, false);
-        if (_getGuardedExecutorKeyStorage(keyHash).spends.spends[token].periods.length() == 0) {
-            return (snap, false);
-        }
-        snap.buf = new uint256[](2);
-        snap.tokens = new uint256[](1);
-        snap.tokens[0] = uint256(uint160(token));
-        _meter(snap, 0);
-        meter = true;
-    }
-
     /// @dev Allocates the reused balance buffers away from the execute loop.
     function _newMeterSnap(
         DynamicArrayLib.DynamicArray memory erc20s
@@ -434,7 +417,26 @@ abstract contract GuardedExecutor is ERC7821 {
         snap.tokens = erc20s.data;
     }
 
+    /// @dev This account's balance of `token`. A revert, a short return, a non-contract,
+    /// or an out-of-gas `balanceOf` reverts `SpendBalanceReadFailed`.
+    function _accountBalance(address token) internal view returns (uint256 bal) {
+        bytes4 err = SpendBalanceReadFailed.selector;
+        /// @solidity memory-safe-assembly
+        assembly {
+            mstore(0x14, address())
+            mstore(0x00, 0x70a08231000000000000000000000000)
+            let ok := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
+            if iszero(and(ok, gt(returndatasize(), 0x1f))) {
+                mstore(0x00, err)
+                revert(0x00, 0x04)
+            }
+            bal := mload(0x20)
+        }
+    }
+
     /// @dev `fold == 0` stores this account's balance. `fold == 1` adds the decrease.
+    /// The staticcall matches `_accountBalance`. It stays inline: a Solidity loop
+    /// that calls the helper does not fit under the account size limit.
     function _meter(_MeterSnap memory snap, uint256 fold) internal view {
         bytes4 err = SpendBalanceReadFailed.selector;
         /// @solidity memory-safe-assembly
@@ -457,9 +459,7 @@ abstract contract GuardedExecutor is ERC7821 {
                 let step := shl(5, n)
                 let base := add(mload(snap), 0x20)
                 let balSlot := add(add(base, step), p)
-                if iszero(fold) {
-                    mstore(balSlot, bal)
-                }
+                if iszero(fold) { mstore(balSlot, bal) }
                 if fold {
                     let beforeB := mload(balSlot)
                     let accountDec := 0
