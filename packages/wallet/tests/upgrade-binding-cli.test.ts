@@ -866,10 +866,20 @@ function frame(message: unknown): string {
     return `${JSON.stringify(message)}\n`
 }
 
-test('MCP send refuses expiry 0 and a huge combined gas', async () => {
+test('CLI send refuses expiry 0 and a huge combined gas', async () => {
+    // PR 17 refuses MCP send before the relayer is contacted, so this stays on the interactive CLI.
+    for (const mode of ['expiry-zero', 'huge-gas'] as const) {
+        const { server, result } = await runSend(mode)
+        const output = `${result.stdout}\n${result.stderr}\n${server.methods.join(',')}`
+        expect(server.submitted(), output).toBe(false)
+        expect(server.signed(), output).toBe(false)
+        expect(output).toMatch(/expiry|combined gas|Refusing/)
+    }
+}, 120_000)
+
+test('MCP send is refused before the relayer is contacted', async () => {
     await locked(async () => {
-        for (const mode of ['expiry-zero', 'huge-gas'] as const) {
-            await withServer(mode, 8545, 31337, LOCAL_ORCH, LOCAL_PROXY, async (server, url) => {
+        await withServer('honest-send', 8545, 31337, LOCAL_ORCH, LOCAL_PROXY, async (server, url) => {
                 const child = spawn('bun', ['src/cli.ts', '--mcp'], {
                     cwd: walletDir,
                     env: {
@@ -937,10 +947,8 @@ test('MCP send refuses expiry 0 and a huge combined gas', async () => {
                     child.kill('SIGTERM')
                 }
                 const output = `${stdout}\n${stderr}\n${server.methods.join(',')}`
-                expect(server.submitted(), output).toBe(false)
-                expect(server.signed(), output).toBe(false)
-                expect(output).toMatch(/expiry|combined gas|Refusing/)
+                expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+                expect(server.methods, output).toEqual([])
             })
-        }
     })
 }, 120_000)
