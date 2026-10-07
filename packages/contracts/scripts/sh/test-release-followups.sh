@@ -692,7 +692,7 @@ selective_json_must_match_release() {
     local rpc="http://127.0.0.1:${port}"
     local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     local orch="0xE6CfdB399efdc88FA11964072AB519c65c044130"
-    local account="0x5D44479c3Fa8b08409dcabc57C75CaAd173202dA"
+    local account="0x4343Bd720052fb353b8571b595a9AfC31Aae07B1"
     local towns="0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8"
     local wrong="0x77C054f302C2FeB1790588747991c81c1fF97F76"
     local dir="$PROJECT_ROOT/deployments/envs/prod/8453"

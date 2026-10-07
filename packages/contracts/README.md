@@ -64,6 +64,29 @@ There is no `deployments/config.toml`. Committed address snapshots are `deployme
 | **LayerZeroSettler** | Cross-chain settlement via LayerZero v2 |
 | **Simulator** | Gas simulation for orchestrator calls |
 
+## Spend limits
+
+A spend limit protects tokens the account holds directly. That guarantee is for a key whose on-chain `canExecute` is an allowlist of targets that hold no standing rights over the account's assets. Standing rights are an ERC-20 allowance, a Permit2 allowance, an ERC-721 or ERC-1155 operator approval, a vault share allowance or operator role, and a signature-checker approval. `Account.isValidSignature` accepts a non-root key when `msg.sender` is in that key's checker set, so an ERC-1271 permit through the checker can `transferFrom` outside `execute` and the spend limit never runs. The contract meters balances. It does not read those rights. Today the wallet does not refuse a payment session when an allowlisted target already holds a standing right. The root key can revoke those rights. A scan of payment-key targets for those rights, at session creation and again at use, is a planned follow-up.
+
+Wildcard keys (`ANY_TARGET` or `ANY_FN_SEL`) and super-admin keys are outside this guarantee. A super-admin key, and the root key, skip the guard. A wildcard key is still metered for its own balance decrease and for recognized selectors. A target that key can call may already hold a standing right.
+
+`GuardedExecutor` balance-meters only tokens that have a spend period for the key. The periods are the ones configured on that key (`Minute` through `Forever`). There is no hardcoded token list.
+
+These selectors are still priced from calldata, and a non-zero amount with no spend period reverts `NoSpendPermissions`: `transfer`, `transferFrom` out of this account, `approve`, `increaseAllowance`, `increaseApproval`, and Permit2 `approve`. `increaseAllowance` and `increaseApproval` are charged and the allowance is reset to zero after the batch. That reset is the leftover-allowance drain, not a balance probe. Permit2 approvals are locked down the same way.
+
+For a token that does have a period, each call is charged on its own. The charge is the max of the amount recognized from calldata and that call's drop in the account's own balance, so a later call's inflow does not offset an earlier call's decrease. The approval reset and Permit2 lockdown are measured the same way, and any extra debit is added to that sum. `pay` charges `max(paymentAmount, the account's balance decrease)` for a metered token. While that batch is running, a nested `execute` into the account reverts `GuardedReentrancy`. The flag is transient storage (EIP-1153), which this account already uses for the key-hash stack, and it is not a storage slot. A failed, reverted, or short `balanceOf` on a metered token reverts with `SpendBalanceReadFailed`.
+
+The following stay outside the guarantee:
+
+- A donor top-up in the same call as a drop in someone else's balance. The charge is the account's own balance decrease, so a drop in the call target's inventory is not spend.
+- A vault `withdraw`, or a forward, through a target that already holds a standing right over assets the account keeps outside its token balance.
+- Credit-then-pull through a standing allowance, when the account's ending balance does not fall.
+- An in-batch permit signed by the EOA (EIP-2612, DAI `permit`, Permit2 `permit`) and a session `customApprove` or any other approval selector besides `approve`, `increaseAllowance`, and `increaseApproval`. Those selectors are not reset. A later pull is not charged while the token still has no spend period.
+- A hostile metered token. `balanceOf` returns 32 bytes of a lie (a constant, or a proxy that pins the pre-transfer balance), or an unrecognized selector debits the account and refills the balance before the call returns.
+- A token with no spend period. A non-root key can move it through any call that is not a recognized selector, and the move is not charged. That includes swap output and any other token the account already holds, a spender the root key approved earlier (a proxy with no `balanceOf`, the Escrow `escrow` selector alone on a narrow key, a three-item escrow whose amounts are not a recognized token selector, a puller whose token address sits behind a 32-word pad, a puller that masks the token word down to 160 bits), and a call to token A that pulls token B.
+
+Only configured tokens are metered because of bytecode headroom under the 24,576-byte account limit.
+
 ## Deployment
 
 From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` chooses the chain and RPC.

@@ -12,11 +12,8 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { installFormerProdDeployments, installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
-import {
-    installFormerProdDeployments,
-    installFormerStageDeployments,
-} from './helpers/former-deployment-env'
 import type { Call } from '@nubl/relayer-client'
 
 const account = '0x1111111111111111111111111111111111111111' as Address

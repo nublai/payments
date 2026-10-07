@@ -14,8 +14,8 @@ import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createSessionKeystore, ensureOwnerOnlyDirectory } from '../src/lib/keystore'
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
-import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
+import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex

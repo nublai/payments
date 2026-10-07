@@ -221,7 +221,7 @@ function rotateDeps(overrides: Record<string, unknown>) {
         }),
         readNonce: mock(async () => 1n),
         getKeys: mock(async () => ({
-            '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
+            '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
         })),
         executeSignedCalls: mock(async () => ({
             id: 'bundle-narrow',
@@ -268,6 +268,9 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                 fullAccessPhraseConfirmed: true,
             },
             rotateDeps({
+                getKeys: mock(async () => ({
+                    '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
+                })),
                 readGuardCleanup: mock(async () => ({
                     anyCalls: [
                         {
