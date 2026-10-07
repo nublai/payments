@@ -353,7 +353,7 @@ const result = this.ctx.storage.transactionSync(() => {
 1. **Key Security**: Private keys are derived on-demand, never persisted
 2. **Signature Integrity**: User signatures are passed through unmodified to chain
 3. **Expiry Enforcement**: Intents are rejected if within 30s of expiry
-4. **Payment Protection**: paymentAmount is recomputed from the quote's gas and fee fields when a payer is set. The client-supplied paymentAmount is not collected. Quote HMAC is required outside local/dev.
+4. **Payment Protection**: paymentAmount is recomputed from the quote's gas and fee fields when a payer is set. The client-supplied paymentAmount is not collected. Quote HMAC is required outside local/dev. Fee-history failure fails prepare. Outside local/dev a zero recomputed fee is not signed, and a payer-set quote that recomputes to 0 is rejected on send. An ERC-8128 signer must be allowlisted, the intent EOA, or a live on-chain key of that account. A client-supplied session key is not enough. Other protected methods in the same batch require the allowlist.
 
 ### Operational Invariants
 

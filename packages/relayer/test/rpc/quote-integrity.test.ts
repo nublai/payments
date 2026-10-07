@@ -5,10 +5,15 @@ import { signQuotes } from '../../src/lib/quote-signing'
 import {
     INVALID_PARAMS,
     INVALID_QUOTE_SIGNATURE,
+    INVALID_SIGNATURE,
     PAYMENT_EXCEEDS_MAX,
     RpcError,
 } from '../../src/rpc/errors'
-import { buildIntentFromParams, validateQuote } from '../../src/rpc/methods/shared/calls-helpers'
+import {
+    assertErc8128BoundToQuotes,
+    buildIntentFromParams,
+    validateQuote,
+} from '../../src/rpc/methods/shared/calls-helpers'
 import type { Quote, SignedQuotes } from '../../src/rpc/schema/prepareCalls'
 import type { SendPreparedCallsParams } from '../../src/rpc/schema/sendPreparedCalls'
 import { convertToFeeToken } from '../../src/services/fees'
@@ -194,5 +199,48 @@ describe('quote payment integrity', () => {
 
         expect(result).toBeInstanceOf(RpcError)
         expect((result as RpcError).code).toBe(INVALID_QUOTE_SIGNATURE)
+    })
+
+    it('rejects a signed payer quote whose recomputed fee is zero outside local', async () => {
+        vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+        const ttl = Math.floor(Date.now() / 1000) + 60
+        const secret = 'test-quote-signing-secret'
+        const quote = makeQuote({
+            paymentAmount: '0',
+            paymentMaxAmount: '1000000',
+            txGas: 21_000,
+            maxFeePerGas: 0,
+        })
+        const signed = makeSigned(quote, ttl, '0x')
+        signed.signature = await signQuotes(signed, secret)
+
+        const result = await validateQuote(signed, {
+            CONTEXT: 'prod',
+            QUOTE_SIGNING_SECRET: secret,
+        })
+
+        expect(result).toBeInstanceOf(RpcError)
+        expect((result as RpcError).code).toBe(INVALID_PARAMS)
+        expect((result as RpcError).message).toContain('zero fee')
+    })
+
+    it('rejects an ERC-8128 caller that only matches a client authSigner', async () => {
+        const result = await assertErc8128BoundToQuotes(
+            { CONTEXT: 'prod' },
+            {
+                provider: 'erc8128',
+                userId: '0x9999999999999999999999999999999999999999',
+            },
+            [
+                {
+                    chainId: '0x2105',
+                    intent: { eoa: EOA },
+                    authSigner: '0x9999999999999999999999999999999999999999',
+                },
+            ],
+        )
+
+        expect(result).toBeInstanceOf(RpcError)
+        expect((result as RpcError).code).toBe(INVALID_SIGNATURE)
     })
 })

@@ -10,7 +10,9 @@ import { verifyMessage as verifyPersonalMessage, type Address } from 'viem'
 import { getChainClient } from '../../lib/multi-chain-client'
 import { hasCode } from '../../lib/viem-utils'
 import type { Env } from '../../types/env'
-import { bindingFromRpcBody, decideErc8128Signer } from './signer-policy'
+import { parseAuthProtectedMethods } from '../policy'
+import { signerIsAccountKey } from './account-key'
+import { authorizeErc8128Signer, bindingFromRpcBody } from './signer-policy'
 
 export interface NonceStore {
     consumeNonce(replayKey: string, ttlSeconds: number): Promise<boolean>
@@ -179,11 +181,17 @@ export async function verifyErc8128Request(
         return failure('UNSUPPORTED_CHAIN', `Unsupported chain ID: ${parsed.chainId}`)
     }
 
-    const binding = await readBinding(bodyRequest)
-    const decision = decideErc8128Signer({
+    // Do not treat authSigner or session_key in this body as the signer.
+    // Those fields are client-controlled. A non-EOA signer must be an on-chain
+    // key of the named account. Other protected methods in the same batch need
+    // the allowlist; one prepare/send binding does not cover them.
+    const binding = await readBinding(bodyRequest, ctx.env)
+    const decision = await authorizeErc8128Signer({
         env: ctx.env,
         signer: parsed.address,
         binding,
+        isAccountKey: (account, chainId, signer) =>
+            signerIsAccountKey(ctx.env, account, chainId, signer, ctx.nowSeconds),
     })
     if (!decision.ok) {
         return failure('SIGNER_NOT_ALLOWED', decision.message)
@@ -242,11 +250,14 @@ function parseKeyIdsFromHeader(header: string | null): ParsedKeyId[] {
     return parsed
 }
 
-async function readBinding(request: Request) {
+async function readBinding(request: Request, env: Partial<Env>) {
     try {
-        return bindingFromRpcBody(await request.json())
+        return bindingFromRpcBody(
+            await request.json(),
+            parseAuthProtectedMethods(env.AUTH_PROTECTED_METHODS),
+        )
     } catch {
-        return { accounts: null }
+        return { accounts: null, otherProtectedMethods: [] }
     }
 }
 

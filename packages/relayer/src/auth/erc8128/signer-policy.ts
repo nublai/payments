@@ -1,8 +1,10 @@
 import { isAddress, type Address } from 'viem'
 
 import { unwrapParams } from '../../lib/rpc-utils'
-import { sessionAddressFromEncodedKey } from '../../lib/session-address'
 import { isLocalDevContext } from '../../config/runtime-context'
+import { parseAuthProtectedMethods } from '../policy'
+
+const PREPARE_OR_SEND = new Set(['wallet_prepareCalls', 'wallet_sendPreparedCalls'])
 
 export interface AllowlistParse {
     addresses: Set<string>
@@ -26,33 +28,59 @@ export function parseErc8128Allowlist(value: string | undefined): AllowlistParse
     return { addresses, invalid }
 }
 
+/**
+ * Account a prepare/send call claims. `authSigner` and `session_key` are not
+ * included: those fields are whatever the client wrote, and they are not proof.
+ */
 export interface BoundAccount {
     eoa?: Address
-    authSigner?: Address
+    chainId?: number
 }
 
 /**
  * `accounts === null` means the body has no prepare/send call to bind.
  * An empty list means a bindable call was present but named no account.
+ * `otherProtectedMethods` are protected methods in the same HTTP body that are
+ * not prepare/send. Those require the allowlist; a prepare/send binding does not cover them.
  */
 export interface Erc8128Binding {
     accounts: BoundAccount[] | null
+    otherProtectedMethods: string[]
+}
+
+export type SignerDecision =
+    | { ok: true }
+    | { ok: false; message: string; tryOnChain: boolean }
+
+export function parseChainId(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+        return value
+    }
+    if (typeof value !== 'string') return undefined
+    const trimmed = value.trim()
+    const hex = /^0x[0-9a-fA-F]+$/.test(trimmed)
+    const dec = /^[0-9]+$/.test(trimmed)
+    if (!hex && !dec) return undefined
+    const parsed = Number.parseInt(trimmed, hex ? 16 : 10)
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined
+    return parsed
 }
 
 export function decideErc8128Signer(args: {
     env: { CONTEXT?: string; ERC8128_ALLOWED_SIGNERS?: string }
     signer: Address
     binding: Erc8128Binding
-}): { ok: true } | { ok: false; message: string } {
+}): SignerDecision {
     const parsed = parseErc8128Allowlist(args.env.ERC8128_ALLOWED_SIGNERS)
     if (parsed.invalid.length > 0) {
         return {
             ok: false,
+            tryOnChain: false,
             message: 'ERC8128_ALLOWED_SIGNERS contains an invalid address',
         }
     }
     if (!isAddress(args.signer)) {
-        return { ok: false, message: 'ERC-8128 signer is not an address' }
+        return { ok: false, tryOnChain: false, message: 'ERC-8128 signer is not an address' }
     }
 
     const signer = args.signer.toLowerCase()
@@ -65,25 +93,68 @@ export function decideErc8128Signer(args: {
         return { ok: true }
     }
 
+    if (args.binding.otherProtectedMethods.length > 0) {
+        return {
+            ok: false,
+            tryOnChain: false,
+            message: 'ERC-8128 signer must be allowlisted for this method',
+        }
+    }
+
     const accounts = args.binding.accounts
-    if (
-        accounts &&
-        accounts.length > 0 &&
-        accounts.every((account) => accountAuthorizes(account, signer))
-    ) {
+    if (!accounts || accounts.length === 0) {
+        return {
+            ok: false,
+            tryOnChain: false,
+            message: 'ERC-8128 signer is not allowlisted and is not bound to the intent account',
+        }
+    }
+
+    if (accounts.every((account) => account.eoa?.toLowerCase() === signer)) {
         return { ok: true }
     }
 
     return {
         ok: false,
+        tryOnChain: accounts.every((account) => !!account.eoa),
         message: 'ERC-8128 signer is not allowlisted and is not bound to the intent account',
     }
 }
 
-function accountAuthorizes(account: BoundAccount, signer: string): boolean {
-    if (account.eoa && account.eoa.toLowerCase() === signer) return true
-    if (account.authSigner && account.authSigner.toLowerCase() === signer) return true
-    return false
+/**
+ * Allowlist, intent EOA, or an on-chain key of that account.
+ * A client-supplied `authSigner` / `session_key` is not consulted.
+ */
+export async function authorizeErc8128Signer(args: {
+    env: { CONTEXT?: string; ERC8128_ALLOWED_SIGNERS?: string }
+    signer: Address
+    binding: Erc8128Binding
+    isAccountKey: (account: Address, chainId: number, signer: Address) => Promise<boolean>
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+    const decision = decideErc8128Signer(args)
+    if (decision.ok || !decision.tryOnChain) return decision
+
+    const accounts = args.binding.accounts ?? []
+    const signer = args.signer.toLowerCase()
+    for (const account of accounts) {
+        if (account.eoa?.toLowerCase() === signer) continue
+        if (!account.eoa || account.chainId === undefined) {
+            return {
+                ok: false,
+                message:
+                    'ERC-8128 signer is not allowlisted and is not an on-chain key of the intent account',
+            }
+        }
+        const onChain = await args.isAccountKey(account.eoa, account.chainId, args.signer)
+        if (!onChain) {
+            return {
+                ok: false,
+                message:
+                    'ERC-8128 signer is not allowlisted and is not an on-chain key of the intent account',
+            }
+        }
+    }
+    return { ok: true }
 }
 
 function asAddress(value: unknown): Address | undefined {
@@ -100,53 +171,53 @@ function accountsFromSend(params: Record<string, unknown> | undefined): BoundAcc
     const accounts: BoundAccount[] = []
     for (const item of quote.quotes) {
         if (!item || typeof item !== 'object') return null
-        const record = item as { intent?: { eoa?: unknown }; authSigner?: unknown }
-        const account: BoundAccount = {
-            eoa: asAddress(record.intent?.eoa),
-            authSigner: asAddress(record.authSigner),
-        }
-        if (!account.eoa && !account.authSigner) return null
-        accounts.push(account)
+        const record = item as { chainId?: unknown; intent?: { eoa?: unknown } }
+        const eoa = asAddress(record.intent?.eoa)
+        // Ignore quote.authSigner. It is client-controlled until the HMAC, and even then
+        // it is only a hint. Authorization uses the EOA or an on-chain key.
+        if (!eoa) return null
+        accounts.push({ eoa, chainId: parseChainId(record.chainId) })
     }
     return accounts
 }
 
 function accountsFromPrepare(params: Record<string, unknown> | undefined): BoundAccount[] | null {
     const eoa = asAddress(params?.from)
-    const authSigner = sessionAddressFromEncodedKey(
-        typeof params?.session_key === 'string' ? params.session_key : undefined,
-    )
-    if (!eoa && !authSigner) return null
-    return [{ eoa, authSigner }]
+    // Ignore session_key. Decoding it only echoes an address the client chose.
+    if (!eoa) return null
+    return [{ eoa, chainId: parseChainId(params?.chain_id) }]
 }
 
 /**
- * Accounts a signed HTTP request claims to act for.
- * The quote HMAC (checked on send) is what makes these fields authentic.
+ * Accounts a signed HTTP request claims to act for, plus any other protected
+ * methods in the same JSON-RPC batch. Auth is one decision for the whole body.
  */
-export function bindingFromRpcBody(body: unknown): Erc8128Binding {
+export function bindingFromRpcBody(
+    body: unknown,
+    protectedMethods: ReadonlySet<string> = parseAuthProtectedMethods(undefined),
+): Erc8128Binding {
     const items = Array.isArray(body) ? body : [body]
     const accounts: BoundAccount[] = []
+    const otherProtectedMethods: string[] = []
     let sawBindable = false
 
     for (const item of items) {
         if (!item || typeof item !== 'object') continue
         const record = item as { method?: unknown; params?: unknown }
-        if (
-            record.method !== 'wallet_sendPreparedCalls' &&
-            record.method !== 'wallet_prepareCalls'
-        ) {
-            continue
+        if (typeof record.method !== 'string') continue
+        if (protectedMethods.has(record.method) && !PREPARE_OR_SEND.has(record.method)) {
+            otherProtectedMethods.push(record.method)
         }
+        if (!PREPARE_OR_SEND.has(record.method)) continue
         sawBindable = true
         const params = unwrapParams<Record<string, unknown>>(record.params)
         const extracted =
             record.method === 'wallet_prepareCalls'
                 ? accountsFromPrepare(params)
                 : accountsFromSend(params)
-        if (!extracted) return { accounts: [] }
+        if (!extracted) return { accounts: [], otherProtectedMethods }
         accounts.push(...extracted)
     }
 
-    return { accounts: sawBindable ? accounts : null }
+    return { accounts: sawBindable ? accounts : null, otherProtectedMethods }
 }

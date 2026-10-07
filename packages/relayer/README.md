@@ -88,7 +88,7 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 | `PRIORITY_FEE_PERCENTILE`   | `50`     | Fee percentile from block history                                    |
 | `QUOTE_TTL_SECONDS`         | `300`    | Fee quote validity (seconds)                                         |
 
-`QUOTE_SIGNING_SECRET` is required when `CONTEXT` is anything other than `local` or `dev` (including when `CONTEXT` is unset). The relayer signs each quote with HMAC-SHA256 and rejects a send whose quote does not verify. It also recomputes `paymentAmount` from `txGas`, `maxFeePerGas`, and `nativeRate`. The client-supplied `paymentAmount` is not collected. Local and dev may omit the secret; quote HMAC is then skipped. Do not copy a local secret into stage or prod. Set a unique value with `wrangler secret put QUOTE_SIGNING_SECRET --env stage` (and `--env prod`).
+`QUOTE_SIGNING_SECRET` is required when `CONTEXT` is anything other than `local` or `dev` (including when `CONTEXT` is unset). The relayer signs each quote with HMAC-SHA256 and rejects a send whose quote does not verify. It also recomputes `paymentAmount` from `txGas`, `maxFeePerGas`, and `nativeRate`. The client-supplied `paymentAmount` is not collected. If fee history fails, `wallet_prepareCalls` fails instead of signing a zero fee. Outside local and dev, a quote whose recomputed fee is 0 is not signed, and a payer-set quote that recomputes to 0 is rejected on send. Local and dev may omit the secret; quote HMAC is then skipped, and a zero fee quote can still be returned. Do not copy a local secret into stage or prod. Set a unique value with `wrangler secret put QUOTE_SIGNING_SECRET --env stage` (and `--env prod`).
 
 ### Optional: Validation
 
@@ -116,10 +116,10 @@ Protected JSON-RPC methods are controlled by a shared policy used by all enabled
 Outside `local` and `dev`, a recovered ERC-8128 key is accepted only when one of these is true:
 
 - the address is in `ERC8128_ALLOWED_SIGNERS`, or
-- the address is the intent EOA, or
-- the address is the session signer `prepareCalls` stored on the quote as `authSigner` (the `session_key` address, or the account when no session key was sent)
+- the address is the intent EOA (`from` on prepare, `intent.eoa` on send), or
+- the address is a live secp256k1 key registered on that account (`Account.getKey`). The relayer reads this from its own RPC. A client-supplied `session_key` or quote `authSigner` is not accepted by itself.
 
-An empty allowlist is not "any key". A request that names neither an intent EOA nor an `authSigner` is rejected unless the key is listed. `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Local and dev accept any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
+`prepareCalls` writes `authSigner` only when `session_key` is that EOA or a live on-chain key. Send checks the HTTP signer against the quote only after the quote HMAC verifies. In one JSON-RPC batch, every protected method other than `wallet_prepareCalls` and `wallet_sendPreparedCalls` requires the allowlist. A prepare or send binding does not authorize those methods. An empty allowlist is not "any key". `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Local and dev accept any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
 
 #### Privy Access Tokens
 
@@ -213,4 +213,4 @@ Local `wrangler dev` listens on `http://127.0.0.1:8787`.
 - `RELAYER_URL_STAGE` for stage
 - `RELAYER_URL_PROD` for prod
 
-Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, `CONTEXT` (`stage` or `prod`), and `QUOTE_SIGNING_SECRET`. Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, also set `ERC8128_ALLOWED_SIGNERS` for any operator key that is not the user's account or session signer. Stage and prod need a worker redeploy to pick up this code, plus those env values. No contract redeploy and no storage migration. In-flight quotes signed without the secret are rejected until the client calls `wallet_prepareCalls` again.
+Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, `CONTEXT` (`stage` or `prod`), and `QUOTE_SIGNING_SECRET`. Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, set `ERC8128_ALLOWED_SIGNERS` for operator keys that are not the user's account and not a key registered on that account. The on-chain key check uses the same RPC. Stage and prod need a worker redeploy to pick up this code, plus those env values. No contract redeploy and no storage migration. No new secret. In-flight quotes signed without the secret, and in-flight quotes whose recomputed fee is 0, are rejected until the client calls `wallet_prepareCalls` again.

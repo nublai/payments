@@ -14,7 +14,12 @@ import { isLocalDevContext, quoteSigningSecret } from '../../../config/runtime-c
 import { verifyQuoteSignature } from '../../../lib/quote-signing'
 import { validatePaymentAmount } from '../../../services/fees'
 import { recomputeQuotePaymentAmount } from '../../../services/quote-payment'
-import { decideErc8128Signer, type BoundAccount } from '../../../auth/erc8128/signer-policy'
+import { signerIsAccountKey } from '../../../auth/erc8128/account-key'
+import {
+    authorizeErc8128Signer,
+    parseChainId,
+    type BoundAccount,
+} from '../../../auth/erc8128/signer-policy'
 import type { RpcCaller } from '../../types'
 import { selectSignerForEoa } from '../../../lib/pool-utils'
 import { parseHexChainId } from '../../../lib/rpc-utils'
@@ -178,6 +183,9 @@ export async function validateQuote(
             throw error
         }
         const paymentMaxAmount = BigInt(quote.intent.paymentMaxAmount || '0')
+        if (!isLocalDevContext(env) && paymentAmount === 0n) {
+            return new RpcError(INVALID_PARAMS, 'Refusing a zero fee quote')
+        }
         if (!validatePaymentAmount(paymentAmount, paymentMaxAmount)) {
             return new RpcError(
                 PAYMENT_EXCEEDS_MAX,
@@ -190,14 +198,15 @@ export async function validateQuote(
 }
 
 /**
- * Outside local, an ERC-8128 caller must be allowlisted or be the account the
- * HMAC-signed quote names (intent EOA or session `authSigner`).
+ * Called only after the quote HMAC has been checked.
+ * The HTTP signer must be allowlisted, the intent EOA, or an on-chain key of that account.
+ * `authSigner` on the quote is not accepted by itself.
  */
-export function assertErc8128BoundToQuotes(
-    env: Pick<Env, 'CONTEXT' | 'ERC8128_ALLOWED_SIGNERS'>,
+export async function assertErc8128BoundToQuotes(
+    env: Pick<Env, 'CONTEXT' | 'ERC8128_ALLOWED_SIGNERS' | 'RPC_URL'> & Partial<Env>,
     auth: RpcCaller | undefined,
-    quotes: Array<{ intent?: { eoa?: string }; authSigner?: string }>,
-): RpcError | null {
+    quotes: Array<{ chainId?: string; intent?: { eoa?: string }; authSigner?: string }>,
+): Promise<RpcError | null> {
     if (isLocalDevContext(env)) return null
     if (auth?.provider !== 'erc8128') return null
 
@@ -206,20 +215,27 @@ export function assertErc8128BoundToQuotes(
         return new RpcError(INVALID_SIGNATURE, 'ERC-8128 signer is missing')
     }
 
-    const accounts: BoundAccount[] = quotes.map((quote) => ({
-        eoa:
+    const accounts: BoundAccount[] = []
+    for (const quote of quotes) {
+        const eoa =
             quote.intent?.eoa && isAddress(quote.intent.eoa)
                 ? (quote.intent.eoa as Address)
-                : undefined,
-        authSigner:
-            quote.authSigner && isAddress(quote.authSigner)
-                ? (quote.authSigner as Address)
-                : undefined,
-    }))
-    const decision = decideErc8128Signer({
+                : undefined
+        if (!eoa) {
+            return new RpcError(
+                INVALID_SIGNATURE,
+                'ERC-8128 signer is not allowlisted and is not bound to the intent account',
+            )
+        }
+        accounts.push({ eoa, chainId: parseChainId(quote.chainId) })
+    }
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    const decision = await authorizeErc8128Signer({
         env,
         signer,
-        binding: { accounts },
+        binding: { accounts, otherProtectedMethods: [] },
+        isAccountKey: (account, chainId, accountSigner) =>
+            signerIsAccountKey(env, account, chainId, accountSigner, nowSeconds),
     })
     if (!decision.ok) {
         return new RpcError(INVALID_SIGNATURE, decision.message)

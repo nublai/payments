@@ -19,6 +19,7 @@ import { getChainConfig as getChainAssetsConfig } from '../../config/chains'
 import { logger } from '../../lib/logger'
 import { RelayerService, createIntentNonceProvider, isPaymentEnabled } from '../../services/relayer'
 import { isLocalDevContext, quoteSigningSecret } from '../../config/runtime-context'
+import { isOnChainAccountKey } from '../../auth/erc8128/account-key'
 import { sessionAddressFromEncodedKey } from '../../lib/session-address'
 import { signQuotes } from '../../lib/quote-signing'
 import { unwrapParams, parseHexChainId } from '../../lib/rpc-utils'
@@ -128,14 +129,8 @@ export async function handlePrepareCalls(
     try {
         feeEstimate = await getFeeEstimate(publicClient, txGas, feeConfig)
     } catch (error) {
-        logger.warn({ error }, 'Fee estimation failed, using zero fees')
-        feeEstimate = {
-            baseFeePerGas: 0n,
-            maxPriorityFeePerGas: 0n,
-            maxFeePerGas: 0n,
-            totalGas: txGas,
-            paymentAmount: 0n,
-        }
+        logger.warn({ error }, 'Fee estimation failed')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Fee estimation failed')
     }
 
     const priceConfig = getPriceOracleConfig(env)
@@ -199,6 +194,24 @@ export async function handlePrepareCalls(
         paymentAmount = convertToFeeToken(paymentAmount, nativeRate, paymentTokenDecimals)
     }
 
+    // A failed or zero fee must not be HMAC-signed. Outside local that quote would
+    // otherwise be collected as 0 for QUOTE_TTL_SECONDS. Local may still quote 0.
+    if (paymentAmount === 0n && !isLocalDevContext(env)) {
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Refusing to sign a zero fee quote')
+    }
+
+    const claimedSession = sessionAddressFromEncodedKey(typedParams.session_key)
+    let authSigner = typedParams.from
+    if (claimedSession && claimedSession.toLowerCase() !== typedParams.from.toLowerCase()) {
+        const onChain = await isOnChainAccountKey(
+            publicClient,
+            typedParams.from,
+            claimedSession,
+            Math.floor(Date.now() / 1000),
+        )
+        if (onChain) authSigner = claimedSession
+    }
+
     const quoteIntent: QuoteIntent = {
         eoa: typedParams.from,
         calls: normalizedCalls,
@@ -225,7 +238,7 @@ export async function handlePrepareCalls(
         },
         paymentAmount: paymentAmount.toString(),
         nativeRate: nativeRate.toString(),
-        authSigner: sessionAddressFromEncodedKey(typedParams.session_key) ?? typedParams.from,
+        authSigner,
         orchestrator: config.contracts.orchestrator,
         feeTokenDeficit: '0x0',
         assetDeficits: [],

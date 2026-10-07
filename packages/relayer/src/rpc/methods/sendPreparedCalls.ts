@@ -75,7 +75,7 @@ export async function handleSendPreparedCalls(
     if ('quote' in context && context.quote) {
         const quoteError = await validateQuote(context.quote, env)
         if (quoteError) throw quoteError
-        const callerError = assertErc8128BoundToQuotes(env, ctx.auth, context.quote.quotes)
+        const callerError = await assertErc8128BoundToQuotes(env, ctx.auth, context.quote.quotes)
         if (callerError) throw callerError
     }
 
@@ -306,7 +306,7 @@ export async function handleBatchSendPreparedCalls(
                 validationErrors.set(req.id, quoteError)
                 continue
             }
-            const callerError = assertErc8128BoundToQuotes(
+            const callerError = await assertErc8128BoundToQuotes(
                 env,
                 ctx.auth,
                 typedParams.context.quote.quotes,

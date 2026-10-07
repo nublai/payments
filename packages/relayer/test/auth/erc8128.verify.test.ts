@@ -1,9 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { privateKeyToAccount } from 'viem/accounts'
-import { bytesToHex } from 'viem'
+import { bytesToHex, encodeAbiParameters } from 'viem'
 import { signRequest, type EthHttpSigner } from '@slicekit/erc8128'
 
 import { verifyErc8128Request, type NonceStore } from '../../src/auth/erc8128/verify'
+
+const { mockGetCode, mockReadContract, mockVerifyMessage } = vi.hoisted(() => ({
+    mockGetCode: vi.fn(),
+    mockReadContract: vi.fn(),
+    mockVerifyMessage: vi.fn(),
+}))
+
+vi.mock('../../src/lib/multi-chain-client', () => ({
+    getChainClient: () => ({
+        getCode: mockGetCode,
+        readContract: mockReadContract,
+        verifyMessage: mockVerifyMessage,
+    }),
+}))
 
 const account = privateKeyToAccount(
     '0x59c6995e998f97a5a0044966f0945382db9f6c0b4b7f3adf8f13e9f5b5b6c5a5',
@@ -58,6 +72,12 @@ describe('verifyErc8128Request', () => {
     let nonceStore: NonceStore
 
     beforeEach(() => {
+        mockGetCode.mockReset()
+        mockGetCode.mockResolvedValue(undefined)
+        mockReadContract.mockReset()
+        mockReadContract.mockRejectedValue(new Error('missing key'))
+        mockVerifyMessage.mockReset()
+        mockVerifyMessage.mockResolvedValue(false)
         nonceSeen = new Set<string>()
         nonceStore = {
             consumeNonce: vi.fn(async (replayKey: string) => {
@@ -267,6 +287,12 @@ describe('verifyErc8128Request signer binding', () => {
     let nonceStore: NonceStore
 
     beforeEach(() => {
+        mockGetCode.mockReset()
+        mockGetCode.mockResolvedValue(undefined)
+        mockReadContract.mockReset()
+        mockReadContract.mockRejectedValue(new Error('missing key'))
+        mockVerifyMessage.mockReset()
+        mockVerifyMessage.mockResolvedValue(false)
         const nonceSeen = new Set<string>()
         nonceStore = {
             consumeNonce: vi.fn(async (replayKey: string) => {
@@ -295,7 +321,7 @@ describe('verifyErc8128Request signer binding', () => {
         )
     }
 
-    function sendBody(account: { eoa?: string; authSigner?: string }): string {
+    function sendBody(account: { eoa?: string; authSigner?: string; chainId?: string }): string {
         return JSON.stringify({
             jsonrpc: '2.0',
             id: 1,
@@ -306,6 +332,7 @@ describe('verifyErc8128Request signer binding', () => {
                         quote: {
                             quotes: [
                                 {
+                                    chainId: account.chainId,
                                     intent: { eoa: account.eoa },
                                     authSigner: account.authSigner,
                                 },
@@ -368,16 +395,114 @@ describe('verifyErc8128Request signer binding', () => {
         )
     })
 
-    it('accepts the session signer committed on the quote', async () => {
+    it('rejects a client-supplied authSigner that is not an on-chain key of the account', async () => {
         const req = await createSignedRequest({
             body: sendBody({
                 eoa: '0x2222222222222222222222222222222222222222',
                 authSigner: account.address,
+                chainId: '0x2105',
+            }),
+        })
+        const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'SIGNER_NOT_ALLOWED',
+            }),
+        )
+    })
+
+    it('accepts a live on-chain key of the intent account without a client authSigner', async () => {
+        const publicKey = encodeAbiParameters([{ type: 'address' }], [account.address])
+        mockReadContract.mockResolvedValue({
+            expiry: 0n,
+            keyType: 0,
+            isSuperAdmin: false,
+            publicKey,
+        })
+        const req = await createSignedRequest({
+            body: sendBody({
+                eoa: '0x2222222222222222222222222222222222222222',
+                chainId: '0x2105',
             }),
         })
         const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
 
         expect(result.ok).toBe(true)
+        expect(mockReadContract).toHaveBeenCalled()
+    })
+
+    it('rejects a prepare that only names the signer in session_key', async () => {
+        const sessionKey = encodeAbiParameters([{ type: 'address' }], [account.address])
+        const req = await createSignedRequest({
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'wallet_prepareCalls',
+                params: [
+                    {
+                        from: '0x2222222222222222222222222222222222222222',
+                        chain_id: '0x2105',
+                        calls: [],
+                        session_key: sessionKey,
+                    },
+                ],
+            }),
+        })
+        const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'SIGNER_NOT_ALLOWED',
+            }),
+        )
+    })
+
+    it('requires the allowlist for another protected method in the same batch', async () => {
+        const req = await createSignedRequest({
+            body: JSON.stringify([
+                {
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'wallet_sendPreparedCalls',
+                    params: [
+                        {
+                            context: {
+                                quote: {
+                                    quotes: [
+                                        {
+                                            chainId: '0x2105',
+                                            intent: { eoa: account.address },
+                                        },
+                                    ],
+                                },
+                            },
+                            signature: '0x',
+                        },
+                    ],
+                },
+                {
+                    jsonrpc: '2.0',
+                    id: 2,
+                    method: 'wallet_getKeys',
+                    params: [{ address: '0x2222222222222222222222222222222222222222' }],
+                },
+            ]),
+        })
+        const result = await verify(req, {
+            CHAIN_IDS: '8453',
+            CONTEXT: 'prod',
+            AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls,wallet_getKeys',
+        })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'SIGNER_NOT_ALLOWED',
+            }),
+        )
     })
 
     it('accepts an allowlisted signer that is not the intent EOA', async () => {

@@ -79,8 +79,8 @@ export interface Quote {
      */
     nativeRate?: string
     /**
-     * HTTP signer bound at prepare time: the session key address when `session_key` was sent,
-     * otherwise the account EOA. Covered by the quote HMAC.
+     * Set to `session_key` only when that address is the account EOA or a live on-chain key
+     * of the account. Otherwise the account EOA. Not sufficient on its own for ERC-8128.
      */
     authSigner?: Address
     orchestrator: Address
