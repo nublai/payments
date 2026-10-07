@@ -701,7 +701,7 @@ account.command('status', {
 
 account.command('create', {
     description:
-        'Create local account keystore and delegate account. The default session can transfer and approve this chain USDC, call escrow, refund, write a settlement, and settle, with a 10 USDC daily spend. It requires typing CREATE FULL ACCESS SESSION in an interactive terminal. A chain with no known USDC or Escrow address is refused. MCP cannot confirm it.',
+        'Create local account keystore and delegate account. The default session can transfer and approve this chain USDC, call escrow, refund, write a settlement, and settle, with a 10 USDC daily spend. A USDC balance pays for a first upgrade that only authorizes that normal key, then a second transaction installs these permissions. Resume with --resume if the second transaction does not land. A zero balance stays on the sponsored upgrade. It requires typing CREATE FULL ACCESS SESSION in an interactive terminal. A chain with no known USDC or Escrow address is refused. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,
@@ -722,6 +722,8 @@ account.command('create', {
         }),
         keystorePath: z.string(),
         txHash: z.string().optional(),
+        permissionsTxHash: z.string().optional(),
+        upgradePath: z.enum(['paid', 'sponsored']).optional(),
     }),
     examples: [{ options: { env: 'prod', profile: 'agent' }, description: 'Create account' }],
     async run({ options, env, error: reportError }) {
@@ -762,7 +764,7 @@ account.command('create', {
 
 account.command('delegate', {
     description:
-        'Delegate existing account on one or more chains. Installs the narrow default session (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day) and requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
+        'Delegate existing account on one or more chains. Installs the narrow default session (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day). A USDC balance pays for an authorize-only upgrade, then a second transaction installs those permissions. An interrupted paid upgrade resumes from the chain instead of authorizing the key again. It requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,

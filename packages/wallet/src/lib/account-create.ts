@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { encodeSecp256k1Key, ERC20_SELECTORS } from '@nubl/relayer-client'
+import { ERC20_SELECTORS } from '@nubl/relayer-client'
 import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import {
     createRootKeystore,
@@ -26,13 +26,15 @@ import {
     type EnvName,
 } from './network-config'
 import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
-import { delegateAccountWithAuthorizeKeys } from './delegation-utils'
+import { FirstUpgradeError, runFirstUpgrade } from './first-upgrade'
 type AccountCreateErrorCode =
     | 'PASSWORD_REQUIRED'
     | 'INVALID_NAME'
     | 'KEYSTORE_EXISTS'
     | 'RELAYER_CAPABILITIES_MISSING'
     | 'DELEGATION_FAILED'
+    | 'PERMISSIONS_PENDING'
+    | 'SESSION_KEY_ADMIN'
     | 'UNKNOWN'
 
 type NetworkDefaults = CliNetworkConfig
@@ -107,17 +109,24 @@ export type AccountCreateResult = {
         delegated: string
     }
     txHash?: string
+    permissionsTxHash?: string
+    upgradePath?: 'paid' | 'sponsored'
 }
 
 type DelegateInput = {
     rootPrivateKey: Hex
     sessionAddress: string
     network: NetworkDefaults
+    keystorePath?: string
+    sessionsDir?: string
+    onKeyAuthorized?: (accountAddress: Address) => Promise<void>
 }
 
 type DelegateResult = {
     accountAddress: string
     txHash?: string
+    permissionsTxHash?: string
+    path?: 'paid' | 'sponsored'
 }
 
 type AccountCreateDeps = {
@@ -209,27 +218,23 @@ function resolveNetwork(options: AccountCreateOptions): NetworkDefaults {
 }
 
 async function defaultDelegateAccount(input: DelegateInput): Promise<DelegateResult> {
-    const account = privateKeyToAccount(input.rootPrivateKey)
-    const result = await delegateAccountWithAuthorizeKeys({
+    const result = await runFirstUpgrade({
         rootPrivateKey: input.rootPrivateKey,
-        sessionAddress: input.sessionAddress as `0x${string}`,
+        sessionAddress: input.sessionAddress as Address,
         network: input.network,
-        authorizeKeys: [
-            {
-                expiry: '0',
-                type: 'secp256k1',
-                role: 'normal',
-                publicKey: encodeSecp256k1Key(input.sessionAddress as `0x${string}`),
-                permissions: getDefaultSessionPermissions(input.network.chainId, {
-                    env: input.network.env,
-                }),
-            },
-        ],
+        permissions: getDefaultSessionPermissions(input.network.chainId, {
+            env: input.network.env,
+        }),
+        keystorePath: input.keystorePath,
+        sessionsDir: input.sessionsDir,
+        onKeyAuthorized: input.onKeyAuthorized,
     })
 
     return {
-        accountAddress: result.accountAddress ?? account.address,
+        accountAddress: result.accountAddress,
         txHash: result.txHash,
+        permissionsTxHash: result.permissionsTxHash,
+        path: result.path,
     }
 }
 
@@ -286,6 +291,19 @@ function toAccountCreateError(
 ): AccountCreateError {
     if (error instanceof AccountCreateError) {
         return error
+    }
+
+    if (error instanceof FirstUpgradeError) {
+        if (error.code === 'PERMISSIONS_PENDING') {
+            return new AccountCreateError('PERMISSIONS_PENDING', error.message, {
+                recoveryCommand: error.recoveryCommand ?? buildResumeCommand(context.keystorePath),
+                cause: error,
+            })
+        }
+        if (error.code === 'SESSION_KEY_ADMIN') {
+            return new AccountCreateError('SESSION_KEY_ADMIN', error.message, { cause: error })
+        }
+        return new AccountCreateError('DELEGATION_FAILED', error.message, { cause: error })
     }
 
     const message = error instanceof Error ? error.message : String(error)
@@ -433,6 +451,20 @@ export async function executeAccountCreate(
             rootPrivateKey,
             sessionAddress,
             network,
+            keystorePath,
+            sessionsDir: rootKeystore.sessionRef.dir,
+            onKeyAuthorized: async (accountAddress) => {
+                rootKeystore.network = network
+                rootKeystore.addresses.delegated = accountAddress
+                rootKeystore.checkpoint = 'delegated'
+                await deps.writeRootKeystoreFile(keystorePath, rootKeystore, { overwrite: true })
+                if (sessionKeystore) {
+                    sessionKeystore.addresses.delegated = accountAddress
+                    await deps.writeSessionKeystoreFile(sessionKeystorePath, sessionKeystore, {
+                        overwrite: true,
+                    })
+                }
+            },
         })
 
         rootKeystore.network = network
@@ -457,6 +489,8 @@ export async function executeAccountCreate(
                 delegated: delegated.accountAddress,
             },
             txHash: delegated.txHash,
+            permissionsTxHash: delegated.permissionsTxHash,
+            upgradePath: delegated.path,
         }
     } catch (error) {
         throw toAccountCreateError(error, { keystorePath })

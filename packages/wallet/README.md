@@ -73,6 +73,8 @@ echo "my-password" | tw account create --password-stdin --json --env prod
 tw account create --keystore-path ~/.config/agentic-payments/tw/profiles/prod/team/default.keystore.json --env prod
 ```
 
+A USDC balance pays for the first upgrade in two transactions: the paid upgrade authorizes the normal session key, then the account pays to install the six call permissions and the 10 USDC daily spend. If that second transaction does not land, run the same command with `--resume`. A zero USDC balance stays on the sponsored upgrade, which still installs the key and those permissions together.
+
 #### `account status` / `account balance` / `account nonce` / `account history`
 
 ```bash
