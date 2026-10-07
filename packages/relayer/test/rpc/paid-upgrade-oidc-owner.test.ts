@@ -188,6 +188,7 @@ function createCtx(): RpcContext {
             RPC_8453: 'http://rpc.test/8453',
             CHAIN_IDS: String(CHAIN_ID),
             CONTEXT: 'local',
+            PAID_UPGRADE_ENABLED: 'true',
             RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
             RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: SECRET,
