@@ -1,13 +1,27 @@
 import {
     bindPreparedCalls,
+    INTENT_EXPIRY_TTL_SECONDS,
     wrapSignature,
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
 import type { Address, Hex } from 'viem'
+import { estimateCombinedGasCeiling, localCombinedGasCeiling } from './gas-ceiling'
+import { resolveIntentPayment } from './intent-payment'
 import type { EnvName } from './network-config'
 import { resolveOrchestratorAddress } from './orchestrator-address'
+
+export type PreparedCallRequest = {
+    from: Address
+    calls: Call[]
+    nonce: bigint
+    sessionKey?: Hex
+    expiry: bigint
+    payer?: Address
+    paymentToken?: Address
+    paymentMaxAmount?: bigint
+}
 
 export type ExecuteSignedCallsParams = {
     from: Address
@@ -24,15 +38,15 @@ export type ExecuteSignedCallsParams = {
     paymentToken?: Address
     paymentMaxAmount?: bigint
     expiry?: bigint
+    /** Unix seconds for expiry bounds. Tests pin this. */
+    now?: bigint
+    /** Skip the RPC estimate and use this ceiling. */
+    combinedGasCeiling?: bigint
+    rpcUrl?: string
 }
 
 export type ExecuteSignedCallsDeps = {
-    prepareCalls: (input: {
-        from: Address
-        calls: Call[]
-        nonce: bigint
-        sessionKey?: Hex
-    }) => Promise<PrepareCallsResponse>
+    prepareCalls: (input: PreparedCallRequest) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
         typedData: PrepareCallsResponse['typedData']
@@ -48,30 +62,57 @@ export async function executeSignedCalls(
     deps: ExecuteSignedCallsDeps,
     params: ExecuteSignedCallsParams,
 ): Promise<{ id: string; finalStatus: BundleStatusResponse }> {
+    const now = params.now ?? BigInt(Math.floor(Date.now() / 1000))
+    const expiry = params.expiry ?? now + INTENT_EXPIRY_TTL_SECONDS
+    const payment =
+        params.paymentMaxAmount !== undefined || params.payer !== undefined || params.paymentToken !== undefined
+            ? {
+                  payer: params.payer,
+                  paymentToken: params.paymentToken,
+                  paymentMaxAmount: params.paymentMaxAmount ?? 0n,
+              }
+            : resolveIntentPayment(params.env, params.chainId, params.from)
+    const combinedGasCeiling =
+        params.combinedGasCeiling ??
+        (process.env.NODE_ENV === 'test' || !params.rpcUrl
+            ? localCombinedGasCeiling(params.calls)
+            : await estimateCombinedGasCeiling({
+                  rpcUrl: params.rpcUrl,
+                  chainId: params.chainId,
+                  from: params.from,
+                  calls: params.calls,
+              }))
+
     const prepared = await deps.prepareCalls({
         from: params.from,
         calls: params.calls,
         nonce: params.nonce,
         sessionKey: params.sessionKey,
+        expiry,
+        payer: payment.payer,
+        paymentToken: payment.paymentToken,
+        paymentMaxAmount: payment.paymentMaxAmount,
     })
 
     const verifyingContract =
         params.verifyingContract ?? resolveOrchestratorAddress(params.env, params.chainId)
-    bindPreparedCalls(prepared, {
+    const bound = bindPreparedCalls(prepared, {
         from: params.from,
         calls: params.calls,
         chainId: params.chainId,
         verifyingContract,
         nonce: params.nonce,
-        payer: params.payer,
-        paymentToken: params.paymentToken,
-        paymentMaxAmount: params.paymentMaxAmount,
-        expiry: params.expiry,
+        payer: payment.payer,
+        paymentToken: payment.paymentToken,
+        paymentMaxAmount: payment.paymentMaxAmount,
+        expiry,
+        now,
+        combinedGasCeiling,
     })
 
     const signature = await deps.signTypedData({
         privateKey: params.signerPrivateKey,
-        typedData: prepared.typedData,
+        typedData: bound.typedData,
     })
 
     const effectiveSignature = params.signerKeyHash

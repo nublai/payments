@@ -95,8 +95,8 @@ echo "Deploying contracts (bun run deploy:local && bun run make-config)..."
   bun run make-config
 )
 
-# Local Anvil is not in addresses.json. Export ORCHESTRATOR_31337 (and the
-# other address keys) so tw can bind the EIP-712 verifying contract.
+# make-config strips local addresses out of addresses.json. The narrowed
+# default session needs ESCROW_31337 and SIMPLE_SETTLER_31337 from this file.
 LOCAL_ENV="$ROOT/packages/contracts/deployments/envs/local/.env"
 if [[ ! -f "$LOCAL_ENV" ]]; then
   echo "Missing $LOCAL_ENV after make-config." >&2
@@ -108,8 +108,8 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
   exported=$((exported + 1))
 done < "$LOCAL_ENV"
-if [[ -z "${ORCHESTRATOR_31337:-}" ]]; then
-  echo "ORCHESTRATOR_31337 was not set from $LOCAL_ENV" >&2
+if [[ "$exported" -lt 1 ]]; then
+  echo "No address keys in $LOCAL_ENV" >&2
   exit 1
 fi
 echo "Exported $exported local address keys"
@@ -118,6 +118,13 @@ echo "Starting wrangler relayer..."
 RELAYER_PID="$(bash "$ROOT/packages/relayer/scripts/dev.sh" --background)"
 PIDS+=("$RELAYER_PID")
 echo "Relayer pid $RELAYER_PID"
+
+# H5 binds the EIP-712 verifying contract from this address. Exporting every
+# local key (above) also covers the narrowed session's escrow addresses.
+if [[ -z "${ORCHESTRATOR_31337:-}" ]]; then
+  echo "ORCHESTRATOR_31337 was not set from $LOCAL_ENV" >&2
+  exit 1
+fi
 
 echo "Building @nubl/relayer-client..."
 (cd "$ROOT/packages/relayer-client" && bun run build)

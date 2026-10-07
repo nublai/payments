@@ -5,6 +5,8 @@ import { INTENT_TYPES, type Call } from '../types'
 
 export const ORCHESTRATOR_DOMAIN_NAME = 'Orchestrator'
 export const ORCHESTRATOR_DOMAIN_VERSION = '0.5.5'
+/** Wallet TTL for an intent expiry. The relayer does not choose this. */
+export const INTENT_EXPIRY_TTL_SECONDS = 3600n
 
 export class PreparedCallsBindingError extends Error {
     readonly code = 'PREPARED_CALLS_MISMATCH' as const
@@ -20,8 +22,16 @@ export type PreparedCallsExpectation = {
     calls: readonly Call[]
     chainId: number
     verifyingContract: Address
-    nonce?: bigint
-    expiry?: bigint
+    nonce: bigint
+    /** Unix seconds. Required. Never taken from the relayer typed data. */
+    expiry: bigint
+    /**
+     * Maximum combinedGas the wallet will sign. The relayer value is accepted
+     * only when it is within this ceiling. The ceiling is not read from typed data.
+     */
+    combinedGasCeiling: bigint
+    /** Unix seconds used for expiry bounds. Defaults to the current time. */
+    now?: bigint
     payer?: Address
     paymentToken?: Address
     paymentMaxAmount?: bigint
@@ -228,17 +238,32 @@ function assertIntentMatches(actual: NormalizedIntent, expected: NormalizedInten
     }
 }
 
+export type BoundPreparedCalls = {
+    digest: Hex
+    /** Typed data the caller must sign. Domain has no salt or extra fields. */
+    typedData: PrepareCallsResponse['typedData']
+}
+
 /**
  * Recompute the Orchestrator EIP-712 digest from the calls the caller asked for.
  * Throws unless the relayer typed data, digest, and executed quote all match.
+ * Returns the typed data to sign. Callers must sign that object, not the relayer's.
  */
 export function bindPreparedCalls(
     prepared: PrepareCallsResponse,
     expected: PreparedCallsExpectation,
-): Hex {
+): BoundPreparedCalls {
     if (!expected?.from || !expected.calls || expected.chainId === undefined || !expected.verifyingContract) {
         refuse('expected account, calls, chain, and verifying contract are required')
     }
+    if (expected.nonce === undefined) refuse('nonce is required')
+    if (expected.expiry === undefined) refuse('expiry is required')
+    if (expected.combinedGasCeiling === undefined) refuse('combined gas ceiling is required')
+
+    const now = expected.now ?? BigInt(Math.floor(Date.now() / 1000))
+    if (expected.expiry === 0n) refuse('expiry is unset')
+    if (expected.expiry <= now) refuse('expiry is in the past')
+    if (expected.expiry > now + INTENT_EXPIRY_TTL_SECONDS) refuse('expiry exceeds the wallet ttl')
 
     const domain = prepared.typedData?.domain
     if (!domain) refuse('typed data domain is missing')
@@ -251,6 +276,9 @@ export function bindPreparedCalls(
     }
 
     const typed = parseTypedIntent(prepared)
+    if (typed.combinedGas <= 0n) refuse('combined gas is unset')
+    if (typed.combinedGas > expected.combinedGasCeiling) refuse('combined gas exceeds the wallet ceiling')
+
     const canonical: NormalizedIntent = {
         multichain: false,
         eoa: getAddress(expected.from),
@@ -259,7 +287,7 @@ export function bindPreparedCalls(
             value: call.value,
             data: (call.data ?? '0x').toLowerCase() as Hex,
         })),
-        nonce: expected.nonce ?? typed.nonce,
+        nonce: expected.nonce,
         payer: getAddress(expected.payer ?? zeroAddress),
         paymentToken: getAddress(expected.paymentToken ?? zeroAddress),
         paymentMaxAmount: expected.paymentMaxAmount ?? 0n,
@@ -267,7 +295,7 @@ export function bindPreparedCalls(
         encodedPreCalls: (expected.encodedPreCalls ?? []).map((item) => item.toLowerCase() as Hex),
         encodedFundTransfers: (expected.encodedFundTransfers ?? []).map((item) => item.toLowerCase() as Hex),
         settler: getAddress(expected.settler ?? zeroAddress),
-        expiry: expected.expiry ?? typed.expiry,
+        expiry: expected.expiry,
     }
 
     assertIntentMatches(typed, canonical, 'typed data')
@@ -287,24 +315,34 @@ export function bindPreparedCalls(
         if (quoteIntent.settlerContext !== expectedSettlerContext) {
             refuse('quote does not match the signed intent')
         }
+        const quotedPayment = (quote as { paymentAmount?: unknown }).paymentAmount
+        const paymentAmount =
+            quotedPayment === undefined || quotedPayment === null
+                ? 0n
+                : readUint(quotedPayment, 'quote payment amount')
+        if (paymentAmount > canonical.paymentMaxAmount) refuse('payment amount exceeds fee cap')
     }
 
-    const digest = hashTypedData({
-        domain: {
-            name: ORCHESTRATOR_DOMAIN_NAME,
-            version: ORCHESTRATOR_DOMAIN_VERSION,
-            chainId: expected.chainId,
-            verifyingContract: getAddress(expected.verifyingContract),
-        },
+    const signingDomain = {
+        name: ORCHESTRATOR_DOMAIN_NAME,
+        version: ORCHESTRATOR_DOMAIN_VERSION,
+        chainId: expected.chainId,
+        verifyingContract: getAddress(expected.verifyingContract),
+    }
+    const typedData: PrepareCallsResponse['typedData'] = {
+        domain: signingDomain,
         types: INTENT_TYPES,
         primaryType: 'Intent',
-        message: {
-            ...canonical,
-            calls: canonical.calls,
-        },
+        message: canonical,
+    }
+    const digest = hashTypedData({
+        domain: signingDomain,
+        types: INTENT_TYPES,
+        primaryType: 'Intent',
+        message: canonical,
     })
     if (typeof prepared.digest !== 'string' || prepared.digest.toLowerCase() !== digest.toLowerCase()) {
         refuse('digest does not match')
     }
-    return digest
+    return { digest, typedData }
 }

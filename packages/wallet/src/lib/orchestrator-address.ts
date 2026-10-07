@@ -30,23 +30,41 @@ function readDeployEnvValue(name: string): string | undefined {
     return undefined
 }
 
+function resolveLocalOrPublished(
+    env: EnvName,
+    chainId: number,
+    field: 'orchestrator' | 'accountProxy',
+    envPrefix: 'ORCHESTRATOR' | 'ACCOUNT_PROXY',
+    label: string,
+): Address {
+    const fromJson = getAddresses(env, chainId)?.[field]
+    if (fromJson) return getAddress(fromJson)
+
+    if (chainId === 31337 || chainId === 41337) {
+        const key = `${envPrefix}_${chainId}`
+        const raw = readDeployEnvValue(key)
+        if (raw) return getAddress(raw)
+        throw new Error(
+            `No ${label} for local chain ${chainId}. Set ${key} from the local deploy env (packages/contracts/deployments/envs/local/.env).`,
+        )
+    }
+
+    throw new Error(`No ${label} deployment for ${env}/${chainId}. Refusing to continue.`)
+}
+
 /**
  * Orchestrator used as the EIP-712 verifying contract.
  * Published chains come from deployments JSON. Local Anvil (31337) reads
  * ORCHESTRATOR_31337 from the process env or the local deploy env file.
  */
 export function resolveOrchestratorAddress(env: EnvName, chainId: number): Address {
-    const fromJson = getAddresses(env, chainId)?.orchestrator
-    if (fromJson) return getAddress(fromJson)
+    return resolveLocalOrPublished(env, chainId, 'orchestrator', 'ORCHESTRATOR', 'orchestrator')
+}
 
-    if (chainId === 31337 || chainId === 41337) {
-        const key = `ORCHESTRATOR_${chainId}`
-        const raw = readDeployEnvValue(key)
-        if (raw) return getAddress(raw)
-        throw new Error(
-            `No orchestrator for local chain ${chainId}. Set ${key} from the local deploy env (packages/contracts/deployments/envs/local/.env).`,
-        )
-    }
-
-    throw new Error(`No orchestrator deployment for ${env}/${chainId}.`)
+/**
+ * EIP-7702 delegation target. Published chains come from deployments JSON.
+ * Local Anvil reads ACCOUNT_PROXY_31337 or ACCOUNT_PROXY_41337. Unknown chains throw.
+ */
+export function resolveAccountProxyAddress(env: EnvName, chainId: number): Address {
+    return resolveLocalOrPublished(env, chainId, 'accountProxy', 'ACCOUNT_PROXY', 'account proxy')
 }

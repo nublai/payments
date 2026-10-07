@@ -160,6 +160,10 @@ type AccountSendDeps = {
         calls: Call[]
         sessionKey?: Hex
         nonce: bigint
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -287,6 +291,10 @@ function getDefaultDeps(): AccountSendDeps {
                 calls: input.calls,
                 sessionKey: input.sessionKey,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
             })
         },
         signTypedData: async (input) => {
@@ -533,6 +541,10 @@ export async function executeAccountSend(
                             calls: input.calls,
                             sessionKey: input.sessionKey,
                             nonce: input.nonce,
+                            expiry: input.expiry,
+                            payer: input.payer,
+                            paymentToken: input.paymentToken,
+                            paymentMaxAmount: input.paymentMaxAmount,
                         }),
                     signTypedData: signer.signTypedData,
                     sendPreparedCalls: async (input) =>
@@ -552,6 +564,7 @@ export async function executeAccountSend(
                     signerKeyHash: sessionKeyHash,
                     chainId: network.chainId,
                     env: network.env,
+                    rpcUrl: network.rpcUrl,
                 },
             )
         }

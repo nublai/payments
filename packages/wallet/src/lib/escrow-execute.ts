@@ -240,6 +240,10 @@ export async function executeEscrowCallsWithFallback(params: {
                 calls: input.calls,
                 sessionKey: input.sessionKey,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
             }),
         signTypedData: resolvedSigner.signTypedData,
         sendPreparedCalls: async (input) =>
@@ -272,6 +276,7 @@ export async function executeEscrowCallsWithFallback(params: {
             signerKeyHash: sessionKeyHash,
             chainId: signedNetwork.chainId,
             env: signedNetwork.env,
+            rpcUrl: signedNetwork.rpcUrl,
         })
     } catch (error) {
         if (error instanceof SessionSignerExpiredError) {
@@ -296,6 +301,10 @@ export async function executeEscrowCallsWithFallback(params: {
                     calls: input.calls,
                     sessionKey: input.sessionKey,
                     nonce: input.nonce,
+                    expiry: input.expiry,
+                    payer: input.payer,
+                    paymentToken: input.paymentToken,
+                    paymentMaxAmount: input.paymentMaxAmount,
                 }),
             signTypedData: async (input) => {
                 const signer = privateKeyToAccount(input.privateKey)
@@ -325,6 +334,7 @@ export async function executeEscrowCallsWithFallback(params: {
             signerKeyHash: sessionKeyHash,
             chainId: fallbackNetwork.chainId,
             env: fallbackNetwork.env,
+            rpcUrl: fallbackNetwork.rpcUrl,
         })
     }
 

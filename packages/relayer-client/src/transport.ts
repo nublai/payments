@@ -126,15 +126,24 @@ async function postJson(relayerUrl: string, body: string, options?: JsonRpcTrans
         method: 'POST',
         headers,
         body,
+        redirect: 'manual',
     })
 
     const httpAuth = options?.httpAuth
-    if (!httpAuth?.signer) {
-        return fetch(request)
+    const response = httpAuth?.signer
+        ? await fetch(await signRequest(request, httpAuth.signer, httpAuth.signOptions), {
+              redirect: 'manual',
+          })
+        : await fetch(request, { redirect: 'manual' })
+    if (
+        response.type === 'opaqueredirect' ||
+        (response.status >= 300 && response.status < 400)
+    ) {
+        throw new Error(
+            `Refusing relayer redirect (${response.status || '3xx'}). The relayer URL must answer directly.`,
+        )
     }
-
-    const signedRequest = await signRequest(request, httpAuth.signer, httpAuth.signOptions)
-    return fetch(signedRequest)
+    return response
 }
 
 async function resolveBearerToken(options?: JsonRpcTransportOptions): Promise<string | null> {

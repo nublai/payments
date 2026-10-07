@@ -9,6 +9,10 @@ export function matchingPreparedCalls(input: {
     calls: Call[]
     nonce: bigint
     network: { env: EnvName; chainId: number }
+    expiry?: bigint
+    payer?: Address
+    paymentToken?: Address
+    paymentMaxAmount?: bigint
 }) {
     const verifyingContract = resolveOrchestratorAddress(input.network.env, input.network.chainId)
     const messageCalls = input.calls.map((call) => ({
@@ -21,14 +25,14 @@ export function matchingPreparedCalls(input: {
         eoa: input.from,
         calls: messageCalls,
         nonce: input.nonce,
-        payer: zeroAddress,
-        paymentToken: zeroAddress,
-        paymentMaxAmount: 0n,
+        payer: input.payer ?? zeroAddress,
+        paymentToken: input.paymentToken ?? zeroAddress,
+        paymentMaxAmount: input.paymentMaxAmount ?? 0n,
         combinedGas: 50_000n,
         encodedPreCalls: [] as Hex[],
         encodedFundTransfers: [] as Hex[],
         settler: zeroAddress,
-        expiry: 1_900_000_000n,
+        expiry: input.expiry ?? 1_900_000_000n,
     }
     const domain = {
         name: 'Orchestrator',
@@ -65,9 +69,9 @@ export function matchingPreparedCalls(input: {
                             nonce: input.nonce.toString(),
                             combinedGas: message.combinedGas.toString(),
                             expiry: message.expiry.toString(),
-                            payer: zeroAddress,
-                            paymentToken: zeroAddress,
-                            paymentMaxAmount: '0',
+                            payer: message.payer,
+                            paymentToken: message.paymentToken,
+                            paymentMaxAmount: message.paymentMaxAmount.toString(),
                             settler: zeroAddress,
                         },
                         extraPayment: '0x0',

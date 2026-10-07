@@ -67,16 +67,16 @@ export async function signPreparedCalls(
     params: SignPreparedCallsParams,
 ): Promise<SignPreparedCallsResult> {
     const { prepared, signer, expected } = params
-    bindPreparedCalls(prepared, expected)
+    const bound = bindPreparedCalls(prepared, expected)
 
     if (signer.type === 'typedData') {
-        const rawSignature = toSignatureHex(await signer.signTypedData(prepared.typedData))
+        const rawSignature = toSignatureHex(await signer.signTypedData(bound.typedData))
         if (signer.signerKeyHash === undefined) {
             return {
                 signerType: signer.type,
                 rawSignature,
                 signature: rawSignature,
-                digestToSign: prepared.digest,
+                digestToSign: bound.digest,
                 wrapped: false,
             }
         }
@@ -85,7 +85,7 @@ export async function signPreparedCalls(
             signerType: signer.type,
             rawSignature,
             signature: wrapSignature(rawSignature, signer.signerKeyHash, signer.prehash ?? false),
-            digestToSign: prepared.digest,
+            digestToSign: bound.digest,
             wrapped: true,
         }
     }
@@ -96,7 +96,7 @@ export async function signPreparedCalls(
             'delegated signer requires signerAddress (or deprecated accountAddress) for ERC-1271 digest transformation',
         )
     }
-    const digestToSign = computeErc1271Digest(prepared.digest, signerAddress)
+    const digestToSign = computeErc1271Digest(bound.digest, signerAddress)
     const rawSignature = toSignatureHex(await signer.signDigest(digestToSign))
     return {
         signerType: signer.type,

@@ -23,11 +23,11 @@ function makePrepared(eoa: Address = TARGET_ACCOUNT): PrepareCallsResponse {
         payer: eoa,
         paymentToken: zeroAddress,
         paymentMaxAmount: 0n,
-        combinedGas: 0n,
+        combinedGas: 1n,
         encodedPreCalls: [] as Hex[],
         encodedFundTransfers: [] as Hex[],
         settler: zeroAddress,
-        expiry: 0n,
+        expiry: 1_700_000_120n,
     }
     const domain = {
         name: 'Orchestrator' as const,
@@ -52,8 +52,8 @@ function makePrepared(eoa: Address = TARGET_ACCOUNT): PrepareCallsResponse {
                             eoa,
                             calls: [],
                             nonce: '1',
-                            combinedGas: '0',
-                            expiry: '0',
+                            combinedGas: '1',
+                            expiry: '1700000120',
                             payer: eoa,
                             paymentToken: zeroAddress,
                             paymentMaxAmount: '0',
@@ -93,7 +93,9 @@ function expectedFor(eoa: Address = TARGET_ACCOUNT): PreparedCallsExpectation {
         payer: eoa,
         paymentToken: zeroAddress,
         paymentMaxAmount: 0n,
-        expiry: 0n,
+        expiry: 1_700_000_120n,
+        now: 1_700_000_000n,
+        combinedGasCeiling: 1_000_000n,
     }
 }
 

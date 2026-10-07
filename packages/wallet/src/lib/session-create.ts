@@ -175,6 +175,10 @@ type SessionCreateDeps = {
         calls: Call[]
         nonce: bigint
         sessionKey?: Hex
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -238,6 +242,10 @@ function getDefaultDeps(): SessionCreateDeps {
                 chainId: input.network.chainId,
                 calls: input.calls,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
                 sessionKey: input.sessionKey,
             })
         },
@@ -488,6 +496,10 @@ export async function executeSessionCreate(
                         from: input.from,
                         calls: input.calls,
                         nonce: input.nonce,
+                        expiry: input.expiry,
+                        payer: input.payer,
+                        paymentToken: input.paymentToken,
+                        paymentMaxAmount: input.paymentMaxAmount,
                         sessionKey: input.sessionKey,
                     }),
                 signTypedData: deps.signTypedData,
@@ -507,6 +519,7 @@ export async function executeSessionCreate(
                 signerPrivateKey: decryptedRoot.rootPrivateKey,
                 chainId: signedNetwork.chainId,
                 env: signedNetwork.env,
+                rpcUrl: signedNetwork.rpcUrl,
             },
         )
 

@@ -118,6 +118,10 @@ type SessionRevokeDeps = {
         calls: Call[]
         nonce: bigint
         sessionKey?: Hex
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -163,6 +167,10 @@ function getDefaultDeps(): SessionRevokeDeps {
                 chainId: input.network.chainId,
                 calls: input.calls,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
                 sessionKey: input.sessionKey,
             })
         },
@@ -373,6 +381,10 @@ export async function executeSessionRevoke(
                             from: input.from,
                             calls: input.calls,
                             nonce: input.nonce,
+                            expiry: input.expiry,
+                            payer: input.payer,
+                            paymentToken: input.paymentToken,
+                            paymentMaxAmount: input.paymentMaxAmount,
                             sessionKey: input.sessionKey,
                         }),
                     signTypedData: deps.signTypedData,
@@ -392,6 +404,7 @@ export async function executeSessionRevoke(
                     signerPrivateKey: decryptedRoot.rootPrivateKey,
                     chainId: signedNetwork.chainId,
                     env: signedNetwork.env,
+                    rpcUrl: signedNetwork.rpcUrl,
                 },
             )
         } catch (error) {
