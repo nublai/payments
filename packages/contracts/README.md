@@ -68,13 +68,21 @@ There is no `deployments/config.toml`. Committed address snapshots are `deployme
 
 `GuardedExecutor` balance-meters only tokens that have a spend period for the key. The periods are the ones configured on that key (`Minute` through `Forever`). There is no hardcoded token list.
 
-A non-root key can move a token that has no spend period, through any call that is not a recognized selector, and that move is not charged. Swap output and any other token the account holds are in this set. Set a period on every token you want protected.
-
 These selectors are still priced from calldata, and a non-zero amount with no spend period reverts `NoSpendPermissions`: `transfer`, `transferFrom` out of this account, `approve`, `increaseAllowance`, `increaseApproval`, and Permit2 `approve`. `increaseAllowance` and `increaseApproval` are charged and the allowance is reset to zero after the batch. That reset is the leftover-allowance drain, not a balance probe. Permit2 approvals are locked down the same way.
 
-An allowance the root key granted earlier, for a token with no spend period, is not charged when a session key later spends it. The guard does not scan calldata for token addresses, and it does not call `balanceOf` on the call target.
+For a token that does have a period, each call is charged on its own. The charge is the max of the amount recognized from calldata and that call's gross outflow, so a later inflow does not offset an earlier outflow. Inside one call, gross outflow is the account's balance decrease plus any `totalSupply` increase and any drop in the call target's balance of that token that did not remain in the account. A mint that stays, or a deposit from the call target that stays, is not spend. A mint-and-send in one call, or a zap that sends tokens in and `transferFrom`s them out in one call, is spend. While that batch is running, a nested `execute` into the account reverts `GuardedReentrancy`. The flag is transient storage (EIP-1153), which this account already uses for the key-hash stack, and it is not a storage slot. A failed, reverted, or short `balanceOf` on a metered token reverts the batch with `SpendBalanceReadFailed`.
 
-For a token that does have a period, each call is charged on its own. The charge is the max of the amount recognized from calldata and that call's balance drop, so a later inflow does not offset an earlier outflow. A failed, reverted, or short `balanceOf` on one of those tokens reverts the batch with `SpendBalanceReadFailed`.
+The same-call figure is an upper bound. A call that mints a metered token to other holders, or that spends the call target's own balance of a metered token onward to someone else, can count against the limit.
+
+A non-root key can move a token that has no spend period, through any call that is not a recognized selector, and that move is not charged. Set a period on every token you want protected. That gap includes:
+
+- Swap output, or any other token the account already holds.
+- A spender the root key approved earlier, including a proxy that has no `balanceOf`, a three-item escrow whose amounts are not a recognized token selector, a puller whose token address sits behind a 32-word pad, and a puller that masks the token word down to 160 bits.
+- A session `customApprove`, or any other approval selector besides `approve`, `increaseAllowance`, and `increaseApproval`. The allowance sticks, and a later pull of that token is not charged while it still has no period.
+- An in-batch permit signed by the EOA (EIP-2612, DAI `permit`, Permit2 `permit`). Those selectors are not reset.
+- A call to token A that pulls token B, when B has no spend period.
+
+A 32-byte lie from `balanceOf` on a token that does have a period charges 0. A constant return, or a proxy that pins the pre-transfer balance, is in this set. It takes a hostile token the key chose to meter.
 
 Only configured tokens are metered because of bytecode headroom under the 24,576-byte account limit, the gas of probing every target, and simpler logic.
 

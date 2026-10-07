@@ -102,6 +102,14 @@ abstract contract GuardedExecutor is ERC7821 {
     /// @dev A metered token's `balanceOf` failed, reverted, or returned short data.
     error SpendBalanceReadFailed();
 
+    /// @dev A nested `execute` ran while a guarded batch was still in progress.
+    error GuardedReentrancy();
+
+    /// @dev Transient flag set for the rest of a guarded batch. Not a storage slot.
+    /// EIP-1153. This account already uses transient storage for the key-hash stack.
+    bytes32 internal constant _GUARDED_BATCH_TRANSIENT_SLOT =
+        bytes32(uint256(keccak256("GUARDED_BATCH_TRANSIENT_SLOT")) - 1);
+
     /// @dev Super admin keys can execute everything.
     error SuperAdminCanExecuteEverything();
 
@@ -218,33 +226,74 @@ abstract contract GuardedExecutor is ERC7821 {
         DynamicArrayLib.DynamicArray permit2Spenders;
     }
 
+    /// @dev Reused buffer for per-call gross-outflow metering.
+    /// `buf` is length `4n`: spent totals, then the three pre-call snapshots.
+    struct _MeterSnap {
+        uint256[] buf;
+        uint256[] tokens;
+    }
+
+
     /// @dev Spend guard for a non-root, non-super-admin key.
     ///
     /// Covered. The only balance-metered tokens are those with a spend period for
     /// `keyHash`. Nothing else is probed: not the call target, and not addresses in
-    /// calldata. For each metered token the charge is
-    /// `max(sum of recognized calldata amounts, sum of per-call balance decreases)`.
-    /// Each call is snapshotted on its own. A later inflow does not reduce an earlier
-    /// call's charge. An inflow inside the same call is netted with that call.
+    /// calldata. There is no hardcoded token list.
+    ///
+    /// For each metered token the charge is
+    /// `max(sum of recognized calldata amounts, sum of per-call gross outflows)`.
+    /// Each call is measured on its own. A later call's inflow does not reduce an
+    /// earlier call's charge. Inside one call the outflow is the account's balance
+    /// decrease, plus any `totalSupply` increase and any drop in the call target's
+    /// balance of that token that did not remain in the account. A mint that stays,
+    /// or tokens the target sends in and that stay, are not spend. A mint that is
+    /// sent out in the same call, or tokens the target sends in and that are pulled
+    /// out in the same call, are spend.
+    ///
+    /// That same-call figure is an upper bound. A call that mints a metered token to
+    /// other holders, or that reduces the call target's own balance of a metered token
+    /// by paying someone else, can count against the limit even though those tokens
+    /// never sat in this account.
+    ///
     /// A `balanceOf` that fails, reverts, or returns fewer than 32 bytes on a metered
-    /// token reverts the batch with `SpendBalanceReadFailed`.
+    /// token reverts the batch with `SpendBalanceReadFailed`. `totalSupply` and the
+    /// call target's balance are best-effort: a failed or short read contributes 0.
+    ///
+    /// While this guarded batch is running, any nested `execute` into this account
+    /// (orchestrator, signed `opData`, or self-execute) reverts `GuardedReentrancy`.
+    /// The flag is one transient-storage slot (EIP-1153, `tstore`/`tload`). It is not
+    /// part of the contract storage layout. This account already requires transient
+    /// storage for the key-hash stack.
     ///
     /// Recognized selectors are priced from calldata even when that is the whole charge:
     /// `transfer`, `transferFrom` (out of this account), `approve`, `increaseAllowance`,
     /// `increaseApproval`, and Permit2 `approve`. Non-zero ERC20 approvals are reset to
     /// zero after the batch. Permit2 approvals are locked down. A recognized non-zero
     /// amount with no spend period reverts `NoSpendPermissions`.
+    /// `increaseAllowance` and `increaseApproval` stay charged and reset because a
+    /// leftover allowance can drain the account. They are not a balance probe.
     ///
     /// Not covered. Set a spend period on every token that should be protected.
-    /// - A non-root key can move a token that has no spend period, through any call that
-    ///   is not one of the recognized selectors above, and the move is not charged.
-    ///   Swap output and any other token the account holds are in this set until a
-    ///   period is configured.
-    /// - An allowance the root key granted earlier to a spender, for a token with no
-    ///   spend period, is not charged. The spender is not balance-metered.
-    /// - Signature permits (EIP-2612, DAI `permit`, Permit2 `permit`) submitted outside
-    ///   this batch are not revoked. An in-batch signature cannot be distinguished from
-    ///   one that will be relayed later.
+    /// A non-root key can move a token that has no spend period, through any call that
+    /// is not one of the recognized selectors above, and the move is not charged.
+    /// That set includes all of the following:
+    /// - Swap output, or any other token this account already holds.
+    /// - A spender the root key approved earlier. The spender is not balance-metered.
+    ///   The same gap covers a proxy with no `balanceOf`, a three-item `escrow` whose
+    ///   only non-zero amount is not a recognized selector on the token, a puller whose
+    ///   token address sits behind a 32-word pad, and a puller that takes the token
+    ///   word with high bits set and uses `address(uint160(word))`.
+    /// - A session call such as `customApprove` (any approval selector other than
+    ///   `approve`, `increaseAllowance`, and `increaseApproval`) that leaves a sticking
+    ///   allowance, and a later pull through that allowance.
+    /// - An in-batch permit signed by the EOA (EIP-2612, DAI `permit`, Permit2
+    ///   `permit`). Those selectors are not reset. An in-batch signature cannot be
+    ///   distinguished from one that will be relayed later.
+    /// - A call to token A that pulls token B, when B has no spend period.
+    ///
+    /// Also not covered, even when a period is set: a metered token whose `balanceOf`
+    /// returns 32 bytes of a lie (a constant, or a proxy that pins the pre-transfer
+    /// balance) charges 0. That token is one the key chose to meter.
     ///
     /// `ANY_FN_SEL` on a token that has a period stays allowed. The balance snapshot
     /// charges the outflow.
@@ -257,6 +306,7 @@ abstract contract GuardedExecutor is ERC7821 {
         }
 
         SpendStorage storage spends = _getGuardedExecutorKeyStorage(keyHash).spends;
+        _setGuardedBatch(1);
         _ExecuteTemps memory t;
 
         // Collect all ERC20 tokens that need to be guarded,
@@ -284,8 +334,8 @@ abstract contract GuardedExecutor is ERC7821 {
         // Sum transfer amounts, grouped by the ERC20s. In-place.
         LibSort.groupSum(t.erc20s.data, t.transferAmounts.data);
 
-        // Execute call by call. Sum each call's balance decrease so a later
-        // inflow cannot cancel an earlier outflow.
+        // Execute call by call. A later inflow cannot cancel an earlier outflow,
+        // and an inflow inside the same call does not cancel that call's gross outflow.
         uint256[] memory decreases = _executeAndSumDecreases(calls, keyHash, t.erc20s);
 
         // Perform after the calls, so that in the case where `calls`
@@ -319,30 +369,103 @@ abstract contract GuardedExecutor is ERC7821 {
                 Math.max(t.transferAmounts.get(i), decreases[i])
             );
         }
+        _setGuardedBatch(0);
     }
 
-    /// @dev Executes `calls` one at a time and sums each guarded token's balance decrease.
+    /// @dev Executes `calls` one at a time and sums each guarded token's gross outflow.
     /// A failed or short `balanceOf` on a guarded token reverts the batch.
     function _executeAndSumDecreases(
         Call[] calldata calls,
         bytes32 keyHash,
         DynamicArrayLib.DynamicArray memory erc20s
     ) internal returns (uint256[] memory decreases) {
-        uint256 n = erc20s.length();
-        decreases = new uint256[](n);
-        uint256[] memory before = new uint256[](n);
+        _MeterSnap memory snap = _newMeterSnap(erc20s);
+        // First `n` words are the spent totals. The caller indexes with `erc20s.length()`.
+        decreases = snap.buf;
         uint256 callCount = calls.length;
         for (uint256 c; c < callCount; ++c) {
-            for (uint256 i; i < n; ++i) {
-                before[i] = _balanceOfAccountStrict(erc20s.getAddress(i));
-            }
             (address target, uint256 value, bytes calldata data) = _get(calls, c);
+            _meter(snap, target, 0);
             _execute(target, value, data, keyHash);
-            for (uint256 i; i < n; ++i) {
-                decreases[i] += Math.saturatingSub(
-                    before[i],
-                    _balanceOfAccountStrict(erc20s.getAddress(i))
-                );
+            _meter(snap, target, 1);
+        }
+    }
+
+    /// @dev Allocates the reused gross-outflow buffers away from the execute loop.
+    function _newMeterSnap(
+        DynamicArrayLib.DynamicArray memory erc20s
+    ) internal pure returns (_MeterSnap memory snap) {
+        snap.buf = new uint256[](erc20s.length() << 2);
+        snap.tokens = erc20s.data;
+    }
+
+    /// @dev `fold == 0` stores snapshots. `fold == 1` adds gross outflow.
+    /// The call target is not balance-metered when it is this account.
+    function _meter(_MeterSnap memory snap, address target, uint256 fold) internal view {
+        bytes4 err = SpendBalanceReadFailed.selector;
+        /// @solidity memory-safe-assembly
+        assembly {
+            let n := shr(2, mload(mload(snap)))
+            let i := 0
+            for {} lt(i, n) {} {
+                let p := shl(5, i)
+                i := add(i, 1)
+                let token := mload(add(add(mload(add(snap, 0x20)), 0x20), p))
+                mstore(0x14, address())
+                mstore(0x00, 0x70a08231000000000000000000000000)
+                let ok := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
+                if iszero(and(ok, gt(returndatasize(), 0x1f))) {
+                    mstore(0x00, err)
+                    revert(0x00, 0x04)
+                }
+                let bal := mload(0x20)
+                mstore(0x00, 0x18160ddd00000000000000000000000000000000000000000000000000000000)
+                ok := staticcall(gas(), token, 0x00, 0x04, 0x20, 0x20)
+                let supply := 0
+                if and(ok, gt(returndatasize(), 0x1f)) { supply := mload(0x20) }
+                let targetBal := 0
+                if iszero(eq(target, address())) {
+                    mstore(0x14, target)
+                    mstore(0x00, 0x70a08231000000000000000000000000)
+                    ok := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
+                    if and(ok, gt(returndatasize(), 0x1f)) { targetBal := mload(0x20) }
+                }
+                // Layout: [spent | beforeBal | beforeSupply | beforeTarget], `n` words each.
+                let step := shl(5, n)
+                let base := add(mload(snap), 0x20)
+                let balSlot := add(add(base, step), p)
+                let supplySlot := add(balSlot, step)
+                let targetSlot := add(supplySlot, step)
+                if iszero(fold) {
+                    mstore(balSlot, bal)
+                    mstore(supplySlot, supply)
+                    mstore(targetSlot, targetBal)
+                }
+                if fold {
+                    let beforeB := mload(balSlot)
+                    let accountDec := 0
+                    if gt(beforeB, bal) { accountDec := sub(beforeB, bal) }
+                    let accountInc := 0
+                    if gt(bal, beforeB) { accountInc := sub(bal, beforeB) }
+                    let appeared := 0
+                    let beforeS := mload(supplySlot)
+                    if gt(supply, beforeS) { appeared := sub(supply, beforeS) }
+                    let beforeT := mload(targetSlot)
+                    if gt(beforeT, targetBal) {
+                        let targetDec := sub(beforeT, targetBal)
+                        appeared := add(appeared, targetDec)
+                        if lt(appeared, targetDec) { appeared := not(0) }
+                    }
+                    switch gt(appeared, accountInc)
+                    case 1 { appeared := sub(appeared, accountInc) }
+                    default { appeared := 0 }
+                    let out := add(accountDec, appeared)
+                    if lt(out, accountDec) { out := not(0) }
+                    let decSlot := add(base, p)
+                    let sum := add(mload(decSlot), out)
+                    if lt(sum, out) { sum := not(0) }
+                    mstore(decSlot, sum)
+                }
             }
         }
     }
@@ -402,21 +525,25 @@ abstract contract GuardedExecutor is ERC7821 {
         }
     }
 
-    /// @dev `token.balanceOf(address(this))` for a token that has a spend period.
-    /// A failed, reverted, or short read reverts the batch.
-    function _balanceOfAccountStrict(address token) internal view returns (uint256 amount) {
-        bytes4 err = SpendBalanceReadFailed.selector;
+    /// @dev Sets the guarded-batch flag. A revert rolls transient storage back.
+    function _setGuardedBatch(uint256 open) internal {
+        bytes32 slot = _GUARDED_BATCH_TRANSIENT_SLOT;
         /// @solidity memory-safe-assembly
         assembly {
-            mstore(0x14, address())
-            mstore(0x00, 0x70a08231000000000000000000000000) // `balanceOf(address)`.
-            let success := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
-            if iszero(and(gt(returndatasize(), 0x1f), success)) {
-                // `err` is a left-aligned bytes4.
+            tstore(slot, open)
+        }
+    }
+
+    /// @dev Revert if a guarded batch is already running in this transaction.
+    function _revertIfGuardedBatch() internal view {
+        bytes32 slot = _GUARDED_BATCH_TRANSIENT_SLOT;
+        bytes4 err = GuardedReentrancy.selector;
+        /// @solidity memory-safe-assembly
+        assembly {
+            if tload(slot) {
                 mstore(0x00, err)
                 revert(0x00, 0x04)
             }
-            amount := mload(0x20)
         }
     }
 

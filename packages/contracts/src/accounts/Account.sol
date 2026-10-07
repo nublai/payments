@@ -753,6 +753,9 @@ contract Account is IAccount, EIP712, GuardedExecutor {
         Call[] calldata calls,
         bytes calldata opData
     ) internal virtual override {
+        // A guarded batch is still on the stack. Do not start another one.
+        _revertIfGuardedBatch();
+
         // Orchestrator workflow.
         if (msg.sender == ORCHESTRATOR) {
             // opdata

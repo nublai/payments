@@ -499,6 +499,304 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(token.balanceOf(d.eoa), 7 ether);
     }
 
+    bytes4 internal constant _REENTRANCY = bytes4(keccak256("GuardedReentrancy()"));
+
+    /// @dev (a) A router reenters `execute`, withdraws 50, then `transferFrom`s 50.
+    /// The nested execute reverts. The outer batch reverts with it.
+    function testSameCallReentrantWithdrawIsBlocked() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockVault vault = new MockVault(address(paymentToken));
+        MockReentrantRouter router = new MockReentrantRouter();
+        paymentToken.mint(d.eoa, 10 ether);
+        paymentToken.mint(address(vault), 50 ether);
+        vm.prank(d.eoa);
+        paymentToken.approve(address(router), type(uint256).max);
+        _allow(d, k.keyHash, address(router), _ANY_FN_SEL);
+        _allow(d, k.keyHash, address(vault), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory inner = new ERC7821.Call[](1);
+        inner[0].to = address(vault);
+        inner[0].data = abi.encodeWithSignature("withdraw(uint256)", 50 ether);
+        uint256 innerNonce = d.d.getNonce(0) + 1;
+        bytes memory executionData = abi.encode(
+            inner,
+            abi.encodePacked(innerNonce, _sig(k, d.d.computeDigest(inner, innerNonce)))
+        );
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(router);
+        calls[0].data = abi.encodeWithSelector(
+            MockReentrantRouter.attack.selector,
+            address(d.d),
+            address(paymentToken),
+            _BEEF,
+            50 ether,
+            _ERC7821_BATCH_EXECUTION_MODE,
+            executionData
+        );
+
+        assertEq(_run(d, k, u, calls), _REENTRANCY);
+        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(paymentToken.balanceOf(d.eoa), 10 ether);
+        assertEq(paymentToken.balanceOf(address(vault)), 50 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev (b) One token call mints 40 to the account and sends 40 out.
+    function testSameCallMintAndSendIsCharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockMintAndSendToken token = new MockMintAndSendToken();
+        token.mint(d.eoa, 10 ether);
+        _allow(d, k.keyHash, address(token), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(token);
+        calls[0].data = abi.encodeWithSignature("syncAndSend(address,uint256)", _BEEF, 40 ether);
+
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(token.balanceOf(_BEEF), 0);
+        assertEq(token.balanceOf(d.eoa), 10 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev (c) One zap call sends 50 in and `transferFrom`s 50 out.
+    function testSameCallZapPassThroughIsCharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockPassThroughZap zap = new MockPassThroughZap();
+        paymentToken.mint(d.eoa, 10 ether);
+        paymentToken.mint(address(zap), 50 ether);
+        vm.prank(d.eoa);
+        paymentToken.approve(address(zap), type(uint256).max);
+        _allow(d, k.keyHash, address(zap), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(zap);
+        calls[0].data = abi.encodeWithSignature(
+            "passThrough(address,address,uint256)",
+            address(paymentToken),
+            _BEEF,
+            50 ether
+        );
+
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(paymentToken.balanceOf(d.eoa), 10 ether);
+        assertEq(paymentToken.balanceOf(address(zap)), 50 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev A deposit from the call target that stays in the account is not spend.
+    function testCallTargetDepositIsNotSpend() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockPassThroughZap zap = new MockPassThroughZap();
+        paymentToken.mint(address(zap), 5 ether);
+        _allow(d, k.keyHash, address(zap), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(zap);
+        calls[0].data = abi.encodeWithSignature(
+            "deposit(address,uint256)",
+            address(paymentToken),
+            5 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 5 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev Intentional. A constant 32-byte `balanceOf` on a period token charges 0.
+    function testIntended_LyingBalanceOfChargesZero() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockLyingBalanceToken token = new MockLyingBalanceToken();
+        token.mint(d.eoa, 25 ether);
+        _allow(d, k.keyHash, address(token), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(token);
+        calls[0].data = abi.encodeWithSignature(
+            "anotherTransfer(address,uint256)",
+            _BEEF,
+            25 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(token.realBalance(_BEEF), 25 ether);
+        assertEq(token.realBalance(d.eoa), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev Intentional. `move` pins `balanceOf` to the pre-transfer balance, so the
+    /// period token charges 0.
+    function testIntended_PinnedBalanceOfChargesZero() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockPinnedBalanceToken token = new MockPinnedBalanceToken();
+        token.mint(d.eoa, 25 ether);
+        _allow(d, k.keyHash, address(token), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(token);
+        calls[0].data = abi.encodeWithSignature("move(address,uint256)", _BEEF, 25 ether);
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(token.realBalance(_BEEF), 25 ether);
+        assertEq(token.realBalance(d.eoa), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev Intentional. A non-standard approval selector sticks, and the later pull of
+    /// a token with no period is not charged.
+    function testIntended_CustomApproveLeavesUnchargedPull() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockCustomApproveToken token = new MockCustomApproveToken();
+        MockHardcodedPuller puller = new MockHardcodedPuller(address(token));
+        token.mint(d.eoa, 9 ether);
+        _allow(d, k.keyHash, address(token), _ANY_FN_SEL);
+        _allow(d, k.keyHash, address(puller), _ANY_FN_SEL);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(token);
+        calls[0].data = abi.encodeWithSignature(
+            "customApprove(address,uint256)",
+            address(puller),
+            9 ether
+        );
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(token.allowance(d.eoa, address(puller)), 9 ether);
+
+        calls[0].to = address(puller);
+        calls[0].data = abi.encodeWithSignature(
+            "pull(address,address,uint256)",
+            d.eoa,
+            _BEEF,
+            9 ether
+        );
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(token.balanceOf(_BEEF), 9 ether);
+        assertEq(token.balanceOf(d.eoa), 0);
+        assertEq(d.d.spendInfos(k.keyHash).length, 0);
+    }
+
+    /// @dev Intentional. Token A is metered. The same call pulls unperioded token B.
+    function testIntended_CallToTokenAPullsUnperiodedTokenB() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockHookedToken tokenA = new MockHookedToken();
+        MockPaymentToken tokenB = new MockPaymentToken();
+        tokenA.mint(d.eoa, 10 ether);
+        tokenB.mint(d.eoa, 6 ether);
+        vm.prank(d.eoa);
+        tokenB.approve(address(tokenA), type(uint256).max);
+        _allow(d, k.keyHash, address(tokenA), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(tokenA), GuardedExecutor.SpendPeriod.Day, 100 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(tokenA);
+        calls[0].data = abi.encodeWithSignature(
+            "hookedTransfer(address,address,uint256,uint256)",
+            address(tokenB),
+            _BEEF,
+            1 ether,
+            6 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(tokenA.balanceOf(_BEEF), 1 ether);
+        assertEq(tokenB.balanceOf(_BEEF), 6 ether);
+        assertEq(tokenB.balanceOf(d.eoa), 0);
+        GuardedExecutor.SpendInfo[] memory infos = d.d.spendInfos(k.keyHash);
+        assertEq(infos.length, 1);
+        assertEq(infos[0].token, address(tokenA));
+        assertEq(infos[0].spent, 1 ether);
+    }
+
+    /// @dev Intentional. Three escrow items, only the last non-zero, no period.
+    function testIntended_ThreeItemEscrowUnperiodedTokenUncharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        Escrow escrow = new Escrow();
+        paymentToken.mint(d.eoa, 50 ether);
+        vm.prank(d.eoa);
+        paymentToken.approve(address(escrow), type(uint256).max);
+        _allow(d, k.keyHash, address(escrow), _ANY_FN_SEL);
+
+        IEscrow.Escrow[] memory items = new IEscrow.Escrow[](3);
+        items[0] = _escrowItem(bytes12(uint96(1)), d.eoa, _BEEF, 0, 0, block.timestamp + 1 days);
+        items[1] = _escrowItem(bytes12(uint96(2)), d.eoa, _BEEF, 0, 0, block.timestamp + 1 days);
+        items[2] = _escrowItem(
+            bytes12(uint96(3)),
+            d.eoa,
+            _BEEF,
+            50 ether,
+            0,
+            block.timestamp + 1 days
+        );
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(escrow);
+        calls[0].data = abi.encodeCall(escrow.escrow, (items));
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 0);
+        assertEq(paymentToken.balanceOf(address(escrow)), 50 ether);
+        assertEq(d.d.spendInfos(k.keyHash).length, 0);
+    }
+
+    /// @dev Intentional. The token word sits after a 32-word pad. No period, so no charge.
+    function testIntended_Word32PullerUnperiodedTokenUncharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockWord32Puller puller = new MockWord32Puller();
+        paymentToken.mint(d.eoa, 10 ether);
+        vm.prank(d.eoa);
+        paymentToken.approve(address(puller), type(uint256).max);
+        _allow(d, k.keyHash, address(puller), _ANY_FN_SEL);
+
+        uint256[32] memory pad;
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(puller);
+        calls[0].data = abi.encodeWithSignature(
+            "pull(uint256[32],address,address,address,uint256)",
+            pad,
+            address(paymentToken),
+            d.eoa,
+            _BEEF,
+            10 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(_BEEF), 10 ether);
+        assertEq(paymentToken.balanceOf(d.eoa), 0);
+        assertEq(d.d.spendInfos(k.keyHash).length, 0);
+    }
+
+    /// @dev Intentional. The token word has bit 160 set. No period, so no charge.
+    function testIntended_Bit160PullerUnperiodedTokenUncharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockBit160Puller puller = new MockBit160Puller();
+        paymentToken.mint(d.eoa, 10 ether);
+        vm.prank(d.eoa);
+        paymentToken.approve(address(puller), type(uint256).max);
+        _allow(d, k.keyHash, address(puller), _ANY_FN_SEL);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(puller);
+        calls[0].data = abi.encodeWithSignature(
+            "pull(uint256,address,address,uint256)",
+            uint256(uint160(address(paymentToken))) | (1 << 160),
+            d.eoa,
+            _BEEF,
+            10 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(_BEEF), 10 ether);
+        assertEq(paymentToken.balanceOf(d.eoa), 0);
+        assertEq(d.d.spendInfos(k.keyHash).length, 0);
+    }
+
     function _session(
         bool superAdmin
     ) internal returns (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) {
@@ -670,5 +968,111 @@ contract MockBrokenBalanceToken is MockPaymentToken {
             }
         }
         return super.balanceOf(owner);
+    }
+}
+
+interface INestedExecute {
+    function execute(bytes32 mode, bytes calldata executionData) external payable;
+}
+
+contract MockReentrantRouter {
+    function attack(
+        address account,
+        address token,
+        address to,
+        uint256 amount,
+        bytes32 mode,
+        bytes calldata executionData
+    ) external {
+        INestedExecute(account).execute(mode, executionData);
+        SafeTransferLib.safeTransferFrom(token, msg.sender, to, amount);
+    }
+}
+
+contract MockMintAndSendToken is MockPaymentToken {
+    function syncAndSend(address to, uint256 amount) external {
+        mint(msg.sender, amount);
+        anotherTransfer(to, amount);
+    }
+}
+
+contract MockPassThroughZap {
+    function passThrough(address token, address to, uint256 amount) external {
+        SafeTransferLib.safeTransfer(token, msg.sender, amount);
+        SafeTransferLib.safeTransferFrom(token, msg.sender, to, amount);
+    }
+
+    function deposit(address token, uint256 amount) external {
+        SafeTransferLib.safeTransfer(token, msg.sender, amount);
+    }
+}
+
+contract MockLyingBalanceToken is MockPaymentToken {
+    function balanceOf(address) public view override returns (uint256) {
+        return 1_000_000 ether;
+    }
+
+    function realBalance(address owner) public view returns (uint256) {
+        return super.balanceOf(owner);
+    }
+}
+
+contract MockPinnedBalanceToken is MockPaymentToken {
+    uint256 internal pinned;
+    address internal pinnedOwner;
+    bool internal pinning;
+
+    function balanceOf(address owner) public view override returns (uint256) {
+        if (pinning && owner == pinnedOwner) return pinned;
+        return super.balanceOf(owner);
+    }
+
+    function move(address to, uint256 amount) external {
+        if (!pinning) {
+            pinnedOwner = msg.sender;
+            pinned = super.balanceOf(msg.sender);
+            pinning = true;
+        }
+        anotherTransfer(to, amount);
+    }
+
+    function realBalance(address owner) public view returns (uint256) {
+        return super.balanceOf(owner);
+    }
+}
+
+contract MockCustomApproveToken is MockPaymentToken {
+    function customApprove(address spender, uint256 amount) external returns (bool) {
+        return approve(spender, amount);
+    }
+}
+
+contract MockHookedToken is MockPaymentToken {
+    function hookedTransfer(
+        address other,
+        address to,
+        uint256 amount,
+        uint256 otherAmount
+    ) external {
+        anotherTransfer(to, amount);
+        SafeTransferLib.safeTransferFrom(other, msg.sender, to, otherAmount);
+    }
+}
+
+contract MockWord32Puller {
+    function pull(
+        uint256[32] calldata,
+        address token,
+        address from,
+        address to,
+        uint256 amount
+    ) external {
+        SafeTransferLib.safeTransferFrom(token, from, to, amount);
+    }
+}
+
+contract MockBit160Puller {
+    function pull(uint256 tokenWord, address from, address to, uint256 amount) external {
+        SafeTransferLib.safeTransferFrom(address(uint160(tokenWord)), from, to, amount);
     }
 }

@@ -1842,6 +1842,7 @@ export const accountAbi = [
   },
   { type: "error", inputs: [], name: "ExceedsCapacity" },
   { type: "error", inputs: [], name: "FnSelectorNotRecognized" },
+  { type: "error", inputs: [], name: "GuardedReentrancy" },
   { type: "error", inputs: [], name: "IndexOutOfBounds" },
   { type: "error", inputs: [], name: "InvalidNonce" },
   { type: "error", inputs: [], name: "InvalidPublicKey" },
