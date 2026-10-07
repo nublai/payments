@@ -10,6 +10,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 /// @dev H2 regression: allowance increases and untracked outflows count as spend.
 contract GuardedExecutorSpendGuardTest is BaseTest {
     address internal constant _BEEF = address(0xBEEF);
+    bytes4 internal constant _BALANCE_READ_FAILED = bytes4(keccak256("SpendBalanceReadFailed()"));
 
     /// @dev Checker that authorizes every call. Spend limits still apply.
     YesCallChecker internal yesChecker;
@@ -114,7 +115,10 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         _assertBeefCannotPull(d.eoa, 1e9);
     }
 
-    function testEscrowPullWithPreexistingAllowanceAndNoLimit() public {
+    /// @dev Residual, locked on purpose. The root key approved the escrow, and this key has
+    /// no spend period for the token. Calldata is not scanned, and the escrow contract does
+    /// not report a token balance, so the pull is not charged.
+    function testRootAllowanceWithoutSpendPeriodStaysUncovered() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         Escrow escrow = new Escrow();
         paymentToken.mint(d.eoa, 50 ether);
@@ -122,12 +126,9 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         paymentToken.approve(address(escrow), type(uint256).max);
         _allow(d, k.keyHash, address(escrow), _ANY_FN_SEL);
 
-        assertEq(
-            _run(d, k, u, _escrowCall(escrow, d.eoa, 50 ether)),
-            bytes4(keccak256("NoSpendPermissions()"))
-        );
-        assertEq(paymentToken.balanceOf(d.eoa), 50 ether);
-        assertEq(paymentToken.balanceOf(address(escrow)), 0);
+        assertEq(_run(d, k, u, _escrowCall(escrow, d.eoa, 50 ether)), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 0);
+        assertEq(paymentToken.balanceOf(address(escrow)), 50 ether);
     }
 
     function testThirdPartyPullWithinSpendLimitIsCharged() public {
@@ -275,7 +276,8 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(counter.counter(), 1);
     }
 
-    /// @dev Documented residual: the token address is not in calldata and has no spend period.
+    /// @dev Same residual as a root allowance with no spend period. The token address is
+    /// hardcoded in the spender, so there is nothing to snapshot except the spender itself.
     function testHardcodedSpenderPullWithoutLimitStaysUncovered() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         MockHardcodedPuller puller = new MockHardcodedPuller(address(paymentToken));
@@ -295,6 +297,166 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
 
         assertEq(_run(d, k, u, calls), bytes4(0));
         assertEq(paymentToken.balanceOf(_BEEF), 50 ether);
+    }
+
+    /// @dev vault.withdraw credits the account, then an untracked transfer spends it.
+    /// The batch net is zero. The charge is the transfer.
+    function testVaultWithdrawThenUntrackedTransferIsNotMasked() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockVault vault = new MockVault(address(paymentToken));
+        paymentToken.mint(address(vault), 50 ether);
+        _allow(d, k.keyHash, address(vault), _ANY_FN_SEL);
+        _allow(d, k.keyHash, address(paymentToken), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](2);
+        calls[0].to = address(vault);
+        calls[0].data = abi.encodeWithSignature("withdraw(uint256)", 50 ether);
+        calls[1].to = address(paymentToken);
+        calls[1].data = abi.encodeWithSignature(
+            "anotherTransfer(address,uint256)",
+            _BEEF,
+            50 ether
+        );
+
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(paymentToken.balanceOf(d.eoa), 0);
+        assertEq(paymentToken.balanceOf(address(vault)), 50 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev Refund an old escrow into the account, escrow that balance to the attacker,
+    /// then refund the new escrow to the attacker. The account's batch net is zero.
+    function testEscrowRefundThenEscrowToAttackerIsNotMasked() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        Escrow escrow = new Escrow();
+        paymentToken.mint(d.eoa, 45 ether);
+        vm.prank(d.eoa);
+        paymentToken.approve(address(escrow), type(uint256).max);
+
+        IEscrow.Escrow memory oldItem = _escrowItem(
+            bytes12(uint96(1)),
+            d.eoa,
+            address(0x3333),
+            40 ether,
+            40 ether,
+            block.timestamp - 1
+        );
+        IEscrow.Escrow[] memory seeded = new IEscrow.Escrow[](1);
+        seeded[0] = oldItem;
+        vm.prank(d.eoa);
+        escrow.escrow(seeded);
+        assertEq(paymentToken.balanceOf(d.eoa), 5 ether);
+
+        IEscrow.Escrow memory fresh = _escrowItem(
+            bytes12(uint96(2)),
+            d.eoa,
+            _BEEF,
+            40 ether,
+            0,
+            block.timestamp - 1
+        );
+
+        _allow(d, k.keyHash, address(escrow), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        bytes32[] memory oldIds = new bytes32[](1);
+        oldIds[0] = keccak256(abi.encode(oldItem));
+        bytes32[] memory newIds = new bytes32[](1);
+        newIds[0] = keccak256(abi.encode(fresh));
+        IEscrow.Escrow[] memory freshItems = new IEscrow.Escrow[](1);
+        freshItems[0] = fresh;
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](3);
+        calls[0].to = address(escrow);
+        calls[0].data = abi.encodeCall(escrow.refund, (oldIds));
+        calls[1].to = address(escrow);
+        calls[1].data = abi.encodeCall(escrow.escrow, (freshItems));
+        calls[2].to = address(escrow);
+        calls[2].data = abi.encodeCall(escrow.refund, (newIds));
+
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(paymentToken.balanceOf(d.eoa), 5 ether);
+        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(paymentToken.balanceOf(address(escrow)), 40 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev A rebase mint in the same batch must not hide the following transfer.
+    function testRebaseMintDoesNotMaskUntrackedTransfer() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockYieldToken token = new MockYieldToken();
+        token.mint(d.eoa, 10 ether);
+        _allow(d, k.keyHash, address(token), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](2);
+        calls[0].to = address(token);
+        calls[0].data = abi.encodeWithSignature("sync(uint256)", 40 ether);
+        calls[1].to = address(token);
+        calls[1].data = abi.encodeWithSignature(
+            "anotherTransfer(address,uint256)",
+            _BEEF,
+            40 ether
+        );
+
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(token.balanceOf(_BEEF), 0);
+        assertEq(token.balanceOf(d.eoa), 10 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev A recognized `transfer` debits a fee on top of the calldata amount. A later
+    /// mint of exactly that fee makes the batch net equal the calldata amount. The charge
+    /// stays the full per-call decrease.
+    function testInflowDoesNotReduceRecognizedSelectorCharge() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockFeeOnTransferToken token = new MockFeeOnTransferToken();
+        token.setFee(2 ether);
+        token.mint(d.eoa, 20 ether);
+        _allow(d, k.keyHash, address(token), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 11 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](2);
+        calls[0] = _transferCall(address(token), _BEEF, 10 ether);
+        calls[1].to = address(token);
+        calls[1].data = abi.encodeWithSignature("mint(address,uint256)", d.eoa, 2 ether);
+
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(token.balanceOf(_BEEF), 0);
+        assertEq(token.balanceOf(d.eoa), 20 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    function testRevertingBalanceOfRevertsBatch() public {
+        _balanceReadFails(1);
+    }
+
+    function testShortBalanceOfRevertsBatch() public {
+        _balanceReadFails(2);
+    }
+
+    function _balanceReadFails(uint8 mode) internal {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockBrokenBalanceToken token = new MockBrokenBalanceToken();
+        token.mint(d.eoa, 7 ether);
+        token.setMode(mode);
+        _allow(d, k.keyHash, address(token), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 100 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(token);
+        calls[0].data = abi.encodeWithSignature(
+            "anotherTransfer(address,uint256)",
+            _BEEF,
+            7 ether
+        );
+
+        assertEq(_run(d, k, u, calls), _BALANCE_READ_FAILED);
+        token.setMode(0);
+        assertEq(token.balanceOf(_BEEF), 0);
+        assertEq(token.balanceOf(d.eoa), 7 ether);
     }
 
     function _session(
@@ -346,6 +508,30 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         calls[0].data = abi.encodeWithSignature(signature, _BEEF, amount);
     }
 
+    function _escrowItem(
+        bytes12 salt,
+        address depositor,
+        address recipient,
+        uint256 escrowAmount,
+        uint256 refundAmount,
+        uint256 refundTimestamp
+    ) internal view returns (IEscrow.Escrow memory) {
+        return
+            IEscrow.Escrow({
+                salt: salt,
+                depositor: depositor,
+                recipient: recipient,
+                token: address(paymentToken),
+                escrowAmount: escrowAmount,
+                refundAmount: refundAmount,
+                refundTimestamp: refundTimestamp,
+                settler: address(0x1111),
+                sender: address(0x2222),
+                settlementId: bytes32(uint256(1)),
+                senderChainId: block.chainid
+            });
+    }
+
     function _escrowCall(
         Escrow escrow,
         address depositor,
@@ -392,5 +578,57 @@ contract MockHardcodedPuller {
 
     function pull(address from, address to, uint256 amount) external {
         SafeTransferLib.safeTransferFrom(token, from, to, amount);
+    }
+}
+
+contract MockVault {
+    address public immutable token;
+
+    constructor(address token_) {
+        token = token_;
+    }
+
+    function withdraw(uint256 amount) external {
+        SafeTransferLib.safeTransfer(token, msg.sender, amount);
+    }
+}
+
+contract MockYieldToken is MockPaymentToken {
+    function sync(uint256 amount) external {
+        mint(msg.sender, amount);
+    }
+}
+
+contract MockFeeOnTransferToken is MockPaymentToken {
+    uint256 public fee;
+
+    function setFee(uint256 fee_) external {
+        fee = fee_;
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        if (fee != 0) _burn(msg.sender, fee);
+        return super.transfer(to, amount);
+    }
+}
+
+contract MockBrokenBalanceToken is MockPaymentToken {
+    /// @dev 0 = normal, 1 = revert, 2 = one-byte return.
+    uint8 public mode;
+
+    function setMode(uint8 mode_) external {
+        mode = mode_;
+    }
+
+    function balanceOf(address owner) public view override returns (uint256 result) {
+        if (mode == 1) revert("nope");
+        if (mode == 2) {
+            /// @solidity memory-safe-assembly
+            assembly {
+                mstore(0x00, 0x01)
+                return(0x00, 0x01)
+            }
+        }
+        return super.balanceOf(owner);
     }
 }

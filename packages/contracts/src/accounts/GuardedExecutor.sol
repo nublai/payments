@@ -98,6 +98,9 @@ abstract contract GuardedExecutor is ERC7821 {
     /// @dev In order to spend a token, it must have spend permissions set.
     error NoSpendPermissions();
 
+    /// @dev A snapshotted token's `balanceOf` failed, reverted, or returned short data.
+    error SpendBalanceReadFailed();
+
     /// @dev Super admin keys can execute everything.
     error SuperAdminCanExecuteEverything();
 
@@ -215,25 +218,28 @@ abstract contract GuardedExecutor is ERC7821 {
     }
 
     /// @dev The `_execute` function imposes spending limits with the following:
-    /// 1. For every guarded token, `max(sum(outgoing amounts), balanceBefore - balanceAfter)`
-    ///    is added to the spent amount. Guarded tokens are:
-    ///    - every token that already has a spend period for `keyHash` (a third party can
-    ///      pull these with an existing allowance, and the decrease is still charged)
-    ///    - the target of a call whose selector is not a recognized transfer or allowance
-    ///      method, when that target is a contract other than this account
-    ///    - up to 8 address-shaped words in the first 32 argument words of such a call
-    ///      (values below 2^16 are treated as offsets or amounts, not token addresses)
-    /// 2. Non-zero `approve`, `increaseAllowance`, and `increaseApproval` are counted as
+    /// 1. For every guarded token, the charge is
+    ///    `max(sum of recognized calldata amounts, sum of per-call balance decreases)`.
+    ///    Each call snapshots the balance before and after. Decreases are summed.
+    ///    An inflow on a later call does not reduce an earlier call's charge.
+    ///    An inflow inside the same call is netted with that call's decrease.
+    ///    Guarded tokens are:
+    ///    - every token that already has a spend period for `keyHash`
+    ///    - a call target, other than this account, that reports a 32-byte `balanceOf`
+    /// 2. A `balanceOf` read on a guarded token that fails, reverts, or returns fewer
+    ///    than 32 bytes reverts the batch with `SpendBalanceReadFailed`. It is not
+    ///    treated as a zero balance. A call target with no `balanceOf` (empty revert)
+    ///    is not a token and is not snapshotted.
+    /// 3. Non-zero `approve`, `increaseAllowance`, and `increaseApproval` are counted as
     ///    spend and the allowance is reset to zero after the batch. Permit2 `approve` is
     ///    counted and locked down.
-    /// 3. Except for the EOA and super admins, the token needs a spend period for `keyHash`
+    /// 4. Except for the EOA and super admins, the token needs a spend period for `keyHash`
     ///    or the batch reverts `NoSpendPermissions`.
     ///
-    /// Still uncovered. There is no stored catalogue of every token the account might hold,
-    /// and the calldata scan is bounded so gas stays finite:
-    /// - a spender that pulls a token which is not a called target, has no spend period,
-    ///   and whose address is outside the watched prefix (hardcoded in the spender, past
-    ///   the first 32 words, past the 8-address cap, or below 2^16)
+    /// Still uncovered. There is no stored catalogue of every token the account might hold:
+    /// - an allowance the root key granted earlier to a spender, for a token that has no
+    ///   spend period for this key. The spender is the call target and does not report a
+    ///   token balance, so the pull is not charged.
     /// - signature permits (EIP-2612, DAI `permit`, Permit2 `permit`) submitted by anyone
     ///   outside this batch. An in-batch signature cannot be distinguished from one that
     ///   will be relayed later, so those selectors are not revoked here.
@@ -265,7 +271,7 @@ abstract contract GuardedExecutor is ERC7821 {
         }
 
         // Recognized selectors are priced from calldata. Anything else can still move a
-        // token, so unrecognized calls also snapshot the target and address-shaped words.
+        // token, so an unrecognized call snapshots the target when it reports a balance.
         // Signature permits are not revoked: anyone can submit the signature later.
         uint256 totalNativeSpend;
         for (uint256 i; i < calls.length; ++i) {
@@ -277,17 +283,11 @@ abstract contract GuardedExecutor is ERC7821 {
         // Sum transfer amounts, grouped by the ERC20s. In-place.
         LibSort.groupSum(t.erc20s.data, t.transferAmounts.data);
 
-        // Collect the ERC20 balances before the batch execution.
-        uint256[] memory balancesBefore = DynamicArrayLib.malloc(t.erc20s.length());
-        for (uint256 i; i < t.erc20s.length(); ++i) {
-            address token = t.erc20s.getAddress(i);
-            balancesBefore.set(i, SafeTransferLib.balanceOf(token, address(this)));
-        }
+        // Execute call by call. Sum each call's balance decrease so a later
+        // inflow cannot cancel an earlier outflow.
+        uint256[] memory decreases = _executeAndSumDecreases(calls, keyHash, t.erc20s);
 
-        // Perform the batch execution.
-        ERC7821._execute(calls, keyHash);
-
-        // Perform after the `_execute`, so that in the case where `calls`
+        // Perform after the calls, so that in the case where `calls`
         // contain a `setSpendLimit`, it will affect the `_incrementSpent`.
         _incrementSpent(spends.spends[address(0)], address(0), totalNativeSpend);
 
@@ -312,33 +312,43 @@ abstract contract GuardedExecutor is ERC7821 {
             _incrementSpent(
                 tokenSpends,
                 token,
-                // While we can actually just use the difference before and after,
-                // we also want to let the sum of the transfer amounts in the calldata to be capped.
-                // This prevents tokens to be used as flash loans, and also handles cases
-                // where the actual token transfers might not match the calldata amounts.
-                // There is no strict definition on what constitutes spending,
-                // and we want to be as conservative as possible.
-                Math.max(
-                    t.transferAmounts.get(i),
-                    Math.saturatingSub(
-                        balancesBefore.get(i),
-                        SafeTransferLib.balanceOf(token, address(this))
-                    )
-                )
+                // Calldata amounts cover allowance changes, which do not move the balance.
+                // Per-call decreases cover the tokens that actually left, including a fee
+                // above the calldata amount. The larger of the two is the charge.
+                Math.max(t.transferAmounts.get(i), decreases[i])
             );
         }
     }
 
-    /// @dev First 32 argument words scanned for token addresses on an unrecognized call.
-    uint256 internal constant _SPEND_CALLDATA_WORDS = 32;
-
-    /// @dev Most address-shaped words from one call that are added to the balance snapshot.
-    uint256 internal constant _SPEND_CALLDATA_ADDRS = 8;
+    /// @dev Executes `calls` one at a time and sums each guarded token's balance decrease.
+    /// A failed or short `balanceOf` on a guarded token reverts the batch.
+    function _executeAndSumDecreases(
+        Call[] calldata calls,
+        bytes32 keyHash,
+        DynamicArrayLib.DynamicArray memory erc20s
+    ) internal returns (uint256[] memory decreases) {
+        uint256 n = erc20s.length();
+        decreases = new uint256[](n);
+        uint256[] memory before = new uint256[](n);
+        uint256 callCount = calls.length;
+        for (uint256 c; c < callCount; ++c) {
+            for (uint256 i; i < n; ++i) {
+                before[i] = _balanceOfAccountStrict(erc20s.getAddress(i));
+            }
+            (address target, uint256 value, bytes calldata data) = _get(calls, c);
+            _execute(target, value, data, keyHash);
+            for (uint256 i; i < n; ++i) {
+                decreases[i] += Math.saturatingSub(
+                    before[i],
+                    _balanceOfAccountStrict(erc20s.getAddress(i))
+                );
+            }
+        }
+    }
 
     /// @dev Records spend for one call.
-    /// Recognized outflow and allowance selectors are priced from their arguments and are
-    /// not also scanned. Other calls snapshot the target contract, plus a bounded set of
-    /// addresses in calldata, so a later balance decrease is charged.
+    /// Recognized outflow and allowance selectors are priced from their arguments.
+    /// Other calls snapshot the target when it reports a token balance.
     function _accountForCall(
         _ExecuteTemps memory t,
         address target,
@@ -390,35 +400,53 @@ abstract contract GuardedExecutor is ERC7821 {
             }
         }
 
-        // Custom token methods (for example `anotherTransfer`) and third-party spenders.
+        // Custom token methods (for example `anotherTransfer`). A spender contract
+        // does not report `balanceOf`, so it is not added here. A token that has a
+        // spend period is already in `t.erc20s` and is snapshotted around this call.
         if (target == address(this) || target.code.length == 0) return;
+        if (!_reportsTokenBalance(target)) return;
         t.erc20s.p(target);
         t.transferAmounts.p(uint256(0));
-        _watchCalldataAddresses(t, target, data);
     }
 
-    /// @dev Adds address-shaped calldata words so a spender told which token to pull
-    /// is measured. The loop is capped so a long payload cannot grow the snapshot
-    /// without a bound.
-    function _watchCalldataAddresses(
-        _ExecuteTemps memory t,
-        address target,
-        bytes calldata data
-    ) internal view {
-        if (data.length < 36) return;
-        uint256 words = (data.length - 4) >> 5;
-        if (words > _SPEND_CALLDATA_WORDS) words = _SPEND_CALLDATA_WORDS;
-        uint256 found;
-        for (uint256 w; w < words && found < _SPEND_CALLDATA_ADDRS; ++w) {
-            uint256 word = uint256(LibBytes.loadCalldata(data, 4 + (w << 5)));
-            // High 96 bits clear means the word can be an address. Tiny values are
-            // ABI offsets, lengths, and small amounts, not token contracts.
-            if (word < 0x10000 || word >> 160 != 0) continue;
-            address candidate = address(uint160(word));
-            if (candidate == address(this) || candidate == target) continue;
-            t.erc20s.p(candidate);
-            t.transferAmounts.p(uint256(0));
-            ++found;
+    /// @dev `token.balanceOf(address(this))`. Reverts unless the read succeeds with
+    /// at least 32 bytes.
+    function _balanceOfAccountStrict(address token) internal view returns (uint256 amount) {
+        (, amount) = _readAccountBalance(token, true);
+    }
+
+    /// @dev True when `target.balanceOf(address(this))` returns at least 32 bytes.
+    /// A short return or a revert that carries data reverts the batch.
+    /// An empty revert means the target has no `balanceOf` and is not a token.
+    function _reportsTokenBalance(address target) internal view returns (bool reports) {
+        (reports,) = _readAccountBalance(target, false);
+    }
+
+    /// @dev Reads `token.balanceOf(address(this))`.
+    /// When `strict` is true, any failed or short read reverts.
+    /// When `strict` is false, a missing function returns `(false, 0)` and a short
+    /// or reverting read still reverts.
+    function _readAccountBalance(
+        address token,
+        bool strict
+    ) internal view returns (bool ok, uint256 amount) {
+        bytes4 err = SpendBalanceReadFailed.selector;
+        /// @solidity memory-safe-assembly
+        assembly {
+            mstore(0x14, address())
+            mstore(0x00, 0x70a08231000000000000000000000000) // `balanceOf(address)`.
+            let success := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
+            let size := returndatasize()
+            if and(success, gt(size, 0x1f)) {
+                ok := 1
+                amount := mload(0x20)
+            }
+            // `err` is a left-aligned bytes4. A missing function (empty revert)
+            // is not a token unless this read is strict.
+            if and(iszero(ok), or(strict, or(success, gt(size, 0)))) {
+                mstore(0x00, err)
+                revert(0x00, 0x04)
+            }
         }
     }
 
