@@ -1,5 +1,7 @@
 import {
+    decodeEventLog,
     encodeAbiParameters,
+    encodeFunctionData,
     erc20Abi,
     getAddress,
     zeroAddress,
@@ -7,7 +9,10 @@ import {
     type Hex,
     type PublicClient,
     type SignedAuthorization,
+    type TransactionReceipt,
 } from 'viem'
+import { recoverTypedDataAddress } from 'viem/utils'
+import { orchestratorAbi } from '@nubl/contracts/abis'
 
 import type { Env } from '../../../types/env'
 import { getChainConfig as getChainAssetsConfig } from '../../../config/chains'
@@ -20,6 +25,9 @@ import {
     INSUFFICIENT_FUNDS,
     RATE_LIMITED,
     SERVICE_UNAVAILABLE,
+    CONTRACT_ERROR,
+    decodeOrchestratorError,
+    mapErrorNameToCode,
 } from '../../errors'
 import type {
     PaidUpgradeAuthorization,
@@ -28,45 +36,108 @@ import type {
     Quote,
 } from '../../schema/prepareCalls'
 import { getSignerPool } from './signer-pool'
+import { encodeIntentCalldata } from '../../../services/encode-intent'
+import { getPaymentRecipient } from '../../../services/fees'
+import type { IntentStruct } from '../../../types/pool'
+import { INTENT_TYPES } from '../../schema/intentTypes'
 import {
     assertAllowedUpgradePreCall,
     authorizationSignerMatchesAccount,
     parseSignature,
 } from './account-helpers'
-import type { RateBucket } from './upgrade-rate-limit'
+import { ipv6Prefix56, type RateBucket } from './upgrade-rate-limit'
 
 export type PaidUpgradeRateAction = 'peek' | 'commit' | 'reserve' | 'release'
 
 /**
- * Per-address buckets for the user-paid first upgrade.
- * These keys are not the sponsored identity buckets. A new address gets a
- * fresh window, so the limit is sybil-able; it only stops one address from
- * looping the relayer.
+ * Paid-upgrade windows. These keys are not the sponsored identity buckets.
+ * Address, IP, IPv6 /56, and the chain total share one 10 minute window.
+ * A missing IP is still a bucket (`unknown`); it does not skip the ceiling.
  */
-export function paidUpgradeRateBuckets(input: { chainId: number; account: string }): RateBucket[] {
-    return [
+export function paidUpgradeRateBuckets(input: {
+    chainId: number
+    account: string
+    ip: string
+    globalLimit?: number
+}): RateBucket[] {
+    const globalLimit = input.globalLimit ?? DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT
+    const buckets: RateBucket[] = [
         {
             key: `paid-upgrade:address:${input.chainId}:${input.account.toLowerCase()}`,
             limit: PAID_UPGRADE_ADDRESS_LIMIT,
             windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
         },
+        {
+            key: `paid-upgrade:ip:${input.chainId}:${input.ip}`,
+            limit: PAID_UPGRADE_IP_LIMIT,
+            windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
+        },
     ]
+    const prefix56 = ipv6Prefix56(input.ip)
+    if (prefix56) {
+        buckets.push({
+            key: `paid-upgrade:ip56:${input.chainId}:${prefix56}`,
+            limit: PAID_UPGRADE_IP_LIMIT,
+            windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
+        })
+    }
+    buckets.push({
+        key: `paid-upgrade:global:${input.chainId}`,
+        limit: globalLimit,
+        windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
+    })
+    return buckets
 }
 
 /**
- * 10 USDC in 6-decimal base units.
+ * 5 USDC in 6-decimal base units. Same ceiling as the wallet `PAID_FEE_CAP`.
  *
- * A third party can rebroadcast the signed intent with its own
- * `paymentRecipient` and with `paymentAmount` set up to `paymentMaxAmount`
- * (the intent digest does not cover either field). This cap is the most USDC
- * that broadcast can pull. A first upgrade on Base is well under $1 at
- * observed gas; 10 USDC sits about an order of magnitude above that quote and
- * far below a typical balance. If the honest quote exceeds the cap, prepare
- * refuses and the account uses the sponsored path.
+ * The value signed into `paymentMaxAmount` is the quoted fee plus 5%, not
+ * this ceiling. A third party can still set `paymentAmount` up to that signed
+ * max and choose `paymentRecipient`. Measured first-upgrade quotes are about
+ * 1.15–1.40 USDC, so quote+5% stays under 5 USDC. A quote that does not fit
+ * is refused and the account uses the sponsored path.
  *
  * `PAID_UPGRADE_MAX_PAYMENT` overrides the default in base units.
  */
-export const DEFAULT_PAID_UPGRADE_MAX_PAYMENT = 10_000_000n
+export const DEFAULT_PAID_UPGRADE_MAX_PAYMENT = 5_000_000n
+
+/**
+ * Same 500 bps margin as `signedPaymentMaxForQuote` in relayer-client.
+ * The 0.001 USDC floor matches FEE_CAP_MARGIN_FLOOR there.
+ */
+const PAID_UPGRADE_FEE_MARGIN_BPS = 500n
+const PAID_UPGRADE_FEE_MARGIN_FLOOR = 1_000n
+
+export function signedPaymentMaxForQuote(paymentAmount: bigint): bigint {
+    if (paymentAmount <= 0n) return 0n
+    const percent = (paymentAmount * PAID_UPGRADE_FEE_MARGIN_BPS + 9_999n) / 10_000n
+    const margin =
+        percent > PAID_UPGRADE_FEE_MARGIN_FLOOR ? percent : PAID_UPGRADE_FEE_MARGIN_FLOOR
+    return paymentAmount + margin
+}
+
+export function clampPaidUpgradePaymentMax(input: {
+    paymentAmount: bigint
+    clientMax?: bigint
+    ceiling: bigint
+}): bigint {
+    if (input.paymentAmount <= 0n) {
+        throw new RpcError(INVALID_PARAMS, 'Paid upgrade fee must be greater than zero')
+    }
+    const quoted = signedPaymentMaxForQuote(input.paymentAmount)
+    if (input.paymentAmount > input.ceiling || quoted > input.ceiling) {
+        throw new RpcError(INVALID_PARAMS, 'Paid upgrade paymentMaxAmount exceeds cap')
+    }
+    if (input.clientMax === undefined) return quoted
+    if (input.clientMax < input.paymentAmount) {
+        throw new RpcError(
+            INVALID_PARAMS,
+            `Payment amount ${input.paymentAmount} exceeds max ${input.clientMax}`,
+        )
+    }
+    return input.clientMax < quoted ? input.clientMax : quoted
+}
 
 /**
  * Per EIP-7702 authorization added to `txGas`.
@@ -86,6 +157,35 @@ export const PAID_UPGRADE_AUTHORIZATION_GAS = 25_000n
 /** Successful paid-upgrade prepares and broadcasts per address per 10 minutes. */
 export const PAID_UPGRADE_ADDRESS_LIMIT = 3
 
+/**
+ * Per caller and per IPv6 /56 per 10 minutes. One NAT can rotate EOAs, so
+ * this sits well under the sponsored upgrade IP ceiling of 100. There is no
+ * identity on this path to bind the caller.
+ */
+export const PAID_UPGRADE_IP_LIMIT = 8
+
+/**
+ * Paid upgrades per chain per 10 minutes. Sponsored upgrades allow 2,000.
+ * Twenty is a short honest burst. `PAID_UPGRADE_GLOBAL_LIMIT` overrides it.
+ */
+export const DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT = 20
+
+/**
+ * Gas units reserved before a paid-upgrade broadcast. Above the measured
+ * ~456k `eth_estimateGas` and below the 1,500,000 broadcast cap. The receipt
+ * settles the hold down to `gasUsed`.
+ */
+export const PAID_UPGRADE_GAS_HOLD = 500_000n
+
+/**
+ * Gas units one chain may spend on paid-upgrade broadcasts per UTC day.
+ * About seven honest upgrades at the measured ~280k, or about thirty 60k
+ * sweep receipts. At ~1 gwei that is about $6; at the 100 gwei refusal cap
+ * it is 0.2 ETH, about $600. `PAID_UPGRADE_DAILY_GAS_BUDGET` overrides it.
+ * An unreadable budget refuses the broadcast.
+ */
+export const DEFAULT_PAID_UPGRADE_DAILY_GAS_BUDGET = 2_000_000n
+
 export const PAID_UPGRADE_WINDOW_SECONDS = 10 * 60
 
 export type { PaidUpgradeAuthorization, PaidUpgradePreCall, PaidUpgradeQuote }
@@ -104,12 +204,36 @@ export function chainUsdcAddress(chainId: number): Address {
 }
 
 export function paidUpgradeMaxPayment(env: { PAID_UPGRADE_MAX_PAYMENT?: string }): bigint {
-    const raw = env.PAID_UPGRADE_MAX_PAYMENT?.trim()
-    if (!raw) return DEFAULT_PAID_UPGRADE_MAX_PAYMENT
-    if (!/^[0-9]+$/.test(raw) || raw === '0') {
-        throw new RpcError(SERVICE_UNAVAILABLE, 'PAID_UPGRADE_MAX_PAYMENT is invalid')
+    return readPaidUpgradeBig(env.PAID_UPGRADE_MAX_PAYMENT, DEFAULT_PAID_UPGRADE_MAX_PAYMENT, 'PAID_UPGRADE_MAX_PAYMENT')
+}
+
+export function paidUpgradeGlobalLimit(env: { PAID_UPGRADE_GLOBAL_LIMIT?: string }): number {
+    const value = readPaidUpgradeBig(
+        env.PAID_UPGRADE_GLOBAL_LIMIT,
+        BigInt(DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT),
+        'PAID_UPGRADE_GLOBAL_LIMIT',
+    )
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new RpcError(SERVICE_UNAVAILABLE, 'PAID_UPGRADE_GLOBAL_LIMIT is invalid')
     }
-    return BigInt(raw)
+    return Number(value)
+}
+
+export function paidUpgradeDailyGasBudget(env: { PAID_UPGRADE_DAILY_GAS_BUDGET?: string }): bigint {
+    return readPaidUpgradeBig(
+        env.PAID_UPGRADE_DAILY_GAS_BUDGET,
+        DEFAULT_PAID_UPGRADE_DAILY_GAS_BUDGET,
+        'PAID_UPGRADE_DAILY_GAS_BUDGET',
+    )
+}
+
+function readPaidUpgradeBig(raw: string | undefined, fallback: bigint, label: string): bigint {
+    const text = raw?.trim()
+    if (!text) return fallback
+    if (!/^[0-9]+$/.test(text) || text === '0') {
+        throw new RpcError(SERVICE_UNAVAILABLE, `${label} is invalid`)
+    }
+    return BigInt(text)
 }
 
 /** `abi.encode(SignedCall)` — the bytes Orchestrator stores in `encodedPreCalls`. */
@@ -276,6 +400,15 @@ export async function assertPaidUpgrade(args: {
             `Payment amount ${args.paymentAmount} exceeds max ${paymentMaxAmount}`,
         )
     }
+    const quotedMax = signedPaymentMaxForQuote(args.paymentAmount)
+    if (quotedMax > args.maxPayment || paymentMaxAmount > quotedMax) {
+        throw new RpcError(
+            INVALID_PARAMS,
+            quotedMax > args.maxPayment
+                ? 'Paid upgrade paymentMaxAmount exceeds cap'
+                : 'Paid upgrade paymentMaxAmount exceeds the quoted fee cap',
+        )
+    }
 
     let code: Hex | undefined
     let pendingNonce: number
@@ -345,7 +478,7 @@ export async function assertPaidUpgrade(args: {
 async function postPaidUpgradeRateLimit(
     env: Env,
     chainId: number,
-    input: { action: PaidUpgradeRateAction; account: string; reservedAt?: number },
+    input: { action: PaidUpgradeRateAction; account: string; ip: string; reservedAt?: number },
 ): Promise<{ allowed: boolean; reservedAt?: number }> {
     const pool = getSignerPool(env, chainId)
     let response: Response
@@ -358,6 +491,7 @@ async function postPaidUpgradeRateLimit(
                 kind: 'paid-upgrade',
                 chainId,
                 account: input.account,
+                ip: input.ip,
                 ...(input.reservedAt !== undefined ? { reservedAt: input.reservedAt } : {}),
             }),
         })
@@ -382,10 +516,12 @@ export async function assertPaidUpgradeRateCapacity(
     env: Env,
     chainId: number,
     account: string,
+    ip: string,
 ): Promise<void> {
     const result = await postPaidUpgradeRateLimit(env, chainId, {
         action: 'peek',
         account,
+        ip,
     })
     if (!result.allowed) {
         throw new RpcError(RATE_LIMITED, 'Paid upgrade rate limit exceeded')
@@ -396,17 +532,15 @@ export async function recordPaidUpgradeRateLimit(
     env: Env,
     chainId: number,
     account: string,
+    ip: string,
 ): Promise<void> {
-    try {
-        const result = await postPaidUpgradeRateLimit(env, chainId, {
-            action: 'commit',
-            account,
-        })
-        if (!result.allowed) {
-            logger.warn({ chainId, account }, 'paid upgrade rate limit commit rejected')
-        }
-    } catch (error) {
-        logger.error({ error, chainId }, 'paid upgrade rate limit commit failed')
+    const result = await postPaidUpgradeRateLimit(env, chainId, {
+        action: 'commit',
+        account,
+        ip,
+    })
+    if (!result.allowed) {
+        throw new RpcError(RATE_LIMITED, 'Paid upgrade rate limit exceeded')
     }
 }
 
@@ -414,10 +548,12 @@ export async function reservePaidUpgradeRateLimit(
     env: Env,
     chainId: number,
     account: string,
+    ip: string,
 ): Promise<number> {
     const result = await postPaidUpgradeRateLimit(env, chainId, {
         action: 'reserve',
         account,
+        ip,
     })
     if (!result.allowed) {
         throw new RpcError(RATE_LIMITED, 'Paid upgrade rate limit exceeded')
@@ -429,15 +565,238 @@ export async function releasePaidUpgradeRateLimit(
     env: Env,
     chainId: number,
     account: string,
+    ip: string,
     reservedAt: number,
 ): Promise<void> {
     try {
         await postPaidUpgradeRateLimit(env, chainId, {
             action: 'release',
             account,
+            ip,
             reservedAt,
         })
     } catch (error) {
         logger.error({ error, chainId }, 'paid upgrade rate limit release failed')
     }
+}
+
+async function postPaidUpgradeGas(
+    env: Env,
+    chainId: number,
+    body: Record<string, unknown>,
+): Promise<{ allowed: boolean; gas?: number; failures?: number }> {
+    const pool = getSignerPool(env, chainId)
+    let response: Response
+    try {
+        response = await pool.fetch(`http://do/upgrade-rate-limit?poolName=pool-${chainId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: 'paid-upgrade', chainId, ...body }),
+        })
+    } catch (error) {
+        logger.error({ error, chainId }, 'paid upgrade gas budget unavailable')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+    if (!response.ok) {
+        logger.error({ chainId, status: response.status }, 'paid upgrade gas budget failed')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+    const result = (await response.json()) as { allowed?: boolean; gas?: number; failures?: number }
+    return {
+        allowed: result.allowed === true,
+        gas: typeof result.gas === 'number' ? result.gas : undefined,
+        failures: typeof result.failures === 'number' ? result.failures : undefined,
+    }
+}
+
+export async function reservePaidUpgradeGas(env: Env, chainId: number): Promise<void> {
+    paidUpgradeDailyGasBudget(env)
+    const result = await postPaidUpgradeGas(env, chainId, {
+        action: 'reserve-gas',
+        gas: PAID_UPGRADE_GAS_HOLD.toString(),
+    })
+    if (!result.allowed) {
+        throw new RpcError(RATE_LIMITED, 'Paid upgrade gas budget exceeded')
+    }
+}
+
+export async function releasePaidUpgradeGas(env: Env, chainId: number): Promise<void> {
+    try {
+        await postPaidUpgradeGas(env, chainId, {
+            action: 'release-gas',
+            gas: PAID_UPGRADE_GAS_HOLD.toString(),
+        })
+    } catch (error) {
+        logger.error({ error, chainId }, 'paid upgrade gas budget release failed')
+    }
+}
+
+/**
+ * Settle a broadcast that landed. A success receipt whose IntentExecuted
+ * error is non-zero (PaymentError, VerificationError) keeps the gas and
+ * increments the failure count. The rate-limit slot is not released.
+ */
+export async function settlePaidUpgradeGas(
+    env: Env,
+    chainId: number,
+    input: { gasUsed: bigint; failure: boolean },
+): Promise<void> {
+    const result = await postPaidUpgradeGas(env, chainId, {
+        action: 'settle-gas',
+        hold: PAID_UPGRADE_GAS_HOLD.toString(),
+        gas: input.gasUsed.toString(),
+        failure: input.failure,
+    })
+    if (!result.allowed) {
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+}
+
+function intentDigestMessage(intent: IntentStruct) {
+    return {
+        multichain: false,
+        eoa: getAddress(intent.eoa),
+        calls: intent.calls.map((call) => ({
+            to: getAddress(call.to),
+            value: BigInt(call.value ?? 0),
+            data: (call.data ?? '0x') as Hex,
+        })),
+        nonce: BigInt(intent.nonce),
+        payer: getAddress(intent.payer ?? zeroAddress),
+        paymentToken: getAddress(intent.paymentToken ?? zeroAddress),
+        paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? 0),
+        combinedGas: BigInt(intent.combinedGas),
+        encodedPreCalls: (intent.encodedPreCalls ?? []) as Hex[],
+        encodedFundTransfers: (intent.encodedFundTransfers ?? []) as Hex[],
+        settler: getAddress(intent.settler ?? zeroAddress),
+        expiry: BigInt(intent.expiry),
+    }
+}
+
+/** The intent digest signer must be the EOA. A bad signature is not broadcast. */
+export async function assertPaidUpgradeIntentSigner(args: {
+    intent: IntentStruct
+    chainId: number
+    orchestrator: Address
+}): Promise<void> {
+    const signature = args.intent.signature
+    if (!signature || signature === '0x') {
+        throw new RpcError(INVALID_SIGNATURE, 'Intent signer is not the account')
+    }
+    let recovered: Address
+    try {
+        recovered = await recoverTypedDataAddress({
+            domain: {
+                name: 'Orchestrator',
+                version: '0.5.5',
+                chainId: args.chainId,
+                verifyingContract: args.orchestrator,
+            },
+            types: INTENT_TYPES,
+            primaryType: 'Intent',
+            message: intentDigestMessage(args.intent),
+            signature,
+        })
+    } catch (error) {
+        if (error instanceof RpcError) throw error
+        throw new RpcError(INVALID_SIGNATURE, 'Intent signer is not the account')
+    }
+    if (getAddress(recovered) !== getAddress(args.intent.eoa)) {
+        throw new RpcError(INVALID_SIGNATURE, 'Intent signer is not the account')
+    }
+}
+
+function storedExecuteSelector(data: Hex | undefined): Hex | undefined {
+    if (!data || data === '0x' || data.length < 10) return undefined
+    return `0x${data.slice(2, 10)}` as Hex
+}
+
+/**
+ * `eth_call` the execute the signer will send, including authorizationList.
+ * Execution mode returns the stored selector instead of reverting. Anything
+ * other than 0x00000000 is refused before broadcast.
+ */
+export async function assertPaidUpgradeSimulation(args: {
+    publicClient: PublicClient
+    orchestrator: Address
+    intent: IntentStruct
+    authorization: SignedAuthorization
+    feeRecipient: string | undefined
+}): Promise<void> {
+    const intentForBroadcast: IntentStruct = {
+        ...args.intent,
+        paymentRecipient: getPaymentRecipient(args.feeRecipient, zeroAddress),
+    }
+    const data = encodeFunctionData({
+        abi: orchestratorAbi,
+        functionName: 'execute',
+        args: [encodeIntentCalldata(intentForBroadcast)],
+    })
+    let returned: Hex | undefined
+    try {
+        const result = await args.publicClient.call({
+            to: args.orchestrator,
+            data,
+            authorizationList: [args.authorization],
+        })
+        returned = result.data
+    } catch (error) {
+        logger.error({ error }, 'paid upgrade simulation failed')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+    const selector = storedExecuteSelector(returned)
+    if (!selector) {
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+    if (selector === '0x00000000') return
+    const decoded = decodeOrchestratorError(selector)
+    const name = decoded?.errorName ?? 'Unknown'
+    const code = decoded ? mapErrorNameToCode(name) : CONTRACT_ERROR
+    throw new RpcError(code, `Paid upgrade simulation failed: ${name}`, { selector })
+}
+
+export interface PaidUpgradeReceiptOutcome {
+    failure: boolean
+    errorName?: string
+    selector?: Hex
+    gasUsed: bigint
+}
+
+/**
+ * A type-4 receipt with status success can still be unpaid. Orchestrator
+ * emits IntentExecuted with the stored selector and does not revert.
+ */
+export function paidUpgradeReceiptOutcome(receipt: {
+    status: TransactionReceipt['status']
+    gasUsed: bigint
+    logs: TransactionReceipt['logs']
+}): PaidUpgradeReceiptOutcome {
+    const gasUsed = receipt.gasUsed
+    if (receipt.status !== 'success') {
+        return { failure: true, errorName: 'Reverted', gasUsed }
+    }
+    for (const log of receipt.logs) {
+        try {
+            const decoded = decodeEventLog({
+                abi: orchestratorAbi,
+                data: log.data,
+                topics: log.topics,
+            })
+            if (decoded.eventName !== 'IntentExecuted') continue
+            const err = (decoded.args as { err?: Hex }).err
+            if (!err || err === '0x00000000') {
+                return { failure: false, gasUsed }
+            }
+            const named = decodeOrchestratorError(err)
+            return {
+                failure: true,
+                errorName: named?.errorName ?? 'Unknown',
+                selector: err,
+                gasUsed,
+            }
+        } catch {
+            continue
+        }
+    }
+    return { failure: false, gasUsed }
 }

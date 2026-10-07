@@ -116,9 +116,21 @@ export interface Env {
 
     /**
      * Cap on paymentMaxAmount for a USDC-paid first upgrade, in fee-token base
-     * units. Unset uses 10 USDC (6 decimals). See DEFAULT_PAID_UPGRADE_MAX_PAYMENT.
+     * units. Unset uses 5 USDC (6 decimals), the same ceiling as the wallet
+     * paid-fee cap. See DEFAULT_PAID_UPGRADE_MAX_PAYMENT.
      */
     PAID_UPGRADE_MAX_PAYMENT?: string
+    /**
+     * Paid upgrades accepted per chain per 10 minutes, across every address.
+     * Unset uses DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT.
+     */
+    PAID_UPGRADE_GLOBAL_LIMIT?: string
+    /**
+     * Gas units a chain may spend on paid-upgrade broadcasts per UTC day.
+     * Unset uses DEFAULT_PAID_UPGRADE_DAILY_GAS_BUDGET. A missing or unreadable
+     * budget refuses the broadcast.
+     */
+    PAID_UPGRADE_DAILY_GAS_BUDGET?: string
 
     // Price oracle configuration
     PRICE_ORACLE_PROVIDER?: string // Default: "coingecko"

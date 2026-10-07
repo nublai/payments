@@ -39,7 +39,18 @@ import {
     type UpgradeRateAction,
     type UpgradeRateKind,
 } from '../rpc/methods/shared/upgrade-rate-limit'
-import { paidUpgradeRateBuckets } from '../rpc/methods/shared/paid-upgrade'
+import {
+    paidUpgradeDailyGasBudget,
+    paidUpgradeGlobalLimit,
+    paidUpgradeRateBuckets,
+} from '../rpc/methods/shared/paid-upgrade'
+
+function parseGasUnits(value: unknown): number | undefined {
+    if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) return undefined
+    const parsed = Number(value)
+    if (!Number.isSafeInteger(parsed) || parsed < 0) return undefined
+    return parsed
+}
 
 class SignerPoolSendError extends Error {
     broadcastAttempted: boolean
@@ -107,12 +118,24 @@ export class SignerPoolDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
                     const body = (await request.json()) as {
-                        action?: UpgradeRateAction
+                        action?: UpgradeRateAction | 'reserve-gas' | 'release-gas' | 'settle-gas'
                         kind?: UpgradeRateKind | 'paid-upgrade'
                         chainId?: number
                         account?: string
                         ip?: string
                         identity?: string
+                        gas?: string
+                        hold?: string
+                        failure?: boolean
+                        reservedAt?: number
+                    }
+                    if (
+                        body.kind === 'paid-upgrade' &&
+                        (body.action === 'reserve-gas' ||
+                            body.action === 'release-gas' ||
+                            body.action === 'settle-gas')
+                    ) {
+                        return Response.json(this.consumePaidUpgradeGas(body))
                     }
                     const result = this.consumeUpgradeRateLimit(body)
                     return Response.json(result)
@@ -141,7 +164,7 @@ export class SignerPoolDO extends DurableObject<Env> {
      * returns a reservation that never reached eth_sendRawTransaction.
      */
     private consumeUpgradeRateLimit(body: {
-        action?: UpgradeRateAction
+        action?: UpgradeRateAction | 'reserve-gas' | 'release-gas' | 'settle-gas'
         kind?: UpgradeRateKind | 'paid-upgrade'
         chainId?: number
         account?: string
@@ -161,7 +184,7 @@ export class SignerPoolDO extends DurableObject<Env> {
             typeof body.chainId !== 'number' ||
             !Number.isInteger(body.chainId) ||
             typeof body.account !== 'string' ||
-            (!paidUpgrade && typeof body.ip !== 'string') ||
+            typeof body.ip !== 'string' ||
             (body.identity !== undefined && typeof body.identity !== 'string') ||
             (body.reservedAt !== undefined && !Number.isInteger(body.reservedAt)) ||
             !knownAction
@@ -171,10 +194,20 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         const action = body.action ?? 'commit'
         const nowSeconds = Math.floor(Date.now() / 1000)
+        let globalLimit = 0
+        if (paidUpgrade) {
+            try {
+                globalLimit = paidUpgradeGlobalLimit(this.env)
+            } catch {
+                return { allowed: false }
+            }
+        }
         const buckets = paidUpgrade
             ? paidUpgradeRateBuckets({
                   chainId: body.chainId,
                   account: body.account,
+                  ip: body.ip,
+                  globalLimit,
               })
             : upgradeRateBuckets({
                   kind: body.kind as UpgradeRateKind,
@@ -261,6 +294,75 @@ export class SignerPoolDO extends DurableObject<Env> {
         })
     }
 
+    private consumePaidUpgradeGas(body: {
+        action?: string
+        chainId?: number
+        gas?: string
+        hold?: string
+        failure?: boolean
+    }): { allowed: boolean; gas?: number; held?: number; failures?: number } {
+        if (typeof body.chainId !== 'number' || !Number.isInteger(body.chainId)) {
+            return { allowed: false }
+        }
+        let budget: bigint
+        try {
+            budget = paidUpgradeDailyGasBudget(this.env)
+        } catch {
+            return { allowed: false }
+        }
+        const gas = parseGasUnits(body.gas)
+        if (gas === undefined) return { allowed: false }
+        const hold = body.action === 'settle-gas' ? parseGasUnits(body.hold) : gas
+        if (hold === undefined) return { allowed: false }
+        const dayStart = Math.floor(Date.now() / 1000 / 86_400) * 86_400
+        const sql = this.ensureUpgradeRateSchema()
+
+        return this.ctx.storage.transactionSync(() => {
+            const rows = sql
+                .exec<{ day_start: number; gas: number; held: number; failures: number }>(
+                    `SELECT day_start, gas, held, failures FROM paid_upgrade_gas_budget WHERE id = 1`,
+                )
+                .toArray()
+            const row = rows[0]
+            let gasSpent = 0
+            let heldGas = 0
+            let failures = 0
+            if (row && row.day_start === dayStart) {
+                gasSpent = row.gas
+                heldGas = row.held
+                failures = row.failures
+            }
+            if (body.action === 'reserve-gas') {
+                if (BigInt(gasSpent) + BigInt(heldGas) + BigInt(gas) > budget) {
+                    return { allowed: false, gas: gasSpent, held: heldGas, failures }
+                }
+                heldGas += gas
+            } else if (body.action === 'release-gas') {
+                heldGas = Math.max(0, heldGas - gas)
+            } else if (body.action === 'settle-gas') {
+                heldGas = Math.max(0, heldGas - hold)
+                gasSpent += gas
+                if (body.failure === true) failures += 1
+            } else {
+                return { allowed: false }
+            }
+            sql.exec(
+                `INSERT INTO paid_upgrade_gas_budget (id, day_start, gas, held, failures)
+                 VALUES (1, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                    day_start = excluded.day_start,
+                    gas = excluded.gas,
+                    held = excluded.held,
+                    failures = excluded.failures`,
+                dayStart,
+                gasSpent,
+                heldGas,
+                failures,
+            )
+            return { allowed: true, gas: gasSpent, held: heldGas, failures }
+        })
+    }
+
     private ensureUpgradeRateSchema(): SqlStorage {
         const sql = this.ctx.storage.sql
         if (!this.upgradeRateSchemaReady) {
@@ -270,6 +372,15 @@ export class SignerPoolDO extends DurableObject<Env> {
                     window_start INTEGER NOT NULL,
                     hits INTEGER NOT NULL,
                     PRIMARY KEY (bucket_key, window_start)
+                )
+            `)
+            sql.exec(`
+                CREATE TABLE IF NOT EXISTS paid_upgrade_gas_budget (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    day_start INTEGER NOT NULL,
+                    gas INTEGER NOT NULL,
+                    held INTEGER NOT NULL,
+                    failures INTEGER NOT NULL
                 )
             `)
             this.upgradeRateSchemaReady = true

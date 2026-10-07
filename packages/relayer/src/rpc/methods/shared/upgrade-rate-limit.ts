@@ -176,7 +176,7 @@ function canonicalUpgradeIp(raw: string): string | undefined {
 }
 
 /** Enclosing /56 of a canonical IPv6 address. Absent for IPv4 and IPv4-mapped. */
-function ipv6Prefix56(ip: string): string | undefined {
+export function ipv6Prefix56(ip: string): string | undefined {
     const bytes = parseIpv6(ip)
     if (!bytes || isIpv4Mapped(bytes)) return undefined
     for (let index = 7; index < 16; index++) bytes[index] = 0

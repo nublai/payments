@@ -77,4 +77,52 @@ describe('SignerPoolDO upgrade rate limit', () => {
         })
         expect(await again.json()).toMatchObject({ allowed: true })
     })
+
+    it('refuses a paid upgrade that does not name an IP', async () => {
+        const poolName = 'pool-8453-paid-no-ip'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+        const response = await stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'peek',
+                kind: 'paid-upgrade',
+                chainId: 8453,
+                account: '0x3333333333333333333333333333333333333333',
+            }),
+        })
+        expect(response.ok).toBe(true)
+        expect(await response.json()).toEqual({ allowed: false })
+    })
+
+    it('counts a settled PaymentError against the daily gas budget', async () => {
+        const poolName = 'pool-8453-paid-gas'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+        const post = (body: Record<string, unknown>) =>
+            stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind: 'paid-upgrade', chainId: 8453, ...body }),
+            })
+
+        const reserved = await post({ action: 'reserve-gas', gas: '500000' })
+        expect(await reserved.json()).toMatchObject({ allowed: true })
+
+        const settled = await post({
+            action: 'settle-gas',
+            hold: '500000',
+            gas: '60478',
+            failure: true,
+        })
+        expect(await settled.json()).toMatchObject({ allowed: true, gas: 60478, failures: 1 })
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const next = await post({ action: 'reserve-gas', gas: '500000' })
+            expect(await next.json()).toMatchObject({ allowed: true })
+        }
+        const blocked = await post({ action: 'reserve-gas', gas: '500000' })
+        expect(await blocked.json()).toMatchObject({ allowed: false })
+    })
 })
