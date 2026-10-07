@@ -1468,6 +1468,10 @@ export class SignerDO extends DurableObject<Env> {
                     to: tx.usdc,
                     data,
                     value: 0n,
+                    // Same paid mark as the type-4. A stale replacement keeps
+                    // this flag, signs at most the 500k reservation, and the
+                    // pool settles every hash for this signer nonce together.
+                    paidUpgrade: true,
                 }
             }
 

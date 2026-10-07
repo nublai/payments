@@ -302,6 +302,8 @@ function feeRecord(input: {
     bundleId: string
     pullTx?: Hex
     upgradeTx?: Hex
+    signerNonce?: number
+    signerName?: string
 }): PaidUpgradeFeeRecord {
     return {
         status: input.status,
@@ -312,6 +314,8 @@ function feeRecord(input: {
         bundleId: input.bundleId,
         pullTx: input.pullTx,
         upgradeTx: input.upgradeTx,
+        ...(input.signerNonce !== undefined ? { signerNonce: input.signerNonce } : {}),
+        ...(input.signerName ? { signerName: input.signerName } : {}),
     }
 }
 
@@ -513,6 +517,8 @@ export async function bindAndPullPaidUpgrade(args: {
                 bundleId: record?.bundleId ?? args.bundleId,
                 pullTx: record?.pullTx,
                 upgradeTx: record?.upgradeTx,
+                signerNonce: record?.signerNonce,
+                signerName: record?.signerName,
             }),
             record ? 'update' : 'insert',
         )
@@ -676,7 +682,7 @@ async function ensureFeeCollected(args: {
     }
 
     if (args.existing?.status === 'pull_intent' && args.existing.pullTx) {
-        return resumePull(args, args.existing.pullTx)
+        return resumePull(args, args.existing.pullTx, args.existing)
     }
 
     const intent = feeRecord({
@@ -703,7 +709,7 @@ async function ensureFeeCollected(args: {
         if (current.status === 'fee_collected' || current.status === 'upgrade_failed' || current.status === 'upgrade_pending' || current.status === 'upgrade_confirmed' || current.status === 'upgrade_landed') {
             return current
         }
-        if (current.pullTx) return resumePull(args, current.pullTx)
+        if (current.pullTx) return resumePull(args, current.pullTx, current)
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
 
@@ -772,9 +778,14 @@ async function ensureFeeCollected(args: {
         throw new RpcError(SERVICE_UNAVAILABLE, sent.error || 'Paid upgrade failed')
     }
 
-    const withHash = { ...intent, pullTx: sent.result.txHash }
+    const withHash = {
+        ...intent,
+        pullTx: sent.result.txHash,
+        signerNonce: sent.result.nonce,
+        signerName: sent.result.signerName,
+    }
     await writePaidUpgradeFee(args.env, args.chainId, args.quoteSignature, withHash, 'update')
-    return finishPull(args, sent.result.txHash, balanceBefore)
+    return finishPull(args, sent.result.txHash, balanceBefore, withHash)
 }
 
 async function resumePull(
@@ -791,9 +802,10 @@ async function resumePull(
         quoteSignature: Hex
     },
     hash: Hex,
+    record: PaidUpgradeFeeRecord,
 ): Promise<PaidUpgradeFeeRecord> {
     const balanceNow = await balanceOf(args.publicClient, args.usdc, args.to)
-    return finishPull(args, hash, balanceNow)
+    return finishPull(args, hash, balanceNow, record)
 }
 
 async function finishPull(
@@ -811,6 +823,7 @@ async function finishPull(
     },
     hash: Hex,
     balanceBefore: bigint,
+    record: PaidUpgradeFeeRecord,
 ): Promise<PaidUpgradeFeeRecord> {
     let receipt: Awaited<ReturnType<PublicClient['waitForTransactionReceipt']>>
     try {
@@ -821,7 +834,10 @@ async function finishPull(
     } catch (error) {
         logger.error({ error, hash }, 'paid upgrade fee pull receipt unavailable')
         try {
-            await enqueuePaidUpgradeReceipt(args.env, args.chainId, hash)
+            await enqueuePaidUpgradeReceipt(args.env, args.chainId, hash, {
+                nonce: record.signerNonce,
+                signerName: record.signerName,
+            })
         } catch (enqueueError) {
             logger.error({ error: enqueueError, hash }, 'paid upgrade fee pull was not queued for reconcile')
         }
@@ -847,6 +863,8 @@ async function finishPull(
             nonce: args.nonce,
             bundleId: args.bundleId,
             pullTx: hash,
+            signerNonce: record.signerNonce,
+            signerName: record.signerName,
         })
         await writePaidUpgradeFee(args.env, args.chainId, args.quoteSignature, failed, 'update')
         await settlePaidUpgradeGas(args.env, args.chainId, {
@@ -864,6 +882,8 @@ async function finishPull(
         nonce: args.nonce,
         bundleId: args.bundleId,
         pullTx: hash,
+        signerNonce: record.signerNonce,
+        signerName: record.signerName,
     })
     await writePaidUpgradeFee(args.env, args.chainId, args.quoteSignature, collected, 'update')
     await settlePaidUpgradeGas(args.env, args.chainId, {
@@ -891,7 +911,10 @@ async function settlePendingUpgrade(
     } catch (error) {
         logger.error({ error, hash: record.upgradeTx }, 'paid upgrade pending receipt unavailable')
         try {
-            await enqueuePaidUpgradeReceipt(env, chainId, record.upgradeTx)
+            await enqueuePaidUpgradeReceipt(env, chainId, record.upgradeTx, {
+                nonce: record.signerNonce,
+                signerName: record.signerName,
+            })
         } catch (enqueueError) {
             logger.error(
                 { error: enqueueError, hash: record.upgradeTx },
@@ -909,12 +932,19 @@ export async function notePaidUpgradeSubmitted(
     quoteSignature: Hex,
     record: PaidUpgradeFeeRecord,
     upgradeTx: Hex,
+    broadcast?: { nonce?: number; signerName?: string },
 ): Promise<void> {
     await writePaidUpgradeFee(
         env,
         chainId,
         quoteSignature,
-        { ...record, status: 'upgrade_pending', upgradeTx },
+        {
+            ...record,
+            status: 'upgrade_pending',
+            upgradeTx,
+            ...(broadcast?.nonce !== undefined ? { signerNonce: broadcast.nonce } : {}),
+            ...(broadcast?.signerName ? { signerName: broadcast.signerName } : {}),
+        },
         'update',
     )
 }

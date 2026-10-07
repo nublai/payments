@@ -457,7 +457,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     )
                 }
                 const books = this.readGasBooks(sql, dayStart)
-                return { allowed: true, gas: books.gasSpent, held: books.held, failures: books.failures }
+                return { allowed: true, gas: books.gasSpent, held: books.heldGas, failures: books.failures }
             })
         }
 
@@ -688,6 +688,10 @@ export class SignerPoolDO extends DurableObject<Env> {
         if (body.pullTx !== undefined && typeof body.pullTx !== 'string') return null
         if (body.upgradeTx !== undefined && typeof body.upgradeTx !== 'string') return null
         if (body.bundleId !== undefined && typeof body.bundleId !== 'string') return null
+        if (body.signerNonce !== undefined && (typeof body.signerNonce !== 'number' || !Number.isInteger(body.signerNonce) || body.signerNonce < 0)) {
+            return null
+        }
+        if (body.signerName !== undefined && typeof body.signerName !== 'string') return null
         try {
             return {
                 status: body.status,
@@ -698,6 +702,8 @@ export class SignerPoolDO extends DurableObject<Env> {
                 pullTx: typeof body.pullTx === 'string' ? (body.pullTx as Hex) : undefined,
                 upgradeTx: typeof body.upgradeTx === 'string' ? (body.upgradeTx as Hex) : undefined,
                 bundleId: typeof body.bundleId === 'string' ? body.bundleId : undefined,
+                ...(typeof body.signerNonce === 'number' ? { signerNonce: body.signerNonce } : {}),
+                ...(typeof body.signerName === 'string' && body.signerName ? { signerName: body.signerName } : {}),
             }
         } catch {
             return null
@@ -715,8 +721,10 @@ export class SignerPoolDO extends DurableObject<Env> {
                 pull_tx: string | null
                 upgrade_tx: string | null
                 bundle_id: string | null
+                signer_nonce: number | null
+                signer_name: string | null
             }>(
-                `SELECT status, fee, from_addr, to_addr, nonce, pull_tx, upgrade_tx, bundle_id
+                `SELECT status, fee, from_addr, to_addr, nonce, pull_tx, upgrade_tx, bundle_id, signer_nonce, signer_name
                  FROM paid_upgrade_fee_pull WHERE quote_key = ?`,
                 quoteKey,
             )
@@ -733,6 +741,8 @@ export class SignerPoolDO extends DurableObject<Env> {
                 pullTx: row.pull_tx ? (row.pull_tx as Hex) : undefined,
                 upgradeTx: row.upgrade_tx ? (row.upgrade_tx as Hex) : undefined,
                 bundleId: row.bundle_id ?? undefined,
+                ...(row.signer_nonce != null ? { signerNonce: row.signer_nonce } : {}),
+                ...(row.signer_name ? { signerName: row.signer_name } : {}),
             }
         } catch {
             return null
@@ -746,8 +756,9 @@ export class SignerPoolDO extends DurableObject<Env> {
     ): void {
         sql.exec(
             `INSERT INTO paid_upgrade_fee_pull (
-                quote_key, status, fee, from_addr, to_addr, nonce, pull_tx, upgrade_tx, bundle_id, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                quote_key, status, fee, from_addr, to_addr, nonce, pull_tx, upgrade_tx, bundle_id, updated_at,
+                signer_nonce, signer_name
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(quote_key) DO UPDATE SET
                 status = excluded.status,
                 fee = excluded.fee,
@@ -757,7 +768,9 @@ export class SignerPoolDO extends DurableObject<Env> {
                 pull_tx = excluded.pull_tx,
                 upgrade_tx = excluded.upgrade_tx,
                 bundle_id = excluded.bundle_id,
-                updated_at = excluded.updated_at`,
+                updated_at = excluded.updated_at,
+                signer_nonce = excluded.signer_nonce,
+                signer_name = excluded.signer_name`,
             quoteKey,
             record.status,
             record.fee,
@@ -768,6 +781,8 @@ export class SignerPoolDO extends DurableObject<Env> {
             record.upgradeTx ?? null,
             record.bundleId ?? null,
             Date.now(),
+            record.signerNonce ?? null,
+            record.signerName ?? null,
         )
     }
 
@@ -1087,7 +1102,9 @@ export class SignerPoolDO extends DurableObject<Env> {
                     pull_tx TEXT,
                     upgrade_tx TEXT,
                     bundle_id TEXT,
-                    updated_at INTEGER NOT NULL
+                    updated_at INTEGER NOT NULL,
+                    signer_nonce INTEGER,
+                    signer_name TEXT
                 )
             `)
             sql.exec(`
@@ -1111,6 +1128,18 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
             if (!columns.has('signer_name')) {
                 sql.exec(`ALTER TABLE paid_upgrade_pending_receipt ADD COLUMN signer_name TEXT`)
+            }
+            const feeColumns = new Set(
+                sql
+                    .exec<{ name: string }>(`PRAGMA table_info(paid_upgrade_fee_pull)`)
+                    .toArray()
+                    .map((column) => column.name),
+            )
+            if (!feeColumns.has('signer_nonce')) {
+                sql.exec(`ALTER TABLE paid_upgrade_fee_pull ADD COLUMN signer_nonce INTEGER`)
+            }
+            if (!feeColumns.has('signer_name')) {
+                sql.exec(`ALTER TABLE paid_upgrade_fee_pull ADD COLUMN signer_name TEXT`)
             }
             this.upgradeRateSchemaReady = true
         }

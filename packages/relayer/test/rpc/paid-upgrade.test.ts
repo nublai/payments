@@ -83,6 +83,7 @@ const rpc = {
     authUsed: false,
     upgradeRevertRemaining: 0,
     receiptMissing: false,
+    pullReceiptMissing: false,
 }
 
 const gasLog: Array<Record<string, unknown>> = []
@@ -222,9 +223,11 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     }
     captures.push(body)
     const txHash = body.type === 'pull-paid-upgrade-fee' ? PULL_HASH : UPGRADE_HASH
+    const nonce = body.type === 'pull-paid-upgrade-fee' ? 4 : 5
     return Promise.resolve(
         jsonResponse({
             txHash,
+            nonce,
             signer: '0x123',
             signerName: 'signer-8453-0',
         }),
@@ -602,6 +605,7 @@ beforeEach(() => {
     rpc.authUsed = false
     rpc.upgradeRevertRemaining = 0
     rpc.receiptMissing = false
+    rpc.pullReceiptMissing = false
     feeStore.clear()
     rpcCalls.length = 0
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -635,7 +639,9 @@ beforeEach(() => {
             } else if (call.method === 'eth_call') result = word(rpc.balance)
             else if (call.method === 'eth_chainId') result = '0x2105'
             else if (call.method === 'eth_getTransactionReceipt') {
-                if (rpc.receiptMissing && call.params?.[0] !== PULL_HASH) {
+                const missingPull = rpc.pullReceiptMissing && call.params?.[0] === PULL_HASH
+                const missingUpgrade = rpc.receiptMissing && call.params?.[0] !== PULL_HASH
+                if (missingPull || missingUpgrade) {
                     return {
                         jsonrpc: '2.0',
                         id: call.id ?? 1,
@@ -977,6 +983,28 @@ describe('paid upgrade send refusals', () => {
             'enqueue-receipt',
         ])
         expect(gasLog.at(-1)?.txHash).toBe(UPGRADE_HASH)
+        expect(gasLog.at(-1)?.nonce).toBe(5)
+        expect(gasLog.at(-1)?.signerName).toBe('signer-8453-0')
+    }, 25_000)
+
+    it('enqueues a missed fee pull by signer nonce and does not release the hold', async () => {
+        rpc.pullReceiptMissing = true
+        const { params } = await signedParams({ callData: '0xcf' })
+        const ctx = createCtx('203.0.113.51')
+        ;(ctx.env as Env).PAID_UPGRADE_RECEIPT_WAIT_MS = '200'
+        await expect(handleSendPreparedCalls(params, ctx)).rejects.toMatchObject({
+            code: SERVICE_UNAVAILABLE,
+            message: 'Paid upgrade fee pull failed',
+        })
+        expect(gasLog.map((entry) => entry.action)).toEqual(['reserve-gas', 'enqueue-receipt'])
+        expect(gasLog.at(-1)).toMatchObject({
+            txHash: PULL_HASH,
+            nonce: 4,
+            signerName: 'signer-8453-0',
+        })
+        expect(gasHeld).toBe(500_000n)
+        expect(gasLog.some((entry) => entry.action === 'release-gas')).toBe(false)
+        expect(captures.filter((body) => body.type === 'execute-intent')).toHaveLength(0)
     }, 25_000)
 
     it('sends the caller IP into the paid rate buckets', async () => {

@@ -198,7 +198,14 @@ export async function handleSendPreparedCalls(
     if (paidUpgrade?.kind === 'ready') {
         const pending = { ...paidUpgrade.record, upgradeTx: result.txHash }
         try {
-            await notePaidUpgradeSubmitted(env, chainId, signedQuotes!.signature, paidUpgrade.record, result.txHash)
+            await notePaidUpgradeSubmitted(
+                env,
+                chainId,
+                signedQuotes!.signature,
+                paidUpgrade.record,
+                result.txHash,
+                { nonce: result.nonce, signerName: result.signerName },
+            )
             const receiptClient = createPublicClient({ transport: http(config.rpcUrl) })
             const receipt = await receiptClient.waitForTransactionReceipt({
                 hash: result.txHash,

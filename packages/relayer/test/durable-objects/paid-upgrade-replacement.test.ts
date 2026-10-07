@@ -5,10 +5,12 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { privateKeyToAccount } from 'viem/accounts'
-import type { Hex } from 'viem'
+import { toFunctionSelector, type Address, type Hex } from 'viem'
 
 import { SignerDO } from '../../src/durable-objects/signer.do'
 import type { Env } from '../../src/types/env'
+import { receiveWithAuthorizationAbi } from '../../src/rpc/schema/paid-upgrade-fee'
+import type { RelayTransaction } from '../../src/types/pool'
 
 const ACCOUNT = privateKeyToAccount(
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
@@ -187,5 +189,133 @@ describe('paid upgrade stale replacement', () => {
         expect(refused).toBe('skipped')
         expect(seen[1]?.paidUpgrade).toBe(true)
         expect(sent).toHaveLength(1)
+    })
+
+    it('replaces a stale fee pull inside its reservation and tracks the nonce', async () => {
+        const signerAddress = ACCOUNT.address
+        const selector = toFunctionSelector(receiveWithAuthorizationAbi[0]).toLowerCase()
+        const signer = Object.create(SignerDO.prototype) as SignerDO & {
+            env: Env
+            buildTxParams: (
+                tx: RelayTransaction,
+                chainId: number,
+                address: Address,
+            ) => Promise<{ data: Hex; paidUpgrade?: boolean; authorizationList?: unknown }>
+        }
+        signer.env = { CONTEXT: 'prod' } as Env
+        const built = await signer.buildTxParams(
+            {
+                id: 'fee-pull',
+                type: 'pull-paid-upgrade-fee',
+                account: signerAddress,
+                usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                from: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                to: signerAddress,
+                value: '1294232',
+                validAfter: '0',
+                validBefore: '1893456000',
+                nonce: `0x${'ab'.repeat(32)}`,
+                signature: `0x${'11'.repeat(32)}${'22'.repeat(32)}1b`,
+            },
+            8453,
+            signerAddress,
+        )
+        expect(built.paidUpgrade).toBe(true)
+        expect(built.authorizationList).toBeUndefined()
+        expect(built.data.toLowerCase().startsWith(selector)).toBe(true)
+
+        const row = pendingRow()
+        row.tx_data = built.data
+        row.tx_authorization_list = ''
+        row.paid_upgrade = 1
+        const sent: Array<{ gas?: bigint }> = []
+        const tracked: Array<Record<string, unknown>> = []
+        const signerName = 'signer-8453-0'
+
+        const replacement = Object.create(SignerDO.prototype) as SignerDO & {
+            sql: { exec: (query: string, ...args: unknown[]) => { toArray: () => PendingRow[] } }
+            env: Env
+            ctx: { id: { name: string } }
+            ensureClients: (chainId: number) => {
+                publicClient: {
+                    estimateGas: () => Promise<bigint>
+                    estimateFeesPerGas: () => Promise<{
+                        maxFeePerGas: bigint
+                        maxPriorityFeePerGas: bigint
+                    }>
+                }
+                walletClient: { sendTransaction: (tx: { gas?: bigint }) => Promise<Hex> }
+                account: typeof ACCOUNT
+            }
+            tryReplaceStaleTransaction: (
+                txId: string,
+                chainId: number,
+                name: string,
+            ) => Promise<'replaced' | 'skipped' | 'abandoned'>
+        }
+        replacement.sql = {
+            exec: (query: string, ...args: unknown[]) => {
+                const text = query.replace(/\s+/g, ' ')
+                if (text.includes("SET status = 'replacing'") && text.includes('RETURNING')) {
+                    if (row.status !== 'pending') return { toArray: () => [] }
+                    row.status = 'replacing'
+                    return { toArray: () => [{ ...row }] }
+                }
+                if (text.includes('SET tx_hash')) {
+                    row.tx_hash = String(args[0])
+                    row.status = 'pending'
+                    return { toArray: () => [] }
+                }
+                if (text.includes('SET queued')) return { toArray: () => [] }
+                if (text.includes('SET status')) {
+                    row.status = 'pending'
+                    return { toArray: () => [] }
+                }
+                return { toArray: () => [] }
+            },
+        }
+        replacement.env = {
+            MONITOR_QUEUE: { send: async () => {} },
+            SIGNER_POOL: {
+                idFromName: () => 'pool-8453',
+                get: () => ({
+                    fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+                        tracked.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
+                        return new Response(JSON.stringify({ allowed: true }))
+                    },
+                }),
+            },
+        } as unknown as Env
+        replacement.ctx = { id: { name: signerName } }
+        replacement.ensureClients = () => ({
+            publicClient: {
+                estimateGas: async () => 600_000n,
+                estimateFeesPerGas: async () => ({
+                    maxFeePerGas: 1_000_000_000n,
+                    maxPriorityFeePerGas: 1_000_000_000n,
+                }),
+            },
+            walletClient: {
+                sendTransaction: async (tx: { gas?: bigint }) => {
+                    sent.push(tx)
+                    return `0x${'cc'.repeat(32)}` as Hex
+                },
+            },
+            account: ACCOUNT,
+        })
+
+        const replaced = await replacement.tryReplaceStaleTransaction('paid-1', 8453, signerName)
+        expect(replaced).toBe('replaced')
+        expect(sent).toHaveLength(1)
+        expect(sent[0]?.gas).toBe(500_000n)
+        expect(sent[0]?.gas ?? 0n).toBeLessThanOrEqual(500_000n)
+        expect(tracked).toHaveLength(1)
+        expect(tracked[0]).toMatchObject({
+            action: 'track-replacement',
+            priorHash: `0x${'aa'.repeat(32)}`,
+            txHash: `0x${'cc'.repeat(32)}`,
+            nonce: 4,
+            signerName,
+        })
     })
 })

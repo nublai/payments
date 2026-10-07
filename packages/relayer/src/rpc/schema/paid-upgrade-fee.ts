@@ -99,6 +99,10 @@ export interface PaidUpgradeFeeRecord {
     pullTx?: Hex
     upgradeTx?: Hex
     bundleId?: string
+    /** Signer nonce of the broadcast this row is still waiting on. */
+    signerNonce?: number
+    /** Signer DO name for that nonce. Reconcile will not release without it. */
+    signerName?: string
 }
 
 export interface PaidUpgradeFeeAuthorization {
