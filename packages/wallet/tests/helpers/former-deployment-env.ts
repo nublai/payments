@@ -41,9 +41,32 @@ const FORMER: Record<number, Record<Field, string>> = {
     },
 }
 
-export function installFormerProdDeployments(): () => void {
+const STAGE: Record<number, Record<Field, string>> = {
+    8453: {
+        account: '0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6',
+        accountProxy: '0xeE06c19146427bDd5abb702579F3B0568b24Bf6F',
+        escrow: '0x05f9597eed844410b7c0746A1C584188d0644730',
+        multiSigSigner: '0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3',
+        orchestrator: '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC',
+        simpleFunder: '0xf297614c45E3AfAAC849B7Cde4A20A8cF336D8bF',
+        simpleSettler: '0x195424235453eC103082A9406AEE0Cc30E908b24',
+        simulator: '0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65',
+    },
+    137: {
+        account: '0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6',
+        accountProxy: '0x4c17F5EC755eAC6B5d663D770dF34C4dD659c82e',
+        escrow: '0x05f9597eed844410b7c0746A1C584188d0644730',
+        multiSigSigner: '0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3',
+        orchestrator: '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC',
+        simpleFunder: '0xf297614c45E3AfAAC849B7Cde4A20A8cF336D8bF',
+        simpleSettler: '0x195424235453eC103082A9406AEE0Cc30E908b24',
+        simulator: '0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65',
+    },
+}
+
+function installChains(chains: Record<number, Record<Field, string>>): () => void {
     const previous = new Map<string, string | undefined>()
-    for (const [chainId, addresses] of Object.entries(FORMER)) {
+    for (const [chainId, addresses] of Object.entries(chains)) {
         for (const field of Object.keys(KEYS) as Field[]) {
             const key = `${KEYS[field]}_${chainId}`
             if (!previous.has(key)) previous.set(key, process.env[key])
@@ -56,4 +79,12 @@ export function installFormerProdDeployments(): () => void {
             else process.env[key] = value
         }
     }
+}
+
+export function installFormerProdDeployments(): () => void {
+    return installChains(FORMER)
+}
+
+export function installFormerStageDeployments(): () => void {
+    return installChains(STAGE)
 }

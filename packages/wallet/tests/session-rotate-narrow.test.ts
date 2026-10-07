@@ -8,6 +8,7 @@ import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { executeSessionRotate } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldAddress = '0x2222222222222222222222222222222222222222' as Address
@@ -354,6 +355,7 @@ const PLANTED_SELECTOR = '0x39509351' as Hex
 test('extra-chain cleanup resolves the fee policy for that chain', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const prepares: {
         chainId: number
         payer?: Address
@@ -372,6 +374,9 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                 newName: 'default-next',
             },
             rotateDeps({
+                getKeys: mock(async () => ({
+                    '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+                })),
                 readGuardCleanup: mock(async (input: { chainId: number }) => {
                     if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
                     return {
@@ -439,6 +444,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
         expect(decoded.args[2]).toBe(PLANTED_SELECTOR)
         expect(decoded.args[3]).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
