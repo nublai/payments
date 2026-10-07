@@ -558,9 +558,23 @@ function runCli(
     args: string[],
     env: Record<string, string>,
     timeoutMs = 90_000,
+    phrase?: string,
 ): Promise<{ status: number; stdout: string; stderr: string }> {
     return new Promise((resolvePromise, reject) => {
-        const child = spawn('bun', ['src/cli.ts', ...args], {
+        // PR 17 reads the confirmation phrase from a TTY. This is the same
+        // helper passkey-flow and the local e2e scripts use. Assertions are unchanged.
+        const child = spawn(
+            phrase ? 'python3' : 'bun',
+            phrase
+                ? [
+                      resolve(walletDir, '../../scripts/tw-tty-confirm.py'),
+                      phrase,
+                      'bun',
+                      'src/cli.ts',
+                      ...args,
+                  ]
+                : ['src/cli.ts', ...args],
+            {
             cwd: walletDir,
             env: {
                 ...process.env,
@@ -642,6 +656,8 @@ beforeAll(async () => {
                 'json',
             ],
             {},
+            90_000,
+            'CREATE FULL ACCESS SESSION',
         )
         if (result.status !== 0) {
             throw new Error(
@@ -664,6 +680,12 @@ function devEnv(url: string): Record<string, string> {
         RELAYER_URL_DEV: url,
         ACCOUNT_PROXY_31337: LOCAL_PROXY,
         ORCHESTRATOR_31337: LOCAL_ORCH,
+        ACCOUNT_31337: '0x0000000000000000000000000000000000000003',
+        SIMPLE_FUNDER_31337: '0x0000000000000000000000000000000000000004',
+        SIMULATOR_31337: '0x0000000000000000000000000000000000000005',
+        SIMPLE_SETTLER_31337: '0x0000000000000000000000000000000000000006',
+        ESCROW_31337: '0x0000000000000000000000000000000000000007',
+        MULTI_SIG_SIGNER_31337: '0x0000000000000000000000000000000000000008',
     }
 }
 
@@ -685,6 +707,8 @@ async function runCreate(mode: UpgradeMode, keystore: string) {
                 'json',
             ],
             {},
+            90_000,
+            'CREATE FULL ACCESS SESSION',
         )
         return { server, result }
     })
@@ -707,6 +731,8 @@ async function runDelegate(mode: UpgradeMode) {
                     'json',
                 ],
                 devEnv(url),
+                90_000,
+                'CREATE FULL ACCESS SESSION',
             )
             return { server, result }
         }),
@@ -808,6 +834,8 @@ async function runSend(mode: SendMode) {
                     'json',
                 ],
                 devEnv(url),
+                90_000,
+                'SEND USDC',
             )
             return { server, result }
         }),
