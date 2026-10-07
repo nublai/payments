@@ -1630,6 +1630,12 @@ session.command('rotate', {
         chain: chainSchema,
         newName: z.string().optional().describe('Name for the new session key'),
         resume: z.boolean().optional().describe('Resume interrupted rotation'),
+        abandon: z
+            .boolean()
+            .optional()
+            .describe(
+                'Read on-chain keys, then remove the rotation marker. Does not sign, and does not delete a session file whose key is still on chain.',
+            ),
         fullAccess: z
             .boolean()
             .optional()
@@ -1673,9 +1679,20 @@ session.command('rotate', {
         bundle: z.object({ id: z.string() }),
         txHash: z.string().optional(),
         feeCap: feeCapOutput,
+        onChain: z
+            .object({
+                newKeyAuthorized: z.boolean(),
+                oldKeyLive: z.boolean(),
+            })
+            .optional(),
+        markerRemoved: z.boolean().optional(),
     }),
     examples: [
         { options: { env: 'prod', profile: 'agent' }, description: 'Rotate active session' },
+        {
+            options: { env: 'prod', profile: 'agent', abandon: true },
+            description: 'Report on-chain keys and remove a stuck rotation marker',
+        },
     ],
     async run({ options, env, error: reportError }) {
         if (
@@ -1693,8 +1710,28 @@ session.command('rotate', {
                     '--narrow cannot be combined with --full-access, --target, --selector, or a custom spend.',
             })
         }
+        if (
+            options.abandon &&
+            (options.resume ||
+                options.narrow ||
+                options.fullAccess ||
+                options.newName ||
+                options.target ||
+                options.selector ||
+                options.spendLimit ||
+                options.spendLimitRaw ||
+                options.spendPeriod)
+        ) {
+            return reportError({
+                code: 'INVALID_REQUEST',
+                message:
+                    '--abandon only removes the rotation marker. Do not combine it with --resume or other rotate flags.',
+            })
+        }
         let phraseConfirmed = false
-        if (options.narrow) {
+        if (options.abandon) {
+            phraseConfirmed = false
+        } else if (options.narrow) {
             await confirmHuman(
                 reportError,
                 'Rotating a legacy session onto the narrowed default',
@@ -1768,6 +1805,7 @@ session.command('rotate', {
             spendPeriod: options.spendPeriod,
             narrow: options.narrow,
             fullAccessPhraseConfirmed: phraseConfirmed,
+            abandon: options.abandon,
             password,
         })
     },
