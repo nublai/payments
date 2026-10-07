@@ -1853,6 +1853,7 @@ export const accountAbi = [
   { type: "error", inputs: [], name: "NoSpendPermissions" },
   { type: "error", inputs: [], name: "OpDataError" },
   { type: "error", inputs: [], name: "PaymasterNonceError" },
+  { type: "error", inputs: [], name: "SpendBalanceReadFailed" },
   { type: "error", inputs: [], name: "SuperAdminCanExecuteEverything" },
   { type: "error", inputs: [], name: "SuperAdminCanSpendAnything" },
   { type: "error", inputs: [], name: "Unauthorized" },
