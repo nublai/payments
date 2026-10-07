@@ -689,8 +689,8 @@ contract GuardedExecutorTest is BaseTest {
         DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
 
         u.eoa = d.eoa;
-        // Each metered call also reads `totalSupply` and the call target's balance.
-        // 1_000_000 is no longer enough for the widest fuzz batch (5 tokens, 16 calls).
+        // Per-call `balanceOf` on the widest fuzz batch (5 tokens, 16 calls), plus
+        // Permit2 lockdown. The cap stays 1_500_000. The spend assertion is unchanged.
         u.combinedGas = 1_500_000;
         u.nonce = d.d.getNonce(0);
 

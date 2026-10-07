@@ -543,8 +543,10 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
     }
 
-    /// @dev (b) One token call mints 40 to the account and sends 40 out.
-    function testSameCallMintAndSendIsCharged() public {
+    /// @dev Intentional. One call mints 40 onto the account and sends those 40 out.
+    /// The account's own balance is unchanged, so the day limit does not charge it.
+    /// Was `testSameCallMintAndSendIsCharged`, which expected `ExceededSpendLimit`.
+    function testIntended_SameCallMintAndSendUncharged() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         MockMintAndSendToken token = new MockMintAndSendToken();
         token.mint(d.eoa, 10 ether);
@@ -555,14 +557,17 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         calls[0].to = address(token);
         calls[0].data = abi.encodeWithSignature("syncAndSend(address,uint256)", _BEEF, 40 ether);
 
-        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
-        assertEq(token.balanceOf(_BEEF), 0);
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(token.balanceOf(_BEEF), 40 ether);
         assertEq(token.balanceOf(d.eoa), 10 ether);
         assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
     }
 
-    /// @dev (c) One zap call sends 50 in and `transferFrom`s 50 out.
-    function testSameCallZapPassThroughIsCharged() public {
+    /// @dev Intentional. The zap sends 50 of its own tokens in and `transferFrom`s
+    /// them out through the standing allowance. The account's 10 stays. Spent 0.
+    /// Was `testSameCallZapPassThroughIsCharged`, which expected `ExceededSpendLimit`
+    /// and expected the zap's balance to stay 50.
+    function testIntended_ZapPassThroughUncharged() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         MockPassThroughZap zap = new MockPassThroughZap();
         paymentToken.mint(d.eoa, 10 ether);
@@ -581,10 +586,10 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
             50 ether
         );
 
-        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
-        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(_BEEF), 50 ether);
         assertEq(paymentToken.balanceOf(d.eoa), 10 ether);
-        assertEq(paymentToken.balanceOf(address(zap)), 50 ether);
+        assertEq(paymentToken.balanceOf(address(zap)), 0);
         assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
     }
 
@@ -606,6 +611,197 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
 
         assertEq(_run(d, k, u, calls), bytes4(0));
         assertEq(paymentToken.balanceOf(d.eoa), 5 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev A minute limit of 5 ether rejects an unrecognized pull of 6. The account stays.
+    function testMinuteLimitRejectsPullOfSix() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        paymentToken.mint(d.eoa, 50 ether);
+        _allow(d, k.keyHash, address(paymentToken), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Minute, 5 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(paymentToken);
+        calls[0].data = abi.encodeWithSignature(
+            "anotherTransfer(address,uint256)",
+            _BEEF,
+            6 ether
+        );
+
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(paymentToken.balanceOf(d.eoa), 50 ether);
+        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev The same minute limit charges a pull of 5.
+    function testMinuteLimitChargesPullOfFive() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        paymentToken.mint(d.eoa, 50 ether);
+        _allow(d, k.keyHash, address(paymentToken), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Minute, 5 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(paymentToken);
+        calls[0].data = abi.encodeWithSignature(
+            "anotherTransfer(address,uint256)",
+            _BEEF,
+            5 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 45 ether);
+        assertEq(paymentToken.balanceOf(_BEEF), 5 ether);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 5 ether);
+    }
+
+    /// @dev Intentional. The router withdraws a vault, then pays the attacker.
+    /// The account's liquid balance stays 10. No ERC-20 allowance from the account.
+    function testIntended_VaultForwardUncharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockVault vault = new MockVault(address(paymentToken));
+        MockForwardRouter router = new MockForwardRouter();
+        paymentToken.mint(d.eoa, 10 ether);
+        paymentToken.mint(address(vault), 50 ether);
+        _allow(d, k.keyHash, address(router), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(router);
+        calls[0].data = abi.encodeWithSignature(
+            "forward(address,address,address,uint256)",
+            address(vault),
+            address(paymentToken),
+            _BEEF,
+            50 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 10 ether);
+        assertEq(paymentToken.balanceOf(_BEEF), 50 ether);
+        assertEq(paymentToken.balanceOf(address(vault)), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev Intentional. Root approved the router. A payer credits the account and the
+    /// router pulls the same amount. The account's 10 stays. Spent 0.
+    function testIntended_CreditThenPullUncharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockCreditThenPull router = new MockCreditThenPull();
+        address payer = address(0xCAFE);
+        paymentToken.mint(d.eoa, 10 ether);
+        paymentToken.mint(payer, 50 ether);
+        vm.prank(d.eoa);
+        paymentToken.approve(address(router), type(uint256).max);
+        vm.prank(payer);
+        paymentToken.approve(address(router), type(uint256).max);
+        _allow(d, k.keyHash, address(router), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(router);
+        calls[0].data = abi.encodeWithSignature(
+            "run(address,address,address,uint256)",
+            address(paymentToken),
+            payer,
+            _BEEF,
+            50 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 10 ether);
+        assertEq(paymentToken.balanceOf(_BEEF), 50 ether);
+        assertEq(paymentToken.balanceOf(payer), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev Intentional. The router spends its own 50. A donor replaces them on the
+    /// account in the same call. The account rises from 10 to 60. Spent 0.
+    function testIntended_DonorTopUpLeavesTargetDropUncharged() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockDonorRouter router = new MockDonorRouter();
+        address donor = address(0xD0E0);
+        paymentToken.mint(d.eoa, 10 ether);
+        paymentToken.mint(address(router), 50 ether);
+        paymentToken.mint(donor, 50 ether);
+        vm.prank(donor);
+        paymentToken.approve(address(router), type(uint256).max);
+        _allow(d, k.keyHash, address(router), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(router);
+        calls[0].data = abi.encodeWithSignature(
+            "sendOwnAndTakeDonation(address,address,address,uint256)",
+            address(paymentToken),
+            _BEEF,
+            donor,
+            50 ether
+        );
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 60 ether);
+        assertEq(paymentToken.balanceOf(_BEEF), 50 ether);
+        assertEq(paymentToken.balanceOf(address(router)), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev Intentional. An in-batch EIP-2612 permit of 8 ether leaves the allowance,
+    /// and a later pull of a token with no period is not charged.
+    function testIntended_Eip2612PermitLeavesUnchargedPull() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockHardcodedPuller puller = new MockHardcodedPuller(address(paymentToken));
+        paymentToken.mint(d.eoa, 8 ether);
+        _allow(d, k.keyHash, address(paymentToken), _ANY_FN_SEL);
+        _allow(d, k.keyHash, address(puller), _ANY_FN_SEL);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0] = _permitCall(d, address(puller), 8 ether);
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.allowance(d.eoa, address(puller)), 8 ether);
+
+        calls[0].to = address(puller);
+        calls[0].data = abi.encodeWithSignature(
+            "pull(address,address,uint256)",
+            d.eoa,
+            _BEEF,
+            8 ether
+        );
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(_BEEF), 8 ether);
+        assertEq(paymentToken.balanceOf(d.eoa), 0);
+        // `transferFrom` spends the allowance. The guard did not clear it; the pull did.
+        assertEq(paymentToken.allowance(d.eoa, address(puller)), 0);
+        assertEq(d.d.spendInfos(k.keyHash).length, 0);
+    }
+
+    /// @dev The same permit sticks. The later pull of 8 ether against a 1 ether day
+    /// limit reverts `ExceededSpendLimit`. The allowance is still 8 ether.
+    function testEip2612PermitPullOverDayLimitReverts() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockHardcodedPuller puller = new MockHardcodedPuller(address(paymentToken));
+        paymentToken.mint(d.eoa, 8 ether);
+        _allow(d, k.keyHash, address(paymentToken), _ANY_FN_SEL);
+        _allow(d, k.keyHash, address(puller), _ANY_FN_SEL);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0] = _permitCall(d, address(puller), 8 ether);
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.allowance(d.eoa, address(puller)), 8 ether);
+
+        calls[0].to = address(puller);
+        calls[0].data = abi.encodeWithSignature(
+            "pull(address,address,uint256)",
+            d.eoa,
+            _BEEF,
+            8 ether
+        );
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(paymentToken.balanceOf(d.eoa), 8 ether);
+        assertEq(paymentToken.allowance(d.eoa, address(puller)), 8 ether);
         assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
     }
 
@@ -837,6 +1033,41 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         return oc.execute(abi.encode(u));
     }
 
+    function _permitCall(
+        DelegatedEOA memory d,
+        address spender,
+        uint256 value
+    ) internal view returns (ERC7821.Call memory call) {
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                ),
+                d.eoa,
+                spender,
+                value,
+                paymentToken.nonces(d.eoa),
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", paymentToken.DOMAIN_SEPARATOR(), structHash)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(d.privateKey, digest);
+        call.to = address(paymentToken);
+        call.data = abi.encodeWithSignature(
+            "permit(address,address,uint256,uint256,uint8,bytes32,bytes32)",
+            d.eoa,
+            spender,
+            value,
+            deadline,
+            v,
+            r,
+            s
+        );
+    }
+
     function _increaseCall(
         string memory signature,
         uint256 amount
@@ -993,6 +1224,32 @@ contract MockMintAndSendToken is MockPaymentToken {
     function syncAndSend(address to, uint256 amount) external {
         mint(msg.sender, amount);
         anotherTransfer(to, amount);
+    }
+}
+
+contract MockForwardRouter {
+    function forward(address vault, address token, address to, uint256 amount) external {
+        MockVault(vault).withdraw(amount);
+        SafeTransferLib.safeTransfer(token, to, amount);
+    }
+}
+
+contract MockCreditThenPull {
+    function run(address token, address payer, address to, uint256 amount) external {
+        SafeTransferLib.safeTransferFrom(token, payer, msg.sender, amount);
+        SafeTransferLib.safeTransferFrom(token, msg.sender, to, amount);
+    }
+}
+
+contract MockDonorRouter {
+    function sendOwnAndTakeDonation(
+        address token,
+        address to,
+        address donor,
+        uint256 amount
+    ) external {
+        SafeTransferLib.safeTransfer(token, to, amount);
+        SafeTransferLib.safeTransferFrom(token, donor, msg.sender, amount);
     }
 }
 
