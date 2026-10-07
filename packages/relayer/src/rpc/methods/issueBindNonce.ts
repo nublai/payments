@@ -2,10 +2,16 @@ import { getAddress, type Address } from 'viem'
 
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
-import { RpcError, INVALID_PARAMS, NONCE_ERROR } from '../errors'
+import { RpcError, INVALID_PARAMS, NONCE_ERROR, RATE_LIMITED } from '../errors'
 import { requireParam, unwrapParams, validateAddress } from '../../lib/rpc-utils'
 import { currentAuthIdentity } from '../../auth/identity'
-import { BIND_NONCE_TTL_SECONDS, walletBindPersonalMessage, walletBindTypedData } from '../../auth/wallet-bind'
+import {
+    BIND_NONCE_TTL_SECONDS,
+    walletBindEnvironment,
+    walletBindPersonalMessage,
+    walletBindTypedData,
+} from '../../auth/wallet-bind'
+import { upgradeClientIp } from './shared/upgrade-rate-limit'
 import { walletBindingStub } from '../../auth/wallet-binding-client'
 import { resolveChainId } from './shared/account-helpers'
 import type { IssueBindNonceParams } from '../schema/bindAccount'
@@ -22,6 +28,7 @@ export async function issueBindNonce(
     params: unknown,
     env: Env,
     nowSeconds: number,
+    ip?: string,
 ): Promise<{
     nonce: string
     expiry: number
@@ -46,6 +53,7 @@ export async function issueBindNonce(
             chainId,
             nowSeconds,
             ttlSeconds: BIND_NONCE_TTL_SECONDS,
+            ip,
         })
     } catch {
         throw new RpcError(NONCE_ERROR, 'Wallet binding store unavailable')
@@ -54,6 +62,12 @@ export async function issueBindNonce(
     if (!issued.ok) {
         if (issued.reason === 'address_taken') {
             throw new RpcError(INVALID_PARAMS, 'Address is bound to another identity')
+        }
+        if (issued.reason === 'rate_limited') {
+            throw new RpcError(RATE_LIMITED, 'Bind rate limit exceeded')
+        }
+        if (issued.reason === 'subject_cap') {
+            throw new RpcError(RATE_LIMITED, 'Wallet binding cap exceeded')
         }
         throw new RpcError(INVALID_PARAMS, 'Invalid bind nonce request')
     }
@@ -65,6 +79,7 @@ export async function issueBindNonce(
         nonce: issued.nonce,
         chainId,
         expiry: issued.expiresAt,
+        environment: walletBindEnvironment(env),
     }
 
     return {
@@ -80,5 +95,10 @@ export async function issueBindNonce(
 }
 
 export async function handleIssueBindNonce(params: unknown, ctx: RpcContext) {
-    return issueBindNonce(params, ctx.env as Env, Math.floor(Date.now() / 1000))
+    return issueBindNonce(
+        params,
+        ctx.env as Env,
+        Math.floor(Date.now() / 1000),
+        upgradeClientIp(ctx.request),
+    )
 }

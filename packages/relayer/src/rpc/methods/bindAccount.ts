@@ -2,9 +2,14 @@ import { getAddress, type Hex } from 'viem'
 
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
-import { RpcError, INVALID_PARAMS, INVALID_SIGNATURE, NONCE_ERROR } from '../errors'
+import { RpcError, INVALID_PARAMS, INVALID_SIGNATURE, NONCE_ERROR, RATE_LIMITED } from '../errors'
 import { requireParam, unwrapParams, validateAddress } from '../../lib/rpc-utils'
-import { parseWalletBindScheme, verifyWalletBindSignature } from '../../auth/wallet-bind'
+import {
+    parseWalletBindScheme,
+    verifyWalletBindSignature,
+    walletBindEnvironment,
+} from '../../auth/wallet-bind'
+import { upgradeClientIp } from './shared/upgrade-rate-limit'
 import { walletBindingStub } from '../../auth/wallet-binding-client'
 import { resolveChainId } from './shared/account-helpers'
 import { requireOidcCaller } from './issueBindNonce'
@@ -14,6 +19,7 @@ export async function bindAccount(
     params: unknown,
     env: Env,
     nowSeconds: number,
+    ip?: string,
 ): Promise<{ address: string; issuer: string; sub: string }> {
     const caller = requireOidcCaller()
     const typed = unwrapParams<BindAccountParams>(params)
@@ -37,6 +43,21 @@ export async function bindAccount(
         throw new RpcError(INVALID_SIGNATURE, 'Invalid bind signature')
     }
 
+    let charged: Awaited<ReturnType<ReturnType<typeof walletBindingStub>['chargeBind']>>
+    try {
+        charged = await walletBindingStub(env).chargeBind({
+            issuer: caller.issuer,
+            subject: caller.subject,
+            ip,
+            nowSeconds,
+        })
+    } catch {
+        throw new RpcError(NONCE_ERROR, 'Wallet binding store unavailable')
+    }
+    if (!charged.ok) {
+        throw new RpcError(RATE_LIMITED, 'Bind rate limit exceeded')
+    }
+
     const signed = await verifyWalletBindSignature({
         fields: {
             account: address,
@@ -45,6 +66,7 @@ export async function bindAccount(
             nonce,
             chainId,
             expiry,
+            environment: walletBindEnvironment(env),
         },
         signature: signature as Hex,
         scheme,
@@ -63,6 +85,8 @@ export async function bindAccount(
             chainId,
             expiry,
             nowSeconds,
+            ip,
+            charged: true,
         })
     } catch {
         throw new RpcError(NONCE_ERROR, 'Wallet binding store unavailable')
@@ -71,6 +95,9 @@ export async function bindAccount(
     if (!outcome.ok) {
         if (outcome.reason === 'address_taken') {
             throw new RpcError(INVALID_PARAMS, 'Address is bound to another identity')
+        }
+        if (outcome.reason === 'rate_limited' || outcome.reason === 'subject_cap') {
+            throw new RpcError(RATE_LIMITED, 'Wallet binding cap exceeded')
         }
         if (outcome.reason === 'nonce_expired') {
             throw new RpcError(NONCE_ERROR, 'Bind nonce expired')
@@ -85,5 +112,10 @@ export async function bindAccount(
 }
 
 export async function handleBindAccount(params: unknown, ctx: RpcContext) {
-    return bindAccount(params, ctx.env as Env, Math.floor(Date.now() / 1000))
+    return bindAccount(
+        params,
+        ctx.env as Env,
+        Math.floor(Date.now() / 1000),
+        upgradeClientIp(ctx.request),
+    )
 }

@@ -32,8 +32,10 @@ new_sqlite_classes = ["WalletBindingDO"]
 # OIDC_ISSUER = "https://auth.example.com"
 # OIDC_JWKS_URL = "https://auth.example.com/oauth2/jwks"
 # OIDC_CLIENT_ID = "client_example"
+# OIDC_WALLETS_CLAIM_ENABLED = "true"
 # OIDC_WALLETS_CLAIM = "wallets"
-# PRIVY_ENABLED defaults to on in code. Set PRIVY_ENABLED = "false" for OIDC-only.
+# Stage and prod set PRIVY_ENABLED explicitly. Unset still means on in code.
+# Set PRIVY_ENABLED = "false" for OIDC-only.
 [dev]
 ip = "0.0.0.0"
 port = 8787
@@ -64,7 +66,7 @@ bindings = [
 # hostname in the Cloudflare dashboard (Workers → this worker → Domains).
 # Point the wallet at that origin with RELAYER_URL_STAGE.
 [env.stage]
-vars = { NODE_ENV = "production" }
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
 preview_urls = false
 
 [env.stage.observability]
@@ -99,7 +101,7 @@ crons = ["*/5 * * * *"]
 # Prod
 # Same as stage: set the hostname in the Cloudflare dashboard, then RELAYER_URL_PROD.
 [env.prod]
-vars = { NODE_ENV = "production" }
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
 preview_urls = false
 
 [env.prod.observability]

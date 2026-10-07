@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { getAddress, type Address, type Hex } from 'viem'
 
 import { runWithAuthIdentity } from '../../src/auth/identity'
-import { walletBindPersonalMessage } from '../../src/auth/wallet-bind'
+import { walletBindDomain, walletBindPersonalMessage } from '../../src/auth/wallet-bind'
 import { bindAccount } from '../../src/rpc/methods/bindAccount'
 import { issueBindNonce } from '../../src/rpc/methods/issueBindNonce'
 import { RpcError, INVALID_SIGNATURE, NONCE_ERROR, INVALID_PARAMS } from '../../src/rpc/errors'
@@ -42,7 +42,8 @@ describe('wallet bind RPC', () => {
         expect(issued.message.startsWith(`Bind address ${account.address} to sub ${SUBJECT}`)).toBe(
             true,
         )
-        expect(issued.typedData.domain).toMatchObject({ name: 'Towns Relayer', chainId: 31337 })
+        expect(issued.typedData.domain).toMatchObject({ name: 'Nubl Relayer', chainId: 31337 })
+        expect(issued.typedData.domain.salt).toBeTypeOf('string')
 
         const signature = await account.signTypedData({
             domain: issued.typedData.domain,
@@ -114,6 +115,7 @@ describe('wallet bind RPC', () => {
                 nonce: issued.nonce,
                 chainId: 31337,
                 expiry: issued.expiry,
+                environment: 'local',
             }),
         })
         const bound = await runWithAuthIdentity(
@@ -141,6 +143,7 @@ describe('wallet bind RPC', () => {
                 nonce: issued.nonce,
                 chainId: 31337,
                 expiry: issued.expiry,
+                environment: 'local',
             }),
         )
     })
@@ -217,7 +220,7 @@ async function signBind(
     sub: string,
 ): Promise<Hex> {
     return account.signTypedData({
-        domain: { name: 'Towns Relayer', version: '1', chainId: 31337 },
+        domain: walletBindDomain(31337, 'local'),
         types: {
             WalletBind: [
                 { name: 'account', type: 'address' },

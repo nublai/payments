@@ -33,6 +33,9 @@ export function authIdentityOwnsAccount(account: Address): boolean {
         return true
     }
 
+    // ERC-8128's user id is the signing address. An OIDC sub is not ownership,
+    // even when a self-hosted issuer puts an address in `sub`.
+    if (identity.provider === 'oidc') return false
     return isAddress(identity.userId) && getAddress(identity.userId) === target
 }
 

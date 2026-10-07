@@ -8,7 +8,7 @@ import {
 } from 'jose'
 
 import type { Env } from '../../types/env'
-import { peekJwtIssuer } from '../jwt-peek'
+import { peekJwtHasAudience, peekJwtIssuer } from '../jwt-peek'
 import { isOidcEnabled, readOidcConfig } from '../oidc-config'
 import {
     authProviderFromIdentity,
@@ -65,10 +65,14 @@ function parseBearerToken(
 
 function audienceMatches(payload: JWTPayload, clientId: string): boolean {
     const audience = payload.aud
-    if (typeof audience === 'string' && audience === clientId) return true
-    if (Array.isArray(audience) && audience.includes(clientId)) return true
-    const client = payload.client_id
-    return typeof client === 'string' && client === clientId
+    if (audience == null) {
+        return payload.client_id === clientId
+    }
+    if (typeof audience === 'string') return audience === clientId
+    if (Array.isArray(audience)) {
+        return audience.includes(clientId) && payload.azp === clientId
+    }
+    return false
 }
 
 function parseWalletsClaim(payload: JWTPayload, claimName: string): Address[] | 'invalid' {
@@ -102,8 +106,11 @@ function classifyOidcError(error: unknown): IdentityResult {
     if (error instanceof errors.JWKSNoMatchingKey || error instanceof errors.JOSEAlgNotAllowed) {
         return { ok: false, code: 'INVALID_TOKEN', message: 'Invalid or expired token' }
     }
+    if (error instanceof errors.JWKSTimeout) {
+        return { ok: false, code: 'IDP_UNAVAILABLE', message: 'OIDC JWKS unavailable' }
+    }
     if (error instanceof errors.JWTClaimValidationFailed) {
-        if (error.claim === 'exp') {
+        if (error.claim === 'exp' && error.reason !== 'missing') {
             return { ok: false, code: 'EXPIRED_TOKEN', message: 'Token has expired' }
         }
         return { ok: false, code: 'INVALID_TOKEN', message: 'Invalid or expired token' }
@@ -127,6 +134,7 @@ function isJwksUnavailable(error: unknown): boolean {
         message.includes('fetch failed') ||
         message.includes('network') ||
         message.includes('timeout') ||
+        message.includes('timed out') ||
         message.includes('unavailable') ||
         message.includes('jwks') ||
         message.includes('expected 200') ||
@@ -181,6 +189,8 @@ export function createOidcIdentityProvider(): IdentityProvider {
                     algorithms: [...OIDC_ALGORITHMS],
                     clockTolerance: OIDC_CLOCK_SKEW_SECONDS,
                     currentDate: new Date(ctx.nowSeconds * 1000),
+                    requiredClaims: ['exp'],
+                    ...(peekJwtHasAudience(parsed.token) ? { audience: config.clientId } : {}),
                 })
                 payload = verified.payload
             } catch (error) {
@@ -194,7 +204,9 @@ export function createOidcIdentityProvider(): IdentityProvider {
                 return { ok: false, code: 'INVALID_TOKEN', message: 'Token audience mismatch' }
             }
 
-            const claimed = parseWalletsClaim(payload, config.walletsClaim)
+            const claimed = config.walletsClaim
+                ? parseWalletsClaim(payload, config.walletsClaim)
+                : []
             if (claimed === 'invalid') {
                 return { ok: false, code: 'INVALID_TOKEN', message: 'Invalid wallets claim' }
             }

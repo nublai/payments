@@ -376,7 +376,7 @@ describe('oidc identity provider', () => {
 
     it('fills bound accounts from the table and refuses a conflicting wallets claim', async () => {
         const url = 'https://issuer.example/jwks/wallets'
-        const workerEnv = oidcEnv(url)
+        const workerEnv = oidcEnv(url, { OIDC_WALLETS_CLAIM_ENABLED: 'true' })
         const store = walletBindingStub(workerEnv)
         const taken = '0x2000000000000000000000000000000000000001' as Address
         const free = '0x2000000000000000000000000000000000000002' as Address

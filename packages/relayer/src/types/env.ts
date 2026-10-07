@@ -123,7 +123,11 @@ export interface Env {
     OIDC_ISSUER?: string
     OIDC_JWKS_URL?: string
     OIDC_CLIENT_ID?: string
-    /** JWT claim that lists wallet addresses. Defaults to `wallets`. */
+    /**
+     * Off unless this is `true`. An empty `OIDC_WALLETS_CLAIM` stays off.
+     * Unset, with the flag on, reads the claim named `wallets`.
+     */
+    OIDC_WALLETS_CLAIM_ENABLED?: string
     OIDC_WALLETS_CLAIM?: string
 
     /**

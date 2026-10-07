@@ -69,10 +69,13 @@ CONTEXT=local
 
 # OIDC (public config, not secrets). WorkOS is the first issuer. All three
 # OIDC_ISSUER, OIDC_JWKS_URL, and OIDC_CLIENT_ID are required when OIDC_ENABLED=true.
+# An http JWKS URL is refused unless CONTEXT is local or dev.
 # OIDC_ENABLED=false
 # OIDC_ISSUER=https://auth.example.com
 # OIDC_JWKS_URL=https://auth.example.com/oauth2/jwks
 # OIDC_CLIENT_ID=client_example
+# Wallets claim is off unless the flag is true. An empty claim name stays off.
+# OIDC_WALLETS_CLAIM_ENABLED=false
 # OIDC_WALLETS_CLAIM=wallets
 
 # CORS (optional). Comma-separated origins. Unset or "*" allows every origin.

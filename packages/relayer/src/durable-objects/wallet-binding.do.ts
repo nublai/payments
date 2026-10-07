@@ -3,14 +3,31 @@ import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../types/env'
 
 /**
- * Global OIDC wallet bindings.
+ * Wallet bindings are global across every chain this worker serves.
  *
- * Every other relayer table is a SQLite Durable Object. There is no D1
- * database. Address uniqueness and (issuer, subject) ownership have to be
- * decided in one transaction, so this is a single named object rather than a
- * per-account shard. A shard would make one direction of that check a
- * cross-object read.
+ * An address is one key. A bind signed for chain 31337 still means that key
+ * belongs to that (issuer, subject) on every other chain, and a second subject
+ * cannot bind the same address on a different chain. The signed chain id stops
+ * a nonce minted for one chain from being replayed on another. It does not
+ * split ownership. Splitting it would let a second subject sponsor the same
+ * key on a chain the first subject did not bind.
+ *
+ * Storage is one SQLite Durable Object, not D1. This repo has no D1 database,
+ * and address uniqueness has to be decided in one transaction.
  */
+export const WALLET_BINDING_SCOPE = 'global' as const
+
+/** Conservative caps. A burst past these is refused. Windows are fixed 10 minutes. */
+export const BIND_LIMITS = {
+    issuePerSubject: 5,
+    issuePerIp: 20,
+    bindPerSubject: 5,
+    bindPerIp: 20,
+    windowSeconds: 10 * 60,
+    maxBindingsPerSubject: 4,
+    maxOpenNoncesPerSubject: 3,
+} as const
+
 export class WalletBindingDO extends DurableObject<Env> {
     private sql: SqlStorage
 
@@ -42,12 +59,32 @@ export class WalletBindingDO extends DurableObject<Env> {
         expires_at INTEGER NOT NULL,
         used INTEGER NOT NULL DEFAULT 0
       );
+
+      CREATE TABLE IF NOT EXISTS bind_rates (
+        bucket TEXT NOT NULL,
+        window_start INTEGER NOT NULL,
+        hits INTEGER NOT NULL,
+        PRIMARY KEY (bucket, window_start)
+      );
     `)
     }
 
     // eslint-disable-next-line @typescript-eslint/require-await
     async fetch(_request: Request): Promise<Response> {
         throw new Error('Fetch not implemented, call methods directly over rpc')
+    }
+
+    async alarm(nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
+        this.deleteExpired(nowSeconds, true)
+        const next = this.sql
+            .exec<{ expires_at: number }>(
+                `SELECT MIN(expires_at) AS expires_at FROM bind_nonces`,
+            )
+            .toArray()
+            .at(0)
+        if (typeof next?.expires_at === 'number' && Number.isFinite(next.expires_at)) {
+            await this.scheduleAlarm(next.expires_at)
+        }
     }
 
     async issueNonce(input: {
@@ -57,9 +94,10 @@ export class WalletBindingDO extends DurableObject<Env> {
         chainId: number
         nowSeconds: number
         ttlSeconds: number
+        ip?: string
     }): Promise<
         | { ok: true; nonce: string; expiresAt: number }
-        | { ok: false; reason: 'address_taken' | 'invalid' }
+        | { ok: false; reason: 'address_taken' | 'invalid' | 'rate_limited' | 'subject_cap' }
     > {
         const address = normalizeAddress(input.address)
         if (
@@ -75,24 +113,58 @@ export class WalletBindingDO extends DurableObject<Env> {
             return { ok: false, reason: 'invalid' }
         }
 
-        const owner = this.ownerRow(address)
-        if (owner && (owner.issuer !== input.issuer || owner.subject !== input.subject)) {
-            return { ok: false, reason: 'address_taken' }
-        }
-
         const nonce = randomNonce()
         const expiresAt = input.nowSeconds + input.ttlSeconds
-        this.sql.exec(
-            `INSERT INTO bind_nonces (nonce, issuer, subject, address, chain_id, expires_at, used)
-       VALUES (?, ?, ?, ?, ?, ?, 0)`,
-            nonce,
-            input.issuer,
-            input.subject,
-            address,
-            input.chainId,
-            expiresAt,
-        )
-        return { ok: true, nonce, expiresAt }
+        const outcome = this.ctx.storage.transactionSync(() => {
+            this.deleteExpired(input.nowSeconds, true)
+            if (
+                !this.charge('issue', input.issuer, input.subject, input.ip, input.nowSeconds)
+            ) {
+                return { ok: false as const, reason: 'rate_limited' as const }
+            }
+
+            const owner = this.ownerRow(address)
+            if (owner && (owner.issuer !== input.issuer || owner.subject !== input.subject)) {
+                return { ok: false as const, reason: 'address_taken' as const }
+            }
+
+            const open = this.count(
+                `SELECT COUNT(*) AS n FROM bind_nonces WHERE issuer = ? AND subject = ? AND expires_at > ?`,
+                input.issuer,
+                input.subject,
+                input.nowSeconds,
+            )
+            if (open >= BIND_LIMITS.maxOpenNoncesPerSubject) {
+                return { ok: false as const, reason: 'subject_cap' as const }
+            }
+
+            const alreadyOwned = owner !== undefined
+            const bindings = this.count(
+                `SELECT COUNT(*) AS n FROM bindings WHERE issuer = ? AND subject = ?`,
+                input.issuer,
+                input.subject,
+            )
+            if (!alreadyOwned && bindings >= BIND_LIMITS.maxBindingsPerSubject) {
+                return { ok: false as const, reason: 'subject_cap' as const }
+            }
+
+            this.sql.exec(
+                `INSERT INTO bind_nonces (nonce, issuer, subject, address, chain_id, expires_at, used)
+         VALUES (?, ?, ?, ?, ?, ?, 0)`,
+                nonce,
+                input.issuer,
+                input.subject,
+                address,
+                input.chainId,
+                expiresAt,
+            )
+            return { ok: true as const, nonce, expiresAt }
+        })
+
+        if (outcome.ok && expiresAt * 1000 > Date.now()) {
+            await this.scheduleAlarm(expiresAt)
+        }
+        return outcome
     }
 
     async bind(input: {
@@ -103,6 +175,8 @@ export class WalletBindingDO extends DurableObject<Env> {
         chainId: number
         expiry: number
         nowSeconds: number
+        ip?: string
+        charged?: boolean
     }): Promise<
         | { ok: true }
         | {
@@ -113,10 +187,20 @@ export class WalletBindingDO extends DurableObject<Env> {
                   | 'nonce_expired'
                   | 'nonce_mismatch'
                   | 'address_taken'
+                  | 'rate_limited'
+                  | 'subject_cap'
           }
     > {
         const address = normalizeAddress(input.address)
         const outcome = this.ctx.storage.transactionSync(() => {
+            this.deleteExpired(input.nowSeconds, false)
+            if (
+                !input.charged &&
+                !this.charge('bind', input.issuer, input.subject, input.ip, input.nowSeconds)
+            ) {
+                return { ok: false as const, reason: 'rate_limited' as const }
+            }
+
             const nonce = this.sql
                 .exec(
                     `SELECT issuer, subject, address, chain_id, expires_at, used
@@ -127,8 +211,12 @@ export class WalletBindingDO extends DurableObject<Env> {
                 .at(0) as NonceRow | undefined
 
             if (!nonce) return { ok: false as const, reason: 'nonce_unknown' as const }
-            if (nonce.used) return { ok: false as const, reason: 'nonce_used' as const }
+            if (nonce.used) {
+                this.sql.exec(`DELETE FROM bind_nonces WHERE nonce = ?`, input.nonce)
+                return { ok: false as const, reason: 'nonce_used' as const }
+            }
             if (nonce.expires_at <= input.nowSeconds) {
+                this.sql.exec(`DELETE FROM bind_nonces WHERE nonce = ?`, input.nonce)
                 return { ok: false as const, reason: 'nonce_expired' as const }
             }
             if (
@@ -147,6 +235,14 @@ export class WalletBindingDO extends DurableObject<Env> {
             }
 
             if (!owner) {
+                const bindings = this.count(
+                    `SELECT COUNT(*) AS n FROM bindings WHERE issuer = ? AND subject = ?`,
+                    input.issuer,
+                    input.subject,
+                )
+                if (bindings >= BIND_LIMITS.maxBindingsPerSubject) {
+                    return { ok: false as const, reason: 'subject_cap' as const }
+                }
                 this.sql.exec(
                     `INSERT INTO bindings (address, issuer, subject, chain_id, created_at)
            VALUES (?, ?, ?, ?, ?)`,
@@ -158,11 +254,24 @@ export class WalletBindingDO extends DurableObject<Env> {
                 )
             }
 
-            this.sql.exec(`UPDATE bind_nonces SET used = 1 WHERE nonce = ?`, input.nonce)
+            this.sql.exec(`DELETE FROM bind_nonces WHERE nonce = ?`, input.nonce)
             return { ok: true as const }
         })
 
         return outcome
+    }
+
+    /** Counts a bind RPC attempt before signature verification so a bad signature still spends the budget. */
+    async chargeBind(input: {
+        issuer: string
+        subject: string
+        ip?: string
+        nowSeconds: number
+    }): Promise<{ ok: true } | { ok: false; reason: 'rate_limited' }> {
+        const allowed = this.ctx.storage.transactionSync(() =>
+            this.charge('bind', input.issuer, input.subject, input.ip, input.nowSeconds),
+        )
+        return allowed ? { ok: true } : { ok: false, reason: 'rate_limited' }
     }
 
     async accountsFor(issuer: string, subject: string): Promise<string[]> {
@@ -182,6 +291,73 @@ export class WalletBindingDO extends DurableObject<Env> {
         return { issuer: row.issuer, subject: row.subject }
     }
 
+    private deleteExpired(nowSeconds: number, inclusive: boolean): void {
+        this.sql.exec(
+            inclusive
+                ? `DELETE FROM bind_nonces WHERE expires_at <= ?`
+                : `DELETE FROM bind_nonces WHERE expires_at < ?`,
+            nowSeconds,
+        )
+        const staleWindow = nowSeconds - BIND_LIMITS.windowSeconds
+        this.sql.exec(`DELETE FROM bind_rates WHERE window_start < ?`, staleWindow)
+    }
+
+    private charge(
+        kind: 'issue' | 'bind',
+        issuer: string,
+        subject: string,
+        ip: string | undefined,
+        nowSeconds: number,
+    ): boolean {
+        const windowStart = nowSeconds - (nowSeconds % BIND_LIMITS.windowSeconds)
+        const subjectLimit =
+            kind === 'issue' ? BIND_LIMITS.issuePerSubject : BIND_LIMITS.bindPerSubject
+        if (!this.hit(`${kind}:subject:${issuer}\n${subject}`, windowStart, subjectLimit)) {
+            return false
+        }
+        if (ip) {
+            const ipLimit = kind === 'issue' ? BIND_LIMITS.issuePerIp : BIND_LIMITS.bindPerIp
+            if (!this.hit(`${kind}:ip:${ip}`, windowStart, ipLimit)) return false
+        }
+        return true
+    }
+
+    private hit(bucket: string, windowStart: number, limit: number): boolean {
+        const row = this.sql
+            .exec<{ hits: number }>(
+                `SELECT hits FROM bind_rates WHERE bucket = ? AND window_start = ?`,
+                bucket,
+                windowStart,
+            )
+            .toArray()
+            .at(0)
+        const hits = Number(row?.hits ?? 0)
+        if (hits >= limit) return false
+        if (row) {
+            this.sql.exec(
+                `UPDATE bind_rates SET hits = ? WHERE bucket = ? AND window_start = ?`,
+                hits + 1,
+                bucket,
+                windowStart,
+            )
+        } else {
+            this.sql.exec(
+                `INSERT INTO bind_rates (bucket, window_start, hits) VALUES (?, ?, 1)`,
+                bucket,
+                windowStart,
+            )
+        }
+        return true
+    }
+
+    private count(query: string, ...bindings: (string | number)[]): number {
+        const row = this.sql
+            .exec<{ n: number }>(query, ...bindings)
+            .toArray()
+            .at(0)
+        return Number(row?.n ?? 0)
+    }
+
     private ownerRow(address: string): { issuer: string; subject: string } | undefined {
         return this.sql
             .exec<{ issuer: string; subject: string }>(
@@ -190,6 +366,15 @@ export class WalletBindingDO extends DurableObject<Env> {
             )
             .toArray()
             .at(0)
+    }
+
+    private async scheduleAlarm(expiresAt: number): Promise<void> {
+        const nowMs = Date.now()
+        const nextMs = Math.max(nowMs, expiresAt * 1000)
+        const current = await this.ctx.storage.getAlarm()
+        if (current === null || current < nowMs || nextMs < current) {
+            await this.ctx.storage.setAlarm(nextMs)
+        }
     }
 }
 

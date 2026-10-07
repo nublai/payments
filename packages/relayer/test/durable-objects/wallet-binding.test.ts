@@ -102,7 +102,7 @@ describe('WalletBindingDO', () => {
             nowSeconds: NOW + 1,
         })
         expect(first).toEqual({ ok: true })
-        expect(reused).toEqual({ ok: false, reason: 'nonce_used' })
+        expect(reused).toEqual({ ok: false, reason: 'nonce_unknown' })
 
         const expiring = await store.issueNonce({
             issuer: ISSUER,

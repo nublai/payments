@@ -7,11 +7,17 @@ export function peekJwtIssuer(token: string): string | undefined {
     return payload && typeof payload.iss === 'string' ? payload.iss : undefined
 }
 
-function peekJwtPayload(token: string): { iss?: unknown } | undefined {
+export function peekJwtHasAudience(token: string): boolean {
+    const payload = peekJwtPayload(token)
+    if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'aud')) return false
+    return payload.aud != null
+}
+
+function peekJwtPayload(token: string): { iss?: unknown; aud?: unknown } | undefined {
     const parts = token.split('.')
     if (parts.length !== 3 || !parts[1]) return undefined
     try {
-        return JSON.parse(decodeBase64Url(parts[1])) as { iss?: unknown }
+        return JSON.parse(decodeBase64Url(parts[1])) as { iss?: unknown; aud?: unknown }
     } catch {
         return undefined
     }

@@ -1,12 +1,14 @@
 import {
     getAddress,
+    keccak256,
+    toBytes,
     verifyMessage,
     verifyTypedData,
     type Address,
     type Hex,
 } from 'viem'
 
-export const WALLET_BIND_DOMAIN_NAME = 'Towns Relayer'
+export const WALLET_BIND_DOMAIN_NAME = 'Nubl Relayer'
 export const WALLET_BIND_DOMAIN_VERSION = '1'
 export const WALLET_BIND_PRIMARY_TYPE = 'WalletBind' as const
 export const BIND_NONCE_TTL_SECONDS = 10 * 60
@@ -30,13 +32,21 @@ export interface WalletBindFields {
     nonce: string
     chainId: number
     expiry: number
+    /** `CONTEXT`, or `prod` when unset. Stage and prod do not share a domain separator. */
+    environment: string
 }
 
-export function walletBindDomain(chainId: number) {
+export function walletBindEnvironment(env: { CONTEXT?: string }): string {
+    const context = env.CONTEXT?.trim().toLowerCase()
+    return context ? context : 'prod'
+}
+
+export function walletBindDomain(chainId: number, environment: string) {
     return {
         name: WALLET_BIND_DOMAIN_NAME,
         version: WALLET_BIND_DOMAIN_VERSION,
         chainId,
+        salt: keccak256(toBytes(environment)),
     }
 }
 
@@ -48,12 +58,13 @@ export function walletBindPersonalMessage(fields: WalletBindFields): string {
         `Nonce: ${fields.nonce}`,
         `Chain ID: ${fields.chainId}`,
         `Expiry: ${fields.expiry}`,
+        `Environment: ${fields.environment}`,
     ].join('\n')
 }
 
 export function walletBindTypedData(fields: WalletBindFields) {
     return {
-        domain: walletBindDomain(fields.chainId),
+        domain: walletBindDomain(fields.chainId, fields.environment),
         types: WALLET_BIND_TYPES,
         primaryType: WALLET_BIND_PRIMARY_TYPE,
         message: {
@@ -89,7 +100,7 @@ export async function verifyWalletBindSignature(input: {
         }
         return await verifyTypedData({
             address: account,
-            domain: walletBindDomain(fields.chainId),
+            domain: walletBindDomain(fields.chainId, fields.environment),
             types: WALLET_BIND_TYPES,
             primaryType: WALLET_BIND_PRIMARY_TYPE,
             message: {
