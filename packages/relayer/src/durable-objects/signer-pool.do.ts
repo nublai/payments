@@ -135,7 +135,8 @@ export class SignerPoolDO extends DurableObject<Env> {
      * Sliding-window limit for account upgrade prepare/broadcast.
      * State lives here because SignerPoolDO is already bound on every chain.
      * `peek` does not consume a slot. `reserve` and a missing action commit
-     * the identity, IP, and global slots in one transaction. `release`
+     * every bucket from upgradeRateBuckets, including an IPv6 /56, in one
+     * transaction. `release`
      * returns a reservation that never reached eth_sendRawTransaction.
      */
     private consumeUpgradeRateLimit(body: {

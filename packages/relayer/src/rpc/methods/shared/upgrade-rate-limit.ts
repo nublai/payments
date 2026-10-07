@@ -44,7 +44,7 @@ export function upgradeRateBuckets(input: {
 }): RateBucket[] {
     const limits = LIMITS[input.kind]
     const subject = (input.identity ?? input.account).toLowerCase()
-    return [
+    const buckets: RateBucket[] = [
         {
             key: `${input.kind}:identity:${input.chainId}:${subject}`,
             limit: limits.account,
@@ -55,12 +55,23 @@ export function upgradeRateBuckets(input: {
             limit: limits.ip,
             windowSeconds: GLOBAL_WINDOW_SECONDS,
         },
-        {
-            key: `${input.kind}:global:${input.chainId}`,
-            limit: limits.global,
-            windowSeconds: GLOBAL_WINDOW_SECONDS,
-        },
     ]
+    // IPv6 also counts the enclosing /56 at the same IP ceiling. IPv4 and
+    // IPv4-mapped addresses stay on the single IP bucket above.
+    const prefix56 = ipv6Prefix56(input.ip)
+    if (prefix56) {
+        buckets.push({
+            key: `${input.kind}:ip56:${input.chainId}:${prefix56}`,
+            limit: limits.ip,
+            windowSeconds: GLOBAL_WINDOW_SECONDS,
+        })
+    }
+    buckets.push({
+        key: `${input.kind}:global:${input.chainId}`,
+        limit: limits.global,
+        windowSeconds: GLOBAL_WINDOW_SECONDS,
+    })
+    return buckets
 }
 
 function slidingCount(
@@ -148,7 +159,7 @@ export function upgradeClientIp(request: Request | undefined): string {
 /**
  * One bucket per IPv4, and one bucket per IPv6 /64. Text form is normalized
  * first: compressed zeros, mixed case, and IPv4-mapped addresses.
- * An IPv4-mapped address buckets as its IPv4.
+ * An IPv4-mapped address buckets as its IPv4. IPv6 also gets a /56 bucket.
  */
 function canonicalUpgradeIp(raw: string): string | undefined {
     const dotted = parseIpv4(raw)
@@ -161,6 +172,14 @@ function canonicalUpgradeIp(raw: string): string | undefined {
     }
 
     for (let index = 8; index < 16; index++) bytes[index] = 0
+    return formatIpv6(bytes)
+}
+
+/** Enclosing /56 of a canonical IPv6 address. Absent for IPv4 and IPv4-mapped. */
+function ipv6Prefix56(ip: string): string | undefined {
+    const bytes = parseIpv6(ip)
+    if (!bytes || isIpv4Mapped(bytes)) return undefined
+    for (let index = 7; index < 16; index++) bytes[index] = 0
     return formatIpv6(bytes)
 }
 
@@ -322,8 +341,9 @@ export async function assertUpgradeRateCapacity(
 }
 
 /**
- * Take the identity, IP, and global slots together. The caller broadcasts
- * only after this returns. `reservedAt` is the second those slots occupy.
+ * Take the identity, IP, IPv6 /56, and chain slots together. IPv4 has no
+ * /56 bucket. The caller broadcasts only after this returns. `reservedAt`
+ * is the second those slots occupy.
  */
 export async function reserveUpgradeRateLimit(
     env: Env,

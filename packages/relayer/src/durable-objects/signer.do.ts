@@ -256,8 +256,11 @@ export class SignerDO extends DurableObject<Env> {
         } catch (error) {
             const message = getErrorMessage(error)
             const code = error instanceof SignerDOError ? error.code : undefined
+            // A plain error has no before-send flag. Keep the slot and do not
+            // hand the broadcast to another signer. False is only a known
+            // pre-send SignerDOError that already carries false.
             const broadcastAttempted =
-                error instanceof SignerDOError ? error.broadcastAttempted : false
+                error instanceof SignerDOError ? error.broadcastAttempted : true
             return Response.json({ error: message, code, broadcastAttempted }, {
                 status: 500,
             })
