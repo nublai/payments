@@ -14,6 +14,7 @@ import { executeSignedCalls } from '../src/lib/execute-calls'
 import { getEnvRelayerUrl } from '../src/lib/network-config'
 
 const EOA = '0x1111111111111111111111111111111111111111' as Address
+const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const TARGET = '0x2222222222222222222222222222222222222222' as Address
 const ATTACKER = '0x3333333333333333333333333333333333333333' as Address
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
@@ -33,8 +34,8 @@ function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount =
         eoa: EOA,
         calls: messageCalls,
         nonce,
-        payer: zeroAddress,
-        paymentToken: zeroAddress,
+        payer: EOA,
+        paymentToken: BASE_USDC,
         paymentMaxAmount,
         combinedGas: 50_000n,
         encodedPreCalls: [] as Hex[],
@@ -78,8 +79,8 @@ function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount =
                             nonce: nonce.toString(),
                             combinedGas: message.combinedGas.toString(),
                             expiry: message.expiry.toString(),
-                            payer: zeroAddress,
-                            paymentToken: zeroAddress,
+                            payer: EOA,
+                            paymentToken: BASE_USDC,
                             paymentMaxAmount: paymentMaxAmount.toString(),
                             settler: zeroAddress,
                         },
@@ -106,6 +107,8 @@ const expected = {
     chainId: 8453,
     verifyingContract: ORCHESTRATOR,
     nonce: 7n,
+    payer: EOA,
+    paymentToken: BASE_USDC,
     paymentMaxAmount: 2000n,
     expiry: EXPIRY,
     now: NOW,
@@ -158,6 +161,8 @@ async function expectWalletRefuses(
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
+            payer: EOA,
+            paymentToken: BASE_USDC,
             paymentMaxAmount: 2000n,
             expiry: overrides?.expiry ?? EXPIRY,
             now: overrides?.now ?? NOW,
@@ -205,6 +210,8 @@ test('executeSignedCalls signs when the prepared intent matches the request', as
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
+            payer: EOA,
+            paymentToken: BASE_USDC,
             paymentMaxAmount: 2000n,
             expiry: EXPIRY,
             now: NOW,
@@ -214,6 +221,39 @@ test('executeSignedCalls signs when the prepared intent matches the request', as
     expect(signTypedData).toHaveBeenCalled()
     expect(sendPreparedCalls).toHaveBeenCalled()
     expect(result.id).toBe('bundle-1')
+})
+
+test('executeSignedCalls refuses a zero payer and token off local instead of signing them', async () => {
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
+    const signTypedData = mock(async () => SIG)
+    await expect(
+        executeSignedCalls(
+            {
+                prepareCalls: async () => prepared,
+                signTypedData,
+                sendPreparedCalls: async () => ({ id: 'bundle-1' }),
+                waitForBundle: async () => {
+                    throw new Error('waitForBundle should not run')
+                },
+            },
+            {
+                from: EOA,
+                calls: REQUESTED,
+                nonce: 7n,
+                signerPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+                chainId: 8453,
+                env: 'prod',
+                verifyingContract: ORCHESTRATOR,
+                payer: zeroAddress,
+                paymentToken: zeroAddress,
+                paymentMaxAmount: 2000n,
+                expiry: EXPIRY,
+                now: NOW,
+                combinedGasCeiling: GAS_CEILING,
+            },
+        ),
+    ).rejects.toThrow(/zero address/)
+    expect(signTypedData).not.toHaveBeenCalled()
 })
 
 test('executeSignedCalls and signPreparedCalls refuse a substituted call target', async () => {
@@ -347,6 +387,8 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
+            payer: EOA,
+            paymentToken: BASE_USDC,
             paymentMaxAmount: 2000n,
             expiry: EXPIRY,
             now: NOW,

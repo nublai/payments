@@ -674,6 +674,7 @@ describe('wallet_sendPreparedCalls', () => {
         await expect(handleSendPreparedCalls(params, ctx)).rejects.toMatchObject({
             code: -32002,
             message: expect.stringContaining('bundle tracking unavailable'),
+            data: { bundleId: expect.any(String) },
         })
     })
 
