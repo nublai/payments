@@ -7,6 +7,8 @@ export const DEFAULT_AUTH_PROTECTED_METHODS = ['wallet_sendPreparedCalls'] as co
 export const ALWAYS_AUTH_PROTECTED_METHODS = [
     'wallet_prepareUpgradeAccount',
     'wallet_upgradeAccount',
+    'wallet_issueBindNonce',
+    'wallet_bindAccount',
 ] as const
 
 export type JsonRpcId = string | number | null

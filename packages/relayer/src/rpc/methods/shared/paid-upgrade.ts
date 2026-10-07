@@ -4,6 +4,7 @@ import {
     encodeFunctionData,
     erc20Abi,
     getAddress,
+    isAddress,
     zeroAddress,
     type Address,
     type Hex,
@@ -16,6 +17,7 @@ import { orchestratorAbi } from '@nubl/contracts/abis'
 
 import type { Env } from '../../../types/env'
 import { getChainConfig as getChainAssetsConfig } from '../../../config/chains'
+import { authIdentityOwnsAccount, currentAuthIdentity } from '../../../auth/identity'
 import { isLocalDevContext } from '../../../config/runtime-context'
 import { deriveRelayerSignerAddress } from '../../../lib/hd-signer'
 import { selectSignerForEoa } from '../../../lib/pool-utils'
@@ -99,8 +101,8 @@ export function paidUpgradeRateBuckets(input: {
 }
 
 /**
- * Stage and prod require `cf-connecting-ip`. Local and dev keep the shared
- * `unknown` bucket so a dev worker without the Cloudflare header still runs.
+ * A missing `cf-connecting-ip` is refused unless CONTEXT is local. Dev, stage,
+ * and prod do not keep the shared `unknown` bucket.
  */
 export function requirePaidUpgradeClientIp(
     request: Request | undefined,
@@ -313,6 +315,19 @@ export function encodeSignedPreCall(preCall: PaidUpgradePreCall): Hex {
 
 export function paidUpgradeFromQuote(quote: Quote | undefined): PaidUpgradeQuote | undefined {
     return quote?.accountUpgrade
+}
+
+/**
+ * OIDC paid prepare and paid send use the same ownership check as a sponsored
+ * upgrade. A token with no binding, or a binding for a different account, is
+ * refused before a quote, a hold, or a broadcast. Privy and ERC-8128 are not
+ * decided here.
+ */
+export function assertPaidUpgradeOidcOwner(account: string): void {
+    if (currentAuthIdentity()?.provider !== 'oidc') return
+    if (!isAddress(account) || !authIdentityOwnsAccount(getAddress(account))) {
+        throw new RpcError(INVALID_PARAMS, 'Authenticated identity is not bound to the account')
+    }
 }
 
 function sameHex(left: string, right: string): boolean {

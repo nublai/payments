@@ -28,6 +28,7 @@ export { SignerPoolDO } from './durable-objects/signer-pool.do'
 export { BundleStatusDO } from './durable-objects/bundle-status.do'
 export { IntentNonceDO } from './durable-objects/intent-nonce.do'
 export { HttpAuthNonceDO } from './durable-objects/http-auth-nonce.do'
+export { WalletBindingDO } from './durable-objects/wallet-binding.do'
 
 const MAX_MONITOR_ATTEMPTS = 30
 
@@ -87,7 +88,7 @@ app.use('*', async (c, next) => {
     await next()
 })
 
-// Shared HTTP authentication for protected JSON-RPC methods (enabled providers: Privy, ERC-8128).
+// Shared HTTP authentication for protected JSON-RPC methods (enabled providers: Privy, OIDC, ERC-8128).
 app.use(
     '*',
     authMiddleware({ providers: [...identityAuthProviders(), createErc8128Provider()] }),

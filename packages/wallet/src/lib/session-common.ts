@@ -78,6 +78,18 @@ export function resolveSessionDir(rootKeystorePath: string, sessionsDir: string)
     return join(dirname(rootKeystorePath), sessionsDir)
 }
 
+/** Canonical rotation-intent file. The writer, the reader, and session listing share this name. */
+export const ROTATION_MARKER_NAME = '.rotation.json'
+
+/**
+ * True for the canonical marker and for any other `.rotation*.json` file.
+ * A planted `.rotation-evil.json` counts, so listing never treats a marker as a session
+ * and more than one match is ambiguous.
+ */
+export function isRotationMarkerFileName(name: string): boolean {
+    return name.startsWith('.rotation') && name.endsWith('.json')
+}
+
 export async function listSessionNames(
     rootKeystorePath: string,
     sessionsDir: string,
@@ -88,7 +100,7 @@ export async function listSessionNames(
     for (const entry of entries) {
         if (!entry.isFile()) continue
         if (!entry.name.endsWith('.json')) continue
-        if (entry.name.startsWith('.rotation-')) continue
+        if (isRotationMarkerFileName(entry.name)) continue
         const sessionName = entry.name.slice(0, -5)
         assertValidSessionName(sessionName)
         names.push(sessionName)

@@ -4,6 +4,7 @@ import type { HttpAuthNonceDO } from '../durable-objects/http-auth-nonce.do'
 import type { IntentNonceDO } from '../durable-objects/intent-nonce.do'
 import type { SignerDO } from '../durable-objects/signer.do'
 import type { SignerPoolDO } from '../durable-objects/signer-pool.do'
+import type { WalletBindingDO } from '../durable-objects/wallet-binding.do'
 import {
     DEFAULT_ASSET_MAPPING,
     DEFAULT_COINGECKO_URL,
@@ -33,6 +34,8 @@ export interface Env {
     // Durable Objects - Bundle Status
     BUNDLE_STATUS_DO?: DurableObjectNamespace<BundleStatusDO>
     HTTP_AUTH_NONCE_MANAGER?: DurableObjectNamespace<HttpAuthNonceDO>
+    /** Single global object. See WalletBindingDO. */
+    WALLET_BINDING?: DurableObjectNamespace<WalletBindingDO>
 
     // Required secrets
     RPC_URL?: string
@@ -69,7 +72,7 @@ export interface Env {
     CONTEXT?: string // Deployment context: "prod", "stage", "local" (default: "prod")
 
     // Fee configuration
-    // Required when CONTEXT is not local/dev. Simulation and broadcast must pay
+    // Required when CONTEXT is not local. Simulation and broadcast must pay
     // the same address. Unset locally falls back to the broadcasting signer.
     FEE_RECIPIENT?: string
     PRIORITY_FEE_PERCENTILE?: string // Percentile from fee history (default: "50")
@@ -90,7 +93,7 @@ export interface Env {
     INTENT_EXPIRY_BUFFER_SECONDS?: string // Buffer before expiry to reject intent (default: "30")
 
     // HMAC-SHA256 secret for quote integrity.
-    // Required when CONTEXT is not local/dev. When unset locally, quote HMAC is skipped.
+    // Required when CONTEXT is not local. When unset locally, quote HMAC is skipped.
     // Set with `wrangler secret put QUOTE_SIGNING_SECRET --env <stage|prod>`. Do not commit the value.
     QUOTE_SIGNING_SECRET?: string
 
@@ -111,10 +114,23 @@ export interface Env {
     // not "anyone". Other protected methods in the same JSON-RPC batch require this list.
     ERC8128_ALLOWED_SIGNERS?: string
 
-    // Privy authentication
+    // Privy authentication. Unset enables Privy. `false` turns it off.
     PRIVY_ENABLED?: string
     PRIVY_APP_ID?: string
     PRIVY_APP_SECRET?: string
+
+    // OIDC authentication. Public config, not secrets. WorkOS is the first issuer.
+    // When OIDC_ENABLED=true, issuer, JWKS URL, and client id are all required.
+    OIDC_ENABLED?: string
+    OIDC_ISSUER?: string
+    OIDC_JWKS_URL?: string
+    OIDC_CLIENT_ID?: string
+    /**
+     * Off unless this is `true`. An empty `OIDC_WALLETS_CLAIM` stays off.
+     * Unset, with the flag on, reads the claim named `wallets`.
+     */
+    OIDC_WALLETS_CLAIM_ENABLED?: string
+    OIDC_WALLETS_CLAIM?: string
 
     /**
      * Cap on paymentMaxAmount for a USDC-paid first upgrade, in fee-token base

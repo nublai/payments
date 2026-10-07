@@ -1,9 +1,10 @@
 import { getAddress, isAddress, type Address } from 'viem'
+import { PrivyClient } from '@privy-io/server-auth'
 
 import type { Env } from '../../types/env'
 import { authProviderFromIdentity, type IdentityProvider, type IdentityResult } from '../identity-provider'
+import { isPrivyEnabled, tokenTargetsOidc } from '../oidc-config'
 import type { AuthProvider } from '../types'
-import { PrivyClient } from '@privy-io/server-auth'
 
 function parseBearerToken(
     request: Request,
@@ -149,7 +150,7 @@ export function createPrivyIdentityProvider(): IdentityProvider {
     return {
         name: 'privy',
         enabled(env: Env): boolean {
-            return env.PRIVY_ENABLED === 'true'
+            return isPrivyEnabled(env)
         },
         async verify(input: Request | string, ctx: { env: Env; nowSeconds: number }): Promise<IdentityResult> {
             const request = requestFromIdentityInput(input)
@@ -159,6 +160,23 @@ export function createPrivyIdentityProvider(): IdentityProvider {
                     ok: false,
                     code: 'INVALID_TOKEN',
                     message: parsed.message,
+                }
+            }
+
+            if (tokenTargetsOidc(parsed.token, ctx.env)) {
+                return {
+                    ok: false,
+                    code: 'INVALID_TOKEN',
+                    message: 'Token issuer mismatch',
+                    routingMiss: true,
+                }
+            }
+
+            if (!ctx.env.PRIVY_APP_ID || !ctx.env.PRIVY_APP_SECRET) {
+                return {
+                    ok: false,
+                    code: 'INVALID_TOKEN',
+                    message: 'Privy is not configured',
                 }
             }
 

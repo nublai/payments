@@ -38,6 +38,7 @@ import {
     assertPaidUpgradeSimulation,
     chainUsdcAddress,
     enqueuePaidUpgradeReceipt,
+    assertPaidUpgradeOidcOwner,
     paidUpgradeFieldsMatch,
     paidUpgradeFromQuote,
     paidUpgradeMaxPayment,
@@ -69,10 +70,11 @@ function getSeqKeyForDraftMark(
     }
 }
 
-function buildBundleTrackingUnavailableError(): RpcError {
+function buildBundleTrackingUnavailableError(bundleId: string): RpcError {
     return new RpcError(
         SERVICE_UNAVAILABLE,
         'Intent submitted but bundle tracking unavailable; retry status lookup later',
+        { bundleId },
     )
 }
 
@@ -214,6 +216,10 @@ export async function handleSendPreparedCalls(
     const { context } = typedParams
 
     if ('quote' in context && context.quote) {
+        const paidQuote = context.quote.quotes?.[0]
+        if (paidQuote && paidUpgradeFromQuote(paidQuote)) {
+            assertPaidUpgradeOidcOwner(paidQuote.intent?.eoa ?? '')
+        }
         const quoteError = await validateQuote(context.quote, env)
         if (quoteError) throw quoteError
         const callerError = await assertErc8128BoundToQuotes(env, ctx.auth, context.quote.quotes)
@@ -420,7 +426,7 @@ export async function handleSendPreparedCalls(
                     },
                     'bundle tracking persistence failed',
                 )
-                throw buildBundleTrackingUnavailableError()
+                throw buildBundleTrackingUnavailableError(bundleId)
             }
 
             if ('quote' in context && context.quote?.quotes?.length) {
@@ -488,7 +494,7 @@ export async function handleSendPreparedCalls(
                 },
                 'failed to persist bundle tracking',
             )
-            throw buildBundleTrackingUnavailableError()
+            throw buildBundleTrackingUnavailableError(bundleId)
         }
     }
 
@@ -718,7 +724,10 @@ export async function handleBatchSendPreparedCalls(
                         },
                         'bundle tracking persistence failed for batch request',
                     )
-                    bundleTrackingErrors.set(req.id, buildBundleTrackingUnavailableError())
+                    bundleTrackingErrors.set(
+                        req.id,
+                        buildBundleTrackingUnavailableError(req.bundleId),
+                    )
                 }
             } catch (error) {
                 logger.warn(
@@ -732,7 +741,10 @@ export async function handleBatchSendPreparedCalls(
                     },
                     'failed to persist bundle tracking for batch request',
                 )
-                bundleTrackingErrors.set(req.id, buildBundleTrackingUnavailableError())
+                bundleTrackingErrors.set(
+                    req.id,
+                    buildBundleTrackingUnavailableError(req.bundleId),
+                )
             }
         }
     }

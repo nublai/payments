@@ -50,6 +50,8 @@ export interface JsonRpcErrorObject {
 export interface RpcCaller {
     provider?: string
     userId?: string
+    /** OIDC issuer when the caller is an OIDC identity. */
+    issuer?: string
 }
 
 /**
