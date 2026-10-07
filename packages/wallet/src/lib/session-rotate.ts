@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import argon2 from 'argon2'
 import { chmod, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
@@ -119,6 +119,7 @@ type SessionRotateErrorCode =
     | 'INVALID_NAME'
     | 'KEYSTORE_NOT_FOUND'
     | 'PASSWORD_REQUIRED'
+    | 'PASSWORD_INCORRECT'
     | 'ROTATION_FAILED'
     | 'ROTATION_IN_PROGRESS'
     | 'ROTATION_PARTIAL'
@@ -571,8 +572,9 @@ function canonicalPermissions(permissions: RotationPermissions | undefined): unk
  * oldKeyHash, newKeyHash, permissions, fullAccess, and newSessionName.
  * narrow, oldSessionName, chain, chainId, status, and bundleId are covered
  * too, so a local edit of any of them fails before resume signs.
- * freshness is the sidecar value, not a field stored in the marker, so
- * restoring an older marker file against a newer sidecar fails.
+ * freshness comes from the sidecar file, not from the marker. Restoring an
+ * older marker alone fails once the sidecar has advanced past it. Restoring
+ * the marker together with its sidecar is not detected.
  */
 function rotationMarkerMacBody(value: RotationIntentPayload, freshness: string | null): string {
     return JSON.stringify({
@@ -597,6 +599,10 @@ function markerMacMatches(expected: string, actual: string): boolean {
     return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(actual, 'hex'))
 }
 
+function markerMac(key: Buffer, value: RotationIntentPayload, freshness: string | null): string {
+    return createHmac('sha256', key).update(rotationMarkerMacBody(value, freshness)).digest('hex')
+}
+
 /** MAC the marker under an argon2id key derived from the keystore password. */
 export async function sealRotationMarker<T extends RotationIntentPayload>(
     value: T,
@@ -609,33 +615,48 @@ export async function sealRotationMarker<T extends RotationIntentPayload>(
     }
     const key = await deriveMarkerMacKey(password, macKdf)
     try {
-        const mac = createHmac('sha256', key)
-            .update(rotationMarkerMacBody(value, freshness))
-            .digest('hex')
-        return { ...value, mac, macKdf }
+        return { ...value, mac: markerMac(key, value, freshness), macKdf }
     } finally {
         key.fill(0)
     }
 }
 
+function unverifiedMarkerRecovery(
+    rootKeystorePath: string,
+    sessionsDir: string,
+    intent: RotationIntent,
+): string {
+    const markerPath = join(rotationDir(rootKeystorePath, sessionsDir), intent.fileName)
+    return `Marker: ${markerPath}. To recover after you check the chain with \`tw session list --on-chain\`: delete ${markerPath}, run \`tw session create <name> --activate\`, then optionally \`tw session revoke ${intent.newSessionName}\`.`
+}
+
+/** Accepts the current sidecar value or its successor; see writeBoundRotationIntent. */
 async function assertRotationMarkerMac(
     intent: RotationIntent,
     password: string,
-    freshness: string | null,
+    rootKeystorePath: string,
+    sessionsDir: string,
 ): Promise<void> {
     if (!intent.mac || !intent.macKdf) {
         throw new SessionRotateError(
             'ROTATION_MARKER_MISMATCH',
-            'Rotation marker is not authenticated. Refusing to sign.',
+            `Rotation marker is not authenticated. Refusing to sign. ${unverifiedMarkerRecovery(rootKeystorePath, sessionsDir, intent)}`,
         )
     }
-    const sealed = await sealRotationMarker(intent, password, freshness)
-    if (!markerMacMatches(sealed.mac, intent.mac)) {
-        throw new SessionRotateError(
-            'ROTATION_MARKER_MISMATCH',
-            'Rotation marker authentication failed. Refusing to sign.',
-        )
+    const current = await readRotationFreshness(rootKeystorePath, sessionsDir)
+    const accepted = current ? [current, nextRotationFreshness(current)] : [null]
+    const key = await deriveMarkerMacKey(password, intent.macKdf)
+    try {
+        for (const freshness of accepted) {
+            if (markerMacMatches(markerMac(key, intent, freshness), intent.mac)) return
+        }
+    } finally {
+        key.fill(0)
     }
+    throw new SessionRotateError(
+        'ROTATION_MARKER_MISMATCH',
+        `Rotation marker authentication failed. Refusing to sign. ${unverifiedMarkerRecovery(rootKeystorePath, sessionsDir, intent)}`,
+    )
 }
 
 function rotationFreshnessPath(rootKeystorePath: string, sessionsDir: string): string {
@@ -657,13 +678,17 @@ async function readRotationFreshness(
     }
 }
 
+function nextRotationFreshness(current: string): string {
+    return createHash('sha256').update(current).digest('hex').slice(0, 32)
+}
+
 async function writeRotationFreshness(
     rootKeystorePath: string,
     sessionsDir: string,
+    freshness: string,
 ): Promise<string> {
     const dir = rotationDir(rootKeystorePath, sessionsDir)
     await ensureOwnerOnlyDirectory(dir)
-    const freshness = randomBytes(16).toString('hex')
     const finalPath = rotationFreshnessPath(rootKeystorePath, sessionsDir)
     const tempPath = `${finalPath}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
     await writeFile(tempPath, `${freshness}\n`, { mode: 0o600 })
@@ -674,14 +699,32 @@ async function writeRotationFreshness(
     return freshness
 }
 
-async function sealBoundRotationMarker<T extends RotationIntentPayload>(
+/**
+ * Seals the marker with the successor of the current sidecar value, writes the
+ * marker, and only then advances the sidecar. A crash or failed write between
+ * the two files leaves a marker that verifies against the current sidecar or
+ * its successor, and a retry derives the same successor again.
+ */
+async function writeBoundRotationIntent(
+    deps: SessionRotateDeps,
     rootKeystorePath: string,
     sessionsDir: string,
-    value: T,
+    value: RotationIntentPayload,
     password: string,
-): Promise<T & { mac: string; macKdf: KdfParams }> {
-    const freshness = await writeRotationFreshness(rootKeystorePath, sessionsDir)
-    return sealRotationMarker(value, password, freshness)
+    fileName?: string,
+): Promise<RotationIntent> {
+    const current =
+        (await readRotationFreshness(rootKeystorePath, sessionsDir)) ??
+        (await writeRotationFreshness(rootKeystorePath, sessionsDir, randomBytes(16).toString('hex')))
+    const next = nextRotationFreshness(current)
+    const written = await deps.writeRotationIntent(
+        rootKeystorePath,
+        sessionsDir,
+        await sealRotationMarker(value, password, next),
+        fileName,
+    )
+    await writeRotationFreshness(rootKeystorePath, sessionsDir, next)
+    return written
 }
 
 function markRotationIntentSubmitted(
@@ -1147,24 +1190,34 @@ export async function executeSessionRotate(
             if (!intent) {
                 throw new SessionRotateError('ROTATION_FAILED', 'No rotation marker to abandon.')
             }
+            let decryptedRoot: Awaited<ReturnType<typeof deps.decryptRootKeystore>>
+            try {
+                decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+            } catch (error) {
+                throw new SessionRotateError(
+                    'PASSWORD_INCORRECT',
+                    'Wrong password: could not decrypt the root keystore. The rotation marker was not checked and no file was changed. Nothing was signed.',
+                    { cause: error },
+                )
+            }
             try {
                 await assertRotationMarkerMac(
                     intent,
                     options.password,
-                    await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
+                    keystorePath,
+                    bundle.root.sessionRef.dir,
                 )
             } catch (error) {
                 if (error instanceof SessionRotateError && error.code === 'ROTATION_MARKER_MISMATCH') {
                     throw new SessionRotateError(
                         'ROTATION_MARKER_MISMATCH',
-                        'Rotation marker is unverified. Refusing to abandon it or to report on-chain keys from it. Nothing was signed. Delete the marker file only after you have checked the chain yourself.',
+                        `Rotation marker is unverified. Refusing to abandon it or to report on-chain keys from it. Nothing was signed. Delete the marker file only after you have checked the chain yourself. ${unverifiedMarkerRecovery(keystorePath, bundle.root.sessionRef.dir, intent)}`,
                         { cause: error },
                     )
                 }
                 throw error
             }
             const reportNetwork = resolveNetworkConfig(options.env, intent.chain)
-            const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
             const signedNetwork = {
                 ...reportNetwork,
                 authSigner: createEthHttpSigner(decryptedRoot.rootPrivateKey, reportNetwork.chainId),
@@ -1254,27 +1307,24 @@ export async function executeSessionRotate(
                 bundle.root.sessionRef.dir,
             )
             await deps.writeSessionKeystoreFile(newSessionPath, newSession)
-            intent = await deps.writeRotationIntent(
+            intent = await writeBoundRotationIntent(
+                deps,
                 keystorePath,
                 bundle.root.sessionRef.dir,
-                await sealBoundRotationMarker(
-                    keystorePath,
-                    bundle.root.sessionRef.dir,
-                    {
-                        oldSessionName: activeSessionName,
-                        newSessionName,
-                        status: 'pending',
-                        chain,
-                        chainId: network.chainId,
-                        newKeyHash: computeSessionKeyHash(getAddress(newSession.addresses.session)),
-                        narrow: options.narrow === true,
-                        fullAccess: options.fullAccess === true,
-                        account: accountAddress,
-                        oldKeyHash,
-                        permissions,
-                    },
-                    options.password,
-                ),
+                {
+                    oldSessionName: activeSessionName,
+                    newSessionName,
+                    status: 'pending',
+                    chain,
+                    chainId: network.chainId,
+                    newKeyHash: computeSessionKeyHash(getAddress(newSession.addresses.session)),
+                    narrow: options.narrow === true,
+                    fullAccess: options.fullAccess === true,
+                    account: accountAddress,
+                    oldKeyHash,
+                    permissions,
+                },
+                options.password,
             )
         } else {
             resumed = true
@@ -1291,10 +1341,11 @@ export async function executeSessionRotate(
         } catch (error) {
             if (resumed && isEnoent(error)) {
                 await assertRotationMarkerMac(
-                intent,
-                options.password,
-                await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
-            )
+                    intent,
+                    options.password,
+                    keystorePath,
+                    bundle.root.sessionRef.dir,
+                )
                 const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
                 const signedNetwork = {
                     ...network,
@@ -1420,7 +1471,8 @@ export async function executeSessionRotate(
             await assertRotationMarkerMac(
                 intent,
                 options.password,
-                await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
+                keystorePath,
+                bundle.root.sessionRef.dir,
             )
             const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
             const signedNetwork = {
@@ -1500,7 +1552,8 @@ export async function executeSessionRotate(
             await assertRotationMarkerMac(
                 intent,
                 options.password,
-                await readRotationFreshness(keystorePath, bundle.root.sessionRef.dir),
+                keystorePath,
+                bundle.root.sessionRef.dir,
             )
         }
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
@@ -1813,15 +1866,12 @@ export async function executeSessionRotate(
                         env: signedNetwork.env,
                         rpcUrl: signedNetwork.rpcUrl,
                         onBundleSubmitted: async (id) => {
-                            intent = await deps.writeRotationIntent(
+                            intent = await writeBoundRotationIntent(
+                                deps,
                                 keystorePath,
                                 bundle.root.sessionRef.dir,
-                                await sealBoundRotationMarker(
-                                    keystorePath,
-                                    bundle.root.sessionRef.dir,
-                                    markRotationIntentSubmitted(intent, id),
-                                    options.password,
-                                ),
+                                markRotationIntentSubmitted(intent, id),
+                                options.password,
                                 intent.fileName,
                             )
                         },
@@ -1836,17 +1886,15 @@ export async function executeSessionRotate(
                     (intent.status === 'submitted' ? intent.bundleId : undefined)
                 if (submittedId || isPossiblySubmittedRotation(error)) {
                     if (intent.status !== 'submitted' || intent.bundleId !== submittedId) {
-                        intent = await deps.writeRotationIntent(
+                        const current = intent
+                        intent = await writeBoundRotationIntent(
+                            deps,
                             keystorePath,
                             bundle.root.sessionRef.dir,
-                            await sealBoundRotationMarker(
-                                keystorePath,
-                                bundle.root.sessionRef.dir,
-                                markRotationIntentSubmitted(intent, submittedId),
-                                options.password,
-                            ),
-                            intent.fileName,
-                        )
+                            markRotationIntentSubmitted(current, submittedId),
+                            options.password,
+                            current.fileName,
+                        ).catch(() => current)
                     }
                     throw rotationSubmittedError(submittedId, isBundleWaitTimeout(error))
                 }
@@ -1868,17 +1916,17 @@ export async function executeSessionRotate(
                     'Session rotation transaction failed.',
                 )
             }
-            intent = await deps.writeRotationIntent(
+            const sentId = bundleId
+            intent = await writeBoundRotationIntent(
+                deps,
                 keystorePath,
                 bundle.root.sessionRef.dir,
-                await sealBoundRotationMarker(
-                    keystorePath,
-                    bundle.root.sessionRef.dir,
-                    markRotationIntentSubmitted(intent, bundleId),
-                    options.password,
-                ),
+                markRotationIntentSubmitted(intent, sentId),
+                options.password,
                 intent.fileName,
-            )
+            ).catch(() => {
+                throw rotationSubmittedError(sentId)
+            })
             } else {
                 finalStatus = {
                     id: 'already-authorized',
