@@ -147,8 +147,20 @@ release_addresses_documented() {
                 return 1
             fi
         done
-        if ! grep -q "published default-profile addresses will not match" "$doc"; then
-            echo "missing published-address warning in $doc" >&2
+        if ! grep -q "have never been deployed" "$doc"; then
+            echo "missing never-deployed note in $doc" >&2
+            return 1
+        fi
+        if ! grep -q "inherited from the Towns deployment and are not ours" "$doc"; then
+            echo "missing inherited-address note in $doc" >&2
+            return 1
+        fi
+        if ! grep -q "replace every address in \`addresses.json\` and \`envs/\*.json\`" "$doc"; then
+            echo "missing same-change address replacement note in $doc" >&2
+            return 1
+        fi
+        if ! grep -q "on-chain code hash matches the release artifact" "$doc"; then
+            echo "missing on-chain code-hash note in $doc" >&2
             return 1
         fi
     done
