@@ -4,7 +4,11 @@ import { writeSettlementCalls, signSettlement } from '@nubl/relayer-client'
 import { resolveKeystorePath } from './account-create'
 import type { ChainName, EnvName } from './network-config'
 import type { ExecuteSignedCallsDeps } from './execute-calls'
-import { createEscrowPasswordResolver, executeEscrowCallsWithFallback } from './escrow-execute'
+import {
+    createEscrowPasswordResolver,
+    executeEscrowCallsWithFallback,
+    type EscrowExecuteResult,
+} from './escrow-execute'
 import {
     EscrowError,
     type EscrowChainNetworkContractsDeps,
@@ -51,6 +55,7 @@ export type EscrowSettleResult = {
     }
     signerMode: 'daemon' | 'direct' | 'fallback_direct'
     txHash?: Hex
+    feeCap: EscrowExecuteResult['feeCap']
 }
 
 /** ECDSA signature length: 0x + 130 hex chars (65 bytes r,s,v). */
@@ -170,6 +175,7 @@ export async function executeEscrowSettle(
             },
             signerMode: result.signerMode,
             txHash: result.finalStatus.receipt?.transactionHash,
+            feeCap: result.feeCap,
         }
     } catch (error) {
         throw toEscrowError(error)

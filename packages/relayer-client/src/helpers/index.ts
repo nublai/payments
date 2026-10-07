@@ -21,6 +21,13 @@ export {
     ORCHESTRATOR_DOMAIN_NAME,
     ORCHESTRATOR_DOMAIN_VERSION,
     INTENT_EXPIRY_TTL_SECONDS,
+    FEE_CAP_MARGIN_BPS,
+    FEE_CAP_MARGIN_FLOOR,
+    feeCapMargin,
+    signedPaymentMaxForQuote,
+    parseQuotePaymentAmount,
+    firstQuotePaymentAmount,
+    resolveSignedFeeCap,
     type PreparedCallsExpectation,
     type BoundPreparedCalls,
 } from './bindPreparedCalls'

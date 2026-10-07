@@ -8,7 +8,12 @@ import {
     type SignPreparedCallsResult,
     type SignPreparedCallsSigner,
 } from './signPreparedCalls'
-import { INTENT_EXPIRY_TTL_SECONDS, PreparedCallsBindingError } from './bindPreparedCalls'
+import {
+    firstQuotePaymentAmount,
+    INTENT_EXPIRY_TTL_SECONDS,
+    PreparedCallsBindingError,
+    resolveSignedFeeCap,
+} from './bindPreparedCalls'
 
 const nonceAbi = [
     {
@@ -100,24 +105,44 @@ export async function executePreparedCalls(
             'Refusing to sign prepared calls: paymentMaxAmount is required off local chains',
         )
     }
-    const paymentMaxAmount = params.paymentMaxAmount ?? 0n
-
-    const prepared = await params.client.prepareCalls({
-        from: params.from,
-        calls: params.calls,
-        chainId,
-        nonce,
-        noncePolicy: params.noncePolicy,
-        seqKey: params.seqKey,
-        prepareKey: params.prepareKey,
-        expiry,
-        settler: params.settler,
-        settlerContext: params.settlerContext,
-        sessionKey: params.sessionKey,
-        payer: params.payer,
-        paymentToken: params.paymentToken,
-        paymentMaxAmount,
+    const zeroFee = localChain
+    const ceiling = params.paymentMaxAmount ?? 0n
+    const prepare = (paymentMaxAmount: bigint) =>
+        params.client.prepareCalls({
+            from: params.from,
+            calls: params.calls,
+            chainId,
+            nonce,
+            noncePolicy: params.noncePolicy,
+            seqKey: params.seqKey,
+            prepareKey: params.prepareKey,
+            expiry,
+            settler: params.settler,
+            settlerContext: params.settlerContext,
+            sessionKey: params.sessionKey,
+            payer: params.payer,
+            paymentToken: params.paymentToken,
+            paymentMaxAmount,
+        })
+    let prepared = await prepare(ceiling)
+    let signedCap = resolveSignedFeeCap({
+        paymentAmount: firstQuotePaymentAmount(prepared),
+        ceiling,
+        zeroFee,
     })
+    if (signedCap !== ceiling) {
+        prepared = await prepare(signedCap)
+        const again = resolveSignedFeeCap({
+            paymentAmount: firstQuotePaymentAmount(prepared),
+            ceiling,
+            zeroFee,
+        })
+        if (again !== signedCap) {
+            throw new PreparedCallsBindingError(
+                'Refusing to sign prepared calls: fee cap does not match the quote',
+            )
+        }
+    }
 
     const verifyingContract = params.verifyingContract ?? readOrchestratorAddress(chainId)
     const signed = await signPreparedCalls({
@@ -136,7 +161,8 @@ export async function executePreparedCalls(
             settlerContext: params.settlerContext,
             payer: params.payer,
             paymentToken: params.paymentToken,
-            paymentMaxAmount,
+            paymentMaxAmount: signedCap,
+            paymentCeiling: ceiling,
         },
     })
 

@@ -55,6 +55,7 @@ import {
     executeSignedCalls,
     type ExecuteSignedCallsDeps,
     type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
 } from './execute-calls'
 
 export type PermissionsRevokeResult = {
@@ -71,6 +72,7 @@ export type PermissionsRevokeResult = {
         statusCode: number
     }
     txHash?: Hex
+    feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
 type PermissionsRevokeDeps = {
@@ -87,7 +89,7 @@ type PermissionsRevokeDeps = {
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
         params: ExecuteSignedCallsParams,
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+    ) => Promise<ExecuteSignedCallsResult>
     prepareCalls: (input: {
         network: CliNetworkConfig
         from: Address
@@ -495,6 +497,7 @@ export async function executePermissionsRevoke(
                 status: finalStatus.status ?? 'unknown',
                 statusCode,
             },
+            feeCap: submission.feeCap,
         }
     })
 }

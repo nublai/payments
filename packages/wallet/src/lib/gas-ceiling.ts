@@ -7,6 +7,18 @@ type CallLike = { target: Address; value: bigint; data?: Hex }
 const FALLBACK_EXECUTION_GAS = 150_000n
 const HEADROOM = 8n
 const FIXED_OVERHEAD = 500_000n
+/** A wallet RPC cannot raise the ceiling above twice the local formula. */
+const RPC_RAISE_LIMIT = 2n
+
+/**
+ * Keep an eth_estimateGas raise inside a multiple of the local ceiling.
+ * A colluding RPC that returns a huge gas estimate cannot move the signed ceiling with it.
+ */
+export function clampRpcCombinedGasCeiling(local: bigint, fromRpc: bigint): bigint {
+    const raised = fromRpc > local ? fromRpc : local
+    const limit = local * RPC_RAISE_LIMIT
+    return raised > limit ? limit : raised
+}
 
 /**
  * Ceiling computed from the calls themselves. Independent of the relayer typed data.
@@ -49,7 +61,7 @@ export async function estimateCombinedGasCeiling(input: {
             estimated += gas
         }
         const fromRpc = estimated * HEADROOM + FIXED_OVERHEAD
-        return fromRpc > local ? fromRpc : local
+        return clampRpcCombinedGasCeiling(local, fromRpc)
     } catch {
         return local
     }

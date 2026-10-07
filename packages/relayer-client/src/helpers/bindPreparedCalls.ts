@@ -7,6 +7,16 @@ export const ORCHESTRATOR_DOMAIN_NAME = 'Orchestrator'
 export const ORCHESTRATOR_DOMAIN_VERSION = '0.5.5'
 /** Wallet TTL for an intent expiry. The relayer does not choose this. */
 export const INTENT_EXPIRY_TTL_SECONDS = 3600n
+/**
+ * Margin added to the accepted quote before it becomes paymentMaxAmount.
+ * paymentAmount and paymentRecipient are not in the Intent typehash, so this
+ * margin is the most a filler can add. 5% covers a modest base-fee move
+ * between quote and inclusion. The 0.001 USDC floor (6 decimals) keeps a
+ * 1-unit quote from rounding the percent to zero while still bounding the
+ * filler far under the 5 USDC ceiling.
+ */
+export const FEE_CAP_MARGIN_BPS = 500n
+export const FEE_CAP_MARGIN_FLOOR = 1_000n
 
 export class PreparedCallsBindingError extends Error {
     readonly code = 'PREPARED_CALLS_MISMATCH' as const
@@ -35,6 +45,11 @@ export type PreparedCallsExpectation = {
     payer?: Address
     paymentToken?: Address
     paymentMaxAmount?: bigint
+    /**
+     * Hard ceiling. A quote, or quote plus margin, above this is refused.
+     * The signed cap itself is the quote plus margin, not this ceiling.
+     */
+    paymentCeiling?: bigint
     settler?: Address
     settlerContext?: Hex
     encodedPreCalls?: readonly Hex[]
@@ -60,6 +75,72 @@ type NormalizedIntent = {
 
 function refuse(detail: string): never {
     throw new PreparedCallsBindingError(`Refusing to sign prepared calls: ${detail}`)
+}
+
+export function feeCapMargin(paymentAmount: bigint): bigint {
+    if (paymentAmount <= 0n) return 0n
+    const percent = (paymentAmount * FEE_CAP_MARGIN_BPS + 9_999n) / 10_000n
+    return percent > FEE_CAP_MARGIN_FLOOR ? percent : FEE_CAP_MARGIN_FLOOR
+}
+
+/** Signed paymentMaxAmount for an accepted quote. Zero quotes stay at cap 0. */
+export function signedPaymentMaxForQuote(paymentAmount: bigint): bigint {
+    return paymentAmount + feeCapMargin(paymentAmount)
+}
+
+export function parseQuotePaymentAmount(
+    value: unknown,
+): { ok: true; amount: bigint } | { ok: false; reason: 'missing' | 'invalid' } {
+    if (value === undefined || value === null || value === '') return { ok: false, reason: 'missing' }
+    try {
+        if (typeof value === 'bigint') {
+            return value < 0n ? { ok: false, reason: 'invalid' } : { ok: true, amount: value }
+        }
+        if (typeof value === 'number' && Number.isInteger(value)) {
+            return value < 0 ? { ok: false, reason: 'invalid' } : { ok: true, amount: BigInt(value) }
+        }
+        if (typeof value === 'string' && value.trim() !== '') {
+            const text = value.trim()
+            if (text.startsWith('-')) return { ok: false, reason: 'invalid' }
+            return { ok: true, amount: BigInt(text) }
+        }
+    } catch {
+        return { ok: false, reason: 'invalid' }
+    }
+    return { ok: false, reason: 'invalid' }
+}
+
+export function firstQuotePaymentAmount(prepared: {
+    context?: { quote?: { quotes?: Array<{ paymentAmount?: unknown }> } }
+}): unknown {
+    return prepared.context?.quote?.quotes?.[0]?.paymentAmount
+}
+
+/**
+ * Cap the signature will authorize. Off local, a zero, missing, or non-numeric
+ * quote is refused so it cannot fall back to the 5 USDC ceiling. Local zero-fee
+ * quotes sign cap 0.
+ */
+export function resolveSignedFeeCap(input: {
+    paymentAmount: unknown
+    ceiling: bigint
+    zeroFee: boolean
+}): bigint {
+    const parsed = parseQuotePaymentAmount(input.paymentAmount)
+    if (!parsed.ok) {
+        refuse(
+            parsed.reason === 'missing'
+                ? 'quote payment amount is missing'
+                : 'quote payment amount is not numeric',
+        )
+    }
+    if (parsed.amount === 0n) {
+        if (!input.zeroFee) refuse('off-local quote payment is zero')
+        return 0n
+    }
+    const cap = signedPaymentMaxForQuote(parsed.amount)
+    if (parsed.amount > input.ceiling || cap > input.ceiling) refuse('payment amount exceeds fee cap')
+    return cap
 }
 
 function readUint(value: unknown, label: string): bigint {
@@ -315,12 +396,31 @@ export function bindPreparedCalls(
         if (quoteIntent.settlerContext !== expectedSettlerContext) {
             refuse('quote does not match the signed intent')
         }
-        const quotedPayment = (quote as { paymentAmount?: unknown }).paymentAmount
-        const paymentAmount =
-            quotedPayment === undefined || quotedPayment === null
-                ? 0n
-                : readUint(quotedPayment, 'quote payment amount')
-        if (paymentAmount > canonical.paymentMaxAmount) refuse('payment amount exceeds fee cap')
+        const parsedPayment = parseQuotePaymentAmount(
+            (quote as { paymentAmount?: unknown }).paymentAmount,
+        )
+        if (!parsedPayment.ok) {
+            refuse(
+                parsedPayment.reason === 'missing'
+                    ? 'quote payment amount is missing'
+                    : 'quote payment amount is not numeric',
+            )
+        }
+        const paymentAmount = parsedPayment.amount
+        const requiredCap = signedPaymentMaxForQuote(paymentAmount)
+        if (
+            expected.paymentCeiling !== undefined &&
+            (paymentAmount > expected.paymentCeiling || requiredCap > expected.paymentCeiling)
+        ) {
+            refuse('payment amount exceeds fee cap')
+        }
+        if (canonical.paymentMaxAmount !== requiredCap) {
+            refuse(
+                paymentAmount > canonical.paymentMaxAmount
+                    ? 'payment amount exceeds fee cap'
+                    : 'fee cap does not match the quote',
+            )
+        }
     }
 
     const signingDomain = {
