@@ -139,11 +139,11 @@ When a delegated signer key (session/bot key) signs on behalf of an account:
 
 - Signer must sign an ERC-1271 transformed digest (`computeErc1271Digest`).
 - Signature should be wrapped with `wrapSignature` and key hash.
-- The new `signPreparedCalls` helper handles this flow. It recomputes the EIP-712 digest (`Orchestrator` / `0.5.5`, the verifying contract, the requested calls, nonce, expiry, and fee caps) and signs that rebuilt typed data. Pass `expected` with `nonce`, `expiry`, and `combinedGasCeiling`. Expiry `0`, a past expiry, an expiry beyond one hour, and combined gas above the ceiling are refused. The quote `paymentAmount` must be within `paymentMaxAmount`.
+- The new `signPreparedCalls` helper handles this flow. It recomputes the EIP-712 digest (`Orchestrator` / `0.5.5`, the verifying contract, the requested calls, nonce, expiry, and fee caps) and signs that rebuilt typed data. Pass `expected` with `nonce`, `expiry`, and `combinedGasCeiling`. Expiry `0`, a past expiry, an expiry beyond one hour, and combined gas above the ceiling are refused. The signed `paymentMaxAmount` is the quote `paymentAmount` plus 5% (at least 0.001 USDC). Pass `paymentCeiling` to refuse a quote, or that quote plus margin, above the ceiling. The relayer typed-data cap has to equal that quote plus margin.
 
 `upgradeAccount` recomputes the EIP-7702 authorization from the caller chain id, the EOA nonce read on the wallet RPC, and the `delegation` argument. It signs a SignedCall rebuilt from `authorizeKeys`. Pass `orchestrator` (or set `ORCHESTRATOR_<chainId>`).
 
-Relayer URLs must be `https` unless the host is loopback. Pass `allowInsecureHttp` only for local dev. Fetches use `redirect: 'manual'` and refuse a 3xx. On chain 31337, `executePreparedCalls` reads the orchestrator from `ORCHESTRATOR_31337` when `verifyingContract` is omitted, reads the nonce from the account when `nonce` is omitted, and requires `paymentMaxAmount` off local chains.
+Relayer URLs must be `https` unless the host is loopback. Pass `allowInsecureHttp` only for a local chain whose orchestrator is not in the deployments JSON. Fetches use `redirect: 'manual'` and refuse a 3xx. On chain 31337, `executePreparedCalls` reads the orchestrator from `ORCHESTRATOR_31337` when `verifyingContract` is omitted, reads the nonce from the account when `nonce` is omitted, and requires `paymentMaxAmount` off local chains. It prepares again when the signed cap is tighter than that ceiling, and refuses if the second quote would change the cap.
 
 ```ts
 import {

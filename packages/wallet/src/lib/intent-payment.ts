@@ -1,7 +1,10 @@
 import { zeroAddress, type Address } from 'viem'
 import { getUsdcAddressByChainId, type EnvName } from './network-config'
 
-/** 5 USDC. Chosen by the wallet, never copied from a relayer quote. */
+/**
+ * 5 USDC hard ceiling. The signed cap is the accepted quote plus margin,
+ * and any quote or quote-plus-margin above this is refused.
+ */
 export const PAID_FEE_CAP = 5_000_000n
 
 export function isLocalFeeChain(env: EnvName, chainId: number): boolean {
@@ -9,8 +12,8 @@ export function isLocalFeeChain(env: EnvName, chainId: number): boolean {
 }
 
 /**
- * Local and dev stay at a zero cap. Every other chain signs a wallet-chosen USDC cap
- * paid by the account itself.
+ * Local and dev stay at a zero ceiling. Every other chain uses the 5 USDC ceiling,
+ * paid by the account. The value that gets signed is the quote plus margin.
  */
 export function resolveIntentPayment(
     env: EnvName,
@@ -34,5 +37,31 @@ export function resolveIntentPayment(
         payer: from,
         paymentToken,
         paymentMaxAmount: PAID_FEE_CAP,
+    }
+}
+
+export type FeeCapDisclosure = {
+    token: Address
+    symbol: 'USDC' | 'none'
+    amountUsdc: string
+    expiresIn: '1h'
+}
+
+/** Human amount for a 6-decimal USDC cap. */
+export function formatUsdcAmount(amount: bigint): string {
+    const negative = amount < 0n
+    const value = negative ? -amount : amount
+    const whole = value / 1_000_000n
+    const fraction = (value % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '')
+    const text = fraction.length > 0 ? `${whole}.${fraction}` : whole.toString()
+    return negative ? `-${text}` : text
+}
+
+export function discloseFeeCap(token: Address, amount: bigint): FeeCapDisclosure {
+    return {
+        token,
+        symbol: token === zeroAddress ? 'none' : 'USDC',
+        amountUsdc: formatUsdcAmount(amount),
+        expiresIn: '1h',
     }
 }

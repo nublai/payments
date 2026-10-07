@@ -79,7 +79,7 @@ export function matchingPreparedCalls(input: {
                         paymentTokenDecimals: 6,
                         txGas: 1,
                         nativeFeeEstimate: { maxFeePerGas: 1, maxPriorityFeePerGas: 1 },
-                        paymentAmount: '0',
+                        paymentAmount: (input.paymentMaxAmount ?? 0n) > 0n ? '1' : '0',
                         feeTokenDeficit: '0x0',
                         assetDeficits: [],
                     },

@@ -506,6 +506,15 @@ const tw = Cli.create('tw', {
     },
 })
 
+const feeCapOutput = z
+    .object({
+        token: z.string(),
+        symbol: z.string(),
+        amountUsdc: z.string(),
+        expiresIn: z.literal('1h'),
+    })
+    .optional()
+
 // ============================= ACCOUNT GROUP ==============================
 
 const account = Cli.create('account', {
@@ -843,6 +852,7 @@ tw.command('send', {
         bundle: z.object({ id: z.string(), status: z.string() }),
         signerMode: z.enum(['daemon', 'direct', 'fallback_direct']),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
@@ -931,6 +941,7 @@ tw.command('swap', {
         bundle: z.object({ id: z.string(), status: z.string() }),
         signerMode: z.enum(['daemon', 'direct', 'fallback_direct']),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('swap')
@@ -1065,6 +1076,7 @@ tw.command('bridge', {
         }),
         signerMode: z.enum(['daemon', 'direct', 'fallback_direct']),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('bridge')
@@ -1408,6 +1420,7 @@ session.command('create', {
         activeSession: z.string(),
         bundle: z.object({ id: z.string() }),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
@@ -1659,6 +1672,7 @@ session.command('rotate', {
         newSessionName: z.string(),
         bundle: z.object({ id: z.string() }),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         { options: { env: 'prod', profile: 'agent' }, description: 'Rotate active session' },
@@ -1780,6 +1794,7 @@ session.command('revoke', {
         bundle: z.object({ id: z.string() }),
         fileDeleted: z.boolean(),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
@@ -2130,6 +2145,7 @@ permissions.command('grant', {
         type: z.string(),
         bundle: z.object({ id: z.string() }),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
@@ -2225,6 +2241,7 @@ permissions.command('revoke', {
         type: z.string(),
         bundle: z.object({ id: z.string() }),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
@@ -2389,6 +2406,7 @@ escrow.command('create', {
         bundle: z.object({ id: z.string(), status: z.string(), statusCode: z.number().optional() }),
         signerMode: z.enum(['daemon', 'direct', 'fallback_direct']),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
@@ -2532,6 +2550,7 @@ escrow.command('settle', {
         bundle: z.object({ id: z.string(), status: z.string(), statusCode: z.number().optional() }),
         signerMode: z.enum(['daemon', 'direct', 'fallback_direct']),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
@@ -2628,6 +2647,7 @@ escrow.command('refund', {
         bundle: z.object({ id: z.string(), status: z.string(), statusCode: z.number().optional() }),
         signerMode: z.enum(['daemon', 'direct', 'fallback_direct']),
         txHash: z.string().optional(),
+        feeCap: feeCapOutput,
     }),
     examples: [
         {
