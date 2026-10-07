@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test'
-import { encodeFunctionData, erc20Abi, type Address, type Hex } from 'viem'
+import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
 import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'
 
@@ -10,6 +10,35 @@ const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
 const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
 const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31' as Address
 const MULTICALL = '0xcd6e13f7' as Hex
+const USER = '0x1111111111111111111111111111111111111111' as Address
+const multicallAbi = [
+    {
+        name: 'multicall',
+        type: 'function',
+        stateMutability: 'payable',
+        inputs: [
+            {
+                name: 'calls',
+                type: 'tuple[]',
+                components: [
+                    { name: 'target', type: 'address' },
+                    { name: 'allowFailure', type: 'bool' },
+                    { name: 'value', type: 'uint256' },
+                    { name: 'callData', type: 'bytes' },
+                ],
+            },
+            { name: 'refundTo', type: 'address' },
+            { name: 'nftRecipient', type: 'address' },
+            { name: 'metadata', type: 'bytes' },
+        ],
+        outputs: [],
+    },
+] as const
+const EMPTY_MULTICALL = encodeFunctionData({
+    abi: multicallAbi,
+    functionName: 'multicall',
+    args: [[], USER, zeroAddress, '0x'],
+})
 const SIGNATURE =
     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const
 
@@ -105,6 +134,7 @@ function runQuote(input: {
     env?: 'prod' | 'dev'
     chainId?: number
     confirmQuote?: () => Promise<boolean>
+    simulateQuoteCalls?: () => Promise<void>
 }) {
     const signTypedData = mock(async () => SIGNATURE)
     const prepareCalls = mock(async () => ({
@@ -137,6 +167,7 @@ function runQuote(input: {
             prepareCalls: prepareCalls as any,
             signTypedData: signTypedData as any,
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
+            simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',
@@ -306,7 +337,7 @@ test('executeAccountSwap refuses native value on a token quote', async () => {
 
 test('executeAccountSwap signs an allowlisted quote and still confirms when yes is set', async () => {
     const ran = runQuote({
-        quote: quoteWithCall({ to: ROUTER, data: MULTICALL }),
+        quote: quoteWithCall({ to: ROUTER, data: EMPTY_MULTICALL }),
         yes: true,
     })
     const result = await ran.result
@@ -314,7 +345,7 @@ test('executeAccountSwap signs an allowlisted quote and still confirms when yes 
     expect(confirmQuote).toHaveBeenCalledTimes(1)
     expect(signTypedData).toHaveBeenCalledTimes(1)
     expect(prepareCalls.mock.calls[0]?.[0].calls).toEqual([
-        { target: ROUTER, value: 0n, data: MULTICALL },
+        { target: ROUTER, value: 0n, data: EMPTY_MULTICALL },
     ])
     expect(result.type).toBe('account_swap')
 })

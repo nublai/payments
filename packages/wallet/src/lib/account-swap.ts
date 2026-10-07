@@ -56,12 +56,19 @@ import {
     type RelayIntentStatus,
     type RelayQuoteResponse,
 } from './relay-link'
-import { RelayQuoteRejected, reviewRelayQuote } from './relay-allowlist'
+import {
+    quoteExecutionFingerprint,
+    RelayQuoteRejected,
+    reviewRelayQuote,
+    type RelayQuoteReview,
+} from './relay-allowlist'
+import { RelaySimulationRejected, simulateRelayQuote, type SimulatedWatch } from './relay-simulate'
 import {
     ETH_ADDRESS,
     getChainConfig,
     getChainNameByChainId,
     getTokenAddress,
+    getUsdcAddressByChainId,
     getTokenDecimals,
     normalizeTokenSymbol,
     resolveNetworkConfig,
@@ -222,6 +229,7 @@ type AccountSwapDeps = {
     ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
     confirmQuote: (quote: RelayQuoteResponse) => Promise<boolean>
     auditQuote: (quote: RelayQuoteResponse) => void
+    simulateQuoteCalls: (input: Parameters<typeof simulateRelayQuote>[0]) => Promise<void>
 }
 
 function normalizeChain(value: string | undefined, env: EnvName): ChainName {
@@ -309,6 +317,11 @@ function getEstimatedOutputAmount(quote: RelayQuoteResponse): string {
     return '0'
 }
 
+function quoteNeedsReconfirmation(previous: RelayQuoteResponse, next: RelayQuoteResponse): boolean {
+    if (quoteExecutionFingerprint(previous) !== quoteExecutionFingerprint(next)) return true
+    return hasMaterialQuoteDrift(previous, next)
+}
+
 function hasMaterialQuoteDrift(previous: RelayQuoteResponse, next: RelayQuoteResponse): boolean {
     const previousOut = Number(previous.details?.currencyOut?.amountUsd ?? NaN)
     const nextOut = Number(next.details?.currencyOut?.amountUsd ?? NaN)
@@ -341,11 +354,60 @@ function getQuoteChainMismatch(
     return undefined
 }
 
+function quoteWatches(input: {
+    origin: Address
+    originIsNative: boolean
+    output: Address
+    outputIsNative: boolean
+    sameChain: boolean
+    chainId: number
+    extraTokens: Address[]
+}): SimulatedWatch[] {
+    const watches: SimulatedWatch[] = [
+        {
+            kind: 'native',
+            role: input.originIsNative
+                ? 'origin'
+                : input.sameChain && input.outputIsNative
+                  ? 'output'
+                  : 'other',
+        },
+    ]
+    if (!input.originIsNative) {
+        watches.push({ kind: 'erc20', token: getAddress(input.origin), role: 'origin' })
+    }
+    if (input.sameChain && !input.outputIsNative) {
+        watches.push({ kind: 'erc20', token: getAddress(input.output), role: 'output' })
+    }
+    const usdc = getUsdcAddressByChainId(input.chainId)
+    if (usdc) watches.push({ kind: 'erc20', token: usdc, role: 'other' })
+    const legacyUsdc = getUsdcAddressByChainId(input.chainId, true)
+    if (legacyUsdc && legacyUsdc.toLowerCase() !== usdc?.toLowerCase()) {
+        watches.push({ kind: 'erc20', token: legacyUsdc, role: 'other' })
+    }
+    for (const token of input.extraTokens) {
+        watches.push({ kind: 'erc20', token, role: 'other' })
+    }
+    return watches
+}
+
+function quotedMinimumOutput(quote: RelayQuoteResponse): bigint | undefined {
+    const raw = quote.details?.currencyOut?.minimumAmount ?? quote.details?.currencyOut?.amount
+    if (typeof raw === 'string' && /^[0-9]+$/.test(raw)) return BigInt(raw)
+    return undefined
+}
+
 function validateQuoteForExecution(
     quote: RelayQuoteResponse,
     sourceChainId: number,
-    limits: { amount: bigint; native: boolean; originCurrency: Address },
-): void {
+    limits: {
+        amount: bigint
+        native: boolean
+        originCurrency: Address
+        user: Address
+        recipient: Address
+    },
+): RelayQuoteReview {
     if (quote.steps.length === 0) {
         throw new AccountSwapError('QUOTE_FAILED', 'relay.link returned no executable steps.')
     }
@@ -366,11 +428,13 @@ function validateQuoteForExecution(
     }
 
     try {
-        reviewRelayQuote(quote, {
+        return reviewRelayQuote(quote, {
             sourceChainId,
             inputAmount: limits.amount,
             inputIsNative: limits.native,
             originCurrency: limits.originCurrency,
+            user: limits.user,
+            recipient: limits.recipient,
         })
     } catch (error) {
         if (error instanceof RelayQuoteRejected) {
@@ -498,6 +562,7 @@ function getDefaultDeps(): AccountSwapDeps {
         executeSignedCalls,
         confirmQuote: async () => true,
         auditQuote: () => {},
+        simulateQuoteCalls: (input) => simulateRelayQuote(input),
     }
 }
 
@@ -657,7 +722,13 @@ async function maybeRefreshQuoteAfterConfirmation(input: {
     request: Parameters<typeof getQuote>[0]
     options: AccountSwapOptions
     deps: Pick<AccountSwapDeps, 'getQuote'>
-    limits: { amount: bigint; native: boolean; originCurrency: Address }
+    limits: {
+        amount: bigint
+        native: boolean
+        originCurrency: Address
+        user: Address
+        recipient: Address
+    }
 }): Promise<{ quote: RelayQuoteResponse; needsReconfirmation: boolean }> {
     if (input.options.yes || Date.now() - input.confirmedAt <= QUOTE_STALE_MS) {
         return { quote: input.initialQuote, needsReconfirmation: false }
@@ -667,7 +738,7 @@ async function maybeRefreshQuoteAfterConfirmation(input: {
     validateQuoteForExecution(refreshedQuote, input.request.originChainId, input.limits)
     return {
         quote: refreshedQuote,
-        needsReconfirmation: hasMaterialQuoteDrift(input.initialQuote, refreshedQuote),
+        needsReconfirmation: quoteNeedsReconfirmation(input.initialQuote, refreshedQuote),
     }
 }
 
@@ -816,12 +887,54 @@ export async function executeAccountSwap(
             amount: parsedAmount.baseUnits,
             native: fromToken === 'ETH',
             originCurrency: quoteRequest.originCurrency,
+            user: sender,
+            recipient,
         }
-        validateQuoteForExecution(quote, quoteRequest.originChainId, quoteLimits)
+        let review = validateQuoteForExecution(quote, quoteRequest.originChainId, quoteLimits)
+        const sameChain = quoteRequest.originChainId === quoteRequest.destinationChainId
+
+        const simulateQuote = async (current: RelayQuoteResponse, currentReview: RelayQuoteReview) => {
+            const watches = quoteWatches({
+                origin: quoteRequest.originCurrency,
+                originIsNative: fromToken === 'ETH',
+                output: quoteRequest.destinationCurrency,
+                outputIsNative: toToken === 'ETH',
+                sameChain,
+                chainId: quoteRequest.originChainId,
+                extraTokens: currentReview.tokens,
+            })
+            try {
+                await deps.simulateQuoteCalls({
+                    rpcUrl: effectiveNetwork.rpcUrl,
+                    chainId: quoteRequest.originChainId,
+                    user: sender,
+                    calls: stepsToRelayerCalls(current.steps).map((call) => ({
+                        to: call.target,
+                        data: call.data,
+                        value: call.value,
+                    })),
+                    watches,
+                    cap: currentReview.cap,
+                    sameChain,
+                    minimumOutput: sameChain ? quotedMinimumOutput(current) : undefined,
+                })
+            } catch (error) {
+                if (error instanceof AccountSwapError) throw error
+                if (error instanceof RelayQuoteRejected || error instanceof RelaySimulationRejected) {
+                    throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
+                }
+                throw new AccountSwapError(
+                    'QUOTE_FAILED',
+                    'relay.link quote could not be simulated. Refusing to sign.',
+                    { cause: error },
+                )
+            }
+        }
 
         // `yes` does not skip this review. It only skips refreshing a quote that
         // went stale while the human was confirming.
         for (let attempt = 1; attempt <= MAX_CONFIRMATION_ATTEMPTS; attempt += 1) {
+            await simulateQuote(quote, review)
             const confirmedAt = Date.now()
             const confirmed = await deps.confirmQuote(quote)
             if (!confirmed) {
@@ -840,10 +953,11 @@ export async function executeAccountSwap(
             if (!refresh.needsReconfirmation) {
                 break
             }
+            review = validateQuoteForExecution(quote, quoteRequest.originChainId, quoteLimits)
             if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
                 throw new AccountSwapError(
                     'QUOTE_FAILED',
-                    'Quote changed materially too many times during confirmation. Re-run the command and confirm promptly, or use --yes if appropriate.',
+                    'Quote changed materially too many times during confirmation. Re-run the command and confirm promptly.',
                 )
             }
         }

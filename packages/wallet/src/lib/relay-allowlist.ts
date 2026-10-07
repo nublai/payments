@@ -1,4 +1,12 @@
-import { decodeFunctionData, erc20Abi, getAddress, type Address, type Hex } from 'viem'
+import {
+    decodeFunctionData,
+    erc20Abi,
+    getAddress,
+    zeroAddress,
+    type Address,
+    type Hex,
+} from 'viem'
+import { hashRelayOrder, orderPayees, RelayOrderRejected } from './relay-order'
 import type { RelayQuoteResponse } from './relay-link'
 
 /**
@@ -88,6 +96,30 @@ const CALL_ALLOWLIST: Record<number, readonly RelayContract[]> = {
     137: [RELAY_V3_ROUTER, RELAY_V3_APPROVAL_PROXY, RELAY_DEPOSITORY],
 }
 
+const multicallAbi = [
+    {
+        name: 'multicall',
+        type: 'function',
+        stateMutability: 'payable',
+        inputs: [
+            {
+                name: 'calls',
+                type: 'tuple[]',
+                components: [
+                    { name: 'target', type: 'address' },
+                    { name: 'allowFailure', type: 'bool' },
+                    { name: 'value', type: 'uint256' },
+                    { name: 'callData', type: 'bytes' },
+                ],
+            },
+            { name: 'refundTo', type: 'address' },
+            { name: 'nftRecipient', type: 'address' },
+            { name: 'metadata', type: 'bytes' },
+        ],
+        outputs: [],
+    },
+] as const
+
 const transferAndMulticallAbi = [
     {
         name: 'transferAndMulticall',
@@ -129,18 +161,26 @@ export type RelayQuoteCheck = {
     inputAmount: bigint
     inputIsNative: boolean
     originCurrency: Address
+    user: Address
+    recipient: Address
 }
 
-type ReviewedCall = {
+export type RelayQuoteReview = {
+    cap: bigint
+    tokens: Address[]
+}
+
+type InnerCall = {
     target: Address
-    targetName?: string
     selector: string
     functionName: string
-    value: bigint
-    chainId: number
-    approveSpender?: Address
-    approveSpenderName?: string
-    approveAmount?: bigint
+}
+
+type PartyCall = {
+    refundTo?: Address
+    nftRecipient?: Address
+    depositor?: Address
+    innerCalls?: InnerCall[]
 }
 
 function contractsFor(chainId: number): readonly RelayContract[] | undefined {
@@ -207,56 +247,235 @@ function decodeApprove(data: Hex): { spender: Address; amount: bigint } {
     }
 }
 
-function assertDepositErc20(input: { data: Hex; cap: bigint; originCurrency: Address }): void {
-    if (input.data.length < 2 + 8 + 64 * 3) {
+function sameAddress(left: Address, right: Address): boolean {
+    return left.toLowerCase() === right.toLowerCase()
+}
+
+function isUserOrZero(address: Address, user: Address): boolean {
+    return sameAddress(address, zeroAddress) || sameAddress(address, user)
+}
+
+function assertParty(address: Address, user: Address, kind: 'refundTo' | 'nftRecipient' | 'depositor'): void {
+    if (isUserOrZero(address, user)) return
+    if (kind === 'refundTo') {
+        throw new RelayQuoteRejected(
+            `relay.link quote refunds to ${address}, which is not the user.`,
+        )
+    }
+    if (kind === 'nftRecipient') {
+        throw new RelayQuoteRejected(
+            `relay.link quote sends NFTs to ${address}, which is not the user.`,
+        )
+    }
+    throw new RelayQuoteRejected(
+        `relay.link quote deposits for ${address}, which is not the user.`,
+    )
+}
+
+function innerCallOf(target: Address, data: Hex): InnerCall {
+    const selector = data.length >= 10 ? data.slice(0, 10).toLowerCase() : '0x'
+    const name =
+        FORBIDDEN_SELECTORS[selector] ??
+        (selector === APPROVE_SELECTOR ? 'approve' : undefined) ??
+        (selector === '0x9bb43718' ? 'cleanupErc20s' : undefined) ??
+        (selector === '0xa6bd8c96' ? 'cleanupNative' : undefined) ??
+        selector
+    return { target, selector, functionName: name }
+}
+
+function decodeMulticall(data: Hex, user: Address): PartyCall {
+    try {
+        const decoded = decodeFunctionData({ abi: multicallAbi, data })
+        const [calls, refundTo, nftRecipient] = decoded.args
+        assertParty(getAddress(refundTo), user, 'refundTo')
+        assertParty(getAddress(nftRecipient), user, 'nftRecipient')
+        return {
+            refundTo: getAddress(refundTo),
+            nftRecipient: getAddress(nftRecipient),
+            innerCalls: calls.map((call) => innerCallOf(getAddress(call.target), call.callData)),
+        }
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) throw error
+        throw new RelayQuoteRejected('relay.link quote multicall calldata is invalid.', {
+            cause: error,
+        })
+    }
+}
+
+function decodeDepositNative(data: Hex, user: Address): { depositor: Address; id: Hex } {
+    if (data.length !== 2 + 8 + 64 * 2) {
+        throw new RelayQuoteRejected('relay.link quote depositNative calldata is incomplete.')
+    }
+    try {
+        const depositor = getAddress(`0x${data.slice(10 + 24, 10 + 64)}`)
+        const id = `0x${data.slice(10 + 64, 10 + 64 * 2)}` as Hex
+        assertParty(depositor, user, 'depositor')
+        return { depositor, id }
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) throw error
+        throw new RelayQuoteRejected('relay.link quote depositNative calldata is invalid.', {
+            cause: error,
+        })
+    }
+}
+
+function decodeDepositErc20(
+    data: Hex,
+    user: Address,
+    originCurrency: Address,
+    inputIsNative: boolean,
+): { depositor: Address; token: Address; amount: bigint; id: Hex } {
+    if (data.length !== 2 + 8 + 64 * 4) {
         throw new RelayQuoteRejected('relay.link quote depositErc20 calldata is incomplete.')
     }
+    let depositor: Address
     let token: Address
     let amount: bigint
+    let id: Hex
     try {
-        token = getAddress(`0x${input.data.slice(10 + 64 + 24, 10 + 64 + 64)}`)
-        amount = BigInt(`0x${input.data.slice(10 + 64 * 2, 10 + 64 * 3)}`)
+        depositor = getAddress(`0x${data.slice(10 + 24, 10 + 64)}`)
+        token = getAddress(`0x${data.slice(10 + 64 + 24, 10 + 64 * 2)}`)
+        amount = BigInt(`0x${data.slice(10 + 64 * 2, 10 + 64 * 3)}`)
+        id = `0x${data.slice(10 + 64 * 3, 10 + 64 * 4)}` as Hex
     } catch (error) {
         throw new RelayQuoteRejected('relay.link quote depositErc20 calldata is invalid.', {
             cause: error,
         })
     }
-    if (token.toLowerCase() !== input.originCurrency.toLowerCase()) {
+    assertParty(depositor, user, 'depositor')
+    if (inputIsNative || !sameAddress(token, originCurrency)) {
         throw new RelayQuoteRejected(
             `relay.link quote deposits ${token}, which is not the quoted input token.`,
         )
     }
-    if (amount > input.cap) {
-        throw new RelayQuoteRejected(
-            `relay.link quote deposits ${amount} base units, above the quoted input of ${input.cap}.`,
-        )
-    }
+    return { depositor, token, amount, id }
 }
 
-function assertTransferAndMulticall(data: Hex, cap: bigint): void {
-    let amounts: readonly bigint[]
+function decodeTransferAndMulticall(
+    data: Hex,
+    user: Address,
+    originCurrency: Address,
+    inputIsNative: boolean,
+): { pulls: { token: Address; amount: bigint }[]; party: PartyCall } {
     try {
         const decoded = decodeFunctionData({ abi: transferAndMulticallAbi, data })
-        amounts = decoded.args[1]
+        const [tokens, amounts, calls, refundTo, nftRecipient] = decoded.args
+        assertParty(getAddress(refundTo), user, 'refundTo')
+        assertParty(getAddress(nftRecipient), user, 'nftRecipient')
+        if (tokens.length !== amounts.length) {
+            throw new RelayQuoteRejected('relay.link quote transferAndMulticall calldata is invalid.')
+        }
+        const pulls = tokens.map((token, index) => {
+            const address = getAddress(token)
+            const amount = amounts[index] ?? 0n
+            if (inputIsNative || !sameAddress(address, originCurrency)) {
+                throw new RelayQuoteRejected(
+                    `relay.link quote pulls ${address}, which is not the quoted input token.`,
+                )
+            }
+            return { token: address, amount }
+        })
+        return {
+            pulls,
+            party: {
+                refundTo: getAddress(refundTo),
+                nftRecipient: getAddress(nftRecipient),
+                innerCalls: calls.map((call) =>
+                    innerCallOf(getAddress(call.target), call.callData),
+                ),
+            },
+        }
     } catch (error) {
+        if (error instanceof RelayQuoteRejected) throw error
         throw new RelayQuoteRejected('relay.link quote transferAndMulticall calldata is invalid.', {
             cause: error,
         })
     }
-    let sum = 0n
-    for (const amount of amounts) {
-        if (amount > cap) {
+}
+
+function addAmount(totals: Map<string, bigint>, token: Address, amount: bigint): void {
+    const key = token.toLowerCase()
+    totals.set(key, (totals.get(key) ?? 0n) + amount)
+}
+
+function assertWithinCap(totals: Map<string, bigint>, cap: bigint, kind: 'approves' | 'pulls'): void {
+    for (const [, sum] of totals) {
+        if (sum > cap) {
             throw new RelayQuoteRejected(
-                `relay.link quote pulls ${amount} base units, above the quoted input of ${cap}.`,
+                kind === 'approves'
+                    ? `relay.link quote approves ${sum} base units, above the quoted input of ${cap}.`
+                    : `relay.link quote pulls ${sum} base units, above the quoted input of ${cap}.`,
             )
         }
-        sum += amount
     }
-    if (sum > cap) {
+}
+
+function bindOrder(quote: RelayQuoteResponse, check: RelayQuoteCheck, depositIds: Hex[]): void {
+    const order = quote.protocol?.v2
+    if (depositIds.length === 0 && !order?.orderData && !order?.orderId) return
+    let orderHash: Hex
+    try {
+        orderHash = hashRelayOrder(quote.protocol?.v2?.orderData)
+    } catch (error) {
+        if (error instanceof RelayOrderRejected) {
+            throw new RelayQuoteRejected(error.message, { cause: error })
+        }
+        throw error
+    }
+    const quotedId = quote.protocol?.v2?.orderId
+    if (quotedId && quotedId.toLowerCase() !== orderHash.toLowerCase()) {
         throw new RelayQuoteRejected(
-            `relay.link quote pulls ${sum} base units, above the quoted input of ${cap}.`,
+            `relay.link quote order id ${quotedId} does not match the order hash ${orderHash}.`,
         )
     }
+    for (const id of depositIds) {
+        if (id.toLowerCase() !== orderHash.toLowerCase()) {
+            throw new RelayQuoteRejected(
+                `relay.link quote deposit id ${id} does not match the order hash ${orderHash}.`,
+            )
+        }
+    }
+    const payees = orderPayees(quote.protocol?.v2?.orderData)
+    for (const recipient of payees.outputs) {
+        let address: Address
+        try {
+            address = getAddress(recipient)
+        } catch (error) {
+            throw new RelayQuoteRejected('relay.link quote output recipient is not an address.', {
+                cause: error,
+            })
+        }
+        if (!sameAddress(address, check.user) && !sameAddress(address, check.recipient)) {
+            throw new RelayQuoteRejected(
+                `relay.link quote pays ${address}, which is not the user or the bridge recipient.`,
+            )
+        }
+    }
+    for (const recipient of payees.refunds) {
+        let address: Address
+        try {
+            address = getAddress(recipient)
+        } catch (error) {
+            throw new RelayQuoteRejected('relay.link quote refund recipient is not an address.', {
+                cause: error,
+            })
+        }
+        if (!sameAddress(address, check.user) && !sameAddress(address, check.recipient)) {
+            throw new RelayQuoteRejected(
+                `relay.link quote refunds the order to ${address}, which is not the user or the bridge recipient.`,
+            )
+        }
+    }
+}
+
+export function quoteExecutionFingerprint(quote: RelayQuoteResponse): string {
+    const calls = incompleteItems(quote).map(
+        (item) =>
+            `${item.data.chainId}|${item.data.to.toLowerCase()}|${item.data.value}|${item.data.data.toLowerCase()}`,
+    )
+    const order = quote.protocol?.v2
+    const orderText = order ? JSON.stringify({ orderId: order.orderId, orderData: order.orderData }) : ''
+    return `${calls.join(';')}|${orderText}`
 }
 
 function incompleteItems(quote: RelayQuoteResponse) {
@@ -270,12 +489,17 @@ function incompleteItems(quote: RelayQuoteResponse) {
 export function reviewRelayQuote(
     quote: RelayQuoteResponse,
     check: RelayQuoteCheck,
-): ReviewedCall[] {
+): RelayQuoteReview {
     const cap = quotedInputCap(check.inputAmount, quote)
     const contracts = contractsFor(check.sourceChainId)
+    const user = getAddress(check.user)
 
     let nativeValue = 0n
-    const reviewed: ReviewedCall[] = []
+    const approveTotals = new Map<string, bigint>()
+    const pullTotals = new Map<string, bigint>()
+    const depositIds: Hex[] = []
+    const tokens = new Set<string>()
+    if (!check.inputIsNative) tokens.add(getAddress(check.originCurrency))
     for (const item of incompleteItems(quote)) {
         if (item.data.chainId !== check.sourceChainId) {
             throw new RelayQuoteRejected(
@@ -300,11 +524,6 @@ export function reviewRelayQuote(
             )
         }
 
-        let approveSpender: Address | undefined
-        let approveSpenderName: string | undefined
-        let approveAmount: bigint | undefined
-        let functionName = functionNameFor(selector, contract)
-
         if (selector === APPROVE_SELECTOR) {
             if (value !== 0n) {
                 throw new RelayQuoteRejected(
@@ -317,15 +536,13 @@ export function reviewRelayQuote(
                     `relay.link quote approves ${approve.spender}, which is not an allowlisted relay.link contract.`,
                 )
             }
-            if (approve.amount > cap) {
+            if (check.inputIsNative || !sameAddress(target, check.originCurrency)) {
                 throw new RelayQuoteRejected(
-                    `relay.link quote approves ${approve.amount} base units, above the quoted input of ${cap}.`,
+                    `relay.link quote approves ${target}, which is not the quoted input token.`,
                 )
             }
-            approveSpender = approve.spender
-            approveSpenderName = spenderName(check.sourceChainId, approve.spender)
-            approveAmount = approve.amount
-            functionName = 'approve'
+            addAmount(approveTotals, target, approve.amount)
+            tokens.add(target)
         } else if (!contracts) {
             throw new RelayQuoteRejected(
                 `relay.link has no allowlisted router on chain ${check.sourceChainId}. Refusing to sign.`,
@@ -338,24 +555,6 @@ export function reviewRelayQuote(
             throw new RelayQuoteRejected(
                 `relay.link quote calls ${contract.name} (${target}) with unknown selector ${selector}.`,
             )
-        } else if (selector === DEPOSIT_ERC20_SELECTOR) {
-            if (value !== 0n) {
-                throw new RelayQuoteRejected(
-                    `relay.link quote attaches native value ${value}, which this quote did not ask to spend.`,
-                )
-            }
-            assertDepositErc20({
-                data: item.data.data,
-                cap,
-                originCurrency: check.originCurrency,
-            })
-        } else if (selector === TRANSFER_AND_MULTICALL_SELECTOR) {
-            if (value !== 0n) {
-                throw new RelayQuoteRejected(
-                    `relay.link quote attaches native value ${value}, which this quote did not ask to spend.`,
-                )
-            }
-            assertTransferAndMulticall(item.data.data, cap)
         } else if (!VALUE_SELECTORS.has(selector) || !check.inputIsNative) {
             if (value !== 0n) {
                 throw new RelayQuoteRejected(
@@ -364,18 +563,35 @@ export function reviewRelayQuote(
             }
         }
 
+        if (selector === DEPOSIT_NATIVE_SELECTOR && contract) {
+            const decoded = decodeDepositNative(item.data.data, user)
+            depositIds.push(decoded.id)
+        } else if (selector === DEPOSIT_ERC20_SELECTOR && contract) {
+            const decoded = decodeDepositErc20(
+                item.data.data,
+                user,
+                check.originCurrency,
+                check.inputIsNative,
+            )
+            addAmount(pullTotals, decoded.token, decoded.amount)
+            tokens.add(decoded.token)
+            depositIds.push(decoded.id)
+        } else if (selector === TRANSFER_AND_MULTICALL_SELECTOR && contract) {
+            const decoded = decodeTransferAndMulticall(
+                item.data.data,
+                user,
+                check.originCurrency,
+                check.inputIsNative,
+            )
+            for (const pull of decoded.pulls) {
+                addAmount(pullTotals, pull.token, pull.amount)
+                tokens.add(pull.token)
+            }
+        } else if (selector === MULTICALL_SELECTOR && contract) {
+            decodeMulticall(item.data.data, user)
+        }
+
         nativeValue += value
-        reviewed.push({
-            target,
-            targetName: contract?.name,
-            selector,
-            functionName,
-            value,
-            chainId: item.data.chainId,
-            approveSpender,
-            approveSpenderName,
-            approveAmount,
-        })
     }
 
     if (nativeValue > (check.inputIsNative ? cap : 0n)) {
@@ -383,11 +599,58 @@ export function reviewRelayQuote(
             `relay.link quote attaches native value ${nativeValue}, above the quoted input of ${cap}.`,
         )
     }
-    return reviewed
+    assertWithinCap(approveTotals, cap, 'approves')
+    assertWithinCap(pullTotals, cap, 'pulls')
+    bindOrder(quote, { ...check, user }, depositIds)
+    return { cap, tokens: [...tokens].map((token) => getAddress(token)) }
+}
+
+function partySuffix(data: Hex, selector: string): { suffix: string; inners: string[] } {
+    try {
+        if (selector === APPROVE_SELECTOR) return { suffix: '', inners: [] }
+        if (selector === MULTICALL_SELECTOR) {
+            const decoded = decodeFunctionData({ abi: multicallAbi, data })
+            const refundTo = getAddress(decoded.args[1])
+            const nftRecipient = getAddress(decoded.args[2])
+            const inners = decoded.args[0].map((call, index) => {
+                const inner = innerCallOf(getAddress(call.target), call.callData)
+                return `    inner ${index + 1}. ${inner.target} ${inner.functionName} (${inner.selector})`
+            })
+            return {
+                suffix: ` refundTo ${refundTo} nftRecipient ${nftRecipient}`,
+                inners,
+            }
+        }
+        if (selector === TRANSFER_AND_MULTICALL_SELECTOR) {
+            const decoded = decodeFunctionData({ abi: transferAndMulticallAbi, data })
+            const refundTo = getAddress(decoded.args[3])
+            const nftRecipient = getAddress(decoded.args[4])
+            const inners = decoded.args[2].map((call, index) => {
+                const inner = innerCallOf(getAddress(call.target), call.callData)
+                return `    inner ${index + 1}. ${inner.target} ${inner.functionName} (${inner.selector})`
+            })
+            return {
+                suffix: ` refundTo ${refundTo} nftRecipient ${nftRecipient}`,
+                inners,
+            }
+        }
+        if (selector === DEPOSIT_NATIVE_SELECTOR && data.length >= 10 + 64) {
+            const depositor = getAddress(`0x${data.slice(10 + 24, 10 + 64)}`)
+            return { suffix: ` depositor ${depositor}`, inners: [] }
+        }
+        if (selector === DEPOSIT_ERC20_SELECTOR && data.length >= 10 + 64) {
+            const depositor = getAddress(`0x${data.slice(10 + 24, 10 + 64)}`)
+            return { suffix: ` depositor ${depositor}`, inners: [] }
+        }
+    } catch {
+        return { suffix: '', inners: [] }
+    }
+    return { suffix: '', inners: [] }
 }
 
 export function formatRelayQuoteCalls(quote: RelayQuoteResponse): string {
     const lines: string[] = []
+    let callIndex = 0
     for (const item of incompleteItems(quote)) {
         let target = item.data.to
         let targetName: string | undefined
@@ -415,9 +678,16 @@ export function formatRelayQuoteCalls(quote: RelayQuoteResponse): string {
                 approve = ' spender unknown'
             }
         }
+        const party = partySuffix(item.data.data as Hex, selector)
+        callIndex += 1
         lines.push(
-            `  ${lines.length + 1}. ${targetLabel} ${functionName} (${selector})${approve} value ${value}`,
+            `  ${callIndex}. ${targetLabel} ${functionName} (${selector})${approve}${party.suffix} value ${value}`,
         )
+        lines.push(...party.inners)
+    }
+    const payees = orderPayees(quote.protocol?.v2?.orderData)
+    if (payees.outputs.length > 0) {
+        lines.push(`Output recipient: ${payees.outputs.join(', ')}`)
     }
     if (lines.length === 0) return ''
     return `Calls:\n${lines.join('\n')}\n`

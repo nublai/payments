@@ -1,7 +1,49 @@
 import { expect, mock, test } from 'bun:test'
 import { JsonRpcClientError, type GetKeysResponse } from '@nubl/relayer-client'
-import { zeroAddress } from 'viem'
-import { executeAccountSwap, resolveAccountSwapPassword } from '../src/lib/account-swap'
+import { encodeFunctionData, zeroAddress, type Address, type Hex } from 'viem'
+import {
+    executeAccountSwap as executeAccountSwapImpl,
+    resolveAccountSwapPassword,
+} from '../src/lib/account-swap'
+
+const USER = '0x1111111111111111111111111111111111111111' as Address
+const EMPTY_ROUTER_CALL: Hex = encodeFunctionData({
+    abi: [
+        {
+            name: 'multicall',
+            type: 'function',
+            stateMutability: 'payable',
+            inputs: [
+                {
+                    name: 'calls',
+                    type: 'tuple[]',
+                    components: [
+                        { name: 'target', type: 'address' },
+                        { name: 'allowFailure', type: 'bool' },
+                        { name: 'value', type: 'uint256' },
+                        { name: 'callData', type: 'bytes' },
+                    ],
+                },
+                { name: 'refundTo', type: 'address' },
+                { name: 'nftRecipient', type: 'address' },
+                { name: 'metadata', type: 'bytes' },
+            ],
+            outputs: [],
+        },
+    ],
+    functionName: 'multicall',
+    args: [[], USER, zeroAddress, '0x'],
+})
+
+function executeAccountSwap(
+    options: Parameters<typeof executeAccountSwapImpl>[0],
+    deps?: Parameters<typeof executeAccountSwapImpl>[1],
+) {
+    return executeAccountSwapImpl(options, {
+        simulateQuoteCalls: async () => {},
+        ...deps,
+    })
+}
 import { LoginProfileError } from '../src/lib/keystore'
 import { PromptCancelledError } from '../src/lib/password-readline'
 import { RelayLinkError } from '../src/lib/relay-link'
@@ -68,7 +110,7 @@ function makeQuote(overrides?: Record<string, unknown>) {
                         status: 'incomplete',
                         data: {
                             to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
-                            data: '0xcd6e13f7',
+                            data: EMPTY_ROUTER_CALL,
                             value: '0',
                             chainId: 8453,
                         },
@@ -257,7 +299,7 @@ test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
         {
             target: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
             value: 0n,
-            data: '0xcd6e13f7',
+            data: EMPTY_ROUTER_CALL,
         },
     ])
     const sentSignature = (sendPreparedCalls as any).mock.calls[0]?.[0]?.signature as string
@@ -547,7 +589,7 @@ test('executeAccountSwap rejects bridge when quote has no requestId before execu
                         status: 'incomplete',
                         data: {
                             to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
-                            data: '0xcd6e13f7',
+                            data: EMPTY_ROUTER_CALL,
                             value: '0',
                             chainId: 8453,
                         },
@@ -956,36 +998,41 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
     const originalNow = Date.now
     Date.now = () => nowValues[Math.min(nowIndex++, nowValues.length - 1)] ?? 95_500
 
+    let caught: unknown
     try {
-        await expect(
-            executeAccountSwap(
-                {
-                    env: 'prod',
-                    fromToken: 'USDC',
-                    toToken: 'ETH',
-                    amount: '1',
-                    sourceChain: 'base',
-                    password: 'pw',
-                    keystorePath: '/tmp/alice.json',
-                },
-                {
-                    readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
-                    decryptSessionKeystore: mock(async () => ({
-                        sessionPrivateKey:
-                            '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
-                    })),
-                    readTokenBalance: mock(async () => 2_000000n),
-                    getQuote: getQuote as unknown as any,
-                    confirmQuote,
-                },
-            ),
-        ).rejects.toMatchObject({
-            code: 'QUOTE_FAILED',
-            message: expect.stringContaining('Quote changed materially too many times'),
-        })
+        await executeAccountSwap(
+            {
+                env: 'prod',
+                fromToken: 'USDC',
+                toToken: 'ETH',
+                amount: '1',
+                sourceChain: 'base',
+                password: 'pw',
+                keystorePath: '/tmp/alice.json',
+            },
+            {
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                decryptSessionKeystore: mock(async () => ({
+                    sessionPrivateKey:
+                        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
+                })),
+                readTokenBalance: mock(async () => 2_000000n),
+                getQuote: getQuote as unknown as any,
+                confirmQuote,
+            },
+        )
+    } catch (error) {
+        caught = error
     } finally {
         Date.now = originalNow
     }
+
+    expect(caught).toMatchObject({
+        code: 'QUOTE_FAILED',
+        message: expect.stringContaining('Quote changed materially too many times'),
+    })
+    const driftMessage = String((caught as { message?: unknown }).message ?? '')
+    expect(driftMessage.includes('--yes')).toBe(false)
 
     expect(confirmQuote).toHaveBeenCalledTimes(3)
     expect(getQuote).toHaveBeenCalledTimes(4)
