@@ -133,9 +133,12 @@ BEFORE_SENDER="$(balance_of "$DELEGATED")"
 BEFORE_RECIP="$(balance_of "$RECIPIENT")"
 
 echo "Sending 1 USDC..."
+# send requires a human to type SEND USDC on a TTY. MCP and a non-TTY tw cannot
+# do that. This script is the operator: it allocates a terminal and types the phrase.
 SEND_JSON="$(
   cd "$ROOT/packages/wallet"
-  bun ./src/cli.ts send 1 "$RECIPIENT" \
+  python3 "$ROOT/scripts/tw-tty-confirm.py" "SEND USDC" \
+    bun ./src/cli.ts send 1 "$RECIPIENT" \
     --env dev \
     --keystore-path "$KEYSTORE" \
     --format json

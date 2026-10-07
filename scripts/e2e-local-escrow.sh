@@ -241,9 +241,12 @@ print(f"escrow status {status}")
 PY
 
 echo "Settling escrow..."
+# Oracle-key settle requires a human to type SIGN ESCROW SETTLEMENT on a TTY.
+# This script is the operator: it allocates a terminal and types the phrase.
 SETTLE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out bun ./src/cli.ts escrow settle "$ESCROW_ID" \
+  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SIGN ESCROW SETTLEMENT" \
+    bun ./src/cli.ts escrow settle "$ESCROW_ID" \
     --settlement-id "$ORDER_ID" \
     --oracle "$ORACLE" \
     --env dev \

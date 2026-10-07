@@ -361,6 +361,18 @@ Commands that need keystore decryption accept passwords through three channels (
 
 The `passwordDeps()` helper in `cli.ts` wires all three. The `password-readline.ts` module provides the interactive prompts (password input with masking, new-password with confirmation).
 
+`TW_PASSWORD` is not a confirmation. These operations require a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). `tw --mcp` and any non-TTY `tw` are refused before keys are printed, RPC is contacted, or a signature is produced:
+
+- `account export --show-private` — type `EXPORT PRIVATE KEYS`
+- `send` — type `SEND USDC`
+- `swap` and `bridge` — confirm the quote in the terminal. `--yes` / `yes: true` is ignored outside that terminal
+- `session create --full-access` — type `CREATE FULL ACCESS SESSION`
+- `session rotate --full-access` — type `ROTATE FULL ACCESS SESSION`
+- `account passkey` — type `AUTHORIZE PASSKEY`. The `privateKey` argument is not accepted over MCP
+- `escrow settle` when signing with an oracle private key — type `SIGN ESCROW SETTLEMENT`. The `oraclePrivateKey` argument is not accepted over MCP
+
+Default-session USDC flows that do not spend (`account create`, escrow create/status, metadata export) are unchanged. Local `e2e:local-payment` and `e2e:local-escrow` type `SEND USDC` and `SIGN ESCROW SETTLEMENT` through `scripts/tw-tty-confirm.py` because those scripts are the operator, not an MCP client.
+
 ## Critical Gotchas
 
 ### 1) `send` signature format
