@@ -4,7 +4,12 @@ import { unwrapParams } from '../../lib/rpc-utils'
 import { isLocalDevContext } from '../../config/runtime-context'
 import { parseAuthProtectedMethods } from '../policy'
 
-const PREPARE_OR_SEND = new Set(['wallet_prepareCalls', 'wallet_sendPreparedCalls'])
+const BOUND_METHODS = new Set([
+    'wallet_prepareCalls',
+    'wallet_sendPreparedCalls',
+    'wallet_prepareUpgradeAccount',
+    'wallet_upgradeAccount',
+])
 
 export interface AllowlistParse {
     addresses: Set<string>
@@ -38,10 +43,10 @@ export interface BoundAccount {
 }
 
 /**
- * `accounts === null` means the body has no prepare/send call to bind.
+ * `accounts === null` means the body has no prepare/send/upgrade call to bind.
  * An empty list means a bindable call was present but named no account.
  * `otherProtectedMethods` are protected methods in the same HTTP body that are
- * not prepare/send. Those require the allowlist; a prepare/send binding does not cover them.
+ * not bound. Those require the allowlist; a binding does not cover them.
  */
 export interface Erc8128Binding {
     accounts: BoundAccount[] | null
@@ -188,6 +193,18 @@ function accountsFromPrepare(params: Record<string, unknown> | undefined): Bound
     return [{ eoa, chainId: parseChainId(params?.chain_id) }]
 }
 
+function accountsFromUpgrade(
+    method: string,
+    params: Record<string, unknown> | undefined,
+): BoundAccount[] | null {
+    const source = method === 'wallet_upgradeAccount' ? params?.context : params
+    if (!source || typeof source !== 'object') return null
+    const record = source as { address?: unknown; chainId?: unknown }
+    const eoa = asAddress(record.address)
+    if (!eoa) return null
+    return [{ eoa, chainId: parseChainId(record.chainId) }]
+}
+
 /**
  * Accounts a signed HTTP request claims to act for, plus any other protected
  * methods in the same JSON-RPC batch. Auth is one decision for the whole body.
@@ -205,16 +222,18 @@ export function bindingFromRpcBody(
         if (!item || typeof item !== 'object') continue
         const record = item as { method?: unknown; params?: unknown }
         if (typeof record.method !== 'string') continue
-        if (protectedMethods.has(record.method) && !PREPARE_OR_SEND.has(record.method)) {
+        if (protectedMethods.has(record.method) && !BOUND_METHODS.has(record.method)) {
             otherProtectedMethods.push(record.method)
         }
-        if (!PREPARE_OR_SEND.has(record.method)) continue
+        if (!BOUND_METHODS.has(record.method)) continue
         sawBindable = true
         const params = unwrapParams<Record<string, unknown>>(record.params)
         const extracted =
             record.method === 'wallet_prepareCalls'
                 ? accountsFromPrepare(params)
-                : accountsFromSend(params)
+                : record.method === 'wallet_sendPreparedCalls'
+                  ? accountsFromSend(params)
+                  : accountsFromUpgrade(record.method, params)
         if (!extracted) return { accounts: [], otherProtectedMethods }
         accounts.push(...extracted)
     }
