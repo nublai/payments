@@ -35,10 +35,10 @@ block_timestamp = 1_680_220_800 # The value of block.timestamp in tests. March 3
 verbosity = 3 # The verbosity level to use during tests.
 ffi = true
 # This profile replaces fs_permissions instead of appending to default.
-# Deploys write deployments/envs, so release needs the same write access as default.
+# The only write path is ./deployments (deployments/envs JSON). ./out stays
+# read-only. ./deploy is not writable.
 fs_permissions = [
   { access = "read-write", path = "./deployments" },
-  { access = "read-write", path = "./deploy" },
   { access = "read", path = "./out" }
 ]
 gas_reports = ["*"] # The contracts to print gas reports for.

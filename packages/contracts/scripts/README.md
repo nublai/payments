@@ -96,6 +96,8 @@ Other:
 
 Compiler:
   FOUNDRY_PROFILE=release is hard-set for forge build and forge script.
+  This Foundry has no profile CLI flag. The release profile's only cheatcode
+  write path is ./deployments.
   Runtime bytecode must be <= 24576 bytes or the script exits before broadcast.
 ```
 

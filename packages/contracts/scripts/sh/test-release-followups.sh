@@ -827,6 +827,112 @@ PY
     fi
 }
 
+# Release profile write access is deployments/ only. Foundry 1.5 has no
+# --profile flag; deploy.sh selects the profile with FOUNDRY_PROFILE.
+release_can_write_deployments() {
+    local cfg probe inside outside_src outside_deploy code
+    if ! grep -q 'export FOUNDRY_PROFILE=release' "$SCRIPT_DIR/deploy.sh"; then
+        echo "deploy.sh does not set FOUNDRY_PROFILE=release" >&2
+        return 1
+    fi
+    if grep -q -- '--profile' "$SCRIPT_DIR/deploy.sh"; then
+        echo "deploy.sh passes --profile, which this Foundry rejects" >&2
+        return 1
+    fi
+    if ! grep -q 'bun run deploy:local' "$REPO_ROOT/scripts/e2e-local-payment.sh"; then
+        echo "e2e-local-payment does not deploy through deploy:local" >&2
+        return 1
+    fi
+    if ! grep -q 'bun run deploy:local' "$REPO_ROOT/scripts/e2e-local-escrow.sh"; then
+        echo "e2e-local-escrow does not deploy through deploy:local" >&2
+        return 1
+    fi
+    cfg="$(env -u FOUNDRY_PROFILE FOUNDRY_PROFILE=release forge config --json)"
+    python3 -c '
+import json, sys
+c = json.loads(sys.argv[1])
+writes = []
+for entry in c.get("fs_permissions") or []:
+    access = entry.get("access")
+    if access is True or access == "read-write":
+        writes.append(entry.get("path"))
+if writes != ["./deployments"]:
+    print("release write paths: " + repr(writes), file=sys.stderr)
+    sys.exit(1)
+if c.get("via_ir") is not True or c.get("optimizer_runs") != 200:
+    print("release profile is not via_ir with 200 runs", file=sys.stderr)
+    sys.exit(1)
+' "$cfg" || return 1
+
+    mkdir -p "$PROJECT_ROOT/cache"
+    probe="$PROJECT_ROOT/scripts/sol/FsProbe.s.sol"
+    inside="$PROJECT_ROOT/deployments/__fs_probe.json"
+    outside_src="$PROJECT_ROOT/src/__fs_probe.txt"
+    outside_deploy="$PROJECT_ROOT/deploy/__fs_probe.txt"
+    cleanup_probe() {
+        rm -f "$probe" "$inside" "$outside_src" "$outside_deploy"
+        rmdir "$PROJECT_ROOT/deploy" 2>/dev/null || true
+    }
+    cleanup_probe
+    trap cleanup_probe RETURN
+    mkdir -p "$PROJECT_ROOT/deploy"
+    cat >"$probe" <<'EOF'
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+import {Script} from "forge-std/Script.sol";
+contract FsProbe is Script {
+    function writeInside() external {
+        vm.writeFile("deployments/__fs_probe.json", "{\"ok\":true}");
+    }
+    function writeSrc() external {
+        vm.writeFile("src/__fs_probe.txt", "no");
+    }
+    function writeDeployDir() external {
+        vm.writeFile("deploy/__fs_probe.txt", "no");
+    }
+}
+EOF
+    env -u FOUNDRY_PROFILE FOUNDRY_PROFILE=release \
+        forge script "$probe:FsProbe" --sig "writeInside()" --offline \
+        >"$PROJECT_ROOT/cache/fs-probe-inside.out" 2>&1
+    if [[ ! -f "$inside" ]]; then
+        echo "release profile did not write deployments/" >&2
+        cat "$PROJECT_ROOT/cache/fs-probe-inside.out" >&2
+        return 1
+    fi
+    set +e
+    env -u FOUNDRY_PROFILE FOUNDRY_PROFILE=release \
+        forge script "$probe:FsProbe" --sig "writeSrc()" --offline \
+        >"$PROJECT_ROOT/cache/fs-probe-src.out" 2>&1
+    code=$?
+    set -e
+    if [[ "$code" -eq 0 || -f "$outside_src" ]]; then
+        echo "release profile wrote outside deployments/ (src)" >&2
+        return 1
+    fi
+    if ! grep -q "not allowed to be accessed for write operations" "$PROJECT_ROOT/cache/fs-probe-src.out"; then
+        echo "src write failed for a reason other than fs_permissions" >&2
+        cat "$PROJECT_ROOT/cache/fs-probe-src.out" >&2
+        return 1
+    fi
+    set +e
+    env -u FOUNDRY_PROFILE FOUNDRY_PROFILE=release \
+        forge script "$probe:FsProbe" --sig "writeDeployDir()" --offline \
+        >"$PROJECT_ROOT/cache/fs-probe-deploy.out" 2>&1
+    code=$?
+    set -e
+    if [[ "$code" -eq 0 || -f "$outside_deploy" ]]; then
+        echo "release profile wrote ./deploy" >&2
+        return 1
+    fi
+    if ! grep -q "not allowed to be accessed for write operations" "$PROJECT_ROOT/cache/fs-probe-deploy.out"; then
+        echo "./deploy write failed for a reason other than fs_permissions" >&2
+        cat "$PROJECT_ROOT/cache/fs-probe-deploy.out" >&2
+        return 1
+    fi
+    rm -f "$PROJECT_ROOT/cache/fs-probe-inside.out" "$PROJECT_ROOT/cache/fs-probe-src.out" "$PROJECT_ROOT/cache/fs-probe-deploy.out"
+}
+
 if [[ "${1:-}" == "--only" ]]; then
     "$2"
     exit $?
@@ -843,6 +949,7 @@ if release_tests_in_ci; then pass "CI runs release forge test"; else fail "CI ru
 if package_scripts_run_check; then pass "build:contracts and generate run the size check"; else fail "build:contracts and generate run the size check"; fi
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
+if release_can_write_deployments; then pass "release profile can write deployments/"; else fail "release profile can write deployments/"; fi
 if immutable_spans_are_masked; then pass "immutable spans are masked"; else fail "immutable spans are masked"; fi
 if resume_rebroadcast_refused; then pass "--resume is refused"; else fail "--resume is refused"; fi
 if selective_json_must_match_release; then pass "JSON dependency must match the release runtime"; else fail "JSON dependency must match the release runtime"; fi

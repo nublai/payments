@@ -465,6 +465,8 @@ deploy_to_chain() {
     export LZ_SETTLER_SIGNER="${LZ_SIGNER:-0x0000000000000000000000000000000000000000}"
 
     # Each value is one array element. Spaces and metacharacters are not evaluated.
+    # Foundry 1.5 selects the profile from FOUNDRY_PROFILE, set in clear_foundry_env.
+    # This forge has no profile CLI flag, so the script does not pass one.
     local -a forge_cmd=(
         forge
         script
