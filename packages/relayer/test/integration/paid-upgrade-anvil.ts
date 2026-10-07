@@ -173,6 +173,8 @@ async function main(): Promise<void> {
             RPC_31337: RPC_URL,
             CHAIN_IDS: String(CHAIN_ID),
             CONTEXT: 'local',
+            RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
+            RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: 'paid-upgrade-anvil',
             COINGECKO_API_URL: 'http://127.0.0.1:1',
             ORCHESTRATOR_31337: orchestrator,
@@ -225,6 +227,7 @@ async function main(): Promise<void> {
                                 chainId: body.chainId ?? CHAIN_ID,
                                 account: body.account ?? 'unknown',
                                 ip: typeof body.ip === 'string' ? body.ip : 'unknown',
+                                includeGlobal: body.action === 'reserve' || body.action === 'release',
                             })
                             if (body.action === 'peek') {
                                 return json({
@@ -497,12 +500,24 @@ async function main(): Promise<void> {
 
         const griefOwner = privateKeyToAccount(generatePrivateKey())
         const griefSession = privateKeyToAccount(generatePrivateKey())
-        await wallet.sendTransaction({
-            account: deployer,
-            chain,
-            to: griefOwner.address,
-            value: 1_000_000_000_000_000_000n,
+        const funded = await fetch(RPC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'anvil_setBalance',
+                params: [griefOwner.address, '0xDE0B6B3A7640000'],
+            }),
         })
+        const fundedBody = (await funded.json()) as { error?: { message?: string } }
+        assert(!fundedBody.error, `anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
+        const griefBalance = await publicClient.getBalance({ address: griefOwner.address })
+        assert(
+            griefBalance >= 1_000_000_000_000_000_000n,
+            `grief owner balance ${griefBalance} before approve`,
+        )
+        console.log(`grief owner funded balance ${griefBalance}`)
         await wallet.writeContract({
             address: USDC,
             abi: [
@@ -629,6 +644,9 @@ async function main(): Promise<void> {
         )
         const blocked = applyAnvilGas(gasState, { action: 'reserve-gas', gas: '2000000' })
         assert(blocked.allowed === false, 'daily gas budget accepted another hold')
+        console.log(
+            `grief leg complete selector=${griefErr} gasUsed=${griefReceipt.gasUsed} failures=${gasState.failures} spent=${gasState.spent}`,
+        )
 
         console.log(
             JSON.stringify({

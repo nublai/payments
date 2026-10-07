@@ -32,10 +32,10 @@ import type {
     PrepareCallsContext,
     PrepareCallsResult,
 } from '../schema/prepareCalls'
-import { upgradeClientIp } from './shared/upgrade-rate-limit'
 import {
     assertPaidUpgrade,
     assertPaidUpgradeRateCapacity,
+    requirePaidUpgradeClientIp,
     chainUsdcAddress,
     clampPaidUpgradePaymentMax,
     encodeSignedPreCall,
@@ -101,7 +101,9 @@ export async function handlePrepareCalls(
     }))
 
     const requestedUpgrade = typedParams.capabilities?.accountUpgrade
-    const paidUpgradeIp = upgradeClientIp(ctx.request)
+    const paidUpgradeIp = requestedUpgrade
+        ? requirePaidUpgradeClientIp(ctx.request, env)
+        : 'unknown'
     let upgradePreCallEncoding: Hex[] | undefined
     if (requestedUpgrade) {
         await assertPaidUpgradeRateCapacity(env, config.chainId, typedParams.from, paidUpgradeIp)

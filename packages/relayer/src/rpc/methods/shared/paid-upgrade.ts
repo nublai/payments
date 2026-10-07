@@ -16,6 +16,9 @@ import { orchestratorAbi } from '@nubl/contracts/abis'
 
 import type { Env } from '../../../types/env'
 import { getChainConfig as getChainAssetsConfig } from '../../../config/chains'
+import { isLocalDevContext } from '../../../config/runtime-context'
+import { deriveRelayerSignerAddress } from '../../../lib/hd-signer'
+import { selectSignerForEoa } from '../../../lib/pool-utils'
 import { logger } from '../../../lib/logger'
 import { isEip7702Delegated } from '../../../lib/viem-utils'
 import {
@@ -45,20 +48,24 @@ import {
     authorizationSignerMatchesAccount,
     parseSignature,
 } from './account-helpers'
-import { ipv6Prefix56, type RateBucket } from './upgrade-rate-limit'
+import { ipv6Prefix56, upgradeClientIp, type RateBucket } from './upgrade-rate-limit'
 
 export type PaidUpgradeRateAction = 'peek' | 'commit' | 'reserve' | 'release'
 
 /**
  * Paid-upgrade windows. These keys are not the sponsored identity buckets.
- * Address, IP, IPv6 /56, and the chain total share one 10 minute window.
- * A missing IP is still a bucket (`unknown`); it does not skip the ceiling.
+ * Address, IP, and IPv6 /56 share one 10 minute window on prepare and send.
+ * The chain total counts sends only (`includeGlobal`). Prepares do not take
+ * a global slot. On local, a missing IP is the `unknown` bucket. Stage and
+ * prod refuse that request before a bucket is written.
  */
 export function paidUpgradeRateBuckets(input: {
     chainId: number
     account: string
     ip: string
     globalLimit?: number
+    /** Send reserve and release. Prepare peek and commit omit the chain bucket. */
+    includeGlobal?: boolean
 }): RateBucket[] {
     const globalLimit = input.globalLimit ?? DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT
     const buckets: RateBucket[] = [
@@ -81,12 +88,29 @@ export function paidUpgradeRateBuckets(input: {
             windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
         })
     }
-    buckets.push({
-        key: `paid-upgrade:global:${input.chainId}`,
-        limit: globalLimit,
-        windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
-    })
+    if (input.includeGlobal) {
+        buckets.push({
+            key: `paid-upgrade:global:${input.chainId}`,
+            limit: globalLimit,
+            windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
+        })
+    }
     return buckets
+}
+
+/**
+ * Stage and prod require `cf-connecting-ip`. Local and dev keep the shared
+ * `unknown` bucket so a dev worker without the Cloudflare header still runs.
+ */
+export function requirePaidUpgradeClientIp(
+    request: Request | undefined,
+    env: { CONTEXT?: string },
+): string {
+    const ip = upgradeClientIp(request)
+    if (ip === 'unknown' && !isLocalDevContext(env)) {
+        throw new RpcError(INVALID_PARAMS, 'Paid upgrade client IP is required')
+    }
+    return ip
 }
 
 /**
@@ -165,10 +189,11 @@ export const PAID_UPGRADE_ADDRESS_LIMIT = 3
 export const PAID_UPGRADE_IP_LIMIT = 8
 
 /**
- * Paid upgrades per chain per 10 minutes. Sponsored upgrades allow 2,000.
- * Twenty is a short honest burst. `PAID_UPGRADE_GLOBAL_LIMIT` overrides it.
+ * Paid-upgrade sends per chain per 10 minutes. Prepares do not count.
+ * Sponsored upgrades allow 2,000. Sixty sends is G's launch ceiling
+ * (raised from 20 on 2026-10-07). `PAID_UPGRADE_GLOBAL_LIMIT` overrides it.
  */
-export const DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT = 20
+export const DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT = 60
 
 /**
  * Gas units reserved before a paid-upgrade broadcast. Above the measured
@@ -187,6 +212,16 @@ export const PAID_UPGRADE_GAS_HOLD = 500_000n
 export const DEFAULT_PAID_UPGRADE_DAILY_GAS_BUDGET = 2_000_000n
 
 export const PAID_UPGRADE_WINDOW_SECONDS = 10 * 60
+
+/** Receipt wait before the hold is left for the reconciler. Unset is 20 seconds. */
+export function paidUpgradeReceiptWaitMs(env: { PAID_UPGRADE_RECEIPT_WAIT_MS?: string }): number {
+    const text = env.PAID_UPGRADE_RECEIPT_WAIT_MS?.trim()
+    if (!text) return 20_000
+    if (!/^[0-9]+$/.test(text)) return 20_000
+    const parsed = Number(text)
+    if (!Number.isSafeInteger(parsed) || parsed < 1) return 20_000
+    return parsed
+}
 
 export type { PaidUpgradeAuthorization, PaidUpgradePreCall, PaidUpgradeQuote }
 
@@ -584,7 +619,7 @@ async function postPaidUpgradeGas(
     env: Env,
     chainId: number,
     body: Record<string, unknown>,
-): Promise<{ allowed: boolean; gas?: number; failures?: number }> {
+): Promise<{ allowed: boolean; gas?: number; failures?: number; overBudget?: boolean; pending?: Hex[] }> {
     const pool = getSignerPool(env, chainId)
     let response: Response
     try {
@@ -601,11 +636,22 @@ async function postPaidUpgradeGas(
         logger.error({ chainId, status: response.status }, 'paid upgrade gas budget failed')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
-    const result = (await response.json()) as { allowed?: boolean; gas?: number; failures?: number }
+    const result = (await response.json()) as {
+        allowed?: boolean
+        gas?: number
+        failures?: number
+        overBudget?: boolean
+        pending?: unknown
+    }
+    const pending = Array.isArray(result.pending)
+        ? result.pending.filter((hash): hash is Hex => typeof hash === 'string')
+        : undefined
     return {
         allowed: result.allowed === true,
         gas: typeof result.gas === 'number' ? result.gas : undefined,
         failures: typeof result.failures === 'number' ? result.failures : undefined,
+        overBudget: result.overBudget === true,
+        pending,
     }
 }
 
@@ -639,16 +685,72 @@ export async function releasePaidUpgradeGas(env: Env, chainId: number): Promise<
 export async function settlePaidUpgradeGas(
     env: Env,
     chainId: number,
-    input: { gasUsed: bigint; failure: boolean },
+    input: { gasUsed: bigint; failure: boolean; txHash?: Hex },
 ): Promise<void> {
     const result = await postPaidUpgradeGas(env, chainId, {
         action: 'settle-gas',
         hold: PAID_UPGRADE_GAS_HOLD.toString(),
         gas: input.gasUsed.toString(),
         failure: input.failure,
+        ...(input.txHash ? { txHash: input.txHash } : {}),
+    })
+    if (result.overBudget) {
+        logger.error(
+            { chainId, gas: result.gas, txHash: input.txHash },
+            'paid upgrade settle exceeded the daily gas budget',
+        )
+        return
+    }
+    if (!result.allowed) {
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+}
+
+/** Remember a broadcast whose receipt was not in hand, so a later lookup can settle or release the hold. */
+export async function enqueuePaidUpgradeReceipt(
+    env: Env,
+    chainId: number,
+    txHash: Hex,
+): Promise<void> {
+    const result = await postPaidUpgradeGas(env, chainId, {
+        action: 'enqueue-receipt',
+        txHash,
     })
     if (!result.allowed) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+}
+
+/**
+ * The signer `selectSignerForEoa` will try first. Simulation uses this
+ * address as `from` and as the fee-recipient fallback.
+ */
+export function paidUpgradeBroadcasterAddress(
+    env: { RELAYER_MNEMONIC?: string; RELAYER_COUNT?: string },
+    eoa: Address,
+): Address {
+    const mnemonic = env.RELAYER_MNEMONIC?.trim()
+    if (!mnemonic) {
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+    const signerCount = Number.parseInt(env.RELAYER_COUNT ?? '1', 10)
+    if (!Number.isInteger(signerCount) || signerCount < 1 || signerCount > 100) {
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+    try {
+        return deriveRelayerSignerAddress(mnemonic, selectSignerForEoa(eoa, signerCount))
+    } catch (error) {
+        logger.error({ error }, 'paid upgrade signer derivation failed')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
+    }
+}
+
+/** Ask the signer pool to look up broadcasts whose receipt wait timed out. */
+export async function requestPaidUpgradeReconcile(env: Env, chainId: number): Promise<void> {
+    try {
+        await postPaidUpgradeGas(env, chainId, { action: 'reconcile-pending' })
+    } catch (error) {
+        logger.error({ error, chainId }, 'paid upgrade gas reconcile failed')
     }
 }
 
@@ -713,8 +815,9 @@ function storedExecuteSelector(data: Hex | undefined): Hex | undefined {
 
 /**
  * `eth_call` the execute the signer will send, including authorizationList.
- * Execution mode returns the stored selector instead of reverting. Anything
- * other than 0x00000000 is refused before broadcast.
+ * `from` is the relayer signer that will broadcast. Execution mode returns
+ * the stored selector instead of reverting. Anything other than 0x00000000
+ * is refused before broadcast.
  */
 export async function assertPaidUpgradeSimulation(args: {
     publicClient: PublicClient
@@ -722,10 +825,12 @@ export async function assertPaidUpgradeSimulation(args: {
     intent: IntentStruct
     authorization: SignedAuthorization
     feeRecipient: string | undefined
+    env: { RELAYER_MNEMONIC?: string; RELAYER_COUNT?: string }
 }): Promise<void> {
+    const broadcaster = paidUpgradeBroadcasterAddress(args.env, getAddress(args.intent.eoa))
     const intentForBroadcast: IntentStruct = {
         ...args.intent,
-        paymentRecipient: getPaymentRecipient(args.feeRecipient, zeroAddress),
+        paymentRecipient: getPaymentRecipient(args.feeRecipient, broadcaster),
     }
     const data = encodeFunctionData({
         abi: orchestratorAbi,
@@ -735,6 +840,7 @@ export async function assertPaidUpgradeSimulation(args: {
     let returned: Hex | undefined
     try {
         const result = await args.publicClient.call({
+            account: broadcaster,
             to: args.orchestrator,
             data,
             authorizationList: [args.authorization],

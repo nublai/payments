@@ -12,6 +12,7 @@ import type { Hex } from 'viem'
 import type { Env } from './types/env'
 import type { MonitorJob, QueueJob } from './types/pool'
 import { validateEnv, validatePoolConfig, getChainIds } from './config'
+import { requestPaidUpgradeReconcile } from './rpc/methods/shared/paid-upgrade'
 import { logger, errorDetails, getErrorMessage } from './lib/logger'
 import { dispatch } from './rpc/dispatcher'
 import { createMethods } from './rpc/methods'
@@ -447,6 +448,8 @@ async function handleScheduled(_event: ScheduledEvent, env: Env): Promise<void> 
             const result = await response.json()
             logger.info({ chainId, result }, 'Signer maintenance completed')
         }
+
+        await requestPaidUpgradeReconcile(env, chainId)
     }
 }
 

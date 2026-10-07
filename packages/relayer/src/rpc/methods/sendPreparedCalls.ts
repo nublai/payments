@@ -32,18 +32,20 @@ import {
     assertErc8128BoundToQuotes,
 } from './shared/calls-helpers'
 import { getSignerPool } from './shared/signer-pool'
-import { upgradeClientIp } from './shared/upgrade-rate-limit'
 import {
     assertPaidUpgrade,
     assertPaidUpgradeIntentSigner,
     assertPaidUpgradeSimulation,
     chainUsdcAddress,
+    enqueuePaidUpgradeReceipt,
     paidUpgradeFieldsMatch,
     paidUpgradeFromQuote,
     paidUpgradeMaxPayment,
     paidUpgradeReceiptOutcome,
+    paidUpgradeReceiptWaitMs,
     releasePaidUpgradeGas,
     releasePaidUpgradeRateLimit,
+    requirePaidUpgradeClientIp,
     reservePaidUpgradeGas,
     reservePaidUpgradeRateLimit,
     settlePaidUpgradeGas,
@@ -169,6 +171,7 @@ async function bindPaidUpgrade(args: {
             intent: args.intent,
             authorization: checked.authorization,
             feeRecipient: args.env.FEE_RECIPIENT,
+            env: args.env,
         })
         await reservePaidUpgradeGas(args.env, args.chainId)
     } catch (error) {
@@ -240,7 +243,10 @@ export async function handleSendPreparedCalls(
     }
 
     const quoted = 'quote' in context && context.quote ? context.quote.quotes[0] : undefined
-    const paidUpgradeIp = upgradeClientIp(ctx.request)
+    const paidUpgradeIp =
+        quoted && paidUpgradeFromQuote(quoted)
+            ? requirePaidUpgradeClientIp(ctx.request, env)
+            : 'unknown'
     const paidUpgrade = quoted
         ? await bindPaidUpgrade({
               env,
@@ -311,7 +317,7 @@ export async function handleSendPreparedCalls(
             const receiptClient = createPublicClient({ transport: http(config.rpcUrl) })
             const receipt = await receiptClient.waitForTransactionReceipt({
                 hash: result.txHash,
-                timeout: 20_000,
+                timeout: paidUpgradeReceiptWaitMs(env),
             })
             const outcome = paidUpgradeReceiptOutcome(receipt)
             if (outcome.failure) {
@@ -329,12 +335,21 @@ export async function handleSendPreparedCalls(
             await settlePaidUpgradeGas(env, chainId, {
                 gasUsed: outcome.gasUsed,
                 failure: outcome.failure,
+                txHash: result.txHash,
             })
         } catch (error) {
             logger.error(
                 { error, eoa: intent.eoa, txHash: result.txHash },
-                'paid upgrade receipt was not settled; gas hold remains',
+                'paid upgrade receipt was not settled; gas hold remains until reconcile',
             )
+            try {
+                await enqueuePaidUpgradeReceipt(env, chainId, result.txHash)
+            } catch (enqueueError) {
+                logger.error(
+                    { error: enqueueError, eoa: intent.eoa, txHash: result.txHash },
+                    'paid upgrade receipt was not queued for reconcile',
+                )
+            }
         }
     }
     logger.info(
