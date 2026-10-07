@@ -34,6 +34,7 @@ import type {
 } from '../schema/prepareCalls'
 import {
     assertPaidUpgrade,
+    assertPaidUpgradeEnabled,
     assertPaidUpgradeOidcOwner,
     assertPaidUpgradeRateCapacity,
     requirePaidUpgradeClientIp,
@@ -104,6 +105,7 @@ export async function handlePrepareCalls(
 
     const requestedUpgrade = typedParams.capabilities?.accountUpgrade
     if (requestedUpgrade) {
+        assertPaidUpgradeEnabled(env)
         assertPaidUpgradeOidcOwner(typedParams.from)
     }
     const paidUpgradeIp = requestedUpgrade

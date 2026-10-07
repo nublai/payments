@@ -133,6 +133,12 @@ export interface Env {
     OIDC_WALLETS_CLAIM?: string
 
     /**
+     * USDC-paid first upgrade through wallet_prepareCalls `accountUpgrade`.
+     * On only when exactly `true`. Unset, empty, `false`, or anything else is
+     * off, and launch is sponsored-only.
+     */
+    PAID_UPGRADE_ENABLED?: string
+    /**
      * Cap on paymentMaxAmount for a USDC-paid first upgrade, in fee-token base
      * units. Unset uses 5 USDC (6 decimals), the same ceiling as the wallet
      * paid-fee cap. See DEFAULT_PAID_UPGRADE_MAX_PAYMENT.
