@@ -220,8 +220,16 @@ for name in names:
         failed = True
         continue
     size = len(body) // 2
+    headroom = limit - size
+    if name == "Account":
+        print(
+            f"Account release runtime: {size} bytes, headroom {headroom} bytes (limit {limit})"
+        )
     if size > limit:
-        print(f"FAIL {name}: {size} bytes runtime, over the {limit}-byte limit", file=sys.stderr)
+        print(
+            f"FAIL {name}: {size} bytes runtime, headroom {headroom} bytes, over the {limit}-byte limit",
+            file=sys.stderr,
+        )
         failed = True
     else:
         print(f"ok   {name}: {size} bytes")

@@ -82,9 +82,14 @@ PY
     rm -rf "$tmp"
 }
 
-# 2. Forge CI runs the release profile suite in addition to the default suite.
+# 2. Forge CI builds and tests with the release profile only.
 release_tests_in_ci() {
-    grep -q 'FOUNDRY_PROFILE=release forge test --ffi' "$REPO_ROOT/.github/workflows/forge.yml"
+    local workflow="$REPO_ROOT/.github/workflows/forge.yml"
+    grep -q 'FOUNDRY_PROFILE=release forge test --ffi' "$workflow" || return 1
+    if grep -q 'bun run --cwd packages/contracts test' "$workflow"; then
+        echo "forge CI still runs the default-profile test script" >&2
+        return 1
+    fi
 }
 
 # 3. build:contracts and generate run the same size check.

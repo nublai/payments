@@ -18,9 +18,9 @@ fs_permissions = [
   { access = "read", path = "./out" }
 ] # Configures permissions for cheatcodes that touch the filesystem
 
-# Release profile. deploy.sh and check-runtime-size.sh unset inherited FOUNDRY_*
-# and DAPP_* variables, then set FOUNDRY_PROFILE=release. `bun run test` stays on
-# the default profile; CI also runs `FOUNDRY_PROFILE=release forge test --ffi`.
+# Release profile. deploy.sh, check-runtime-size.sh, build:contracts, and the
+# forge CI job use this profile (via IR, 200 runs). `bun run test` without
+# FOUNDRY_PROFILE stays on the default profile and is not a deploy or CI artifact.
 # Foundry 1.5 writes this profile's artifacts to `out/` (no profile suffix).
 # fs_permissions follow a symlink inside the allowed directory. deploy.sh refuses
 # any symlink under deployments/ or deploy/ before it runs forge. Hardlinks, a
