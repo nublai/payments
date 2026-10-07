@@ -84,6 +84,7 @@ import {
     type RelayCurrencyAmount,
     type RelayQuoteResponse,
 } from './lib/relay-link'
+import { formatRelayQuoteCalls } from './lib/relay-allowlist'
 import {
     PromptCancelledError,
     readlineExistingPassword,
@@ -215,22 +216,15 @@ function formatQuoteSummary(quote: RelayQuoteResponse, kind: 'swap' | 'bridge'):
         `  Total fees: $${sumQuoteFeeUsd(quote)}`,
         `  Estimated time: ${quote.details?.timeEstimate ? `~${quote.details.timeEstimate}s` : 'unknown'}`,
     ]
-    return `${lines.join('\n')}\n`
+    return `${lines.join('\n')}\n${formatRelayQuoteCalls(quote)}`
 }
 
 function writeRelayAudit(quote: RelayQuoteResponse): void {
-    const lines = quote.steps.flatMap((step, stepIndex) =>
-        step.items
-            .filter((item) => item.status === 'incomplete')
-            .map(
-                (item, itemIndex) =>
-                    `  [${stepIndex + 1}.${itemIndex + 1}] to=${item.data.to} value=${item.data.value} chainId=${item.data.chainId}`,
-            ),
-    )
-    if (lines.length === 0) {
+    const review = formatRelayQuoteCalls(quote)
+    if (review.length === 0) {
         return
     }
-    process.stderr.write(`Relay execution targets:\n${lines.join('\n')}\n`)
+    process.stderr.write(review)
 }
 
 async function withStderrSpinner<T>(
@@ -902,7 +896,7 @@ tw.command('swap', {
             .boolean()
             .optional()
             .describe(
-                'Skip the quote prompt in an interactive terminal. Refused for MCP and non-interactive callers.',
+                'Skip re-quoting after you confirm. Does not skip the call-target review. Refused for MCP and non-interactive callers.',
             ),
         env: envSchema,
         profile: profileSchema,
@@ -1009,7 +1003,7 @@ tw.command('bridge', {
             .boolean()
             .optional()
             .describe(
-                'Skip the quote prompt in an interactive terminal. Refused for MCP and non-interactive callers.',
+                'Skip re-quoting after you confirm. Does not skip the call-target review. Refused for MCP and non-interactive callers.',
             ),
         env: envSchema,
         profile: profileSchema,

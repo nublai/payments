@@ -56,6 +56,7 @@ import {
     type RelayIntentStatus,
     type RelayQuoteResponse,
 } from './relay-link'
+import { RelayQuoteRejected, reviewRelayQuote } from './relay-allowlist'
 import {
     ETH_ADDRESS,
     getChainConfig,
@@ -340,7 +341,11 @@ function getQuoteChainMismatch(
     return undefined
 }
 
-function validateQuoteForExecution(quote: RelayQuoteResponse, sourceChainId: number): void {
+function validateQuoteForExecution(
+    quote: RelayQuoteResponse,
+    sourceChainId: number,
+    limits: { amount: bigint; native: boolean; originCurrency: Address },
+): void {
     if (quote.steps.length === 0) {
         throw new AccountSwapError('QUOTE_FAILED', 'relay.link returned no executable steps.')
     }
@@ -358,6 +363,20 @@ function validateQuoteForExecution(quote: RelayQuoteResponse, sourceChainId: num
             'QUOTE_FAILED',
             `relay.link returned a step for chain ${mismatchedChainId}, expected source chain ${chainLabel} (${sourceChainId}).`,
         )
+    }
+
+    try {
+        reviewRelayQuote(quote, {
+            sourceChainId,
+            inputAmount: limits.amount,
+            inputIsNative: limits.native,
+            originCurrency: limits.originCurrency,
+        })
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) {
+            throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
+        }
+        throw error
     }
 }
 
@@ -638,13 +657,14 @@ async function maybeRefreshQuoteAfterConfirmation(input: {
     request: Parameters<typeof getQuote>[0]
     options: AccountSwapOptions
     deps: Pick<AccountSwapDeps, 'getQuote'>
+    limits: { amount: bigint; native: boolean; originCurrency: Address }
 }): Promise<{ quote: RelayQuoteResponse; needsReconfirmation: boolean }> {
     if (input.options.yes || Date.now() - input.confirmedAt <= QUOTE_STALE_MS) {
         return { quote: input.initialQuote, needsReconfirmation: false }
     }
 
     const refreshedQuote = await input.deps.getQuote(input.request, { env: input.options.env })
-    validateQuoteForExecution(refreshedQuote, input.request.originChainId)
+    validateQuoteForExecution(refreshedQuote, input.request.originChainId, input.limits)
     return {
         quote: refreshedQuote,
         needsReconfirmation: hasMaterialQuoteDrift(input.initialQuote, refreshedQuote),
@@ -792,33 +812,39 @@ export async function executeAccountSwap(
         }
 
         let quote = await deps.getQuote(quoteRequest, { env: options.env })
-        validateQuoteForExecution(quote, quoteRequest.originChainId)
+        const quoteLimits = {
+            amount: parsedAmount.baseUnits,
+            native: fromToken === 'ETH',
+            originCurrency: quoteRequest.originCurrency,
+        }
+        validateQuoteForExecution(quote, quoteRequest.originChainId, quoteLimits)
 
-        if (!options.yes) {
-            for (let attempt = 1; attempt <= MAX_CONFIRMATION_ATTEMPTS; attempt += 1) {
-                const confirmedAt = Date.now()
-                const confirmed = await deps.confirmQuote(quote)
-                if (!confirmed) {
-                    throw new AccountSwapError('QUOTE_FAILED', 'Swap cancelled.')
-                }
+        // `yes` does not skip this review. It only skips refreshing a quote that
+        // went stale while the human was confirming.
+        for (let attempt = 1; attempt <= MAX_CONFIRMATION_ATTEMPTS; attempt += 1) {
+            const confirmedAt = Date.now()
+            const confirmed = await deps.confirmQuote(quote)
+            if (!confirmed) {
+                throw new AccountSwapError('QUOTE_FAILED', 'Swap cancelled.')
+            }
 
-                const refresh = await maybeRefreshQuoteAfterConfirmation({
-                    initialQuote: quote,
-                    confirmedAt,
-                    request: quoteRequest,
-                    options,
-                    deps,
-                })
-                quote = refresh.quote
-                if (!refresh.needsReconfirmation) {
-                    break
-                }
-                if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
-                    throw new AccountSwapError(
-                        'QUOTE_FAILED',
-                        'Quote changed materially too many times during confirmation. Re-run the command and confirm promptly, or use --yes if appropriate.',
-                    )
-                }
+            const refresh = await maybeRefreshQuoteAfterConfirmation({
+                initialQuote: quote,
+                confirmedAt,
+                request: quoteRequest,
+                options,
+                deps,
+                limits: quoteLimits,
+            })
+            quote = refresh.quote
+            if (!refresh.needsReconfirmation) {
+                break
+            }
+            if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
+                throw new AccountSwapError(
+                    'QUOTE_FAILED',
+                    'Quote changed materially too many times during confirmation. Re-run the command and confirm promptly, or use --yes if appropriate.',
+                )
             }
         }
 

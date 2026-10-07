@@ -67,8 +67,8 @@ function makeQuote(overrides?: Record<string, unknown>) {
                     {
                         status: 'incomplete',
                         data: {
-                            to: '0x4444444444444444444444444444444444444444',
-                            data: '0xdeadbeef',
+                            to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
+                            data: '0xcd6e13f7',
                             value: '0',
                             chainId: 8453,
                         },
@@ -255,9 +255,9 @@ test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
     const prepareInput = (prepareCalls as any).mock.calls[0]?.[0]
     expect(prepareInput.calls).toEqual([
         {
-            target: '0x4444444444444444444444444444444444444444',
+            target: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
             value: 0n,
-            data: '0xdeadbeef',
+            data: '0xcd6e13f7',
         },
     ])
     const sentSignature = (sendPreparedCalls as any).mock.calls[0]?.[0]?.signature as string
@@ -546,8 +546,8 @@ test('executeAccountSwap rejects bridge when quote has no requestId before execu
                     {
                         status: 'incomplete',
                         data: {
-                            to: '0x4444444444444444444444444444444444444444',
-                            data: '0xdeadbeef',
+                            to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
+                            data: '0xcd6e13f7',
                             value: '0',
                             chainId: 8453,
                         },
@@ -850,7 +850,7 @@ test('executeAccountSwap fails fast on insufficient balance', async () => {
     })
 })
 
-test('executeAccountSwap skips confirmation when yes is set', async () => {
+test('executeAccountSwap still confirms the quote when yes is set', async () => {
     const confirmQuote = mock(async () => true)
 
     await executeAccountSwap(
@@ -884,7 +884,7 @@ test('executeAccountSwap skips confirmation when yes is set', async () => {
         },
     )
 
-    expect(confirmQuote).toHaveBeenCalledTimes(0)
+    expect(confirmQuote).toHaveBeenCalledTimes(1)
 })
 
 test('executeAccountSwap rejects relay quotes with mismatched source-chain calls', async () => {

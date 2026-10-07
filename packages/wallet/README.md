@@ -133,7 +133,7 @@ tw send 1 0x... --chain base --session-file ./worker-1.session.json --env prod
 
 #### `swap`
 
-Powered by [relay.link](https://relay.link). An interactive terminal confirms the quote. `--yes` skips that prompt only when stdin and stdout are a TTY. MCP and non-interactive callers cannot pass `yes` to skip it.
+Powered by [relay.link](https://relay.link). The quote is signed only when every call is on the relay.link allowlist for that chain (Base 8453 and Polygon 137 routers, approval proxy, and depository, plus ERC-20 `approve` to one of those contracts for at most the quoted input). Chain 31337 has no published relay.link router, so it fails closed. An interactive terminal shows each call target, selector, approve spender and amount, and native value, then confirms. `--yes` does not skip that review. MCP and non-interactive callers cannot confirm it.
 
 ```bash
 tw swap --from ETH --to USDC --amount 0.1 --chain base --env prod
@@ -147,7 +147,7 @@ tw bridge --token USDC --amount 100 --to-chain polygon --env prod
 tw bridge --token ETH --amount 0.5 --to-chain base --recipient 0x... --yes --env prod
 ```
 
-`--yes` is the same interactive-terminal shortcut as `swap`. It is refused over MCP and when the process is not a TTY.
+`--yes` does not skip the call-target review. It is refused over MCP and when the process is not a TTY. On a TTY it only skips refreshing a quote that went stale while you were confirming.
 
 ### Session Keys
 
@@ -284,4 +284,4 @@ tw --version           # Version
 
 `tw --mcp` registers one tool per leaf command. The ids are `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_passkey`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
 
-These calls are refused over MCP, with a message to run the command in a terminal: `account_create` and `account_delegate` (they require the phrase); `daemon_unlock` of a full-access or unreadable session; `session_rotate` with `narrow: true`; `session_revoke` of a full-access or unreadable session; `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, a period shorter than a day, a non-USDC token, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still skips the on-screen quote. The daemon socket does not return raw session keys.
+These calls are refused over MCP, with a message to run the command in a terminal: `account_create` and `account_delegate` (they require the phrase); `daemon_unlock` of a full-access or unreadable session; `session_rotate` with `narrow: true`; `session_revoke` of a full-access or unreadable session; `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, a period shorter than a day, a non-USDC token, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still shows every call target and selector and still asks you to confirm. A local pseudo-terminal can answer that prompt; that leftover is not handled here. The daemon socket does not return raw session keys.
