@@ -95,6 +95,25 @@ echo "Deploying contracts (bun run deploy:local && bun run make-config)..."
   bun run make-config
 )
 
+# make-config strips local addresses out of addresses.json. The narrowed
+# default session needs ESCROW_31337 and SIMPLE_SETTLER_31337 from this file.
+LOCAL_ENV="$ROOT/packages/contracts/deployments/envs/local/.env"
+if [[ ! -f "$LOCAL_ENV" ]]; then
+  echo "Missing $LOCAL_ENV after make-config." >&2
+  exit 1
+fi
+exported=0
+while IFS= read -r line || [[ -n "$line" ]]; do
+  [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(0x[0-9a-fA-F]{40})$ ]] || continue
+  export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+  exported=$((exported + 1))
+done < "$LOCAL_ENV"
+if [[ "$exported" -lt 1 ]]; then
+  echo "No address keys in $LOCAL_ENV" >&2
+  exit 1
+fi
+echo "Exported $exported local address keys"
+
 echo "Starting wrangler relayer..."
 RELAYER_PID="$(bash "$ROOT/packages/relayer/scripts/dev.sh" --background)"
 PIDS+=("$RELAYER_PID")
@@ -110,7 +129,7 @@ USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 export TW_PASSWORD="e2e-local-payment"
 
 echo "Creating and delegating account..."
-# account create installs ANY_TARGET + unlimited USDC and requires the phrase.
+# account create installs the narrow default session and still requires the phrase.
 # This script is the operator: it allocates a terminal and types the phrase.
 CREATE_JSON="$(
   cd "$ROOT/packages/wallet"

@@ -9,7 +9,7 @@ import {
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
-import { resolveKeystorePath } from './account-create'
+import { getDefaultSessionPermissions, resolveKeystorePath } from './account-create'
 import {
     createSessionKeystore,
     decryptRootKeystore,
@@ -337,6 +337,7 @@ export async function executeSessionRotate(
         newName?: string
         resume?: boolean
         fullAccess?: boolean
+        narrow?: boolean
         target?: Address
         selectors?: Hex[]
         spendLimit?: bigint
@@ -427,67 +428,126 @@ export async function executeSessionRotate(
         let finalStatus: BundleStatusResponse | null = null
 
         if (intent.status === 'pending') {
-            const permissionDefaults = buildPermissionDefaults({
-                fullAccess: options.fullAccess ?? false,
-                chain,
-                target: options.target,
-                selectors: options.selectors,
-                spendLimit: options.spendLimit,
-                spendPeriod: options.spendPeriod,
-            })
-
-            const calls: Call[] = [
-                {
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'authorize',
-                        args: [
-                            {
-                                expiry: 0,
-                                keyType: 0,
-                                isSuperAdmin: false,
-                                publicKey: (
-                                    await import('@nubl/relayer-client')
-                                ).encodeSecp256k1Key(newSessionAddress),
-                            },
-                        ],
-                    }),
-                },
-                {
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'setSpendLimit',
-                        args: [
-                            newKeyHash,
-                            permissionDefaults.spendToken,
-                            toSpendPeriodEnum(permissionDefaults.spendPeriod),
-                            permissionDefaults.spendLimit,
-                        ],
-                    }),
-                },
-                ...permissionDefaults.selectors.map((selector) => ({
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'setCanExecute',
-                        args: [newKeyHash, permissionDefaults.target, selector, true],
-                    }),
-                })),
-                {
-                    target: accountAddress,
-                    value: 0n,
-                    data: encodeFunctionData({
-                        abi: accountAbi,
-                        functionName: 'revoke',
-                        args: [oldKeyHash],
-                    }),
-                },
-            ]
+            if (options.narrow && options.fullAccess) {
+                throw new SessionRotateError(
+                    'ROTATION_FAILED',
+                    '--narrow cannot be combined with full access.',
+                )
+            }
+            const { encodeSecp256k1Key } = await import('@nubl/relayer-client')
+            const authorizeCall: Call = {
+                target: accountAddress,
+                value: 0n,
+                data: encodeFunctionData({
+                    abi: accountAbi,
+                    functionName: 'authorize',
+                    args: [
+                        {
+                            expiry: 0,
+                            keyType: 0,
+                            isSuperAdmin: false,
+                            publicKey: encodeSecp256k1Key(newSessionAddress),
+                        },
+                    ],
+                }),
+            }
+            const revokeCall: Call = {
+                target: accountAddress,
+                value: 0n,
+                data: encodeFunctionData({
+                    abi: accountAbi,
+                    functionName: 'revoke',
+                    args: [oldKeyHash],
+                }),
+            }
+            let calls: Call[]
+            if (options.narrow) {
+                const permissions = getDefaultSessionPermissions(network.chainId, {
+                    env: options.env,
+                })
+                const spend = permissions.find((permission) => permission.type === 'spend')
+                if (!spend || spend.type !== 'spend') {
+                    throw new SessionRotateError(
+                        'ROTATION_FAILED',
+                        'Narrow default session is missing a USDC spend limit.',
+                    )
+                }
+                calls = [
+                    authorizeCall,
+                    {
+                        target: accountAddress,
+                        value: 0n,
+                        data: encodeFunctionData({
+                            abi: accountAbi,
+                            functionName: 'setSpendLimit',
+                            args: [
+                                newKeyHash,
+                                spend.token,
+                                toSpendPeriodEnum(spend.period),
+                                BigInt(spend.limit),
+                            ],
+                        }),
+                    },
+                    ...permissions
+                        .filter((permission) => permission.type === 'call')
+                        .map((permission) => ({
+                            target: accountAddress,
+                            value: 0n,
+                            data: encodeFunctionData({
+                                abi: accountAbi,
+                                functionName: 'setCanExecute' as const,
+                                args: [newKeyHash, permission.to, permission.selector, true] as [
+                                    Hex,
+                                    Address,
+                                    Hex,
+                                    boolean,
+                                ],
+                            }),
+                        })),
+                    revokeCall,
+                ]
+            } else {
+                const permissionDefaults = buildPermissionDefaults({
+                    fullAccess: options.fullAccess ?? false,
+                    chain,
+                    target: options.target,
+                    selectors: options.selectors,
+                    spendLimit: options.spendLimit,
+                    spendPeriod: options.spendPeriod,
+                })
+                calls = [
+                    authorizeCall,
+                    {
+                        target: accountAddress,
+                        value: 0n,
+                        data: encodeFunctionData({
+                            abi: accountAbi,
+                            functionName: 'setSpendLimit',
+                            args: [
+                                newKeyHash,
+                                permissionDefaults.spendToken,
+                                toSpendPeriodEnum(permissionDefaults.spendPeriod),
+                                permissionDefaults.spendLimit,
+                            ],
+                        }),
+                    },
+                    ...permissionDefaults.selectors.map((selector) => ({
+                        target: accountAddress,
+                        value: 0n,
+                        data: encodeFunctionData({
+                            abi: accountAbi,
+                            functionName: 'setCanExecute' as const,
+                            args: [newKeyHash, permissionDefaults.target, selector, true] as [
+                                Hex,
+                                Address,
+                                Hex,
+                                boolean,
+                            ],
+                        }),
+                    })),
+                    revokeCall,
+                ]
+            }
 
             const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
 

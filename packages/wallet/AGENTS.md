@@ -366,12 +366,15 @@ The `passwordDeps()` helper in `cli.ts` wires all three. The `password-readline.
 - `account export --show-private` and `session export` — type `EXPORT PRIVATE KEYS`. `TW_EXPORT_PASSWORD` does not skip it
 - `send`, `escrow create`, and `escrow refund` — type `SEND USDC`. Create and refund move USDC
 - `swap` and `bridge` — confirm the quote in the terminal. `--yes` / `yes: true` is ignored outside that terminal. On a TTY, `--yes` still skips the on-screen quote
-- `account create` and `account delegate` — type `CREATE FULL ACCESS SESSION`. Both install the default session (`ANY_TARGET`, `ANY_FN_SEL`, and unlimited USDC). That set stays so a local escrow can `approve` and call the escrow contract; the phrase is what an MCP client cannot satisfy
-- `session create` / `session rotate` / `permissions grant` when the result is full access — type `CREATE FULL ACCESS SESSION` or `ROTATE FULL ACCESS SESSION` for rotate. Full access is the `--full-access` flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`), a spend period shorter than a day (`minute`, `hour`), a token other than that chain's USDC, or a spend limit above the default 10 USDC. A day-or-longer USDC limit of exactly 10 stays allowed, including when the amount is omitted on `session create`
+- `account create` and `account delegate` — type `CREATE FULL ACCESS SESSION`. The session they install is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`) and `refund` (`0x6023fda5`), SimpleSettler `write` (`0x84523a30`), and Escrow `settle` (`0xe7f921a2`), plus 10 USDC per day. `write` and `settle` are included because `tw escrow settle` submits both from this session. A chain with no known USDC or Escrow address fails closed. The phrase stays; MCP cannot type it
+- `session create` / `session rotate` / `permissions grant` when the result is full access — type `CREATE FULL ACCESS SESSION` or `ROTATE FULL ACCESS SESSION` for rotate. Full access is the `--full-access` flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL`, `increaseAllowance` (`0x39509351`), or an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`), a spend period shorter than a day (`minute`, `hour`), a token other than that chain's USDC, a spend limit above the default 10 USDC, or a combined USDC spend across the account's active sessions on that chain that would exceed 10 USDC per day. A forever or longer-period cap counts at its full limit. If those keys cannot be read, the phrase is required. A day-or-longer USDC limit of exactly 10 stays allowed, including when the amount is omitted on `session create`, until the combined total would pass 10
+- `daemon unlock` when the session holds a wildcard, an unlimited or max-uint spend, anything else above that gate, or permissions that cannot be read — type `UNLOCK FULL ACCESS SESSION` before the password. A narrow session unlocks with the password alone. MCP cannot type the phrase
+- `session rotate --narrow` — type `ROTATE FULL ACCESS SESSION`. Replaces the active session with the narrow default and revokes the old key. `session revoke` of a full-access or unreadable session — type `REVOKE FULL ACCESS SESSION` before the password
+- `swap` and `bridge` need an explicit full-access session. The error tells you to run `tw session create <name> --full-access` and type `CREATE FULL ACCESS SESSION`
 - `account passkey` — type `AUTHORIZE PASSKEY`. The `privateKey` argument is not accepted over MCP
 - `escrow settle` when signing with an oracle private key — type `SIGN ESCROW SETTLEMENT`. The `oraclePrivateKey` argument is not accepted over MCP
 
-A session created without those elevated permissions keeps the default USDC `transfer` permission and a 10 USDC daily spend, and does not need the full-access phrase. The daemon socket does not return raw session keys (`getSessionSecrets` is refused). `sign` and `signMessage` stay on the socket. Metadata export and escrow status do not spend. Local `e2e:local-payment` and `e2e:local-escrow` type `CREATE FULL ACCESS SESSION` for `account create`, `SEND USDC` for send and escrow create, and `SIGN ESCROW SETTLEMENT` for settle, through `scripts/tw-tty-confirm.py`, because those scripts are the operator, not an MCP client.
+A session created without those elevated permissions keeps USDC `transfer` and a 10 USDC daily spend, and does not need the full-access phrase. Existing accounts keep a legacy wildcard plus max-uint session until `tw session rotate --narrow` or `tw session revoke`. `account status` warns when that wildcard is present: the key holds full access, and the daemon can spend it once unlocked. The daemon socket does not return raw session keys (`getSessionSecrets` is refused). `sign` and `signMessage` stay on the socket. Metadata export and escrow status do not spend. Local `e2e:local-payment` and `e2e:local-escrow` type `CREATE FULL ACCESS SESSION` for `account create`, `SEND USDC` for send and escrow create, and `SIGN ESCROW SETTLEMENT` for settle, through `scripts/tw-tty-confirm.py`, because those scripts are the operator, not an MCP client. `e2e:local-payment` exports the local deployment addresses so account create can resolve Escrow on chain 31337.
 
 ## Critical Gotchas
 
@@ -404,12 +407,14 @@ Always treat bundle status as source of truth:
 
 ### 4) Session permissions for transfer flows
 
-Session key defaults for send-compatible setup should include:
+The default session for send and escrow is narrow:
 
-- call wildcard selector `0x32323232` (all function selectors)
-- spend permission for transfer token on target chain
+- USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`)
+- Escrow `escrow` (`0x657061bf`), `refund` (`0x6023fda5`), and `settle` (`0xe7f921a2`)
+- SimpleSettler `write` (`0x84523a30`)
+- 10 USDC per day
 
-`0xe0e0e0e0` is empty calldata selector, not wildcard selector.
+Swap and bridge need `tw session create <name> --full-access`. `0xe0e0e0e0` is empty calldata selector, not wildcard selector. A legacy wildcard session is full access; `account status` warns, and `tw session rotate --narrow` replaces it.
 
 ### 5) Local chain restarts
 

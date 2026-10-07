@@ -38,6 +38,8 @@ const ACCOUNT_ADMIN_SELECTORS = new Set(
         'upgradeProxyAccount(address)',
     ].map((signature) => toFunctionSelector(signature).toLowerCase()),
 )
+/** Allowance raise the guard does not revoke. Full access on any token, including USDC. */
+const INCREASE_ALLOWANCE_SELECTOR = '0x39509351'
 const AMBIGUOUS_BASE_UNIT_THRESHOLD = 1_000_000n
 
 const DURATION_UNITS: Record<string, number> = {
@@ -268,8 +270,9 @@ function isChainUsdc(token: string, usdcAddress: string | undefined): boolean {
 /**
  * True when the requested permission is the same privilege as `--full-access`:
  * the flag itself, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account-admin
- * selector, a period shorter than a day, a token other than the chain's USDC,
- * or a spend that is not known to be at most 10 USDC per day.
+ * selector, `increaseAllowance` on any token, a period shorter than a day, a
+ * token other than the chain's USDC, or a spend that is not known to be at
+ * most 10 USDC per day.
  *
  * A day-or-longer USDC bucket can be emptied in one day, so any USDC limit
  * above 10 is full access. Exactly 10 USDC on a day or longer period stays
@@ -320,8 +323,151 @@ export function permissionNeedsFullAccessConfirmation(input: {
         const normalized = normalizeSelector(selector)
         if (!normalized) continue
         if (normalized === ANY_FUNCTION_SELECTOR.toLowerCase()) return true
+        if (normalized === INCREASE_ALLOWANCE_SELECTOR) return true
         if (ACCOUNT_ADMIN_SELECTORS.has(normalized)) return true
     }
 
     return false
+}
+
+/**
+ * USDC spend normalized to a per-day figure.
+ * Periods longer than a day, including forever, count at their full limit.
+ */
+export function normalizedDailyUsdcUnits(limit: bigint, period: SpendPeriod): bigint {
+    if (period === 'minute') return limit * 1_440n
+    if (period === 'hour') return limit * 24n
+    return limit
+}
+
+function isSpendPeriod(value: string): value is SpendPeriod {
+    return (
+        value === 'minute' ||
+        value === 'hour' ||
+        value === 'day' ||
+        value === 'week' ||
+        value === 'month' ||
+        value === 'year' ||
+        value === 'forever'
+    )
+}
+
+type StoredPermission = {
+    type: string
+    to?: string
+    selector?: string
+    token?: string
+    limit?: string
+    period?: string
+}
+
+/**
+ * True when stored permissions are above the full-access gate, or their
+ * combined USDC spend on this session is above 10 USDC per day.
+ * An empty list that was successfully read is not elevated.
+ */
+export function storedPermissionsRequirePhrase(
+    permissions: readonly StoredPermission[],
+    usdcAddress: string | undefined,
+): boolean {
+    let daily = 0n
+    for (const permission of permissions) {
+        if (permission.type === 'call') {
+            if (
+                permissionNeedsFullAccessConfirmation({
+                    target: permission.to,
+                    selectors: permission.selector ? [permission.selector] : undefined,
+                    usdcAddress,
+                })
+            ) {
+                return true
+            }
+            continue
+        }
+        if (permission.type !== 'spend') return true
+        if (!permission.period || !isSpendPeriod(permission.period)) return true
+        let limit: bigint
+        try {
+            if (permission.limit === undefined || permission.limit === '') return true
+            limit = BigInt(permission.limit)
+        } catch {
+            return true
+        }
+        if (
+            permissionNeedsFullAccessConfirmation({
+                token: permission.token,
+                spendLimit: limit,
+                spendPeriod: permission.period,
+                usdcAddress,
+            })
+        ) {
+            return true
+        }
+        if (permission.token && isChainUsdc(permission.token, usdcAddress)) {
+            daily += normalizedDailyUsdcUnits(limit, permission.period)
+        }
+    }
+    return daily > DEFAULT_SESSION_SPEND_LIMIT
+}
+
+export function callsIncludeWildcard(permissions: readonly StoredPermission[]): boolean {
+    for (const permission of permissions) {
+        if (permission.type !== 'call') continue
+        const target = permission.to ? normalizeAddress(permission.to) : undefined
+        const selector = permission.selector ? normalizeSelector(permission.selector) : undefined
+        if (target === ANY_TARGET.toLowerCase()) return true
+        if (selector === ANY_FUNCTION_SELECTOR.toLowerCase()) return true
+    }
+    return false
+}
+
+type ChainKeyLike = {
+    hash?: string
+    expiry?: string
+    permissions?: readonly StoredPermission[]
+}
+
+/**
+ * Sum of active keys' USDC spend, normalized per day.
+ * `unreadable` when a USDC spend limit or an active key's expiry cannot be parsed.
+ */
+export function activeUsdcDailyTotal(
+    keys: readonly ChainKeyLike[],
+    usdcAddress: string | undefined,
+    excludeHash?: string,
+): bigint | 'unreadable' {
+    if (!usdcAddress) return 'unreadable'
+    let total = 0n
+    const now = BigInt(Math.floor(Date.now() / 1000))
+    for (const key of keys) {
+        if (
+            excludeHash &&
+            key.hash &&
+            key.hash.toLowerCase() === excludeHash.toLowerCase()
+        ) {
+            continue
+        }
+        if (key.expiry === undefined || key.permissions === undefined) return 'unreadable'
+        let expiry: bigint
+        try {
+            expiry = BigInt(key.expiry)
+        } catch {
+            return 'unreadable'
+        }
+        if (expiry !== 0n && expiry <= now) continue
+        for (const permission of key.permissions) {
+            if (permission.type !== 'spend') continue
+            if (!permission.token || !isChainUsdc(permission.token, usdcAddress)) continue
+            if (!permission.period || !isSpendPeriod(permission.period)) return 'unreadable'
+            let limit: bigint
+            try {
+                if (permission.limit === undefined || permission.limit === '') return 'unreadable'
+                limit = BigInt(permission.limit)
+            } catch {
+                return 'unreadable'
+            }
+            total += normalizedDailyUsdcUnits(limit, permission.period)
+        }
+    }
+    return total
 }

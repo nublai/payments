@@ -671,7 +671,7 @@ test('MCP account_delegate cannot install a wildcard session without the phrase'
     expect(output).not.toContain(rootPrivateKey)
 })
 
-test('daemon socket does not return a wildcard session raw key without a phrase', async () => {
+test('daemon socket refuses unlock of an unreadable session and does not return the raw key', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tw-h3-daemon-'))
     const socketPath = join(dir, 'session.sock')
     const previous = process.env.TW_AGENT_SOCK
@@ -693,7 +693,9 @@ test('daemon socket does not return a wildcard session raw key without a phrase'
             ],
             { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
         )
-        expect(unlock.status).toBe(0)
+        expect(unlock.status).not.toBe(0)
+        expect(unlock.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(unlock.output).toContain('UNLOCK FULL ACCESS SESSION')
         expect(unlock.output).not.toContain(sessionPrivateKey)
         const client = new SessionDaemonClient(socketPath)
         const secrets = await client.getSessionSecrets('default')
@@ -776,4 +778,249 @@ test('MCP permissions_grant raw 10000000 per minute on a non-USDC token requires
         expect(labeled).not.toContain('Unsupported state')
         expect(labeled).not.toContain('getNonce')
     }
+})
+
+const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const increaseAllowance = '0x39509351'
+
+const orchestratorIntent = {
+    domain: {
+        name: 'Orchestrator',
+        version: '0.5.5',
+        chainId: 31337,
+        verifyingContract: '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC',
+    },
+    types: {
+        EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+        ],
+        Intent: [
+            { name: 'nonce', type: 'uint256' },
+            { name: 'paymentToken', type: 'address' },
+            { name: 'paymentMaxAmount', type: 'uint256' },
+        ],
+    },
+    primaryType: 'Intent' as const,
+    message: {
+        nonce: 1n,
+        paymentToken: usdc as `0x${string}`,
+        paymentMaxAmount: 1_000_000_000n,
+    },
+}
+
+async function startDaemon(socketPath: string) {
+    const previous = process.env.TW_AGENT_SOCK
+    process.env.TW_AGENT_SOCK = socketPath
+    const { runSessionDaemon } = await import('../src/lib/session-daemon')
+    const { SessionDaemonClient } = await import('../src/lib/session-daemon-client')
+    const daemon = await runSessionDaemon()
+    return {
+        client: new SessionDaemonClient(socketPath),
+        stop: async () => {
+            await daemon.stop()
+            if (previous === undefined) delete process.env.TW_AGENT_SOCK
+            else process.env.TW_AGENT_SOCK = previous
+        },
+    }
+}
+
+test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator intent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-unlock-'))
+    const socketPath = join(dir, 'session.sock')
+    const daemon = await startDaemon(socketPath)
+    try {
+        const unlock = await runCli(
+            [
+                'daemon',
+                'unlock',
+                'default',
+                '--env',
+                'dev',
+                '--keystore-path',
+                keystorePath,
+                '--json',
+            ],
+            { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
+        )
+        expect(unlock.status).not.toBe(0)
+        expect(unlock.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(unlock.output).toContain('UNLOCK FULL ACCESS SESSION')
+        expect(unlock.output).not.toContain('Unsupported state')
+        expect(unlock.output).not.toContain(sessionPrivateKey)
+        const listed = await daemon.client.list()
+        if (listed?.ok) {
+            expect(listed.result.keys).toHaveLength(0)
+        }
+        const signed = await daemon.client.sign('default', orchestratorIntent)
+        expect(signed?.ok).toBe(false)
+        expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
+    } finally {
+        await daemon.stop()
+    }
+})
+
+test('MCP daemon_unlock of an unreadable session cannot sign an Orchestrator intent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-unlock-mcp-'))
+    const socketPath = join(dir, 'session.sock')
+    const daemon = await startDaemon(socketPath)
+    try {
+        const output = await callMcpTool(
+            'daemon_unlock',
+            {
+                sessionName: 'default',
+                env: 'dev',
+                keystorePath,
+            },
+            { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
+        )
+        expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(output).toContain('UNLOCK FULL ACCESS SESSION')
+        expect(output).toContain('"isError":true')
+        expect(output).not.toContain('Unsupported state')
+        expect(output).not.toContain(sessionPrivateKey)
+        const signed = await daemon.client.sign('default', orchestratorIntent)
+        expect(signed?.ok).toBe(false)
+    } finally {
+        await daemon.stop()
+    }
+})
+
+test('MCP session_create increaseAllowance on USDC requires confirmation before decrypt', async () => {
+    const output = await callMcpTool(
+        'session_create',
+        {
+            sessionName: 'allowance',
+            env: 'dev',
+            target: usdc,
+            selector: increaseAllowance,
+            keystorePath,
+        },
+        { TW_PASSWORD: 'wrong-password', HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).not.toContain('Unsupported state')
+    expect(output).not.toContain('getNonce')
+})
+
+test('MCP permissions_grant increaseAllowance on USDC requires confirmation before decrypt', async () => {
+    const output = await callMcpTool(
+        'permissions_grant',
+        {
+            keyRef: 'default',
+            type: 'call',
+            target: usdc,
+            selector: increaseAllowance,
+            env: 'dev',
+            keystorePath,
+        },
+        { TW_PASSWORD: 'wrong-password', HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).not.toContain('Unsupported state')
+    expect(output).not.toContain('getNonce')
+})
+
+test('a second 10 USDC daily session_create requires confirmation and the first does not', async () => {
+    let existing: unknown[] = []
+    const server = createServer((req, res) => {
+        const chunks: Buffer[] = []
+        req.on('data', (chunk) => chunks.push(chunk))
+        req.on('end', () => {
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { id: number }
+            res.setHeader('content-type', 'application/json')
+            res.end(
+                JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: body.id,
+                    result: { '0x7a69': existing },
+                }),
+            )
+        })
+    })
+    await new Promise<void>((resolvePromise) => {
+        server.listen(0, '127.0.0.1', () => resolvePromise())
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('relayer stub failed to bind')
+    const relayerUrl = `http://127.0.0.1:${address.port}`
+    try {
+        const first = await callMcpTool(
+            'session_create',
+            {
+                sessionName: 'daily-one',
+                env: 'dev',
+                keystorePath,
+            },
+            { TW_PASSWORD: 'wrong-password', HOME: home, RELAYER_URL_DEV: relayerUrl },
+        )
+        expect(first).not.toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(first).toContain('Unsupported state')
+
+        existing = [
+            {
+                hash: `0x${'ab'.repeat(32)}`,
+                expiry: '0x0',
+                type: 'secp256k1',
+                role: 'normal',
+                publicKey: `0x${'00'.repeat(32)}`,
+                permissions: [
+                    {
+                        type: 'spend',
+                        token: usdc,
+                        limit: '0x989680',
+                        spent: '0x0',
+                        period: 'day',
+                    },
+                ],
+            },
+        ]
+        const second = await callMcpTool(
+            'session_create',
+            {
+                sessionName: 'daily-two',
+                env: 'dev',
+                keystorePath,
+            },
+            { TW_PASSWORD: 'wrong-password', HOME: home, RELAYER_URL_DEV: relayerUrl },
+        )
+        expect(second).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(second).toContain('CREATE FULL ACCESS SESSION')
+        expect(second).not.toContain('Unsupported state')
+    } finally {
+        await new Promise((resolvePromise) => server.close(() => resolvePromise(undefined)))
+    }
+})
+
+test('MCP session rotate --narrow and session revoke are refused without the phrase', async () => {
+    const rotate = await callMcpTool(
+        'session_rotate',
+        {
+            env: 'dev',
+            narrow: true,
+            keystorePath,
+        },
+        { TW_PASSWORD: 'wrong-password', HOME: home },
+    )
+    expect(rotate).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(rotate).toContain('ROTATE FULL ACCESS SESSION')
+    expect(rotate).not.toContain('Unsupported state')
+
+    const revoke = await callMcpTool(
+        'session_revoke',
+        {
+            sessionName: 'default',
+            force: true,
+            env: 'dev',
+            keystorePath,
+        },
+        { TW_PASSWORD: 'wrong-password', HOME: home },
+    )
+    expect(revoke).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(revoke).not.toContain('Unsupported state')
+    expect(revoke).not.toContain(rootPrivateKey)
 })

@@ -4,6 +4,7 @@ import { ERC20_SELECTORS, ANY_FUNCTION_SELECTOR, ANY_TARGET } from '@nubl/relaye
 import {
     DEFAULT_SESSION_SPEND_LIMIT,
     permissionNeedsFullAccessConfirmation,
+    storedPermissionsRequirePhrase,
 } from '../src/lib/session-common'
 import {
     humanConfirmationMessage,
@@ -165,5 +166,45 @@ test('permissionNeedsFullAccessConfirmation treats short periods and non-USDC to
             token: '0x0000000000000000000000000000000000000001',
             usdcAddress: usdc,
         }),
+    ).toBe(true)
+})
+
+test('permissionNeedsFullAccessConfirmation treats increaseAllowance on USDC as full access', () => {
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            target: usdc,
+            selectors: ['0x39509351'],
+            usdcAddress: usdc,
+        }),
+    ).toBe(true)
+    expect(
+        storedPermissionsRequirePhrase(
+            [
+                {
+                    type: 'call',
+                    to: usdc,
+                    selector: '0xa9059cbb',
+                },
+                {
+                    type: 'spend',
+                    token: usdc,
+                    limit: DEFAULT_SESSION_SPEND_LIMIT.toString(),
+                    period: 'day',
+                },
+            ],
+            usdc,
+        ),
+    ).toBe(false)
+    expect(
+        storedPermissionsRequirePhrase(
+            [
+                {
+                    type: 'call',
+                    to: ANY_TARGET,
+                    selector: ANY_FUNCTION_SELECTOR,
+                },
+            ],
+            usdc,
+        ),
     ).toBe(true)
 })

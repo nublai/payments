@@ -126,18 +126,49 @@ test('resolveKeystorePath rejects invalid --profile', () => {
     ).toThrowError(AccountCreateError)
 })
 
-test('getDefaultSessionPermissions allows all function selectors and default spend permission', () => {
-    const permissions = getDefaultSessionPermissions(31337)
-    expect(permissions[0]).toEqual({
-        type: 'call',
-        to: '0x3232323232323232323232323232323232323232',
-        selector: '0x32323232',
-    })
-    expect(permissions[1]).toMatchObject({
+test('getDefaultSessionPermissions is the narrow USDC and escrow set', () => {
+    const permissions = getDefaultSessionPermissions(8453, { env: 'prod' })
+    expect(permissions.filter((permission) => permission.type === 'call')).toEqual([
+        {
+            type: 'call',
+            to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+            selector: '0xa9059cbb',
+        },
+        {
+            type: 'call',
+            to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+            selector: '0x095ea7b3',
+        },
+        {
+            type: 'call',
+            to: '0x05f9597eed844410b7c0746A1C584188d0644730',
+            selector: '0x657061bf',
+        },
+        {
+            type: 'call',
+            to: '0x05f9597eed844410b7c0746A1C584188d0644730',
+            selector: '0x6023fda5',
+        },
+        {
+            type: 'call',
+            to: '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE',
+            selector: '0x84523a30',
+        },
+        {
+            type: 'call',
+            to: '0x05f9597eed844410b7c0746A1C584188d0644730',
+            selector: '0xe7f921a2',
+        },
+    ])
+    expect(permissions.find((permission) => permission.type === 'spend')).toEqual({
         type: 'spend',
         token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-        period: 'forever',
+        limit: '10000000',
+        period: 'day',
     })
+    expect(JSON.stringify(permissions)).not.toContain('32323232')
+    expect(() => getDefaultSessionPermissions(31337)).toThrow(/wildcard/)
+    expect(() => getDefaultSessionPermissions(1, { env: 'prod' })).toThrow(/wildcard/)
 })
 
 test('assertAccountCreateCanInitialize fails early when keystore exists', async () => {

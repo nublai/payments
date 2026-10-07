@@ -57,7 +57,18 @@ import { parseSpendLimitUnits } from './lib/permissions-common'
 import { executePermissionsList } from './lib/permissions-list'
 import { executePermissionsRevoke } from './lib/permissions-revoke'
 import { executePermissionsShow } from './lib/permissions-show'
-import { parseSpendLimit, permissionNeedsFullAccessConfirmation } from './lib/session-common'
+import {
+    DEFAULT_SESSION_SPEND_LIMIT,
+    normalizedDailyUsdcUnits,
+    parseSpendLimit,
+    permissionNeedsFullAccessConfirmation,
+} from './lib/session-common'
+import {
+    fullAccessSessionHowTo,
+    readActiveUsdcDaily,
+    sessionHasWildcardCall,
+    storedSessionRequiresPhrase,
+} from './lib/session-gates'
 import { authUrlUnsetMessage, executeLogin, executeLogout, getAuthUrl, LoginError } from './lib/login'
 import { readKeystoreBundle } from './lib/keystore'
 import {
@@ -88,8 +99,10 @@ import {
     CONFIRM_FULL_ACCESS_PHRASE,
     CONFIRM_ORACLE_SIGN_PHRASE,
     CONFIRM_PASSKEY_PHRASE,
+    CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
     CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
     CONFIRM_SEND_PHRASE,
+    CONFIRM_UNLOCK_FULL_ACCESS_PHRASE,
     HumanConfirmationError,
     isInteractiveTerminal,
     isMcpCaller,
@@ -278,6 +291,30 @@ function refuseQuoteWithoutHuman(kind: 'swap' | 'bridge'): void {
     }
 }
 
+async function refuseNarrowSessionForQuote(
+    kind: 'swap' | 'bridge',
+    options: {
+        env: 'dev' | 'stage' | 'prod'
+        chain?: string
+        profile?: string
+        keystorePath?: string
+        session?: string
+        sessionFile?: string
+    },
+): Promise<void> {
+    const allowed = await sessionHasWildcardCall({
+        env: options.env,
+        chain: options.chain,
+        name: options.profile,
+        keystorePath: options.keystorePath,
+        sessionName: options.session,
+        sessionFile: options.sessionFile,
+    })
+    if (!allowed) {
+        throw new AccountSwapError('CONFIRMATION_REQUIRED', fullAccessSessionHowTo(kind))
+    }
+}
+
 async function readPublicAccountAddresses(keystorePath: string): Promise<string[]> {
     try {
         const bundle = await readKeystoreBundle(keystorePath)
@@ -309,6 +346,11 @@ async function confirmElevatedPermission(
         /** Session create/rotate install 10 USDC per day when amount and period are omitted. */
         defaultUsdcSpend?: boolean
         parseHumanAmount: (value: string) => bigint
+        /** Add this operation's USDC spend to the account's other active sessions. */
+        stack?: 'create' | 'rotate' | 'grant'
+        grantType?: 'call' | 'spend'
+        excludeSessionName?: string
+        excludeKeyHash?: string
     },
 ): Promise<void> {
     const spendLimit = resolveSpendLimitInput({
@@ -317,6 +359,7 @@ async function confirmElevatedPermission(
         parseHumanAmount: input.parseHumanAmount,
     })
     const chain = selectDefaultChain(input.env, input.chain)
+    const usdcAddress = getUsdcTokenConfig(chain).address
     const accountAddresses = await readPublicAccountAddresses(
         resolveKeystorePath({
             env: input.env,
@@ -325,21 +368,77 @@ async function confirmElevatedPermission(
         }),
     )
     if (
-        !permissionNeedsFullAccessConfirmation({
+        permissionNeedsFullAccessConfirmation({
             fullAccess: input.fullAccess,
             target: input.target,
             selectors: input.selector ? [input.selector] : undefined,
             spendLimit,
             spendPeriod: input.spendPeriod,
             token: input.token,
-            usdcAddress: getUsdcTokenConfig(chain).address,
+            usdcAddress,
             defaultUsdcSpend: input.defaultUsdcSpend,
             accountAddresses,
         })
     ) {
+        await confirmHuman(reportError, operation, phrase)
         return
     }
-    await confirmHuman(reportError, operation, phrase)
+    if (!input.stack) return
+    const proposed = proposedUsdcDaily({
+        stack: input.stack,
+        grantType: input.grantType,
+        defaultUsdcSpend: input.defaultUsdcSpend,
+        spendLimit,
+        spendPeriod: input.spendPeriod,
+        token: input.token,
+        usdcAddress,
+    })
+    if (proposed === null) return
+    const existing = await readActiveUsdcDaily({
+        env: input.env,
+        chain: input.chain,
+        name: input.profile,
+        keystorePath: input.keystorePath,
+        excludeSessionName: input.stack === 'rotate' ? input.excludeSessionName : undefined,
+        excludeKeyHash: input.stack === 'grant' ? input.excludeKeyHash : undefined,
+    })
+    if (existing === 'unreadable' || existing + proposed > DEFAULT_SESSION_SPEND_LIMIT) {
+        await confirmHuman(reportError, operation, phrase)
+    }
+}
+
+function fullKeyHash(value?: string): string | undefined {
+    if (!value) return undefined
+    const normalized = value.startsWith('0x') || value.startsWith('0X') ? value : `0x${value}`
+    if (!/^0x[a-fA-F0-9]{64}$/.test(normalized)) return undefined
+    return normalized
+}
+
+function proposedUsdcDaily(input: {
+    stack: 'create' | 'rotate' | 'grant'
+    grantType?: 'call' | 'spend'
+    defaultUsdcSpend?: boolean
+    spendLimit?: bigint
+    spendPeriod?: 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year' | 'forever'
+    token?: string
+    usdcAddress: string
+}): bigint | null {
+    if (input.stack === 'grant' && input.grantType !== 'spend') return null
+    if (input.token) {
+        try {
+            if (input.token.toLowerCase() !== input.usdcAddress.toLowerCase()) return null
+        } catch {
+            return null
+        }
+    }
+    if (input.stack === 'grant') {
+        if (input.spendLimit === undefined || !input.spendPeriod) return null
+        return normalizedDailyUsdcUnits(input.spendLimit, input.spendPeriod)
+    }
+    if (!input.defaultUsdcSpend) return null
+    const period = input.spendPeriod ?? 'day'
+    const limit = input.spendLimit ?? DEFAULT_SESSION_SPEND_LIMIT
+    return normalizedDailyUsdcUnits(limit, period)
 }
 
 // ---------------------------------------------------------------------------
@@ -589,7 +688,7 @@ account.command('status', {
 
 account.command('create', {
     description:
-        'Create local account keystore and delegate account. The default session is full access (ANY_TARGET, ANY_FN_SEL, unlimited USDC) and requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
+        'Create local account keystore and delegate account. The default session can transfer and approve this chain USDC, call escrow, refund, write a settlement, and settle, with a 10 USDC daily spend. It requires typing CREATE FULL ACCESS SESSION in an interactive terminal. A chain with no known USDC or Escrow address is refused. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,
@@ -650,7 +749,7 @@ account.command('create', {
 
 account.command('delegate', {
     description:
-        'Delegate existing account on one or more chains. Installs the default full-access session and requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
+        'Delegate existing account on one or more chains. Installs the narrow default session (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day) and requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,
@@ -831,6 +930,7 @@ tw.command('swap', {
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('swap')
+        await refuseNarrowSessionForQuote('swap', options)
 
         return executeAccountSwap(
             {
@@ -964,6 +1064,7 @@ tw.command('bridge', {
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('bridge')
+        await refuseNarrowSessionForQuote('bridge', options)
 
         return executeAccountSwap(
             {
@@ -1328,6 +1429,7 @@ session.command('create', {
                 spendPeriod: options.spendPeriod,
                 chain: options.chain,
                 defaultUsdcSpend: true,
+                stack: 'create',
                 parseHumanAmount: parseSpendLimit,
             },
         )
@@ -1532,6 +1634,12 @@ session.command('rotate', {
             .optional()
             .describe('Spend limit in raw base units (mutually exclusive with --spend-limit)'),
         spendPeriod: spendPeriodSchema,
+        narrow: z
+            .boolean()
+            .optional()
+            .describe(
+                'Replace the active session with the narrow default (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day) and revoke the old key. Requires typing ROTATE FULL ACCESS SESSION. Cannot be combined with --full-access, --target, --selector, or a custom spend.',
+            ),
         passwordStdin: passwordStdinSchema,
     }),
     env: passwordEnv,
@@ -1546,25 +1654,63 @@ session.command('rotate', {
         { options: { env: 'prod', profile: 'agent' }, description: 'Rotate active session' },
     ],
     async run({ options, env, error: reportError }) {
-        await confirmElevatedPermission(
-            reportError,
-            'Rotating to a full-access session',
-            CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
-            {
-                env: options.env,
-                profile: options.profile,
-                keystorePath: options.keystorePath,
-                fullAccess: options.fullAccess,
-                target: options.target,
-                selector: options.selector,
-                spendLimit: options.spendLimit,
-                spendLimitRaw: options.spendLimitRaw,
-                spendPeriod: options.spendPeriod,
-                chain: options.chain,
-                defaultUsdcSpend: true,
-                parseHumanAmount: parseSpendLimit,
-            },
-        )
+        if (
+            options.narrow &&
+            (options.fullAccess ||
+                options.target ||
+                options.selector ||
+                options.spendLimit ||
+                options.spendLimitRaw ||
+                options.spendPeriod)
+        ) {
+            return reportError({
+                code: 'INVALID_REQUEST',
+                message:
+                    '--narrow cannot be combined with --full-access, --target, --selector, or a custom spend.',
+            })
+        }
+        if (options.narrow) {
+            await confirmHuman(
+                reportError,
+                'Rotating a legacy session onto the narrowed default',
+                CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+            )
+        } else {
+            let excludeSessionName: string | undefined
+            try {
+                const bundle = await readKeystoreBundle(
+                    resolveKeystorePath({
+                        env: options.env,
+                        name: options.profile,
+                        keystorePath: options.keystorePath,
+                    }),
+                )
+                excludeSessionName = bundle.root.sessionRef.active
+            } catch {
+                excludeSessionName = undefined
+            }
+            await confirmElevatedPermission(
+                reportError,
+                'Rotating to a full-access session',
+                CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+                {
+                    env: options.env,
+                    profile: options.profile,
+                    keystorePath: options.keystorePath,
+                    fullAccess: options.fullAccess,
+                    target: options.target,
+                    selector: options.selector,
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    spendPeriod: options.spendPeriod,
+                    chain: options.chain,
+                    defaultUsdcSpend: true,
+                    stack: 'rotate',
+                    excludeSessionName,
+                    parseHumanAmount: parseSpendLimit,
+                },
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1594,6 +1740,7 @@ session.command('rotate', {
                 parseHumanAmount: parseSpendLimit,
             }),
             spendPeriod: options.spendPeriod,
+            narrow: options.narrow,
             password,
         })
     },
@@ -1628,7 +1775,22 @@ session.command('revoke', {
             description: 'Revoke a session',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        if (
+            await storedSessionRequiresPhrase({
+                env: options.env,
+                chain: options.chain,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                sessionName: args.sessionName,
+            })
+        ) {
+            await confirmHuman(
+                reportError,
+                'Revoking a full-access session',
+                CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1729,7 +1891,21 @@ daemon.command('unlock', {
         address: z.string(),
         expiresAt: z.number(),
     }),
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        if (
+            await storedSessionRequiresPhrase({
+                env: options.env,
+                name: options.profile,
+                keystorePath: options.keystorePath,
+                sessionName: args.sessionName,
+            })
+        ) {
+            await confirmHuman(
+                reportError,
+                'Unlocking a full-access session',
+                CONFIRM_UNLOCK_FULL_ACCESS_PHRASE,
+            )
+        }
         const password = await resolveSessionUnlockPassword(
             {
                 passwordStdin: options.passwordStdin ?? false,
@@ -1965,6 +2141,9 @@ permissions.command('grant', {
                 spendPeriod: options.period,
                 token: options.token,
                 chain: options.chain,
+                stack: 'grant',
+                grantType: options.type,
+                excludeKeyHash: fullKeyHash(options.keyHash) ?? fullKeyHash(args.keyRef),
                 parseHumanAmount: parseSpendLimitUnits,
             },
         )

@@ -2,9 +2,10 @@ import { constants } from 'node:fs'
 import { access } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { type Hex } from 'viem'
+import { type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { ANY_FUNCTION_SELECTOR, ANY_TARGET, encodeSecp256k1Key } from '@nubl/relayer-client'
+import { encodeSecp256k1Key, ERC20_SELECTORS } from '@nubl/relayer-client'
+import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import {
     createRootKeystore,
     createSessionKeystore,
@@ -24,6 +25,7 @@ import {
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
+import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
 import { delegateAccountWithAuthorizeKeys } from './delegation-utils'
 type AccountCreateErrorCode =
     | 'PASSWORD_REQUIRED'
@@ -35,25 +37,51 @@ type AccountCreateErrorCode =
 
 type NetworkDefaults = CliNetworkConfig
 
-const MAX_UINT256_DECIMAL = (2n ** 256n - 1n).toString()
+const ESCROW_ESCROW_SELECTOR = '0x657061bf' as Hex
+const ESCROW_REFUND_SELECTOR = '0x6023fda5' as Hex
+const ESCROW_SETTLE_SELECTOR = '0xe7f921a2' as Hex
+const SIMPLE_SETTLER_WRITE_SELECTOR = '0x84523a30' as Hex
 
-export function getDefaultSessionPermissions(chainId?: number, options?: { legacy?: boolean }) {
-    const callPermission = {
+/**
+ * Narrow default session. `write` and `settle` are included because
+ * `tw escrow settle` submits SimpleSettler.write and Escrow.settle from this key.
+ * A chain with no known USDC or Escrow address throws. There is no wildcard fallback.
+ */
+export function getDefaultSessionPermissions(
+    chainId?: number,
+    options?: { legacy?: boolean; env?: EnvName },
+) {
+    if (!chainId || !options?.env) {
+        throw new AccountCreateError(
+            'UNKNOWN',
+            'Cannot build the default session without a chain and env. Refusing a wildcard fallback.',
+        )
+    }
+    const token = getUsdcAddressByChainId(chainId, options.legacy ?? false)
+    const addresses = getAddressesWithFallback(options.env, chainId)
+    if (!token || !addresses?.escrow || !addresses.simpleSettler) {
+        throw new AccountCreateError(
+            'UNKNOWN',
+            `No USDC or Escrow address for chain ${chainId}. Refusing a wildcard session.`,
+        )
+    }
+    const call = (to: Address, selector: Hex) => ({
         type: 'call' as const,
-        to: ANY_TARGET,
-        selector: ANY_FUNCTION_SELECTOR,
-    }
-    const token = chainId ? getUsdcAddressByChainId(chainId, options?.legacy ?? false) : undefined
-    if (!token) {
-        return [callPermission]
-    }
+        to,
+        selector,
+    })
     return [
-        callPermission,
+        call(token, ERC20_SELECTORS.TRANSFER),
+        call(token, ERC20_SELECTORS.APPROVE),
+        call(addresses.escrow, ESCROW_ESCROW_SELECTOR),
+        call(addresses.escrow, ESCROW_REFUND_SELECTOR),
+        call(addresses.simpleSettler, SIMPLE_SETTLER_WRITE_SELECTOR),
+        call(addresses.escrow, ESCROW_SETTLE_SELECTOR),
         {
             type: 'spend' as const,
             token,
-            limit: MAX_UINT256_DECIMAL,
-            period: 'forever' as const,
+            limit: DEFAULT_SESSION_SPEND_LIMIT.toString(),
+            period: 'day' as const,
         },
     ]
 }
@@ -192,7 +220,9 @@ async function defaultDelegateAccount(input: DelegateInput): Promise<DelegateRes
                 type: 'secp256k1',
                 role: 'normal',
                 publicKey: encodeSecp256k1Key(input.sessionAddress as `0x${string}`),
-                permissions: getDefaultSessionPermissions(input.network.chainId),
+                permissions: getDefaultSessionPermissions(input.network.chainId, {
+                    env: input.network.env,
+                }),
             },
         ],
     })
