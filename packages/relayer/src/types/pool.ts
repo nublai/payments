@@ -78,6 +78,11 @@ export interface CreateAccountTransaction extends BaseRelayTransaction {
 export interface ExecuteIntentTransaction extends BaseRelayTransaction {
     type: 'execute-intent'
     intent: IntentStruct
+    /**
+     * Set only for a user-paid first EIP-7702 upgrade. The signer broadcasts
+     * Orchestrator.execute(intent) with this authorization list.
+     */
+    authorization?: SignedAuthorization
 }
 
 /**
