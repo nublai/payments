@@ -482,6 +482,9 @@ function partialRotateHarness(mode: 'status' | 'throw') {
     }
     const prepares: { chainId: number }[] = []
     const deps = rotateDeps({
+        getKeys: mock(async () => ({
+            '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+        })),
         readRotationIntent: mock(async () => savedIntent),
         writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
             savedIntent = { ...value, fileName: fileName ?? 'rotation.json' }
@@ -575,6 +578,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
 test('a failed extra-chain bundle is a partial rotation and keeps both session files', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
     try {
         await expect(
@@ -586,6 +590,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
         expect(harness.unlinked.some((path) => path.endsWith('default.json'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -594,6 +599,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
 test('a thrown extra-chain wait keeps the new session file', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('throw')
     try {
         await expect(
@@ -604,6 +610,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
         })
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -612,6 +619,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
 test('resuming a partial rotation finishes the extra-chain cleanup', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
     try {
         await expect(
@@ -631,6 +639,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
         )
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -641,7 +650,9 @@ const attacker = '0x4444444444444444444444444444444444444444' as Address
 function stageEnv<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     return fn().finally(() => {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     })
@@ -652,6 +663,9 @@ test('resume after a successful rotation does not start another rotation', async
         let intent: Record<string, unknown> | null = null
         const signed: string[] = []
         const deps = rotateDeps({
+            getKeys: mock(async () => ({
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
             readRotationIntent: mock(async () => intent),
             writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
                 intent = { ...value, fileName: fileName ?? '.rotation.json' }
@@ -884,6 +898,9 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
     await stageEnv(async () => {
         const daily = mock(async () => 0n)
         const deps = rotateDeps({
+            getKeys: mock(async () => ({
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
             readRotationIntent: mock(async () => ({
                 ...(await sealRotationMarker(
                     {
