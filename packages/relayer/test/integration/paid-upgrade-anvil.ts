@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import {
     createPublicClient,
     createWalletClient,
+    decodeEventLog,
     encodeAbiParameters,
     encodeFunctionData,
     erc20Abi,
@@ -24,6 +25,7 @@ import {
     type Address,
     type Hex,
     type PublicClient,
+    type TransactionReceipt,
 } from 'viem'
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts'
 import { hashAuthorization } from 'viem/utils'
@@ -143,7 +145,15 @@ async function main(): Promise<void> {
     const deployer = privateKeyToAccount(DEPLOYER_KEY)
     const relayer = privateKeyToAccount(RELAYER_KEY)
     const wallet = createWalletClient({ account: deployer, chain, transport: http(RPC_URL) })
+    const relayerWallet = createWalletClient({ account: relayer, chain, transport: http(RPC_URL) })
     const rateStore = new Map<string, number>()
+    const gasState: { spent: bigint; held: bigint; failures: number } = {
+        spent: 0n,
+        held: 0n,
+        failures: 0,
+    }
+    const broadcastPlan = { sweepOwner: undefined as Address | undefined }
+    const receipts: TransactionReceipt[] = []
 
     try {
         await waitForChain(publicClient)
@@ -195,14 +205,26 @@ async function main(): Promise<void> {
                             action?: string
                             chainId?: number
                             account?: string
+                            ip?: string
                             reservedAt?: number
                             type?: string
+                            gas?: string
+                            hold?: string
+                            failure?: boolean
                         }
                         if (url.includes('upgrade-rate-limit')) {
+                            if (
+                                body.action === 'reserve-gas' ||
+                                body.action === 'release-gas' ||
+                                body.action === 'settle-gas'
+                            ) {
+                                return json(applyAnvilGas(gasState, body))
+                            }
                             const now = Math.floor(Date.now() / 1000)
                             const buckets = paidUpgradeRateBuckets({
                                 chainId: body.chainId ?? CHAIN_ID,
                                 account: body.account ?? 'unknown',
+                                ip: typeof body.ip === 'string' ? body.ip : 'unknown',
                             })
                             if (body.action === 'peek') {
                                 return json({
@@ -224,6 +246,9 @@ async function main(): Promise<void> {
                                 publicClient,
                                 body as ExecuteIntentTransaction,
                                 orchestrator,
+                                relayerWallet,
+                                broadcastPlan,
+                                receipts,
                             )
                             return json({
                                 txHash: hash,
@@ -400,6 +425,14 @@ async function main(): Promise<void> {
         const paymentAmount = BigInt(quote.paymentAmount)
         assert(paymentAmount > 0n, 'quoted fee must be greater than zero')
         assert(paymentAmount <= 10_000_000n, `quoted fee ${paymentAmount} exceeds the cap`)
+        const percent = (paymentAmount * 500n + 9_999n) / 10_000n
+        const margin = percent > 1_000n ? percent : 1_000n
+        const signedMax = BigInt(quote.intent.paymentMaxAmount ?? '0')
+        assert(
+            signedMax === paymentAmount + margin,
+            `signed paymentMaxAmount ${signedMax} is not quote+5% ${paymentAmount + margin}`,
+        )
+        assert(signedMax <= 5_000_000n, `signed cap ${signedMax} exceeds 5 USDC`)
 
         const intentSignature = await owner.sign({ hash: prepared.digest })
         const recipientBefore = await publicClient.readContract({
@@ -457,6 +490,146 @@ async function main(): Promise<void> {
         const ownerNonce = await publicClient.getTransactionCount({ address: owner.address })
         assert(ownerNonce === 1, `owner nonce ${ownerNonce}, expected the one authorization`)
 
+        const failuresAfterHonest = gasState.failures
+        if (failuresAfterHonest !== 0) {
+            throw new Error('honest upgrade was counted as a payment failure')
+        }
+
+        const griefOwner = privateKeyToAccount(generatePrivateKey())
+        const griefSession = privateKeyToAccount(generatePrivateKey())
+        await wallet.sendTransaction({
+            account: deployer,
+            chain,
+            to: griefOwner.address,
+            value: 1_000_000_000_000_000_000n,
+        })
+        await wallet.writeContract({
+            address: USDC,
+            abi: [
+                {
+                    type: 'function',
+                    name: 'mint',
+                    stateMutability: 'nonpayable',
+                    inputs: [
+                        { name: 'to', type: 'address' },
+                        { name: 'amount', type: 'uint256' },
+                    ],
+                    outputs: [],
+                },
+            ],
+            functionName: 'mint',
+            args: [griefOwner.address, 20_000_000n],
+        })
+        await createWalletClient({ account: griefOwner, chain, transport: http(RPC_URL) }).writeContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [relayer.address, 20_000_000n],
+        })
+        const griefNonce = await publicClient.getTransactionCount({ address: griefOwner.address })
+        const griefKey = {
+            expiry: '0',
+            type: 'secp256k1' as const,
+            role: 'admin' as const,
+            publicKey: encodeAbiParameters([{ type: 'address' }], [griefSession.address]),
+            permissions: [],
+        }
+        const griefInit = buildKeyInitializationData([griefKey], griefOwner.address)
+        const griefExecSignature = await griefOwner.signTypedData({
+            domain: getSignedCallDomain(CHAIN_ID, orchestrator),
+            types: SIGNED_CALL_TYPES,
+            primaryType: 'SignedCall',
+            message: {
+                multichain: false,
+                eoa: griefOwner.address,
+                calls: griefInit.calls,
+                nonce: UPGRADE_PRECALL_NONCE,
+            },
+        })
+        const griefAuth = await griefOwner.sign({
+            hash: hashAuthorization({
+                contractAddress: accountProxy,
+                chainId: CHAIN_ID,
+                nonce: griefNonce,
+            }),
+        })
+        const griefPrepared = await handlePrepareCalls(
+            {
+                from: griefOwner.address,
+                chain_id: '0x7a69',
+                calls: [
+                    {
+                        to: USDC,
+                        data: encodeFunctionData({
+                            abi: erc20Abi,
+                            functionName: 'balanceOf',
+                            args: [griefOwner.address],
+                        }),
+                        value: '0x0',
+                    },
+                ],
+                capabilities: {
+                    meta: {
+                        nonce: '0',
+                        fee_payer: griefOwner.address,
+                        fee_token: USDC,
+                        fee_max_amount: '10000000',
+                    },
+                    accountUpgrade: {
+                        authorization: {
+                            contractAddress: accountProxy,
+                            chainId: CHAIN_ID,
+                            nonce: griefNonce,
+                            signature: griefAuth,
+                        },
+                        preCall: {
+                            eoa: griefOwner.address,
+                            executionData: griefInit.executionData,
+                            nonce: UPGRADE_PRECALL_NONCE.toString(),
+                            signature: griefExecSignature,
+                        },
+                    },
+                },
+            },
+            ctx,
+        )
+        const griefSignature = await griefOwner.sign({ hash: griefPrepared.digest })
+        const relayerUsdcBefore = await publicClient.readContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [relayer.address],
+        })
+        broadcastPlan.sweepOwner = griefOwner.address
+        const griefSent = await handleSendPreparedCalls(
+            { context: griefPrepared.context, signature: griefSignature },
+            ctx,
+        )
+        broadcastPlan.sweepOwner = undefined
+        assert(typeof griefSent.id === 'string', 'grief send did not return a bundle id')
+        const griefReceipt = receipts[receipts.length - 1]
+        assert(griefReceipt, 'missing PaymentError receipt')
+        assert(griefReceipt.status === 'success', 'PaymentError receipt did not succeed')
+        const griefErr = intentError(griefReceipt)
+        assert(griefErr === '0xabab8fc9', `expected PaymentError selector, got ${griefErr}`)
+        assert(gasState.failures === 1, `PaymentError failures ${gasState.failures}`)
+        assert(
+            gasState.spent >= griefReceipt.gasUsed,
+            `gas budget ${gasState.spent} did not count ${griefReceipt.gasUsed}`,
+        )
+        const relayerUsdcAfter = await publicClient.readContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [relayer.address],
+        })
+        assert(
+            relayerUsdcAfter - relayerUsdcBefore === 20_000_000n,
+            'intent pull moved USDC after the sweep',
+        )
+        const blocked = applyAnvilGas(gasState, { action: 'reserve-gas', gas: '2000000' })
+        assert(blocked.allowed === false, 'daily gas budget accepted another hold')
+
         console.log(
             JSON.stringify({
                 authGas: authGas.toString(),
@@ -492,14 +665,78 @@ function splitSignature(signature: Hex): { r: Hex; s: Hex; yParity: number } {
     }
 }
 
+function applyAnvilGas(
+    gasState: { spent: bigint; held: bigint; failures: number },
+    body: { action?: string; gas?: string; hold?: string; failure?: boolean },
+): { allowed: boolean; gas: number; failures: number } {
+    const budget = 2_000_000n
+    const amount = BigInt(body.gas ?? '0')
+    if (body.action === 'reserve-gas') {
+        if (gasState.spent + gasState.held + amount > budget) {
+            return { allowed: false, gas: Number(gasState.spent), failures: gasState.failures }
+        }
+        gasState.held += amount
+        return { allowed: true, gas: Number(gasState.spent), failures: gasState.failures }
+    }
+    if (body.action === 'release-gas') {
+        gasState.held = gasState.held > amount ? gasState.held - amount : 0n
+        return { allowed: true, gas: Number(gasState.spent), failures: gasState.failures }
+    }
+    if (body.action === 'settle-gas') {
+        const hold = BigInt(body.hold ?? '0')
+        gasState.held = gasState.held > hold ? gasState.held - hold : 0n
+        gasState.spent += amount
+        if (body.failure === true) gasState.failures += 1
+        return { allowed: true, gas: Number(gasState.spent), failures: gasState.failures }
+    }
+    return { allowed: false, gas: Number(gasState.spent), failures: gasState.failures }
+}
+
+function intentError(receipt: TransactionReceipt): Hex | undefined {
+    for (const log of receipt.logs) {
+        try {
+            const decoded = decodeEventLog({
+                abi: orchestratorAbi,
+                data: log.data,
+                topics: log.topics,
+            })
+            if (decoded.eventName !== 'IntentExecuted') continue
+            return (decoded.args as { err?: Hex }).err
+        } catch {
+            continue
+        }
+    }
+    return undefined
+}
+
 async function broadcastPaidUpgrade(
     publicClient: PublicClient,
     tx: ExecuteIntentTransaction,
     orchestrator: Address,
+    broadcaster: ReturnType<typeof createWalletClient>,
+    plan: { sweepOwner?: Address },
+    receipts: TransactionReceipt[],
 ): Promise<Hex> {
     const relayer = privateKeyToAccount(RELAYER_KEY)
-    const broadcaster = createWalletClient({ account: relayer, chain, transport: http(RPC_URL) })
     assert(tx.authorization, 'execute-intent is missing the authorization')
+    if (plan.sweepOwner) {
+        const balance = await publicClient.readContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [plan.sweepOwner],
+        })
+        const sweepHash = await broadcaster.writeContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'transferFrom',
+            args: [plan.sweepOwner, relayer.address, balance],
+            chain,
+            account: relayer,
+        })
+        const sweepReceipt = await publicClient.waitForTransactionReceipt({ hash: sweepHash })
+        assert(sweepReceipt.status === 'success', 'sweep transferFrom failed')
+    }
     const intent = {
         ...tx.intent,
         paymentRecipient: getPaymentRecipient(undefined, relayer.address),
@@ -522,6 +759,7 @@ async function broadcastPaidUpgrade(
     })
     const receipt = await publicClient.waitForTransactionReceipt({ hash })
     assert(receipt.status === 'success', `upgrade tx ${hash} reverted`)
+    receipts.push(receipt)
     return hash
 }
 

@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem'
 import { zeroAddress, createPublicClient, http } from 'viem'
+import { hashTypedData } from 'viem/utils'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import { getFeeConfig, getGasConfig, getPriceOracleConfig } from '../../types/env'
@@ -31,10 +32,12 @@ import type {
     PrepareCallsContext,
     PrepareCallsResult,
 } from '../schema/prepareCalls'
+import { upgradeClientIp } from './shared/upgrade-rate-limit'
 import {
     assertPaidUpgrade,
     assertPaidUpgradeRateCapacity,
     chainUsdcAddress,
+    clampPaidUpgradePaymentMax,
     encodeSignedPreCall,
     paidUpgradeMaxPayment,
     recordPaidUpgradeRateLimit,
@@ -83,7 +86,7 @@ export async function handlePrepareCalls(
     const expiry = meta?.expiry
     const payer = meta?.fee_payer
     const paymentToken = meta?.fee_token
-    const paymentMaxAmount = meta?.fee_max_amount
+    let paymentMaxAmount = meta?.fee_max_amount
     const settler = meta?.settler
     const settlerContext = meta?.settler_context
 
@@ -98,9 +101,10 @@ export async function handlePrepareCalls(
     }))
 
     const requestedUpgrade = typedParams.capabilities?.accountUpgrade
+    const paidUpgradeIp = upgradeClientIp(ctx.request)
     let upgradePreCallEncoding: Hex[] | undefined
     if (requestedUpgrade) {
-        await assertPaidUpgradeRateCapacity(env, config.chainId, typedParams.from)
+        await assertPaidUpgradeRateCapacity(env, config.chainId, typedParams.from, paidUpgradeIp)
         // Encode before simulation so the digest and the gas estimate include the pre-call.
         // Signature, delegation, fee, and balance are checked again once the fee is known.
         try {
@@ -246,6 +250,30 @@ export async function handlePrepareCalls(
         if (paymentAmount <= 0n) {
             throw new RpcError(INVALID_PARAMS, 'Paid upgrade fee must be greater than zero')
         }
+        let clientMax: bigint | undefined
+        if (paymentMaxAmount !== undefined && paymentMaxAmount !== '') {
+            try {
+                clientMax = BigInt(paymentMaxAmount)
+            } catch {
+                throw new RpcError(INVALID_PARAMS, 'Paid upgrade paymentMaxAmount is required')
+            }
+        }
+        const clamped = clampPaidUpgradePaymentMax({
+            paymentAmount,
+            clientMax,
+            ceiling: paidUpgradeMaxPayment(env),
+        })
+        paymentMaxAmount = clamped.toString()
+        result.typedData.message = {
+            ...result.typedData.message,
+            paymentMaxAmount: clamped,
+        }
+        result.digest = hashTypedData({
+            domain: result.typedData.domain,
+            types: result.typedData.types,
+            primaryType: 'Intent',
+            message: result.typedData.message,
+        })
         const checked = await assertPaidUpgrade({
             eoa: typedParams.from,
             payer,
@@ -325,7 +353,7 @@ export async function handlePrepareCalls(
     }
 
     if (requestedUpgrade) {
-        await recordPaidUpgradeRateLimit(env, config.chainId, typedParams.from)
+        await recordPaidUpgradeRateLimit(env, config.chainId, typedParams.from, paidUpgradeIp)
     }
 
     const preparedContext: PrepareCallsContext = {
