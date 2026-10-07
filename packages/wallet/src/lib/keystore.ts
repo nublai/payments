@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-import { access, chmod, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { access, chmod, lstat, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { dirname, join } from 'node:path'
 import argon2 from 'argon2'
@@ -705,11 +705,40 @@ type WriteJsonAtomicOptions = {
     emptyMessage: string
 }
 
-/** Create `dir` as mode 0700, or tighten an existing looser directory to 0700. */
+function isEnoent(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+    )
+}
+
+/**
+ * Create `dir` as mode 0700, or tighten an existing real directory to 0700.
+ * A symlink is refused. chmod would follow it and change the target.
+ */
 export async function ensureOwnerOnlyDirectory(dir: string): Promise<void> {
+    if (process.platform !== 'win32') {
+        try {
+            const existing = await lstat(dir)
+            if (existing.isSymbolicLink()) {
+                throw new Error(
+                    `Refusing to chmod ${dir}: it is a symlink. sessions/ must be a real directory.`,
+                )
+            }
+        } catch (error) {
+            if (!isEnoent(error)) throw error
+        }
+    }
     await mkdir(dir, { recursive: true, mode: 0o700 })
     if (process.platform === 'win32') return
-    const info = await stat(dir)
+    const info = await lstat(dir)
+    if (info.isSymbolicLink()) {
+        throw new Error(
+            `Refusing to chmod ${dir}: it is a symlink. sessions/ must be a real directory.`,
+        )
+    }
     if ((info.mode & 0o777) !== 0o700) {
         await chmod(dir, 0o700)
     }

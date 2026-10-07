@@ -9,7 +9,7 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
-import { executeSessionRotate } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
@@ -857,19 +857,24 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
         const daily = mock(async () => 0n)
         const deps = rotateDeps({
             readRotationIntent: mock(async () => ({
-                oldSessionName: 'default',
-                newSessionName: 'default-next',
-                status: 'submitted',
-                bundleId: 'bundle-base',
+                ...(await sealRotationMarker(
+                    {
+                        oldSessionName: 'default',
+                        newSessionName: 'default-next',
+                        status: 'submitted',
+                        bundleId: 'bundle-base',
+                        chain: 'base',
+                        chainId: 8453,
+                        newKeyHash: computeSessionKeyHash(newAddress),
+                        narrow: true,
+                        fullAccess: false,
+                        account,
+                        oldKeyHash: computeSessionKeyHash(oldAddress),
+                        permissions: { kind: 'narrow' },
+                    },
+                    'pw',
+                )),
                 fileName: '.rotation.json',
-                chain: 'base',
-                chainId: 8453,
-                newKeyHash: computeSessionKeyHash(newAddress),
-                narrow: true,
-                fullAccess: false,
-                account,
-                oldKeyHash: computeSessionKeyHash(oldAddress),
-                permissions: { kind: 'narrow' },
             })),
             readActiveUsdcDaily: daily,
             waitForBundle: mock(async () => ({

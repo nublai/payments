@@ -24,6 +24,64 @@ import {
 import type { EnvName } from './network-config'
 import { resolveOrchestratorAddress } from './orchestrator-address'
 
+/**
+ * JSON-RPC codes wallet_sendPreparedCalls raises only before the signer broadcasts.
+ *
+ * Thrown before pool.fetch in handleSendPreparedCalls:
+ * - -32602 INVALID_PARAMS: missing context or signature, unsupported chain id,
+ *   or validateQuote refusing a zero-fee quote
+ * - -32010 QUOTE_EXPIRED: validateQuote
+ * - -32011 INVALID_QUOTE_SIGNATURE: validateQuote
+ * - -32012 PAYMENT_EXCEEDS_MAX: validateQuote
+ * - -32005 INVALID_SIGNATURE: assertErc8128BoundToQuotes
+ *
+ * Thrown from the signer before sendTransaction / sendRawTransaction, then mapped
+ * by handleSendPreparedCalls when the signer response is not ok:
+ * - -32008 INTENT_EXPIRED: signer.do.ts isIntentExpired, before either send path
+ *
+ * Not in this set, and therefore possibly submitted:
+ * - -32002 SERVICE_UNAVAILABLE. That code is both a signer failure after the send
+ *   await and "Intent submitted but bundle tracking unavailable", which is thrown
+ *   only after sendTransaction or sendRawTransaction has already resolved.
+ * - Any error with no JSON-RPC code, including "socket hang up" and "fetch failed".
+ */
+export const DEFINITIVE_PRE_BROADCAST_REFUSAL_CODES: ReadonlySet<number> = new Set([
+    -32602,
+    -32005,
+    -32008,
+    -32010,
+    -32011,
+    -32012,
+])
+
+export function isDefinitivePreBroadcastRefusal(error: unknown): boolean {
+    const code = jsonRpcCode(error)
+    return code !== undefined && DEFINITIVE_PRE_BROADCAST_REFUSAL_CODES.has(code)
+}
+
+function jsonRpcCode(error: unknown): number | undefined {
+    if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
+    const code = (error as { code?: unknown }).code
+    return typeof code === 'number' && Number.isInteger(code) ? code : undefined
+}
+
+function bundleIdFromSendError(error: unknown): string | undefined {
+    if (typeof error !== 'object' || error === null) return undefined
+    const data = (error as { data?: unknown }).data
+    if (typeof data !== 'object' || data === null || !('bundleId' in data)) return undefined
+    const id = (data as { bundleId?: unknown }).bundleId
+    return typeof id === 'string' && id.length > 0 ? id : undefined
+}
+
+function markPossiblySubmitted(error: unknown): Error {
+    const bundleId = bundleIdFromSendError(error)
+    const tagged = error instanceof Error ? error : new Error(String(error))
+    const marked = tagged as Error & { rotationPossiblySubmitted?: boolean; bundleId?: string }
+    marked.rotationPossiblySubmitted = true
+    if (bundleId) marked.bundleId = bundleId
+    return marked
+}
+
 export type PreparedCallRequest = {
     from: Address
     calls: Call[]
@@ -181,10 +239,18 @@ export async function executeSignedCalls(
         ? wrapSignature(signature, params.signerKeyHash)
         : signature
 
-    const submission = await deps.sendPreparedCalls({
-        context: prepared.context,
-        signature: effectiveSignature,
-    })
+    // The signed intent is handed to the relayer here. After this call, only a
+    // definitive pre-broadcast refusal means the transaction was not broadcast.
+    let submission: { id: string }
+    try {
+        submission = await deps.sendPreparedCalls({
+            context: prepared.context,
+            signature: effectiveSignature,
+        })
+    } catch (error) {
+        if (isDefinitivePreBroadcastRefusal(error)) throw error
+        throw markPossiblySubmitted(error)
+    }
 
     const tagBundle = (error: unknown): unknown => {
         if (error instanceof Error) {

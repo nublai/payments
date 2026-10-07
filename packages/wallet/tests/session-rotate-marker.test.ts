@@ -9,7 +9,7 @@ import { executeAccountUpdatePassword } from '../src/lib/account-update-password
 import { executePermissionsList } from '../src/lib/permissions-list'
 import { executeSessionList } from '../src/lib/session-list'
 import { executeSessionRevoke } from '../src/lib/session-revoke'
-import { executeSessionRotate } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
@@ -615,20 +615,23 @@ test('resume after the pointer moved finishes cleanup and signs nothing', async 
         await writeFile(
             join(sessions, '.rotation.json'),
             `${JSON.stringify(
-                {
-                    oldSessionName: 'default',
-                    newSessionName: 'default-next',
-                    status: 'submitted',
-                    bundleId: 'bundle-done',
-                    chain: 'base',
-                    chainId: 8453,
-                    newKeyHash: hash,
-                    narrow: true,
-                    fullAccess: false,
-                    account,
-                    oldKeyHash: computeSessionKeyHash(oldAddress),
-                    permissions: { kind: 'narrow' },
-                },
+                await sealRotationMarker(
+                    {
+                        oldSessionName: 'default',
+                        newSessionName: 'default-next',
+                        status: 'submitted',
+                        bundleId: 'bundle-done',
+                        chain: 'base',
+                        chainId: 8453,
+                        newKeyHash: hash,
+                        narrow: true,
+                        fullAccess: false,
+                        account,
+                        oldKeyHash: computeSessionKeyHash(oldAddress),
+                        permissions: { kind: 'narrow' },
+                    },
+                    'pw',
+                ),
                 null,
                 2,
             )}\n`,

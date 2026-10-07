@@ -10,7 +10,7 @@ import { decodeFunctionData, getAddress, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
 import { executeSignedCalls } from '../src/lib/execute-calls'
-import { executeSessionRotate } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import type { Call } from '@nubl/relayer-client'
@@ -795,25 +795,28 @@ test('a marker whose new session file is gone reports on-chain keys and does not
         )
         const oldHash = computeSessionKeyHash(oldAddress)
         const newHash = computeSessionKeyHash(newAddress)
-        const marker = {
-            oldSessionName: 'default',
-            newSessionName: 'default-next',
-            status: 'pending',
-            chain: 'base',
-            chainId: 8453,
-            newKeyHash: newHash,
-            narrow: false,
-            fullAccess: false,
-            account,
-            oldKeyHash: oldHash,
-            permissions: {
-                kind: 'custom',
-                target: usdc,
-                selectors: [transferSelector],
-                spendLimit: '10000000',
-                spendPeriod: 'day',
+        const marker = await sealRotationMarker(
+            {
+                oldSessionName: 'default',
+                newSessionName: 'default-next',
+                status: 'pending' as const,
+                chain: 'base' as const,
+                chainId: 8453,
+                newKeyHash: newHash,
+                narrow: false,
+                fullAccess: false,
+                account,
+                oldKeyHash: oldHash,
+                permissions: {
+                    kind: 'custom' as const,
+                    target: usdc,
+                    selectors: [transferSelector],
+                    spendLimit: '10000000',
+                    spendPeriod: 'day' as const,
+                },
             },
-        }
+            'pw',
+        )
         await writeFile(join(sessions, '.rotation.json'), `${JSON.stringify(marker, null, 2)}\n`)
         const getKeys = mock(async () => ({
             '0x2105': [{ hash: oldHash }],
@@ -890,25 +893,28 @@ test('pointer-moved resume does not delete a sibling key that is still on chain'
             join(sessions, 'sibling.json'),
             `${JSON.stringify(sessionDocument('sibling', siblingAddress), null, 2)}\n`,
         )
-        const marker = {
-            oldSessionName: 'sibling',
-            newSessionName: 'default',
-            status: 'pending',
-            chain: 'base',
-            chainId: 8453,
-            newKeyHash: computeSessionKeyHash(oldAddress),
-            narrow: false,
-            fullAccess: false,
-            account,
-            oldKeyHash: computeSessionKeyHash(siblingAddress),
-            permissions: {
-                kind: 'custom',
-                target: usdc,
-                selectors: [transferSelector],
-                spendLimit: '10000000',
-                spendPeriod: 'day',
+        const marker = await sealRotationMarker(
+            {
+                oldSessionName: 'sibling',
+                newSessionName: 'default',
+                status: 'pending' as const,
+                chain: 'base' as const,
+                chainId: 8453,
+                newKeyHash: computeSessionKeyHash(oldAddress),
+                narrow: false,
+                fullAccess: false,
+                account,
+                oldKeyHash: computeSessionKeyHash(siblingAddress),
+                permissions: {
+                    kind: 'custom' as const,
+                    target: usdc,
+                    selectors: [transferSelector],
+                    spendLimit: '10000000',
+                    spendPeriod: 'day' as const,
+                },
             },
-        }
+            'pw',
+        )
         await writeFile(join(sessions, '.rotation.json'), `${JSON.stringify(marker, null, 2)}\n`)
         const executeSigned = mock(async () => {
             throw new Error('must not sign')
