@@ -12,9 +12,12 @@ import { accountAbi } from '@nubl/contracts/abis'
  * back only when the on-chain key still equals what install wrote: that
  * bounded expiry, the same key material, the same canExecute permissions, and
  * the same spend limits. If any of those differ, recovery does not authorize
- * and does not touch the key. If recovery never runs, the key stops signing
- * when this expiry passes. The grant and the minute limit remain in storage
- * and cannot be used.
+ * and does not touch the key. The approve grant and the raised minute limit
+ * then stay until the on-chain expiry. Install bounded that expiry to
+ * now+7200, the same window as a process that dies before cleanup. Spent
+ * counters, period start, and signature-checker sets are not part of this
+ * comparison. If recovery never runs, the key stops signing when this expiry
+ * passes. The grant and the minute limit remain in storage and cannot be used.
  *
  * No new storage, no bytecode change, no redeploy. The root key sends the
  * existing `authorize` call, which updates expiry when the key already exists.
@@ -102,7 +105,8 @@ export function expectedInstalledKey(input: {
 
 /**
  * Field-by-field differences between the key install wrote and the key now
- * on chain. Empty means restore may write the previous expiry back.
+ * on chain. Empty means restore may write the previous expiry back. Spent
+ * counters, period start, and signature-checker sets are not compared.
  */
 export function quoteKeyDifferences(installed: QuoteKeySnapshot, live: QuoteKeySnapshot): string[] {
     const differences: string[] = []

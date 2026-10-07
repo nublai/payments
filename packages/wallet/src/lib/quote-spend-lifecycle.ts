@@ -185,32 +185,46 @@ export async function recoverPendingQuoteSpend(
     await clearPendingQuoteLimit(keystorePath)
 }
 
-export async function installTrackedQuoteSpendLimit(input: {
-    bound: QuoteSpendBound
-    network: NetworkConfig
-    password: string
-    keystorePath: string
-    sessionFile?: string
-    /** Input-token canExecute rows to add for this quote and revoke afterwards. */
-    callGrants?: readonly SwapCallGrant[]
-}): Promise<() => Promise<void>> {
-    return withoutQuoteSpendRecovery(() => installTrackedQuoteSpendLimitNow(input))
+export type QuoteInstallIo = {
+    /** Chain reads for install. Release still uses `readMinuteLimits` and `readQuoteKey`. */
+    client?: PublicClient
+    submit?: (calls: Call[]) => Promise<void>
+    readMinuteLimits?: (record: PendingQuoteLimitRecord) => Promise<Map<string, bigint | null>>
+    readQuoteKey?: (record: PendingQuoteLimitRecord) => Promise<QuoteKeyRead>
 }
 
-async function installTrackedQuoteSpendLimitNow(input: {
-    bound: QuoteSpendBound
-    network: NetworkConfig
-    password: string
-    keystorePath: string
-    sessionFile?: string
-    callGrants?: readonly SwapCallGrant[]
-}): Promise<() => Promise<void>> {
+export async function installTrackedQuoteSpendLimit(
+    input: {
+        bound: QuoteSpendBound
+        network: NetworkConfig
+        password: string
+        keystorePath: string
+        sessionFile?: string
+        /** Input-token canExecute rows to add for this quote and revoke afterwards. */
+        callGrants?: readonly SwapCallGrant[]
+    },
+    io?: QuoteInstallIo,
+): Promise<() => Promise<void>> {
+    return withoutQuoteSpendRecovery(() => installTrackedQuoteSpendLimitNow(input, io))
+}
+
+async function installTrackedQuoteSpendLimitNow(
+    input: {
+        bound: QuoteSpendBound
+        network: NetworkConfig
+        password: string
+        keystorePath: string
+        sessionFile?: string
+        callGrants?: readonly SwapCallGrant[]
+    },
+    io?: QuoteInstallIo,
+): Promise<() => Promise<void>> {
     if (input.sessionFile) {
         throw new QuoteSpendError(
             'A swap needs the root key to set a per-quote spend limit. A session file alone cannot.',
         )
     }
-    const client = publicClient(input.network)
+    const client = io?.client ?? publicClient(input.network)
     let spendInfos: SpendInfoLike[]
     let balances: { token: Address; balance: bigint }[]
     try {
@@ -292,7 +306,7 @@ async function installTrackedQuoteSpendLimitNow(input: {
     })
     await writePendingQuoteLimit(input.keystorePath, record)
     try {
-        await submitRootCalls({
+        await submitInstallCalls(io, {
             keystorePath: input.keystorePath,
             password: input.password,
             network: input.network,
@@ -330,7 +344,7 @@ async function installTrackedQuoteSpendLimitNow(input: {
         )
     }
     return async () => {
-        await withoutQuoteSpendRecovery(() => releaseInstalledQuoteSpendLimit(input, record))
+        await withoutQuoteSpendRecovery(() => releaseInstalledQuoteSpendLimit(input, record, io))
     }
 }
 
@@ -342,19 +356,22 @@ async function releaseInstalledQuoteSpendLimit(
         keystorePath: string
     },
     record: PendingQuoteLimitRecord,
+    io?: QuoteInstallIo,
 ): Promise<void> {
-    const minuteLimits = await readMinuteLimits(
-        input.bound.account,
-        input.bound.keyHash,
-        input.network.rpcUrl,
-        input.network.chainId,
-    )
-    const current = await readPendingQuoteLimit(input.keystorePath)
+    const active = currentRecord(await readPendingQuoteLimit(input.keystorePath), record)
+    const minuteLimits = io?.readMinuteLimits
+        ? await io.readMinuteLimits(active)
+        : await readMinuteLimits(
+              input.bound.account,
+              input.bound.keyHash,
+              input.network.rpcUrl,
+              input.network.chainId,
+          )
     const planned = restoreCallsForChain({
-        record: current ?? record,
+        record: active,
         minuteLimits,
     })
-    const expiry = await keyExpiryRestoreDecision(current ?? record)
+    const expiry = await keyExpiryRestoreDecision(active, io?.readQuoteKey)
     if (expiry.differences.length > 0) {
         await refuseChangedQuoteKey(input.keystorePath, expiry.differences)
     }
@@ -363,9 +380,9 @@ async function releaseInstalledQuoteSpendLimit(
             `The per-quote spend limit could not be restored: ${planned.unexpected}`,
         )
     }
-    const calls = [...releaseCalls(current ?? record, planned.calls), ...expiry.calls]
+    const calls = [...releaseCalls(active, planned.calls), ...expiry.calls]
     if (calls.length > 0) {
-        await submitRootCalls({
+        await submitInstallCalls(io, {
             keystorePath: input.keystorePath,
             password: input.password,
             network: input.network,
@@ -375,6 +392,31 @@ async function releaseInstalledQuoteSpendLimit(
         })
     }
     await clearPendingQuoteLimit(input.keystorePath)
+}
+
+function currentRecord(
+    current: PendingQuoteLimitRecord | undefined,
+    fallback: PendingQuoteLimitRecord,
+): PendingQuoteLimitRecord {
+    return current ?? fallback
+}
+
+async function submitInstallCalls(
+    io: QuoteInstallIo | undefined,
+    input: {
+        keystorePath: string
+        password: string
+        network: NetworkConfig
+        account: Address
+        calls: Call[]
+        failure: string
+    },
+): Promise<void> {
+    if (io?.submit) {
+        if (input.calls.length > 0) await io.submit(input.calls)
+        return
+    }
+    await submitRootCalls(input)
 }
 
 function releaseCalls(record: PendingQuoteLimitRecord, spendCalls: Call[]): Call[] {
