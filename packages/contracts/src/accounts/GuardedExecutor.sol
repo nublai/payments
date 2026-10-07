@@ -239,9 +239,15 @@ abstract contract GuardedExecutor is ERC7821 {
     /// Guarantee. A spend limit protects tokens this account holds directly, for a key
     /// whose on-chain `canExecute` is an allowlist of targets that hold no standing
     /// rights over the account's assets. Standing rights are an ERC-20 allowance, a
-    /// Permit2 allowance, an ERC-721 or ERC-1155 operator approval, and a vault share
-    /// allowance or operator role. This contract meters balances. It does not read
-    /// those rights. The wallet refuses the session, or root revokes the rights first.
+    /// Permit2 allowance, an ERC-721 or ERC-1155 operator approval, a vault share
+    /// allowance or operator role, and a signature-checker approval.
+    /// `Account.isValidSignature` accepts a non-root key when `msg.sender` is in that
+    /// key's checker set, so an ERC-1271 permit through the checker can `transferFrom`
+    /// outside `execute` and this guard never runs. This contract meters balances. It
+    /// does not read those rights. Today the wallet does not refuse a payment session
+    /// when an allowlisted target already holds a standing right. Root can revoke those
+    /// rights. A scan of payment-key targets for those rights, at session creation and
+    /// again at use, is a planned follow-up.
     ///
     /// Wildcard keys (`ANY_TARGET` or `ANY_FN_SEL`) and super-admin keys are outside
     /// this guarantee. A super-admin key, and the root key (key hash 0), skip the
@@ -284,14 +290,18 @@ abstract contract GuardedExecutor is ERC7821 {
     ///   not reset. A later pull of a token that still has no spend period is not charged.
     /// - A hostile metered token. `balanceOf` returns 32 bytes of a lie (a constant,
     ///   or a proxy that pins the pre-transfer balance), or an unrecognized selector
-    ///   debits this account and refills the balance before the call returns.
+    ///   debits this account and refills the balance before the call returns. A token
+    ///   that transfers inside `approve(0)` moves its balance in the trailing
+    ///   `safeApprove` reset, which runs after the per-call snapshot, so that transfer
+    ///   is not charged. The charge stays at the non-zero approve amount from calldata.
     /// - A token with no spend period. A non-root key can move it through any call
     ///   that is not a recognized selector, and the move is not charged. That includes
     ///   swap output and any other token this account already holds, a spender the
-    ///   root key approved earlier (a proxy with no `balanceOf`, a three-item `escrow`
-    ///   whose only non-zero amount is not a recognized selector, a puller whose token
-    ///   word sits behind a 32-word pad, a puller that masks the token word with
-    ///   `address(uint160(word))`), and a call to token A that pulls token B.
+    ///   root key approved earlier (a proxy with no `balanceOf`, the Escrow `escrow`
+    ///   selector alone on a narrow key, a three-item `escrow` whose only non-zero
+    ///   amount is not a recognized selector, a puller whose token word sits behind a
+    ///   32-word pad, a puller that masks the token word with `address(uint160(word))`),
+    ///   and a call to token A that pulls token B.
     ///
     /// Note: Called internally in ERC7821, which coalesce zero-address `target`s to
     /// `address(this)`.

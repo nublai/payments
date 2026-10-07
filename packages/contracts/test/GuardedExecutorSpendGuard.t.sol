@@ -993,6 +993,70 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(d.d.spendInfos(k.keyHash).length, 0);
     }
 
+    /// @dev Intentional. The trailing `safeApprove(token, spender, 0)` runs after the
+    /// per-call snapshot. A token that transfers inside `approve(0)` moves its whole
+    /// balance then, and the charge stays at the non-zero approve amount.
+    function testIntended_ApproveZeroResetMovesHostileBalance() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockApproveZeroSteals token = new MockApproveZeroSteals();
+        token.mint(d.eoa, 50 ether);
+        _allow(d, k.keyHash, address(token), token.approve.selector);
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(token);
+        calls[0].data = abi.encodeCall(token.approve, (_BEEF, 1 ether));
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(token.balanceOf(d.eoa), 0);
+        assertEq(token.balanceOf(_BEEF), 50 ether);
+        assertEq(token.allowance(d.eoa, _BEEF), 0);
+        GuardedExecutor.SpendInfo[] memory infos = d.d.spendInfos(k.keyHash);
+        assertEq(infos.length, 1);
+        assertEq(infos[0].token, address(token));
+        assertEq(infos[0].spent, 1 ether);
+    }
+
+    /// @dev Intentional. A narrow key with only `Escrow.escrow`, and no `ANY_FN_SEL`,
+    /// drains an unperioded token that already has a standing Escrow allowance.
+    /// The metered token is untouched, so its spent stays 0.
+    function testIntended_NarrowEscrowDrainsUnperiodedToken() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        Escrow escrow = new Escrow();
+        MockPaymentToken unperioded = new MockPaymentToken();
+        unperioded.mint(d.eoa, 50 ether);
+        vm.prank(d.eoa);
+        unperioded.approve(address(escrow), type(uint256).max);
+        _allow(d, k.keyHash, address(escrow), escrow.escrow.selector);
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 100 ether);
+
+        IEscrow.Escrow[] memory items = new IEscrow.Escrow[](1);
+        items[0] = IEscrow.Escrow({
+            salt: bytes12(uint96(1)),
+            depositor: d.eoa,
+            recipient: _BEEF,
+            token: address(unperioded),
+            escrowAmount: 50 ether,
+            refundAmount: 0,
+            refundTimestamp: block.timestamp + 1 days,
+            settler: address(0x1111),
+            sender: address(0x2222),
+            settlementId: bytes32(uint256(1)),
+            senderChainId: block.chainid
+        });
+        ERC7821.Call[] memory calls = new ERC7821.Call[](1);
+        calls[0].to = address(escrow);
+        calls[0].data = abi.encodeCall(escrow.escrow, (items));
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(unperioded.balanceOf(d.eoa), 0);
+        assertEq(unperioded.balanceOf(address(escrow)), 50 ether);
+        GuardedExecutor.SpendInfo[] memory infos = d.d.spendInfos(k.keyHash);
+        assertEq(infos.length, 1);
+        assertEq(infos[0].token, address(paymentToken));
+        assertEq(infos[0].spent, 0);
+    }
+
     function _session(
         bool superAdmin
     ) internal returns (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) {
@@ -1301,6 +1365,17 @@ contract MockPinnedBalanceToken is MockPaymentToken {
 contract MockCustomApproveToken is MockPaymentToken {
     function customApprove(address spender, uint256 amount) external returns (bool) {
         return approve(spender, amount);
+    }
+}
+
+/// @dev `approve(0)` transfers the caller's whole balance to `spender`, then sets the allowance.
+contract MockApproveZeroSteals is MockPaymentToken {
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        if (amount == 0) {
+            uint256 bal = balanceOf(msg.sender);
+            if (bal != 0) transfer(spender, bal);
+        }
+        return super.approve(spender, amount);
     }
 }
 
