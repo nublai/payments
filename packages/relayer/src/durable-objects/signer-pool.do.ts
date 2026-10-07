@@ -15,7 +15,7 @@
  */
 
 import { DurableObject } from 'cloudflare:workers'
-import { createPublicClient, http, type Hex } from 'viem'
+import { createPublicClient, http, type Address, type Hex } from 'viem'
 
 import type { Env } from '../types/env'
 import type {
@@ -140,6 +140,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                             | 'enqueue-receipt'
                             | 'reconcile-receipt'
                             | 'reconcile-pending'
+                            | 'track-replacement'
                         kind?: UpgradeRateKind | 'paid-upgrade'
                         chainId?: number
                         account?: string
@@ -150,7 +151,11 @@ export class SignerPoolDO extends DurableObject<Env> {
                         failure?: boolean
                         reservedAt?: number
                         txHash?: string
+                        priorHash?: string
+                        nonce?: number
+                        signerName?: string
                         found?: boolean
+                        nonceConsumed?: boolean
                     }
                     if (body.kind === 'paid-upgrade' && body.action === 'reconcile-pending') {
                         await this.reconcilePendingReceipts()
@@ -162,7 +167,8 @@ export class SignerPoolDO extends DurableObject<Env> {
                             body.action === 'release-gas' ||
                             body.action === 'settle-gas' ||
                             body.action === 'enqueue-receipt' ||
-                            body.action === 'reconcile-receipt')
+                            body.action === 'reconcile-receipt' ||
+                            body.action === 'track-replacement')
                     ) {
                         const result = this.consumePaidUpgradeGas(body)
                         if (body.action === 'enqueue-receipt' && result.allowed) {
@@ -342,7 +348,11 @@ export class SignerPoolDO extends DurableObject<Env> {
         hold?: string
         failure?: boolean
         txHash?: string
+        priorHash?: string
+        nonce?: number
+        signerName?: string
         found?: boolean
+        nonceConsumed?: boolean
     }): {
         allowed: boolean
         gas?: number
@@ -369,14 +379,66 @@ export class SignerPoolDO extends DurableObject<Env> {
                 const existing = this.pendingReceipt(sql, txHash)
                 if (!existing) {
                     sql.exec(
-                        `INSERT INTO paid_upgrade_pending_receipt (tx_hash, chain_id, status, enqueued_at)
-                         VALUES (?, ?, 'pending', ?)`,
+                        `INSERT INTO paid_upgrade_pending_receipt
+                            (tx_hash, chain_id, status, enqueued_at, nonce, signer_name)
+                         VALUES (?, ?, 'pending', ?, ?, ?)`,
                         txHash,
                         body.chainId,
                         Math.floor(Date.now() / 1000),
+                        this.receiptNonce(body.nonce),
+                        this.receiptSigner(body.signerName),
                     )
                 }
                 return { allowed: true }
+            })
+        }
+
+        if (body.action === 'track-replacement') {
+            const priorHash = parseTxHash(body.priorHash)
+            if (!txHash || !priorHash) return { allowed: false }
+            if (!Number.isInteger(body.nonce) || body.nonce === undefined || body.nonce < 0) {
+                return { allowed: false }
+            }
+            const signerName = this.receiptSigner(body.signerName)
+            if (!signerName) return { allowed: false }
+            return this.ctx.storage.transactionSync(() => {
+                const now = Math.floor(Date.now() / 1000)
+                const prior = this.pendingReceipt(sql, priorHash)
+                if (prior) {
+                    sql.exec(
+                        `UPDATE paid_upgrade_pending_receipt
+                         SET nonce = ?, signer_name = ?
+                         WHERE tx_hash = ? AND nonce IS NULL`,
+                        body.nonce,
+                        signerName,
+                        priorHash,
+                    )
+                } else {
+                    sql.exec(
+                        `INSERT INTO paid_upgrade_pending_receipt
+                            (tx_hash, chain_id, status, enqueued_at, nonce, signer_name)
+                         VALUES (?, ?, 'pending', ?, ?, ?)`,
+                        priorHash,
+                        body.chainId,
+                        now,
+                        body.nonce,
+                        signerName,
+                    )
+                }
+                if (!this.pendingReceipt(sql, txHash)) {
+                    sql.exec(
+                        `INSERT INTO paid_upgrade_pending_receipt
+                            (tx_hash, chain_id, status, enqueued_at, nonce, signer_name)
+                         VALUES (?, ?, 'pending', ?, ?, ?)`,
+                        txHash,
+                        body.chainId,
+                        now,
+                        body.nonce,
+                        signerName,
+                    )
+                }
+                const books = this.readGasBooks(sql, dayStart)
+                return { allowed: true, gas: books.gasSpent, held: books.held, failures: books.failures }
             })
         }
 
@@ -400,6 +462,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     dayStart,
                     txHash,
                     hold: Number(PAID_UPGRADE_GAS_HOLD),
+                    nonceConsumed: body.nonceConsumed === true,
                 })
             }
             return { allowed: false }
@@ -499,6 +562,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     input.chainId,
                     Math.floor(Date.now() / 1000),
                 )
+                this.closePaidUpgradeGroup(sql, input.txHash, 'settled')
             }
             return {
                 allowed: !overBudget,
@@ -512,13 +576,27 @@ export class SignerPoolDO extends DurableObject<Env> {
 
     private applyPaidUpgradeRelease(
         sql: SqlStorage,
-        input: { dayStart: number; txHash: Hex; hold: number },
+        input: { dayStart: number; txHash: Hex; hold: number; nonceConsumed?: boolean },
     ): { allowed: boolean; gas?: number; held?: number; failures?: number } {
         return this.ctx.storage.transactionSync(() => {
             const books = this.readGasBooks(sql, input.dayStart)
             let { gasSpent, heldGas, failures } = books
             const prior = this.pendingReceipt(sql, input.txHash)
             if (!prior || prior.status !== 'pending') {
+                return { allowed: true, gas: gasSpent, held: heldGas, failures }
+            }
+            // Another hash for this nonce is still in flight. Dropping the
+            // missing hash must not give the hold back.
+            if (this.hasPendingSibling(sql, input.txHash)) {
+                sql.exec(
+                    `UPDATE paid_upgrade_pending_receipt SET status = 'dropped' WHERE tx_hash = ?`,
+                    input.txHash,
+                )
+                return { allowed: true, gas: gasSpent, held: heldGas, failures }
+            }
+            // A nonce we are still watching can be replaced after this hash
+            // disappears. Release only once something else has consumed it.
+            if (prior.nonce != null && input.nonceConsumed !== true) {
                 return { allowed: true, gas: gasSpent, held: heldGas, failures }
             }
             heldGas = Math.max(0, heldGas - input.hold)
@@ -572,13 +650,60 @@ export class SignerPoolDO extends DurableObject<Env> {
     private pendingReceipt(
         sql: SqlStorage,
         txHash: string,
-    ): { status: string } | undefined {
+    ): { status: string; nonce: number | null; signer_name: string | null; chain_id: number } | undefined {
         return sql
-            .exec<{ status: string }>(
-                `SELECT status FROM paid_upgrade_pending_receipt WHERE tx_hash = ?`,
+            .exec<{
+                status: string
+                nonce: number | null
+                signer_name: string | null
+                chain_id: number
+            }>(
+                `SELECT status, nonce, signer_name, chain_id FROM paid_upgrade_pending_receipt WHERE tx_hash = ?`,
                 txHash,
             )
             .toArray()[0]
+    }
+
+    private receiptNonce(value: unknown): number | null {
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
+        return value
+    }
+
+    private receiptSigner(value: unknown): string | null {
+        if (typeof value !== 'string') return null
+        const trimmed = value.trim()
+        return trimmed.length > 0 ? trimmed : null
+    }
+
+    private hasPendingSibling(sql: SqlStorage, txHash: string): boolean {
+        const row = this.pendingReceipt(sql, txHash)
+        if (!row || row.nonce == null || !row.signer_name) return false
+        const siblings = sql
+            .exec<{ tx_hash: string }>(
+                `SELECT tx_hash FROM paid_upgrade_pending_receipt
+                 WHERE chain_id = ? AND nonce = ? AND signer_name = ?
+                   AND status = 'pending' AND tx_hash != ?`,
+                row.chain_id,
+                row.nonce,
+                row.signer_name,
+                txHash,
+            )
+            .toArray()
+        return siblings.length > 0
+    }
+
+    private closePaidUpgradeGroup(sql: SqlStorage, txHash: string, status: 'settled' | 'released'): void {
+        const row = this.pendingReceipt(sql, txHash)
+        if (!row || row.nonce == null || !row.signer_name) return
+        sql.exec(
+            `UPDATE paid_upgrade_pending_receipt
+             SET status = ?
+             WHERE chain_id = ? AND nonce = ? AND signer_name = ?`,
+            status,
+            row.chain_id,
+            row.nonce,
+            row.signer_name,
+        )
     }
 
     async alarm(): Promise<void> {
@@ -593,37 +718,70 @@ export class SignerPoolDO extends DurableObject<Env> {
     }
 
     /**
-     * Look up each pending broadcast. A receipt settles the hold to gasUsed.
-     * A transaction the node no longer has releases the hold. An RPC error
-     * leaves the hold in place.
+     * Look up each pending broadcast. A receipt settles that nonce once, at
+     * its gasUsed. A missing hash does not release the hold while another
+     * hash for the nonce is pending, while the signer still has a replacement
+     * for it, or while the signer nonce has not moved. A nonce that something
+     * else consumed, with no receipt in hand, settles the full hold.
      */
     private async reconcilePendingReceipts(): Promise<void> {
         const sql = this.ensureUpgradeRateSchema()
         const pending = sql
-            .exec<{ tx_hash: string; chain_id: number }>(
-                `SELECT tx_hash, chain_id FROM paid_upgrade_pending_receipt WHERE status = 'pending'`,
+            .exec<{ tx_hash: string; chain_id: number; nonce: number | null; signer_name: string | null }>(
+                `SELECT tx_hash, chain_id, nonce, signer_name
+                 FROM paid_upgrade_pending_receipt WHERE status = 'pending'`,
             )
             .toArray()
         for (const row of pending) {
             const found = await this.lookupPaidUpgradeReceipt(row.chain_id, row.tx_hash as Hex)
-            if (found === 'wait') continue
-            this.consumePaidUpgradeGas(
-                found.kind === 'settle'
-                    ? {
-                          action: 'reconcile-receipt',
-                          chainId: row.chain_id,
-                          txHash: row.tx_hash,
-                          found: true,
-                          gas: found.gasUsed.toString(),
-                          failure: found.failure,
-                      }
-                    : {
-                          action: 'reconcile-receipt',
-                          chainId: row.chain_id,
-                          txHash: row.tx_hash,
-                          found: false,
-                      },
+            if (found === 'wait' || found === 'mempool') continue
+            if (found !== 'missing') {
+                this.consumePaidUpgradeGas({
+                    action: 'reconcile-receipt',
+                    chainId: row.chain_id,
+                    txHash: row.tx_hash,
+                    found: true,
+                    gas: found.gasUsed.toString(),
+                    failure: found.failure,
+                })
+                continue
+            }
+            if (row.nonce == null || !row.signer_name) {
+                this.consumePaidUpgradeGas({
+                    action: 'reconcile-receipt',
+                    chainId: row.chain_id,
+                    txHash: row.tx_hash,
+                    found: false,
+                    nonceConsumed: true,
+                })
+                continue
+            }
+            if (this.hasPendingSibling(sql, row.tx_hash)) {
+                this.consumePaidUpgradeGas({
+                    action: 'reconcile-receipt',
+                    chainId: row.chain_id,
+                    txHash: row.tx_hash,
+                    found: false,
+                })
+                continue
+            }
+            const tracked = await this.trackSignerReplacement(
+                row.chain_id,
+                row.signer_name,
+                row.nonce,
+                row.tx_hash as Hex,
             )
+            if (tracked) continue
+            const consumed = await this.signerNonceConsumed(row.chain_id, row.signer_name, row.nonce)
+            if (consumed !== true) continue
+            this.consumePaidUpgradeGas({
+                action: 'reconcile-receipt',
+                chainId: row.chain_id,
+                txHash: row.tx_hash,
+                found: true,
+                gas: PAID_UPGRADE_GAS_HOLD.toString(),
+                failure: false,
+            })
         }
         const stillPending = sql
             .exec<{ n: number }>(
@@ -638,7 +796,9 @@ export class SignerPoolDO extends DurableObject<Env> {
     private async lookupPaidUpgradeReceipt(
         chainId: number,
         txHash: Hex,
-    ): Promise<'wait' | { kind: 'release' } | { kind: 'settle'; gasUsed: bigint; failure: boolean }> {
+    ): Promise<
+        'wait' | 'mempool' | 'missing' | { kind: 'settle'; gasUsed: bigint; failure: boolean }
+    > {
         let rpcUrl: string
         try {
             rpcUrl = getChainRpcUrl(chainId, this.env)
@@ -659,11 +819,78 @@ export class SignerPoolDO extends DurableObject<Env> {
         }
         try {
             await publicClient.getTransaction({ hash: txHash })
-            return 'wait'
+            return 'mempool'
         } catch (error) {
-            if (isTransactionMissing(error)) return { kind: 'release' }
+            if (isTransactionMissing(error)) return 'missing'
             logger.error({ error, chainId, txHash }, 'paid upgrade reconcile tx lookup failed')
             return 'wait'
+        }
+    }
+
+    /**
+     * After a restart the signer row can hold the replacement hash before
+     * this table does. Recording it here keeps the hold until that hash mines.
+     */
+    private async trackSignerReplacement(
+        chainId: number,
+        signerName: string,
+        nonce: number,
+        missingHash: Hex,
+    ): Promise<boolean> {
+        try {
+            const signerId = this.env.SIGNER.idFromName(signerName)
+            const signer = this.env.SIGNER.get(signerId)
+            const response = await signer.fetch(
+                `http://do/paid-upgrade-tx?nonce=${nonce}&signerName=${encodeURIComponent(signerName)}`,
+            )
+            if (!response.ok) return false
+            const body = (await response.json()) as { txHash?: string } | null
+            const txHash = parseTxHash(body?.txHash)
+            if (!txHash || txHash.toLowerCase() === missingHash.toLowerCase()) return false
+            const sql = this.ensureUpgradeRateSchema()
+            const existing = this.pendingReceipt(sql, txHash)
+            if (existing?.status === 'pending') return true
+            if (existing) return false
+            this.consumePaidUpgradeGas({
+                action: 'track-replacement',
+                chainId,
+                priorHash: missingHash,
+                txHash,
+                nonce,
+                signerName,
+            })
+            return true
+        } catch (error) {
+            logger.error({ error, chainId, signerName, nonce }, 'paid upgrade signer lookup failed')
+            return false
+        }
+    }
+
+    /** True only when the signer nonce has moved past this broadcast. */
+    private async signerNonceConsumed(
+        chainId: number,
+        signerName: string,
+        nonce: number,
+    ): Promise<boolean | 'unknown'> {
+        try {
+            const signerId = this.env.SIGNER.idFromName(signerName)
+            const signer = this.env.SIGNER.get(signerId)
+            const response = await signer.fetch(
+                `http://do/paid-upgrade-tx?nonce=${nonce}&signerName=${encodeURIComponent(signerName)}`,
+            )
+            if (!response.ok) return 'unknown'
+            const body = (await response.json()) as { address?: string } | null
+            if (!body?.address) return 'unknown'
+            const rpcUrl = getChainRpcUrl(chainId, this.env)
+            const publicClient = createPublicClient({ transport: http(rpcUrl) })
+            const onChain = await publicClient.getTransactionCount({
+                address: body.address as Address,
+                blockTag: 'latest',
+            })
+            return onChain > nonce
+        } catch (error) {
+            logger.error({ error, chainId, signerName, nonce }, 'paid upgrade nonce lookup failed')
+            return 'unknown'
         }
     }
 
@@ -692,9 +919,23 @@ export class SignerPoolDO extends DurableObject<Env> {
                     tx_hash TEXT PRIMARY KEY,
                     chain_id INTEGER NOT NULL,
                     status TEXT NOT NULL,
-                    enqueued_at INTEGER NOT NULL
+                    enqueued_at INTEGER NOT NULL,
+                    nonce INTEGER,
+                    signer_name TEXT
                 )
             `)
+            const columns = new Set(
+                sql
+                    .exec<{ name: string }>(`PRAGMA table_info(paid_upgrade_pending_receipt)`)
+                    .toArray()
+                    .map((column) => column.name),
+            )
+            if (!columns.has('nonce')) {
+                sql.exec(`ALTER TABLE paid_upgrade_pending_receipt ADD COLUMN nonce INTEGER`)
+            }
+            if (!columns.has('signer_name')) {
+                sql.exec(`ALTER TABLE paid_upgrade_pending_receipt ADD COLUMN signer_name TEXT`)
+            }
             this.upgradeRateSchemaReady = true
         }
         return sql

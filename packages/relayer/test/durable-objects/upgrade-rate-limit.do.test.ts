@@ -220,4 +220,96 @@ describe('SignerPoolDO upgrade rate limit', () => {
         })
         expect(await releasedAgain.json()).toMatchObject({ allowed: true, held: 0 })
     })
+
+    it('records the replacement gasUsed once and does not release while that hash is pending', async () => {
+        const poolName = 'pool-8453-paid-replacement-mines'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+        const original = `0x${'ab'.repeat(32)}`
+        const replacement = `0x${'cd'.repeat(32)}`
+        const post = (body: Record<string, unknown>) =>
+            stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    kind: 'paid-upgrade',
+                    chainId: 8453,
+                    nonce: 7,
+                    signerName: 'signer-8453-0',
+                    ...body,
+                }),
+            })
+
+        expect(await (await post({ action: 'reserve-gas', gas: '500000' })).json()).toMatchObject({
+            allowed: true,
+            held: 500000,
+        })
+        expect(await (await post({ action: 'enqueue-receipt', txHash: original })).json()).toMatchObject({
+            allowed: true,
+        })
+        expect(
+            await (await post({ action: 'enqueue-receipt', txHash: replacement })).json(),
+        ).toMatchObject({ allowed: true })
+
+        const missing = await post({
+            action: 'reconcile-receipt',
+            txHash: original,
+            found: false,
+        })
+        expect(await missing.json()).toMatchObject({ allowed: true, gas: 0, held: 500000 })
+
+        const mined = await post({
+            action: 'reconcile-receipt',
+            txHash: replacement,
+            found: true,
+            gas: '350809',
+            failure: false,
+        })
+        expect(await mined.json()).toMatchObject({ allowed: true, gas: 350809, held: 0 })
+        const again = await post({
+            action: 'reconcile-receipt',
+            txHash: replacement,
+            found: true,
+            gas: '350809',
+            failure: false,
+        })
+        expect(await again.json()).toMatchObject({ allowed: true, gas: 350809, held: 0 })
+    })
+
+    it('does not release the hold when the original hash is missing and the replacement is pending', async () => {
+        const poolName = 'pool-8453-paid-replacement-pending'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+        const original = `0x${'ef'.repeat(32)}`
+        const replacement = `0x${'12'.repeat(32)}`
+        const post = (body: Record<string, unknown>) =>
+            stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    kind: 'paid-upgrade',
+                    chainId: 8453,
+                    nonce: 4,
+                    signerName: 'signer-8453-1',
+                    ...body,
+                }),
+            })
+
+        expect(await (await post({ action: 'reserve-gas', gas: '500000' })).json()).toMatchObject({
+            allowed: true,
+            held: 500000,
+        })
+        expect(await (await post({ action: 'enqueue-receipt', txHash: original })).json()).toMatchObject({
+            allowed: true,
+        })
+        expect(
+            await (await post({ action: 'enqueue-receipt', txHash: replacement })).json(),
+        ).toMatchObject({ allowed: true })
+        const missing = await post({
+            action: 'reconcile-receipt',
+            txHash: original,
+            found: false,
+        })
+        expect(await missing.json()).toMatchObject({ allowed: true, gas: 0, held: 500000 })
+    })
 })

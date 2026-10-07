@@ -726,10 +726,13 @@ export async function enqueuePaidUpgradeReceipt(
     env: Env,
     chainId: number,
     txHash: Hex,
+    broadcast?: { nonce?: number; signerName?: string },
 ): Promise<void> {
     const result = await postPaidUpgradeGas(env, chainId, {
         action: 'enqueue-receipt',
         txHash,
+        ...(broadcast?.nonce !== undefined ? { nonce: broadcast.nonce } : {}),
+        ...(broadcast?.signerName ? { signerName: broadcast.signerName } : {}),
     })
     if (!result.allowed) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
