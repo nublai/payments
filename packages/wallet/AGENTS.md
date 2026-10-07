@@ -361,17 +361,16 @@ Commands that need keystore decryption accept passwords through three channels (
 
 The `passwordDeps()` helper in `cli.ts` wires all three. The `password-readline.ts` module provides the interactive prompts (password input with masking, new-password with confirmation).
 
-`TW_PASSWORD` is not a confirmation. These operations require a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). `tw --mcp` and any non-TTY `tw` are refused before keys are printed, RPC is contacted, or a signature is produced:
+`TW_PASSWORD` is not a confirmation. These operations require a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). `tw --mcp` and any non-TTY `tw` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase; that is a human at this terminal, not a defense against a local shell. `--mcp` still refuses when the server itself is attached to a PTY.
 
-- `account export --show-private` — type `EXPORT PRIVATE KEYS`
-- `send` — type `SEND USDC`
-- `swap` and `bridge` — confirm the quote in the terminal. `--yes` / `yes: true` is ignored outside that terminal
-- `session create --full-access` — type `CREATE FULL ACCESS SESSION`
-- `session rotate --full-access` — type `ROTATE FULL ACCESS SESSION`
+- `account export --show-private` and `session export` — type `EXPORT PRIVATE KEYS`. `TW_EXPORT_PASSWORD` does not skip it
+- `send`, `escrow create`, and `escrow refund` — type `SEND USDC`. Create and refund move USDC
+- `swap` and `bridge` — confirm the quote in the terminal. `--yes` / `yes: true` is ignored outside that terminal. On a TTY, `--yes` still skips the on-screen quote
+- `session create` / `session rotate` / `permissions grant` when the result is full access — type `CREATE FULL ACCESS SESSION` or `ROTATE FULL ACCESS SESSION` for rotate. Full access is the `--full-access` flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`), or a spend limit above the default 10 USDC
 - `account passkey` — type `AUTHORIZE PASSKEY`. The `privateKey` argument is not accepted over MCP
 - `escrow settle` when signing with an oracle private key — type `SIGN ESCROW SETTLEMENT`. The `oraclePrivateKey` argument is not accepted over MCP
 
-Default-session USDC flows that do not spend (`account create`, escrow create/status, metadata export) are unchanged. Local `e2e:local-payment` and `e2e:local-escrow` type `SEND USDC` and `SIGN ESCROW SETTLEMENT` through `scripts/tw-tty-confirm.py` because those scripts are the operator, not an MCP client.
+A session created without those elevated permissions keeps the default USDC `transfer` permission and a 10 USDC daily spend, and does not need the full-access phrase. Metadata export and escrow status do not spend. Local `e2e:local-payment` types `SEND USDC` for `send`. Local `e2e:local-escrow` types `SEND USDC` for create and `SIGN ESCROW SETTLEMENT` for settle, through `scripts/tw-tty-confirm.py`, because those scripts are the operator, not an MCP client.
 
 ## Critical Gotchas
 

@@ -21,6 +21,7 @@ import {
     executeAccountExport,
     assertCanExportPrivateKeys,
     resolveAccountExportPassword,
+    PRIVATE_EXPORT_CONFIRMATION_PHRASE,
 } from './lib/account-export'
 import { executeAccountNonce } from './lib/account-nonce'
 import { executeAccountHistory } from './lib/account-history'
@@ -56,9 +57,9 @@ import { parseSpendLimitUnits } from './lib/permissions-common'
 import { executePermissionsList } from './lib/permissions-list'
 import { executePermissionsRevoke } from './lib/permissions-revoke'
 import { executePermissionsShow } from './lib/permissions-show'
-import { parseSpendLimit } from './lib/session-common'
+import { parseSpendLimit, permissionNeedsFullAccessConfirmation } from './lib/session-common'
 import { authUrlUnsetMessage, executeLogin, executeLogout, getAuthUrl, LoginError } from './lib/login'
-import { SessionDaemonClient } from './lib/session-daemon-client'
+import { readKeystoreBundle } from './lib/keystore'
 import { normalizeChainName, type ChainName } from './lib/network-config'
 import {
     getQuote as getRelayQuote,
@@ -268,6 +269,60 @@ function refuseQuoteWithoutHuman(kind: 'swap' | 'bridge'): void {
     if (isMcpCaller() || !isInteractiveTerminal()) {
         throw new AccountSwapError('CONFIRMATION_REQUIRED', quoteConfirmationMessage(kind))
     }
+}
+
+async function readPublicAccountAddresses(keystorePath: string): Promise<string[]> {
+    try {
+        const bundle = await readKeystoreBundle(keystorePath)
+        return [bundle.root.addresses.delegated, bundle.root.addresses.root].filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+        )
+    } catch {
+        return []
+    }
+}
+
+/** Full-access phrase before the root key is decrypted. */
+async function confirmElevatedPermission(
+    reportError: (options: { code: string; message: string }) => never,
+    operation: string,
+    phrase: string,
+    input: {
+        env: 'dev' | 'stage' | 'prod'
+        profile?: string
+        keystorePath?: string
+        fullAccess?: boolean
+        target?: string
+        selector?: string
+        spendLimit?: string
+        spendLimitRaw?: string
+        parseHumanAmount: (value: string) => bigint
+    },
+): Promise<void> {
+    const spendLimit = resolveSpendLimitInput({
+        spendLimit: input.spendLimit,
+        spendLimitRaw: input.spendLimitRaw,
+        parseHumanAmount: input.parseHumanAmount,
+    })
+    const accountAddresses = await readPublicAccountAddresses(
+        resolveKeystorePath({
+            env: input.env,
+            name: input.profile,
+            keystorePath: input.keystorePath,
+        }),
+    )
+    if (
+        !permissionNeedsFullAccessConfirmation({
+            fullAccess: input.fullAccess,
+            target: input.target,
+            selectors: input.selector ? [input.selector] : undefined,
+            spendLimit,
+            accountAddresses,
+        })
+    ) {
+        return
+    }
+    await confirmHuman(reportError, operation, phrase)
 }
 
 // ---------------------------------------------------------------------------
@@ -1181,13 +1236,13 @@ session.command('create', {
             .string()
             .optional()
             .describe(
-                'Target contract address for call permission. Omit with --selector to use wildcard call permissions.',
+                'Target contract for the call permission. Omit to allow USDC only. ANY_TARGET or the account address requires CREATE FULL ACCESS SESSION.',
             ),
         selector: z
             .string()
             .optional()
             .describe(
-                'Function selector for call permission. Omit with --target to use wildcard call permissions.',
+                'Function selector for the call permission. Omit to allow USDC transfer. ANY_FN_SEL or an account admin selector requires CREATE FULL ACCESS SESSION.',
             ),
         spendLimit: z
             .string()
@@ -1228,13 +1283,22 @@ session.command('create', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
-        if (options.fullAccess) {
-            await confirmHuman(
-                reportError,
-                'Creating a full-access session',
-                CONFIRM_FULL_ACCESS_PHRASE,
-            )
-        }
+        await confirmElevatedPermission(
+            reportError,
+            'Creating a full-access session',
+            CONFIRM_FULL_ACCESS_PHRASE,
+            {
+                env: options.env,
+                profile: options.profile,
+                keystorePath: options.keystorePath,
+                fullAccess: options.fullAccess,
+                target: options.target,
+                selector: options.selector,
+                spendLimit: options.spendLimit,
+                spendLimitRaw: options.spendLimitRaw,
+                parseHumanAmount: parseSpendLimit,
+            },
+        )
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1274,7 +1338,8 @@ session.command('create', {
 })
 
 session.command('export', {
-    description: 'Export a session keystore as a portable file',
+    description:
+        'Export a session keystore as a portable file. Requires typing EXPORT PRIVATE KEYS in an interactive terminal. TW_PASSWORD and TW_EXPORT_PASSWORD do not skip that phrase, and MCP cannot confirm it.',
     args: z.object({
         sessionName: z.string().describe('Session name to export'),
     }),
@@ -1297,7 +1362,12 @@ session.command('export', {
         output: z.string(),
         sessionName: z.string(),
     }),
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        await confirmHuman(
+            reportError,
+            'Exporting a session private key',
+            PRIVATE_EXPORT_CONFIRMATION_PHRASE,
+        )
         await assertSessionExportInputs({ output: options.output, overwrite: options.overwrite })
         const passwords = await resolveSessionExportPasswords(
             {
@@ -1407,19 +1477,19 @@ session.command('rotate', {
             .boolean()
             .optional()
             .describe(
-                'Grant full access. Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing ROTATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
+                'Grant full access. Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing ROTATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for ANY_TARGET, the account, ANY_FN_SEL, an account admin selector, or a spend limit above 10 USDC. MCP cannot confirm it.',
             ),
         target: z
             .string()
             .optional()
             .describe(
-                'Target contract address for call permission. Omit with --selector to use wildcard call permissions.',
+                'Target contract for the call permission. Omit to allow USDC only. ANY_TARGET or the account address requires ROTATE FULL ACCESS SESSION.',
             ),
         selector: z
             .string()
             .optional()
             .describe(
-                'Function selector for call permission. Omit with --target to use wildcard call permissions.',
+                'Function selector for the call permission. Omit to allow USDC transfer. ANY_FN_SEL or an account admin selector requires ROTATE FULL ACCESS SESSION.',
             ),
         spendLimit: z
             .string()
@@ -1444,13 +1514,22 @@ session.command('rotate', {
         { options: { env: 'prod', profile: 'agent' }, description: 'Rotate active session' },
     ],
     async run({ options, env, error: reportError }) {
-        if (options.fullAccess) {
-            await confirmHuman(
-                reportError,
-                'Rotating to a full-access session',
-                CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
-            )
-        }
+        await confirmElevatedPermission(
+            reportError,
+            'Rotating to a full-access session',
+            CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
+            {
+                env: options.env,
+                profile: options.profile,
+                keystorePath: options.keystorePath,
+                fullAccess: options.fullAccess,
+                target: options.target,
+                selector: options.selector,
+                spendLimit: options.spendLimit,
+                spendLimitRaw: options.spendLimitRaw,
+                parseHumanAmount: parseSpendLimit,
+            },
+        )
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1793,8 +1872,18 @@ permissions.command('grant', {
         keyName: z.string().optional().describe('Key name'),
         keyHash: z.string().optional().describe('Key hash'),
         type: permissionTypeSchema,
-        target: z.string().optional().describe('Target contract address'),
-        selector: z.string().optional().describe('Function selector'),
+        target: z
+            .string()
+            .optional()
+            .describe(
+                'Target contract address. ANY_TARGET or the account requires CREATE FULL ACCESS SESSION.',
+            ),
+        selector: z
+            .string()
+            .optional()
+            .describe(
+                'Function selector. ANY_FN_SEL or an account admin selector requires CREATE FULL ACCESS SESSION.',
+            ),
         token: z.string().optional().describe('Spend token address'),
         spendLimit: z
             .string()
@@ -1820,7 +1909,22 @@ permissions.command('grant', {
             description: 'Grant a call permission',
         },
     ],
-    async run({ args, options, env }) {
+    async run({ args, options, env, error: reportError }) {
+        await confirmElevatedPermission(
+            reportError,
+            'Granting a full-access permission',
+            CONFIRM_FULL_ACCESS_PHRASE,
+            {
+                env: options.env,
+                profile: options.profile,
+                keystorePath: options.keystorePath,
+                target: options.target,
+                selector: options.selector,
+                spendLimit: options.spendLimit,
+                spendLimitRaw: options.spendLimitRaw,
+                parseHumanAmount: parseSpendLimitUnits,
+            },
+        )
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1976,6 +2080,7 @@ escrow.command('create', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
+        await confirmHuman(reportError, 'Creating an escrow locks USDC', CONFIRM_SEND_PHRASE)
         try {
             return await executeEscrowCreate({
                 env: options.env,
@@ -2210,6 +2315,7 @@ escrow.command('refund', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
+        await confirmHuman(reportError, 'Refunding an escrow moves USDC', CONFIRM_SEND_PHRASE)
         try {
             return await executeEscrowRefund({
                 env: options.env,

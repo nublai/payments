@@ -1,6 +1,14 @@
 import { readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { type Address, isAddress, getAddress, parseUnits, zeroAddress, type Hex } from 'viem'
+import {
+    type Address,
+    isAddress,
+    getAddress,
+    parseUnits,
+    toFunctionSelector,
+    zeroAddress,
+    type Hex,
+} from 'viem'
 import {
     ANY_FUNCTION_SELECTOR as RELAYER_ANY_FUNCTION_SELECTOR,
     ANY_TARGET,
@@ -14,7 +22,19 @@ import { assertValidSessionName } from './keystore'
 import { getUsdcTokenConfig, type ChainName } from './network-config'
 
 export const ANY_FUNCTION_SELECTOR = RELAYER_ANY_FUNCTION_SELECTOR
+/** Default `session create` USDC spend: 10 USDC per day. A higher limit is full access. */
+export const DEFAULT_SESSION_SPEND_LIMIT = parseUnits('10', 6)
 const MAX_UINT256 = 2n ** 256n - 1n
+
+const ACCOUNT_ADMIN_SELECTORS = new Set(
+    [
+        'authorize((uint40,uint8,bool,bytes))',
+        'revoke(bytes32)',
+        'setCanExecute(bytes32,address,bytes4,bool)',
+        'setSpendLimit(bytes32,address,uint8,uint256)',
+        'upgradeProxyAccount(address)',
+    ].map((signature) => toFunctionSelector(signature).toLowerCase()),
+)
 const AMBIGUOUS_BASE_UNIT_THRESHOLD = 1_000_000n
 
 const DURATION_UNITS: Record<string, number> = {
@@ -217,7 +237,56 @@ export function buildPermissionDefaults(input: {
                 ? input.selectors
                 : [ERC20_SELECTORS.TRANSFER],
         spendToken: token,
-        spendLimit: input.spendLimit ?? parseUnits('10', 6),
+        spendLimit: input.spendLimit ?? DEFAULT_SESSION_SPEND_LIMIT,
         spendPeriod: input.spendPeriod ?? 'day',
     }
+}
+
+function normalizeAddress(value: string): string | undefined {
+    const trimmed = value.trim()
+    if (!isAddress(trimmed)) return undefined
+    return getAddress(trimmed).toLowerCase()
+}
+
+function normalizeSelector(value: string): string | undefined {
+    const trimmed = value.trim()
+    const withPrefix = trimmed.startsWith('0x') || trimmed.startsWith('0X') ? trimmed : `0x${trimmed}`
+    if (!/^0x[a-fA-F0-9]{8}$/.test(withPrefix)) return undefined
+    return withPrefix.toLowerCase()
+}
+
+/**
+ * True when the requested permission is the same privilege as `--full-access`:
+ * the flag itself, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account-admin
+ * selector, or a spend limit above the default 10 USDC.
+ */
+export function permissionNeedsFullAccessConfirmation(input: {
+    fullAccess?: boolean
+    target?: string
+    selectors?: readonly string[]
+    spendLimit?: bigint
+    accountAddresses?: readonly string[]
+}): boolean {
+    if (input.fullAccess) return true
+    if (input.spendLimit !== undefined && input.spendLimit > DEFAULT_SESSION_SPEND_LIMIT) {
+        return true
+    }
+
+    const target = input.target ? normalizeAddress(input.target) : undefined
+    if (target) {
+        if (target === ANY_TARGET.toLowerCase()) return true
+        for (const account of input.accountAddresses ?? []) {
+            const normalized = normalizeAddress(account)
+            if (normalized && normalized === target) return true
+        }
+    }
+
+    for (const selector of input.selectors ?? []) {
+        const normalized = normalizeSelector(selector)
+        if (!normalized) continue
+        if (normalized === ANY_FUNCTION_SELECTOR.toLowerCase()) return true
+        if (ACCOUNT_ADMIN_SELECTORS.has(normalized)) return true
+    }
+
+    return false
 }

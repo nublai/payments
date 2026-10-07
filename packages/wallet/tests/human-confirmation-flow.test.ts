@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from 'bun:test'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Hex } from 'viem'
@@ -176,7 +176,11 @@ beforeAll(async () => {
         name: 'default',
         checkpoint: 'authorized',
     })
-    await writeRootKeystoreFile(keystorePath, root)
+    await writeRootKeystoreFile(keystorePath, {
+        ...root,
+        checkpoint: 'delegated',
+        addresses: { ...root.addresses, delegated: root.addresses.root },
+    })
     await writeSessionKeystoreFile(resolveSessionKeystorePath(keystorePath), session)
 })
 
@@ -428,4 +432,204 @@ test('non-TTY escrow settle with TW_ORACLE_PRIVATE_KEY cannot sign without human
     expect(result.output).not.toContain(
         '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
     )
+})
+
+const anyTarget = '0x3232323232323232323232323232323232323232'
+const anySelector = '0x32323232'
+const maxSpendRaw = (2n ** 256n - 1n).toString()
+
+test('MCP session_export with TW_PASSWORD does not write a decryptable session key', async () => {
+    const outputPath = join(home, 'stolen.session.json')
+    const output = await callMcpTool(
+        'session_export',
+        {
+            sessionName: 'default',
+            output: outputPath,
+            overwrite: true,
+            env: 'dev',
+            keystorePath,
+        },
+        {
+            TW_PASSWORD: password,
+            TW_EXPORT_PASSWORD: 'attacker-chosen-export-password',
+            HOME: home,
+        },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('EXPORT PRIVATE KEYS')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain(sessionPrivateKey)
+    expect(existsSync(outputPath)).toBe(false)
+})
+
+test('MCP session_create wildcard permissions cannot proceed without the full-access phrase', async () => {
+    const output = await callMcpTool(
+        'session_create',
+        {
+            sessionName: 'wildcard',
+            env: 'dev',
+            fullAccess: false,
+            target: anyTarget,
+            selector: anySelector,
+            spendLimitRaw: maxSpendRaw,
+            keystorePath,
+        },
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('getNonce')
+})
+
+test('non-TTY session_create wildcard permissions cannot proceed without the full-access phrase', async () => {
+    const result = await runCli(
+        [
+            'session',
+            'create',
+            'wildcard-cli',
+            '--env',
+            'dev',
+            '--target',
+            anyTarget,
+            '--selector',
+            anySelector,
+            '--spend-limit-raw',
+            maxSpendRaw,
+            '--keystore-path',
+            keystorePath,
+            '--json',
+        ],
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(result.status).not.toBe(0)
+    expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(result.output).toContain('CREATE FULL ACCESS SESSION')
+    expect(result.output).not.toContain('getNonce')
+    expect(result.output).not.toContain(rootPrivateKey)
+})
+
+test('MCP session_rotate wildcard permissions cannot proceed without the full-access phrase', async () => {
+    const output = await callMcpTool(
+        'session_rotate',
+        {
+            env: 'dev',
+            fullAccess: false,
+            target: anyTarget,
+            selector: anySelector,
+            spendLimitRaw: maxSpendRaw,
+            keystorePath,
+        },
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('ROTATE FULL ACCESS SESSION')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('getNonce')
+})
+
+test('non-TTY session_rotate wildcard permissions cannot proceed without the full-access phrase', async () => {
+    const result = await runCli(
+        [
+            'session',
+            'rotate',
+            '--env',
+            'dev',
+            '--target',
+            anyTarget,
+            '--selector',
+            anySelector,
+            '--spend-limit-raw',
+            maxSpendRaw,
+            '--keystore-path',
+            keystorePath,
+            '--json',
+        ],
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(result.status).not.toBe(0)
+    expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(result.output).toContain('ROTATE FULL ACCESS SESSION')
+    expect(result.output).not.toContain('getNonce')
+})
+
+test('MCP permissions_grant wildcard call cannot proceed without the full-access phrase', async () => {
+    const output = await callMcpTool(
+        'permissions_grant',
+        {
+            keyRef: 'default',
+            type: 'call',
+            target: anyTarget,
+            selector: anySelector,
+            env: 'dev',
+            keystorePath,
+        },
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('getNonce')
+})
+
+test('non-TTY permissions_grant wildcard call cannot proceed without the full-access phrase', async () => {
+    const result = await runCli(
+        [
+            'permissions',
+            'grant',
+            'default',
+            '--type',
+            'call',
+            '--target',
+            anyTarget,
+            '--selector',
+            anySelector,
+            '--env',
+            'dev',
+            '--keystore-path',
+            keystorePath,
+            '--json',
+        ],
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(result.status).not.toBe(0)
+    expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(result.output).toContain('CREATE FULL ACCESS SESSION')
+    expect(result.output).not.toContain('getNonce')
+})
+
+test('MCP escrow_create cannot move USDC without human confirmation', async () => {
+    const output = await callMcpTool(
+        'escrow_create',
+        {
+            amount: '1',
+            seller: '0x1111111111111111111111111111111111111111',
+            oracle: '0x2222222222222222222222222222222222222222',
+            deadline: '24h',
+            env: 'dev',
+            keystorePath,
+            yes: true,
+            confirmationPhrase: 'SEND USDC',
+        },
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('SEND USDC')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('getNonce')
+})
+
+test('MCP escrow_refund cannot move USDC without human confirmation', async () => {
+    const output = await callMcpTool(
+        'escrow_refund',
+        {
+            escrowId: `0x${'ab'.repeat(32)}`,
+            env: 'dev',
+            keystorePath,
+        },
+        { TW_PASSWORD: password, HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('SEND USDC')
+    expect(output).toContain('"isError":true')
 })

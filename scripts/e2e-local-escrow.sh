@@ -187,9 +187,11 @@ BEFORE_BUYER="$(balance_of "$BUYER")"
 BEFORE_SELLER="$(balance_of "$SELLER")"
 
 echo "Creating 1 USDC escrow..."
+# escrow create locks USDC and requires SEND USDC on a TTY.
 ESCROW_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out bun ./src/cli.ts escrow create 1 "$SELLER" \
+  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SEND USDC" \
+    bun ./src/cli.ts escrow create 1 "$SELLER" \
     --oracle "$ORACLE" \
     --deadline 1h \
     --env dev \

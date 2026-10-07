@@ -163,7 +163,7 @@ echo "my-password" | tw session create worker-1 --profile agent --resume --passw
 echo "my-password" | tw session create alice --profile agent --agent --password-stdin --env prod
 ```
 
-`--full-access` is mutually exclusive with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, and `--spend-period`. It asks an interactive terminal to type `CREATE FULL ACCESS SESSION` (`ROTATE FULL ACCESS SESSION` for `session rotate`). MCP and non-interactive callers cannot confirm it. A session created without `--full-access` keeps the default USDC spend limit and does not need that phrase. Omitting both `--target` and `--selector` uses wildcard call permissions by default.
+`--full-access` is mutually exclusive with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, and `--spend-period`. Creating or rotating a session, or granting a permission, asks an interactive terminal to type `CREATE FULL ACCESS SESSION` (`ROTATE FULL ACCESS SESSION` for `session rotate`) when the request is full access: the flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector, or a spend limit above 10 USDC. MCP and non-interactive callers cannot confirm it. Omitting `--target` and `--selector` allows USDC `transfer` only, with a 10 USDC daily spend, and does not need that phrase.
 
 #### `session list` / `session rotate` / `session revoke`
 
@@ -191,6 +191,8 @@ echo "export-password" | tw session export worker-1 --profile agent \
 
 tw session import ./worker-1.session.json --profile worker-1 --env prod
 ```
+
+Session export writes the session private key into the output file. It requires an interactive terminal and the phrase `EXPORT PRIVATE KEYS`. `TW_PASSWORD` and `TW_EXPORT_PASSWORD` do not skip that phrase, and MCP cannot confirm it.
 
 Session-only profiles can execute `tw send` but cannot run root-keystore management commands.
 
@@ -242,9 +244,9 @@ tw escrow refund 0x<escrowId> --profile agent --env prod
 tw escrow refund 0x<escrowId> --env prod --json
 ```
 
-Signing with the oracle private key (`--oracle-private-key` or `TW_ORACLE_PRIVATE_KEY`) requires an interactive terminal and the phrase `SIGN ESCROW SETTLEMENT`. MCP does not accept a raw oracle private key. A pre-signed `--signature` does not use the key and does not ask for that phrase. `account passkey` likewise refuses a raw private key over MCP; run it in a terminal and type `AUTHORIZE PASSKEY`.
+`escrow create` and `escrow refund` move USDC and require an interactive terminal to type `SEND USDC`. `escrow create` requires `--oracle` and `--deadline`. Deadlines accept relative values like `1h`, `2d`, `30m`, `1w` or unix timestamps. Escrow flows support `--session-file` like `tw send`.
 
-`escrow create` requires `--oracle` and `--deadline`. Deadlines accept relative values like `1h`, `2d`, `30m`, `1w` or unix timestamps. Escrow flows support `--session-file` like `tw send`.
+Signing with the oracle private key (`--oracle-private-key` or `TW_ORACLE_PRIVATE_KEY`) requires an interactive terminal and the phrase `SIGN ESCROW SETTLEMENT`. MCP does not accept a raw oracle private key. A pre-signed `--signature` does not use the key and does not ask for that phrase. `account passkey` likewise refuses a raw private key over MCP; run it in a terminal and type `AUTHORIZE PASSKEY`.
 
 ## Agent & Automation Integration
 
@@ -256,7 +258,7 @@ tw <command> --env prod --json
 
 ### Password Automation
 
-`TW_PASSWORD` supplies the keystore password. It does not confirm `send`, private-key export, full-access session create or rotate, passkey authorization, or oracle-key escrow settle.
+`TW_PASSWORD` supplies the keystore password. It does not confirm `send`, private-key export, session export, full-access session create or rotate, a wildcard or admin permission grant, passkey authorization, escrow create or refund, or oracle-key escrow settle. A local shell with a pseudo-terminal can type the public phrase. That is a person at this terminal, not a guarantee against a local process. `tw --mcp` still refuses.
 
 Use `TW_PASSWORD` to skip the password prompt:
 
@@ -282,4 +284,4 @@ tw --version           # Version
 
 `tw --mcp` registers one tool per leaf command. The ids are `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_passkey`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
 
-These calls are refused over MCP, with a message to run the command in a terminal: `send`; `account_export` with `showPrivate`; `swap` and `bridge` (including `yes: true`); `session_create` and `session_rotate` with `fullAccess`; `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase.
+These calls are refused over MCP, with a message to run the command in a terminal: `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still skips the on-screen quote.
