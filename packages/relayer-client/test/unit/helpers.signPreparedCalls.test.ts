@@ -1,46 +1,101 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Address, Hex } from 'viem'
+import { zeroAddress, type Address, type Hex } from 'viem'
+import { hashTypedData } from 'viem/utils'
 import type { PrepareCallsResponse } from '../../src/actions/prepareCalls.js'
+import type { PreparedCallsExpectation } from '../../src/helpers/bindPreparedCalls.js'
+import { signPreparedCalls } from '../../src/helpers/signPreparedCalls.js'
+import { INTENT_TYPES } from '../../src/types.js'
 import { computeErc1271Digest } from '../../src/utils/erc1271.js'
 import { wrapSignature } from '../../src/utils/signature.js'
-import { signPreparedCalls } from '../../src/helpers/signPreparedCalls.js'
 
 const RAW_SIGNATURE = `0x${'11'.repeat(65)}` as Hex
 const KEY_HASH = `0x${'22'.repeat(32)}` as Hex
 const TARGET_ACCOUNT = '0x1234567890123456789012345678901234567890' as Address
 const DELEGATED_SIGNER = '0x9876543210987654321098765432109876543210' as Address
+const ORCHESTRATOR = '0x1111111111111111111111111111111111111111' as Address
 
 function makePrepared(eoa: Address = TARGET_ACCOUNT): PrepareCallsResponse {
+    const message = {
+        multichain: false,
+        eoa,
+        calls: [] as { to: Address; value: bigint; data: Hex }[],
+        nonce: 1n,
+        payer: eoa,
+        paymentToken: zeroAddress,
+        paymentMaxAmount: 0n,
+        combinedGas: 1n,
+        encodedPreCalls: [] as Hex[],
+        encodedFundTransfers: [] as Hex[],
+        settler: zeroAddress,
+        expiry: 1_700_000_120n,
+    }
+    const domain = {
+        name: 'Orchestrator' as const,
+        version: '0.5.5' as const,
+        chainId: 8453,
+        verifyingContract: ORCHESTRATOR,
+    }
+    const digest = hashTypedData({
+        domain,
+        types: INTENT_TYPES,
+        primaryType: 'Intent',
+        message,
+    })
     return {
-        context: {} as PrepareCallsResponse['context'],
-        digest: `0x${'33'.repeat(32)}` as Hex,
-        typedData: {
-            domain: {
-                name: 'Relayer',
-                version: '1',
-                chainId: 8453,
-                verifyingContract: '0x1111111111111111111111111111111111111111',
-            },
-            types: {
-                Intent: [],
-                Call: [],
-            } as PrepareCallsResponse['typedData']['types'],
-            primaryType: 'Intent',
-            message: {
-                multichain: false,
-                eoa,
-                calls: [],
-                nonce: 1n,
-                payer: eoa,
-                paymentToken: '0x0000000000000000000000000000000000000000',
-                paymentMaxAmount: 0n,
-                combinedGas: 0n,
-                encodedPreCalls: [],
-                encodedFundTransfers: [],
-                settler: '0x0000000000000000000000000000000000000000',
-                expiry: 0n,
+        context: {
+            quote: {
+                quotes: [
+                    {
+                        chainId: '0x2105',
+                        orchestrator: ORCHESTRATOR,
+                        intent: {
+                            eoa,
+                            calls: [],
+                            nonce: '1',
+                            combinedGas: '1',
+                            expiry: '1700000120',
+                            payer: eoa,
+                            paymentToken: zeroAddress,
+                            paymentMaxAmount: '0',
+                            settler: zeroAddress,
+                        },
+                        extraPayment: '0x0',
+                        ethPrice: '0x0',
+                        paymentTokenDecimals: 6,
+                        txGas: 1,
+                        nativeFeeEstimate: { maxFeePerGas: 1, maxPriorityFeePerGas: 1 },
+                        paymentAmount: '0',
+                        feeTokenDeficit: '0x0',
+                        assetDeficits: [],
+                    },
+                ],
+                signature: '0x',
+                ttl: 2_000_000_000,
             },
         },
+        digest,
+        typedData: {
+            domain,
+            types: INTENT_TYPES,
+            primaryType: 'Intent',
+            message,
+        },
+    }
+}
+
+function expectedFor(eoa: Address = TARGET_ACCOUNT): PreparedCallsExpectation {
+    return {
+        from: eoa,
+        calls: [],
+        chainId: 8453,
+        verifyingContract: ORCHESTRATOR,
+        nonce: 1n,
+        payer: eoa,
+        paymentToken: zeroAddress,
+        paymentMaxAmount: 0n,
+        expiry: 1_700_000_120n,
+        now: 1_700_000_000n,
+        combinedGasCeiling: 1_000_000n,
     }
 }
 
@@ -51,6 +106,7 @@ describe('helpers/signPreparedCalls', () => {
 
         const result = await signPreparedCalls({
             prepared,
+            expected: expectedFor(),
             signer: {
                 type: 'typedData',
                 signTypedData,
@@ -69,6 +125,7 @@ describe('helpers/signPreparedCalls', () => {
 
         const result = await signPreparedCalls({
             prepared,
+            expected: expectedFor(),
             signer: {
                 type: 'typedData',
                 signerKeyHash: KEY_HASH,
@@ -87,6 +144,7 @@ describe('helpers/signPreparedCalls', () => {
 
         const result = await signPreparedCalls({
             prepared,
+            expected: expectedFor(),
             signer: {
                 type: 'delegated',
                 signerAddress: DELEGATED_SIGNER,
@@ -106,6 +164,7 @@ describe('helpers/signPreparedCalls', () => {
         await expect(
             signPreparedCalls({
                 prepared,
+                expected: expectedFor(),
                 signer: {
                     type: 'delegated',
                     signerKeyHash: KEY_HASH,

@@ -51,7 +51,12 @@ import {
     listSessionNames,
     parseSessionName,
 } from './session-common'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
+} from './execute-calls'
 
 export type PermissionsRevokeResult = {
     type: 'permissions_revoke'
@@ -67,6 +72,7 @@ export type PermissionsRevokeResult = {
         statusCode: number
     }
     txHash?: Hex
+    feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
 type PermissionsRevokeDeps = {
@@ -82,21 +88,18 @@ type PermissionsRevokeDeps = {
     }) => Promise<GetKeysResponse>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-            sessionKey?: Hex
-        },
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+        params: ExecuteSignedCallsParams,
+    ) => Promise<ExecuteSignedCallsResult>
     prepareCalls: (input: {
         network: CliNetworkConfig
         from: Address
         calls: Call[]
         nonce: bigint
         sessionKey?: Hex
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -137,6 +140,10 @@ function getDefaultDeps(): PermissionsRevokeDeps {
                 chainId: input.network.chainId,
                 calls: input.calls,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
                 sessionKey: input.sessionKey,
             })
         },
@@ -431,6 +438,10 @@ export async function executePermissionsRevoke(
                         from: input.from,
                         calls: input.calls,
                         nonce: input.nonce,
+                        expiry: input.expiry,
+                        payer: input.payer,
+                        paymentToken: input.paymentToken,
+                        paymentMaxAmount: input.paymentMaxAmount,
                         sessionKey: input.sessionKey,
                     }),
                 signTypedData: deps.signTypedData,
@@ -448,6 +459,9 @@ export async function executePermissionsRevoke(
                 calls,
                 nonce,
                 signerPrivateKey: decryptedRoot.rootPrivateKey,
+                chainId: signedNetwork.chainId,
+                env: signedNetwork.env,
+                rpcUrl: signedNetwork.rpcUrl,
             },
         )
 
@@ -483,6 +497,7 @@ export async function executePermissionsRevoke(
                 status: finalStatus.status ?? 'unknown',
                 statusCode,
             },
+            feeCap: submission.feeCap,
         }
     })
 }

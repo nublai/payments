@@ -25,7 +25,12 @@ import {
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
 import { AccountCreateError, resolveKeystorePath } from './account-create'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from './execute-calls'
+import {
+    executeSignedCalls,
+    type ExecuteSignedCallsDeps,
+    type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
+} from './execute-calls'
 import {
     LoginProfileError,
     SessionOnlyProfileError,
@@ -172,6 +177,7 @@ export type AccountSwapResult = {
     txHash?: Hex
     destinationTxHash?: Hex
     relayRequestId?: string
+    feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
 type AccountSwapDeps = {
@@ -197,6 +203,10 @@ type AccountSwapDeps = {
         calls: Call[]
         sessionKey?: Hex
         nonce: bigint
+        expiry: bigint
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
     }) => Promise<PrepareCallsResponse>
     signTypedData: (input: {
         privateKey: Hex
@@ -210,15 +220,8 @@ type AccountSwapDeps = {
     waitForBundle: (input: { network: NetworkConfig; id: string }) => Promise<BundleStatusResponse>
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
-        params: {
-            from: Address
-            calls: Call[]
-            nonce: bigint
-            sessionKey?: Hex
-            signerPrivateKey: Hex
-            signerKeyHash?: Hex
-        },
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+        params: ExecuteSignedCallsParams,
+    ) => Promise<ExecuteSignedCallsResult>
     confirmQuote: (quote: RelayQuoteResponse) => Promise<boolean>
     auditQuote: (quote: RelayQuoteResponse) => void
 }
@@ -459,6 +462,10 @@ function getDefaultDeps(): AccountSwapDeps {
                 calls: input.calls,
                 sessionKey: input.sessionKey,
                 nonce: input.nonce,
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
             })
         },
         signTypedData: async (input) => {
@@ -848,6 +855,10 @@ export async function executeAccountSwap(
                             calls: input.calls,
                             sessionKey: input.sessionKey,
                             nonce: input.nonce,
+                            expiry: input.expiry,
+                            payer: input.payer,
+                            paymentToken: input.paymentToken,
+                            paymentMaxAmount: input.paymentMaxAmount,
                         }),
                     signTypedData: signer.signTypedData,
                     sendPreparedCalls: async (input) =>
@@ -865,6 +876,9 @@ export async function executeAccountSwap(
                     sessionKey: sessionPublicKey,
                     signerPrivateKey: signer.signerPrivateKey,
                     signerKeyHash: sessionKeyHash,
+                    chainId: network.chainId,
+                    env: network.env,
+                    rpcUrl: network.rpcUrl,
                 },
             )
         }
@@ -1008,6 +1022,7 @@ export async function executeAccountSwap(
             txHash: finalStatus.receipt?.transactionHash,
             destinationTxHash,
             relayRequestId,
+            feeCap: submission.feeCap,
         }
     } catch (error) {
         if (error instanceof PromptCancelledError) {

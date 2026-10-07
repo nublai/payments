@@ -16,6 +16,11 @@ export interface RelayerClientConfig {
     relayerUrl: string
     /** Optional chain ID override (used when client.chain is undefined) */
     chainId?: number
+    /**
+     * Allow plain http to a non-loopback relayer.
+     * Set for local dev only. Prod and stage must use https off loopback.
+     */
+    allowInsecureHttp?: boolean
     /** Optional static bearer token for HTTP Authorization */
     authToken?: string
     /** Optional bearer token provider (resolved per request) */

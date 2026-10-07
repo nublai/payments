@@ -6,6 +6,7 @@ import {
 } from '../src/lib/account-send'
 import { LoginProfileError, SessionOnlyProfileError } from '../src/lib/keystore'
 import { RecipientResolutionError } from '../src/lib/recipient-resolver'
+import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 test('resolveAccountSendPassword uses RELAYER_CLI_PASSWORD first', async () => {
     const value = await resolveAccountSendPassword(
@@ -55,16 +56,7 @@ test('executeAccountSend preserves cause for invalid chain override', async () =
 })
 
 test('executeAccountSend executes sponsored transfer flow', async () => {
-    const prepareCalls = mock(async () => ({
-        context: { quote: { quotes: [] } },
-        digest: '0xabc' as const,
-        typedData: {
-            domain: {},
-            types: {},
-            primaryType: 'Intent',
-            message: {},
-        },
-    })) as unknown as any
+    const prepareCalls = mock(async (input) => matchingPreparedCalls(input)) as unknown as any
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
     const result = await executeAccountSend(
         {
@@ -184,16 +176,7 @@ test('executeAccountSend supports legacy polygon USDC.e override', async () => {
             })),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => ({
-                context: { quote: { quotes: [] } },
-                digest: '0xabc' as const,
-                typedData: {
-                    domain: {},
-                    types: {},
-                    primaryType: 'Intent',
-                    message: {},
-                },
-            })) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -317,16 +300,7 @@ test('executeAccountSend surfaces guidance for legacy alias recipients', async (
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readNonce: mock(async () => 1n),
-                prepareCalls: mock(async () => ({
-                    context: { quote: { quotes: [] } },
-                    digest: '0xabc' as const,
-                    typedData: {
-                        domain: {},
-                        types: {},
-                        primaryType: 'Intent',
-                        message: {},
-                    },
-                })) as unknown as any,
+                prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -391,16 +365,7 @@ test('executeAccountSend resolves ENS recipient', async () => {
             })),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 1n),
-            prepareCalls: mock(async () => ({
-                context: { quote: { quotes: [] } },
-                digest: '0xabc' as const,
-                typedData: {
-                    domain: {},
-                    types: {},
-                    primaryType: 'Intent',
-                    message: {},
-                },
-            })) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -517,11 +482,7 @@ test('executeAccountSend supports --session-file direct mode', async () => {
             })),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => ({
-                context: { quote: { quotes: [] } },
-                digest: '0xabc' as const,
-                typedData: { domain: {}, types: {}, primaryType: 'Intent', message: {} },
-            })) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -618,11 +579,7 @@ test('executeAccountSend supports --session local selection mode', async () => {
             })),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async () => ({
-                context: { quote: { quotes: [] } },
-                digest: '0xabc' as const,
-                typedData: { domain: {}, types: {}, primaryType: 'Intent', message: {} },
-            })) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,

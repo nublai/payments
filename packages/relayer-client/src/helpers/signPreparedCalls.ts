@@ -2,6 +2,7 @@ import { serializeSignature, type Address, type Hex, type Signature } from 'viem
 import type { PrepareCallsResponse } from '../actions/prepareCalls'
 import { computeErc1271Digest } from '../utils/erc1271'
 import { wrapSignature } from '../utils/signature'
+import { bindPreparedCalls, type PreparedCallsExpectation } from './bindPreparedCalls'
 
 type SignatureValue = Hex | Signature
 
@@ -33,6 +34,8 @@ export type SignPreparedCallsSigner = TypedDataSignerInput | DelegatedDigestSign
 export interface SignPreparedCallsParams {
     prepared: PrepareCallsResponse
     signer: SignPreparedCallsSigner
+    /** Calls, account, chain, verifying contract, nonce, and fee caps the caller agreed to. */
+    expected: PreparedCallsExpectation
 }
 
 export interface SignPreparedCallsResult {
@@ -63,16 +66,17 @@ function toSignatureHex(value: SignatureValue): Hex {
 export async function signPreparedCalls(
     params: SignPreparedCallsParams,
 ): Promise<SignPreparedCallsResult> {
-    const { prepared, signer } = params
+    const { prepared, signer, expected } = params
+    const bound = bindPreparedCalls(prepared, expected)
 
     if (signer.type === 'typedData') {
-        const rawSignature = toSignatureHex(await signer.signTypedData(prepared.typedData))
+        const rawSignature = toSignatureHex(await signer.signTypedData(bound.typedData))
         if (signer.signerKeyHash === undefined) {
             return {
                 signerType: signer.type,
                 rawSignature,
                 signature: rawSignature,
-                digestToSign: prepared.digest,
+                digestToSign: bound.digest,
                 wrapped: false,
             }
         }
@@ -81,7 +85,7 @@ export async function signPreparedCalls(
             signerType: signer.type,
             rawSignature,
             signature: wrapSignature(rawSignature, signer.signerKeyHash, signer.prehash ?? false),
-            digestToSign: prepared.digest,
+            digestToSign: bound.digest,
             wrapped: true,
         }
     }
@@ -92,7 +96,7 @@ export async function signPreparedCalls(
             'delegated signer requires signerAddress (or deprecated accountAddress) for ERC-1271 digest transformation',
         )
     }
-    const digestToSign = computeErc1271Digest(prepared.digest, signerAddress)
+    const digestToSign = computeErc1271Digest(bound.digest, signerAddress)
     const rawSignature = toSignatureHex(await signer.signDigest(digestToSign))
     return {
         signerType: signer.type,

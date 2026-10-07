@@ -6,10 +6,12 @@
  * 2. wallet_upgradeAccount - submit both signed digests
  */
 
-import type { Address, Hex, WalletClient, Account } from 'viem'
+import { getAddress, type Address, type Hex, type WalletClient, type Account } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { RelayerPublicClient, CreateAccountResponse } from '../types'
 import { createRelayerTransport, JsonRpcClientError } from '../transport'
+import { bindPreparedUpgrade } from '../helpers/bindPreparedUpgrade'
+import { PreparedCallsBindingError } from '../helpers/bindPreparedCalls'
 import type {
     RpcAuthorizeKey,
     RpcCallPermission,
@@ -27,8 +29,10 @@ interface UpgradeAccountBaseParams {
     accountAddress: Address
     /** Delegation target address (Account implementation) */
     delegation: Address
-    /** Optional chain ID override */
+    /** Chain id from the caller. Never taken from the relayer payload. */
     chainId?: number
+    /** Local orchestrator. Never taken from the relayer payload. */
+    orchestrator?: Address
     /** Optional keys to authorize during upgrade */
     authorizeKeys?: AuthorizeKey[]
 }
@@ -86,6 +90,16 @@ export type Permission = RpcPermission
 export type AuthorizeKey = RpcAuthorizeKey
 
 const DELEGATION_CODE_PREFIX = '0xef0100'
+
+function readOrchestratorAddress(chainId: number): Address {
+    const raw = process.env[`ORCHESTRATOR_${chainId}`]?.trim()
+    if (!raw) {
+        throw new PreparedCallsBindingError(
+            `Refusing to sign account upgrade: set ORCHESTRATOR_${chainId} or pass orchestrator`,
+        )
+    }
+    return getAddress(raw)
+}
 const DEFAULT_DELEGATION_CONFIRMATION_TIMEOUT_MS = 15_000
 const DEFAULT_DELEGATION_CONFIRMATION_INTERVAL_MS = 500
 
@@ -192,6 +206,18 @@ export async function upgradeAccount(
 
         const transport = createRelayerTransport(client)
         const chainId = params.chainId ?? client.relayerConfig.chainId ?? client.chain?.id
+        if (chainId === undefined) {
+            throw new PreparedCallsBindingError(
+                'Refusing to sign account upgrade: chainId is required',
+            )
+        }
+        const orchestrator =
+            params.orchestrator ?? readOrchestratorAddress(chainId)
+        const authorizeKeys = params.authorizeKeys ?? []
+        const authorizationNonce = await client.getTransactionCount({
+            address: params.accountAddress,
+            blockTag: 'pending',
+        })
 
         // Step 1: Get authorization data from server
         const prepared = await transport.request<RpcPrepareUpgradeResult>(
@@ -199,58 +225,50 @@ export async function upgradeAccount(
             {
                 address: params.accountAddress,
                 delegation: params.delegation,
-                chainId: chainId !== undefined ? `0x${chainId.toString(16)}` : undefined,
+                chainId: `0x${chainId.toString(16)}`,
                 capabilities: {
-                    authorizeKeys: params.authorizeKeys ?? [],
+                    authorizeKeys,
                 },
             },
         )
 
-        // Step 2: Sign the EIP-7702 authorization digest (raw, no EIP-191 prefix)
+        const bound = bindPreparedUpgrade(prepared, {
+            accountAddress: params.accountAddress,
+            chainId,
+            delegation: params.delegation,
+            orchestrator,
+            authorizationNonce,
+            authorizeKeys,
+        })
+
+        // Step 2: Sign the EIP-7702 authorization digest we recomputed.
         if (!('sign' in account) || typeof account.sign !== 'function') {
             throw new Error('Account must support sign method')
         }
         const authSignature = await account.sign({
-            hash: prepared.digests.auth,
+            hash: bound.authDigest,
         })
 
-        // Step 3: Sign the exec digest (EIP-712 typed data for SignedCall)
-        // If there's no execution data (no keys to authorize), we still need a signature
-        // but it can be empty/placeholder since the preCall won't be executed
+        // Step 3: Sign the locally rebuilt SignedCall, not the relayer typed data.
         let execSignature: Hex
-        if (prepared.context.preCall.executionData !== '0x') {
-            const typedDataParams = {
-                domain: prepared.typedData.domain as {
-                    name: string
-                    version: string
-                    chainId: number
-                    verifyingContract: Address
-                },
-                types: prepared.typedData.types as {
-                    SignedCall: Array<{ name: string; type: string }>
-                    Call: Array<{ name: string; type: string }>
-                },
-                primaryType: prepared.typedData.primaryType as 'SignedCall',
-                message: prepared.typedData.message as {
-                    multichain: boolean
-                    eoa: Address
-                    calls: Array<{ to: Address; value: string; data: Hex }>
-                    nonce: string
-                },
-            }
-
+        if (bound.executionData !== '0x') {
             if (walletClientForTypedData) {
-                // Use WalletClient for signing (browser wallets)
                 execSignature = await walletClientForTypedData.signTypedData({
                     account,
-                    ...typedDataParams,
+                    domain: bound.typedData.domain,
+                    types: bound.typedData.types,
+                    primaryType: bound.typedData.primaryType,
+                    message: bound.typedData.message,
                 })
             } else {
-                // Use account directly (private key)
-                execSignature = await account.signTypedData(typedDataParams)
+                execSignature = await account.signTypedData({
+                    domain: bound.typedData.domain,
+                    types: bound.typedData.types,
+                    primaryType: bound.typedData.primaryType,
+                    message: bound.typedData.message,
+                })
             }
         } else {
-            // No preCall needed, use empty signature
             execSignature = '0x'
         }
 
