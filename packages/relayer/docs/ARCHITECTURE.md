@@ -353,7 +353,7 @@ const result = this.ctx.storage.transactionSync(() => {
 1. **Key Security**: Private keys are derived on-demand, never persisted
 2. **Signature Integrity**: User signatures are passed through unmodified to chain
 3. **Expiry Enforcement**: Intents are rejected if within 30s of expiry
-4. **Payment Protection**: paymentAmount only set when payer is specified
+4. **Payment Protection**: paymentAmount is recomputed from the quote's gas and fee fields when a payer is set. The client-supplied paymentAmount is not collected. Quote HMAC is required outside local/dev.
 
 ### Operational Invariants
 

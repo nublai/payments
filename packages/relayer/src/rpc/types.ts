@@ -45,6 +45,14 @@ export interface JsonRpcErrorObject {
 }
 
 /**
+ * Authenticated HTTP caller, when a provider accepted the request.
+ */
+export interface RpcCaller {
+    provider?: string
+    userId?: string
+}
+
+/**
  * Context passed to method handlers
  */
 export interface RpcContext {
@@ -52,6 +60,8 @@ export interface RpcContext {
     env: unknown
     /** Original request (for headers, etc.) */
     request?: Request
+    /** Set by the auth middleware after a provider succeeds. */
+    auth?: RpcCaller
 }
 
 /**

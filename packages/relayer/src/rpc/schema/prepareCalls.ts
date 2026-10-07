@@ -68,8 +68,21 @@ export interface Quote {
         maxFeePerGas: number
         maxPriorityFeePerGas: number
     }
-    /** Calculated payment amount in fee token units (set by relayer) */
+    /**
+     * Payment amount in fee-token units, as quoted.
+     * Send ignores this field and recomputes the fee from txGas, maxFeePerGas, and nativeRate.
+     */
     paymentAmount: string
+    /**
+     * Fee-token units per 1 native token, scaled by 1e18.
+     * Set by prepareCalls and covered by the quote HMAC. Required to recompute an ERC-20 fee.
+     */
+    nativeRate?: string
+    /**
+     * HTTP signer bound at prepare time: the session key address when `session_key` was sent,
+     * otherwise the account EOA. Covered by the quote HMAC.
+     */
+    authSigner?: Address
     orchestrator: Address
     feeTokenDeficit: string
     assetDeficits: Array<{

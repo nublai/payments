@@ -87,8 +87,9 @@ export interface Env {
     // Intent expiry configuration
     INTENT_EXPIRY_BUFFER_SECONDS?: string // Buffer before expiry to reject intent (default: "30")
 
-    // Quote signing secret for HMAC-SHA256 integrity verification
-    // If not set, quote signature validation is skipped (not recommended for production)
+    // HMAC-SHA256 secret for quote integrity.
+    // Required when CONTEXT is not local/dev. When unset locally, quote HMAC is skipped.
+    // Set with `wrangler secret put QUOTE_SIGNING_SECRET --env <stage|prod>`. Do not commit the value.
     QUOTE_SIGNING_SECRET?: string
 
     // CORS allowed origins. Comma-separated list. Unset or "*" allows every origin.
@@ -102,6 +103,10 @@ export interface Env {
     ERC8128_ENABLED?: string
     ERC8128_MAX_VALIDITY_SECONDS?: string
     ERC8128_CLOCK_SKEW_SECONDS?: string
+    // Comma-separated addresses. Outside local/dev, a recovered key is accepted when it is
+    // listed here, or when it is the intent EOA, or when it is the session signer stored
+    // on the quote (`authSigner`). An empty list is not "anyone".
+    ERC8128_ALLOWED_SIGNERS?: string
 
     // Privy authentication
     PRIVY_ENABLED?: string

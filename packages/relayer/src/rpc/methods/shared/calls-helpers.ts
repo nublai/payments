@@ -1,17 +1,21 @@
-import type { Address, Hex } from 'viem'
-import { zeroAddress, keccak256, toBytes, fromHex } from 'viem'
+import { isAddress, zeroAddress, keccak256, toBytes, fromHex, type Address, type Hex } from 'viem'
 import { hashTypedData } from 'viem/utils'
 import type { RelayerConfig, Env } from '../../../types/env'
 import type { IntentStruct } from '../../../types/pool'
 import {
     INVALID_PARAMS,
+    INVALID_SIGNATURE,
     PAYMENT_EXCEEDS_MAX,
     QUOTE_EXPIRED,
     INVALID_QUOTE_SIGNATURE,
     RpcError,
 } from '../../errors'
+import { isLocalDevContext, quoteSigningSecret } from '../../../config/runtime-context'
 import { verifyQuoteSignature } from '../../../lib/quote-signing'
 import { validatePaymentAmount } from '../../../services/fees'
+import { recomputeQuotePaymentAmount } from '../../../services/quote-payment'
+import { decideErc8128Signer, type BoundAccount } from '../../../auth/erc8128/signer-policy'
+import type { RpcCaller } from '../../types'
 import { selectSignerForEoa } from '../../../lib/pool-utils'
 import { parseHexChainId } from '../../../lib/rpc-utils'
 import type { PrepareCallsContext, QuoteIntent, SignedQuotes } from '../../schema/prepareCalls'
@@ -128,10 +132,12 @@ export function extractIntentFromContext(context: PrepareCallsContext): QuoteInt
 
 /**
  * Validate quote TTL, signature, and payment amount.
+ * The collected fee is recomputed from the quote's gas fields. The client-supplied
+ * `paymentAmount` is ignored.
  */
 export async function validateQuote(
     signedQuotes: SignedQuotes,
-    env: Pick<Env, 'QUOTE_SIGNING_SECRET'>,
+    env: Pick<Env, 'QUOTE_SIGNING_SECRET' | 'CONTEXT'>,
 ): Promise<RpcError | null> {
     const currentTime = Math.floor(Date.now() / 1000)
     // Boundary policy: equality is expired. A quote TTL at the current second is no longer valid.
@@ -142,8 +148,15 @@ export async function validateQuote(
         )
     }
 
-    if (env.QUOTE_SIGNING_SECRET) {
-        const isValid = await verifyQuoteSignature(signedQuotes, env.QUOTE_SIGNING_SECRET)
+    const secret = quoteSigningSecret(env)
+    if (!isLocalDevContext(env) && !secret) {
+        return new RpcError(
+            INVALID_QUOTE_SIGNATURE,
+            'QUOTE_SIGNING_SECRET is required outside local',
+        )
+    }
+    if (secret) {
+        const isValid = await verifyQuoteSignature(signedQuotes, secret)
         if (!isValid) {
             return new RpcError(INVALID_QUOTE_SIGNATURE, 'Quote signature verification failed')
         }
@@ -151,7 +164,19 @@ export async function validateQuote(
 
     const quote = signedQuotes.quotes[0]
     if (quote?.intent.payer && quote.intent.payer !== zeroAddress) {
-        const paymentAmount = BigInt(quote.paymentAmount || '0')
+        let paymentAmount: bigint
+        try {
+            paymentAmount = recomputeQuotePaymentAmount({
+                txGas: quote.txGas,
+                maxFeePerGas: quote.nativeFeeEstimate?.maxFeePerGas,
+                paymentToken: quote.intent.paymentToken,
+                paymentTokenDecimals: quote.paymentTokenDecimals,
+                nativeRate: quote.nativeRate,
+            })
+        } catch (error) {
+            if (error instanceof RpcError) return error
+            throw error
+        }
         const paymentMaxAmount = BigInt(quote.intent.paymentMaxAmount || '0')
         if (!validatePaymentAmount(paymentAmount, paymentMaxAmount)) {
             return new RpcError(
@@ -165,6 +190,44 @@ export async function validateQuote(
 }
 
 /**
+ * Outside local, an ERC-8128 caller must be allowlisted or be the account the
+ * HMAC-signed quote names (intent EOA or session `authSigner`).
+ */
+export function assertErc8128BoundToQuotes(
+    env: Pick<Env, 'CONTEXT' | 'ERC8128_ALLOWED_SIGNERS'>,
+    auth: RpcCaller | undefined,
+    quotes: Array<{ intent?: { eoa?: string }; authSigner?: string }>,
+): RpcError | null {
+    if (isLocalDevContext(env)) return null
+    if (auth?.provider !== 'erc8128') return null
+
+    const signer = auth.userId
+    if (!signer || !isAddress(signer)) {
+        return new RpcError(INVALID_SIGNATURE, 'ERC-8128 signer is missing')
+    }
+
+    const accounts: BoundAccount[] = quotes.map((quote) => ({
+        eoa:
+            quote.intent?.eoa && isAddress(quote.intent.eoa)
+                ? (quote.intent.eoa as Address)
+                : undefined,
+        authSigner:
+            quote.authSigner && isAddress(quote.authSigner)
+                ? (quote.authSigner as Address)
+                : undefined,
+    }))
+    const decision = decideErc8128Signer({
+        env,
+        signer,
+        binding: { accounts },
+    })
+    if (!decision.ok) {
+        return new RpcError(INVALID_SIGNATURE, decision.message)
+    }
+    return null
+}
+
+/**
  * Build an IntentStruct from sendPreparedCalls params.
  */
 export function buildIntentFromParams(params: SendPreparedCallsParams): IntentStruct {
@@ -172,8 +235,18 @@ export function buildIntentFromParams(params: SendPreparedCallsParams): IntentSt
     const explicitPaymentSignature = paramsPaymentSig ?? capabilities?.feeSignature
 
     const quoteIntent = extractIntentFromContext(context)
-
-    const calculatedPaymentAmount = context.quote.quotes[0]?.paymentAmount ?? '0'
+    const quote = context.quote.quotes[0]
+    const payer = quoteIntent.payer ?? zeroAddress
+    const paymentAmount =
+        payer !== zeroAddress && quote
+            ? recomputeQuotePaymentAmount({
+                  txGas: quote.txGas,
+                  maxFeePerGas: quote.nativeFeeEstimate?.maxFeePerGas,
+                  paymentToken: quote.intent.paymentToken,
+                  paymentTokenDecimals: quote.paymentTokenDecimals,
+                  nativeRate: quote.nativeRate,
+              }).toString()
+            : '0'
 
     return {
         eoa: quoteIntent.eoa,
@@ -196,8 +269,7 @@ export function buildIntentFromParams(params: SendPreparedCallsParams): IntentSt
         payer: quoteIntent.payer ?? zeroAddress,
         paymentToken: quoteIntent.paymentToken ?? zeroAddress,
         paymentMaxAmount: quoteIntent.paymentMaxAmount ?? '0',
-        paymentAmount:
-            quoteIntent.payer && quoteIntent.payer !== zeroAddress ? calculatedPaymentAmount : '0',
+        paymentAmount,
         paymentRecipient: zeroAddress,
         paymentSignature:
             explicitPaymentSignature ??

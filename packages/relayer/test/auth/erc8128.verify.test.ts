@@ -73,7 +73,7 @@ describe('verifyErc8128Request', () => {
 
         const result = await verifyErc8128Request(
             {
-                env: { CHAIN_IDS: '8453' },
+                env: { CHAIN_IDS: '8453', CONTEXT: 'local' },
                 request: req,
                 nowSeconds: Math.floor(Date.now() / 1000),
             },
@@ -103,7 +103,7 @@ describe('verifyErc8128Request', () => {
 
         const result = await verifyErc8128Request(
             {
-                env: { CHAIN_IDS: '8453' },
+                env: { CHAIN_IDS: '8453', CONTEXT: 'local' },
                 request: req,
                 nowSeconds: Math.floor(Date.now() / 1000),
             },
@@ -129,7 +129,7 @@ describe('verifyErc8128Request', () => {
 
         const first = await verifyErc8128Request(
             {
-                env: { CHAIN_IDS: '8453' },
+                env: { CHAIN_IDS: '8453', CONTEXT: 'local' },
                 request: req.clone(),
                 nowSeconds: Math.floor(Date.now() / 1000),
             },
@@ -144,7 +144,7 @@ describe('verifyErc8128Request', () => {
 
         const second = await verifyErc8128Request(
             {
-                env: { CHAIN_IDS: '8453' },
+                env: { CHAIN_IDS: '8453', CONTEXT: 'local' },
                 request: req,
                 nowSeconds: Math.floor(Date.now() / 1000),
             },
@@ -168,11 +168,14 @@ describe('verifyErc8128Request', () => {
 
     it('rejects expired signatures', async () => {
         const now = Math.floor(Date.now() / 1000)
-        const req = await createSignedRequest({ created: now - 90, expires: now - 10 })
+        const req = await createSignedRequest({
+            created: now - 90,
+            expires: now - 10,
+        })
 
         const result = await verifyErc8128Request(
             {
-                env: { CHAIN_IDS: '8453' },
+                env: { CHAIN_IDS: '8453', CONTEXT: 'local' },
                 request: req,
                 nowSeconds: now,
             },
@@ -199,7 +202,7 @@ describe('verifyErc8128Request', () => {
 
         const result = await verifyErc8128Request(
             {
-                env: { CHAIN_IDS: '8453' },
+                env: { CHAIN_IDS: '8453', CONTEXT: 'local' },
                 request: req,
                 nowSeconds: Math.floor(Date.now() / 1000),
             },
@@ -238,7 +241,7 @@ describe('verifyErc8128Request', () => {
 
         const result = await verifyErc8128Request(
             {
-                env: { CHAIN_IDS: '8453' },
+                env: { CHAIN_IDS: '8453', CONTEXT: 'local' },
                 request: req,
                 nowSeconds: Math.floor(Date.now() / 1000),
             },
@@ -255,6 +258,151 @@ describe('verifyErc8128Request', () => {
             expect.objectContaining({
                 ok: false,
                 code: 'UNSUPPORTED_CHAIN',
+            }),
+        )
+    })
+})
+
+describe('verifyErc8128Request signer binding', () => {
+    let nonceStore: NonceStore
+
+    beforeEach(() => {
+        const nonceSeen = new Set<string>()
+        nonceStore = {
+            consumeNonce: vi.fn(async (replayKey: string) => {
+                if (nonceSeen.has(replayKey)) return false
+                nonceSeen.add(replayKey)
+                return true
+            }),
+        }
+    })
+
+    const limits = {
+        maxValiditySeconds: 120,
+        clockSkewSeconds: 30,
+        requireRequestBound: true,
+        requireNonReplayable: true,
+    }
+
+    async function verify(req: Request, env: Record<string, string>) {
+        return verifyErc8128Request(
+            {
+                env,
+                request: req,
+                nowSeconds: Math.floor(Date.now() / 1000),
+            },
+            { ...limits, nonceStore },
+        )
+    }
+
+    function sendBody(account: { eoa?: string; authSigner?: string }): string {
+        return JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'wallet_sendPreparedCalls',
+            params: [
+                {
+                    context: {
+                        quote: {
+                            quotes: [
+                                {
+                                    intent: { eoa: account.eoa },
+                                    authSigner: account.authSigner,
+                                },
+                            ],
+                        },
+                    },
+                    signature: '0x',
+                },
+            ],
+        })
+    }
+
+    it('rejects a self-recovering key that is not allowlisted and not the intent account', async () => {
+        const req = await createSignedRequest()
+        const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'SIGNER_NOT_ALLOWED',
+            }),
+        )
+    })
+
+    it('rejects every chain when CHAIN_IDS is empty', async () => {
+        const req = await createSignedRequest()
+        const result = await verify(req, { CHAIN_IDS: '', CONTEXT: 'prod' })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'UNSUPPORTED_CHAIN',
+            }),
+        )
+    })
+
+    it('accepts the intent EOA outside local', async () => {
+        const req = await createSignedRequest({
+            body: sendBody({ eoa: account.address }),
+        })
+        const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
+
+        expect(result.ok).toBe(true)
+    })
+
+    it('rejects a key that is not the intent EOA or the quote authSigner', async () => {
+        const req = await createSignedRequest({
+            body: sendBody({
+                eoa: '0x2222222222222222222222222222222222222222',
+                authSigner: '0x3333333333333333333333333333333333333333',
+            }),
+        })
+        const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'stage' })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'SIGNER_NOT_ALLOWED',
+            }),
+        )
+    })
+
+    it('accepts the session signer committed on the quote', async () => {
+        const req = await createSignedRequest({
+            body: sendBody({
+                eoa: '0x2222222222222222222222222222222222222222',
+                authSigner: account.address,
+            }),
+        })
+        const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
+
+        expect(result.ok).toBe(true)
+    })
+
+    it('accepts an allowlisted signer that is not the intent EOA', async () => {
+        const req = await createSignedRequest()
+        const result = await verify(req, {
+            CHAIN_IDS: '8453',
+            CONTEXT: 'prod',
+            ERC8128_ALLOWED_SIGNERS: account.address,
+        })
+
+        expect(result.ok).toBe(true)
+    })
+
+    it('rejects a signer missing from the allowlist even on local when the list is set', async () => {
+        const req = await createSignedRequest()
+        const result = await verify(req, {
+            CHAIN_IDS: '8453',
+            CONTEXT: 'local',
+            ERC8128_ALLOWED_SIGNERS: '0x2222222222222222222222222222222222222222',
+        })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                ok: false,
+                code: 'SIGNER_NOT_ALLOWED',
             }),
         )
     })

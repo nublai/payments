@@ -40,6 +40,8 @@ function createMockEnv(overrides: Partial<Record<string, string>> = {}): Env {
         CHAIN_IDS: '84532',
         RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
         CONTEXT: 'stage',
+        // Stage requires a quote HMAC secret. This is a fixture placeholder, not a deployed secret.
+        QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
         ORCHESTRATOR_84532: '0x3456789012345678901234567890123456789012',
         SIMPLE_FUNDER_84532: '0x4567890123456789012345678901234567890123',
         SIMULATOR_84532: '0x5678901234567890123456789012345678901234',
@@ -169,6 +171,26 @@ describe('validateEnv', () => {
         })
         const result = validateEnv(env)
         expect(result.valid).toBe(true)
+    })
+
+    it('requires QUOTE_SIGNING_SECRET outside local', () => {
+        const env = createMockEnv({ QUOTE_SIGNING_SECRET: '' })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(false)
+        expect(result.missing).toContain('QUOTE_SIGNING_SECRET')
+    })
+
+    it('does not require QUOTE_SIGNING_SECRET when CONTEXT is local', () => {
+        const env = createMockEnv({ CONTEXT: 'local', QUOTE_SIGNING_SECRET: '' })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(true)
+    })
+
+    it('rejects an invalid ERC8128_ALLOWED_SIGNERS entry', () => {
+        const env = createMockEnv({ ERC8128_ALLOWED_SIGNERS: 'not-an-address' })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(false)
+        expect(result.missing).toContain('ERC8128_ALLOWED_SIGNERS')
     })
 })
 

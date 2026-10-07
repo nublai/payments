@@ -18,6 +18,8 @@ import { getChainConfig, getChainIds } from '../../config'
 import { getChainConfig as getChainAssetsConfig } from '../../config/chains'
 import { logger } from '../../lib/logger'
 import { RelayerService, createIntentNonceProvider, isPaymentEnabled } from '../../services/relayer'
+import { isLocalDevContext, quoteSigningSecret } from '../../config/runtime-context'
+import { sessionAddressFromEncodedKey } from '../../lib/session-address'
 import { signQuotes } from '../../lib/quote-signing'
 import { unwrapParams, parseHexChainId } from '../../lib/rpc-utils'
 import type {
@@ -163,6 +165,8 @@ export async function handlePrepareCalls(
     const ethPriceHex = formatPriceForQuote(nativeUsdPrice)
     let paymentAmount = feeEstimate.paymentAmount
     let paymentTokenDecimals = 18
+    // 1e18 means "1 fee token per 1 native token", so convertToFeeToken is the identity for native fees.
+    let nativeRate = 10n ** 18n
 
     if (paymentToken && paymentToken !== zeroAddress) {
         const normalizedPaymentToken = paymentToken.toLowerCase()
@@ -191,7 +195,7 @@ export async function handlePrepareCalls(
             )
         }
 
-        const nativeRate = (nativeUsdPrice * 10n ** 18n + tokenUsdPrice / 2n) / tokenUsdPrice
+        nativeRate = (nativeUsdPrice * 10n ** 18n + tokenUsdPrice / 2n) / tokenUsdPrice
         paymentAmount = convertToFeeToken(paymentAmount, nativeRate, paymentTokenDecimals)
     }
 
@@ -220,6 +224,8 @@ export async function handlePrepareCalls(
             maxPriorityFeePerGas: Number(feeEstimate.maxPriorityFeePerGas),
         },
         paymentAmount: paymentAmount.toString(),
+        nativeRate: nativeRate.toString(),
+        authSigner: sessionAddressFromEncodedKey(typedParams.session_key) ?? typedParams.from,
         orchestrator: config.contracts.orchestrator,
         feeTokenDeficit: '0x0',
         assetDeficits: [],
@@ -238,8 +244,16 @@ export async function handlePrepareCalls(
         ttl,
     }
 
-    if (env.QUOTE_SIGNING_SECRET) {
-        signedQuotes.signature = await signQuotes(signedQuotes, env.QUOTE_SIGNING_SECRET)
+    const quoteSecret = quoteSigningSecret(env)
+    if (!quoteSecret) {
+        if (!isLocalDevContext(env)) {
+            throw new RpcError(
+                SERVICE_UNAVAILABLE,
+                'QUOTE_SIGNING_SECRET is required outside local',
+            )
+        }
+    } else {
+        signedQuotes.signature = await signQuotes(signedQuotes, quoteSecret)
     }
 
     const preparedContext: PrepareCallsContext = {

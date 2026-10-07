@@ -29,13 +29,15 @@ describe('validateQuote boundary semantics', () => {
         vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
         const now = Math.floor(Date.now() / 1000)
 
+        // Unsigned quotes are rejected when CONTEXT is unset. This case stays on
+        // local so it still covers the future-TTL boundary.
         const result = await validateQuote(
             {
                 quotes: [],
                 signature: '0x',
                 ttl: now + 1,
             },
-            {},
+            { CONTEXT: 'local' },
         )
 
         expect(result).toBeNull()

@@ -10,6 +10,7 @@ import { verifyMessage as verifyPersonalMessage, type Address } from 'viem'
 import { getChainClient } from '../../lib/multi-chain-client'
 import { hasCode } from '../../lib/viem-utils'
 import type { Env } from '../../types/env'
+import { bindingFromRpcBody, decideErc8128Signer } from './signer-policy'
 
 export interface NonceStore {
     consumeNonce(replayKey: string, ttlSeconds: number): Promise<boolean>
@@ -47,6 +48,7 @@ export type Erc8128VerifyFailureCode =
     | 'MISSING_HEADERS'
     | 'BAD_FORMAT'
     | 'BAD_KEYID'
+    | 'SIGNER_NOT_ALLOWED'
     | 'UNSUPPORTED_CHAIN'
     | 'INVALID_TIME'
     | 'INVALID_COVERAGE'
@@ -65,6 +67,8 @@ export async function verifyErc8128Request(
     ctx: Erc8128VerificationContext,
     cfg: Erc8128Config,
 ): Promise<Erc8128VerifyResult | Erc8128VerifyFailure> {
+    // verifyRequest reads the body. Keep a clone for the signer-binding check.
+    const bodyRequest = ctx.request.clone()
     const keyIds = parseKeyIdsFromHeader(ctx.request.headers.get('signature-input'))
 
     if (keyIds.length === 0) {
@@ -175,6 +179,16 @@ export async function verifyErc8128Request(
         return failure('UNSUPPORTED_CHAIN', `Unsupported chain ID: ${parsed.chainId}`)
     }
 
+    const binding = await readBinding(bodyRequest)
+    const decision = decideErc8128Signer({
+        env: ctx.env,
+        signer: parsed.address,
+        binding,
+    })
+    if (!decision.ok) {
+        return failure('SIGNER_NOT_ALLOWED', decision.message)
+    }
+
     let signerType: 'EOA' | 'SCA' = 'EOA'
     try {
         const client = getChainClient(parsed.chainId, ctx.env)
@@ -228,13 +242,23 @@ function parseKeyIdsFromHeader(header: string | null): ParsedKeyId[] {
     return parsed
 }
 
+async function readBinding(request: Request) {
+    try {
+        return bindingFromRpcBody(await request.json())
+    } catch {
+        return { accounts: null }
+    }
+}
+
 function isSupportedChain(chainId: number, env: Partial<Env>): boolean {
     const configured = env.CHAIN_IDS?.split(',')
         .map((id) => Number.parseInt(id.trim(), 10))
         .filter((id) => Number.isFinite(id))
 
+    // An empty list is not "every chain". A worker that forgot CHAIN_IDS must not
+    // accept a keyid for an arbitrary network.
     if (!configured || configured.length === 0) {
-        return true
+        return false
     }
 
     return configured.includes(chainId)

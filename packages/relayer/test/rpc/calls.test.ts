@@ -98,6 +98,8 @@ const createMockCtx = (): RpcContext => ({
         RPC_URL: 'https://example.com/rpc',
         RPC_8453: 'https://example.com/rpc',
         CHAIN_IDS: '8453',
+        // These handlers exercise the local unsigned-quote path.
+        CONTEXT: 'local',
         ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
         SIMPLE_FUNDER_8453: '0x4567890123456789012345678901234567890123',
         SIMULATOR_8453: '0x5678901234567890123456789012345678901234',
