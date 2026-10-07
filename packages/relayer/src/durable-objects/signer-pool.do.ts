@@ -30,6 +30,7 @@ import type {
     ExecuteIntentTransaction,
 } from '../types/pool'
 import { selectSignerForEoa } from '../lib/pool-utils'
+import { poolSendBroadcastAttempted, signerSendDisposition } from './signer-pool-send'
 import {
     consumeRateLimit,
     peekRateLimit,
@@ -418,8 +419,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
         }
 
-        // Try each candidate until one succeeds
-        let lastError: Error | null = null
+        // Try each candidate until one succeeds. Retry only when that attempt
+        // returned before eth_sendRawTransaction. A later candidate cannot
+        // clear a slot that an earlier candidate already submitted.
+        const attempts: Array<{ broadcastAttempted: boolean; message?: string }> = []
+        let lastMessage = 'No signers available - all at capacity'
 
         for (const candidate of candidates) {
             const signerName = `signer-${chainId}-${candidate.index}`
@@ -439,7 +443,6 @@ export class SignerPoolDO extends DurableObject<Env> {
                     return result
                 }
 
-                // Check if rejection is due to capacity (retry) vs other error (fail).
                 // An unreadable body is treated as a send: the slot stays reserved.
                 let error: SignerError & { broadcastAttempted?: boolean }
                 try {
@@ -447,33 +450,34 @@ export class SignerPoolDO extends DurableObject<Env> {
                 } catch {
                     throw new SignerPoolSendError('unreadable signer error', true)
                 }
-                const broadcastAttempted = error.broadcastAttempted !== false
-
-                if (error.code === 'CAPACITY_EXCEEDED' || error.code === 'PAUSED') {
-                    // Capacity exceeded or paused - try next signer. Neither reached send.
-                    lastError = new SignerPoolSendError(error.error, false)
+                const attempt = {
+                    broadcastAttempted: error.broadcastAttempted !== false,
+                    message: error.error,
+                }
+                attempts.push(attempt)
+                if (signerSendDisposition(attempt) === 'retry') {
+                    lastMessage = error.error
                     continue
                 }
-
-                // Other error - throw immediately
-                throw new SignerPoolSendError(error.error, broadcastAttempted)
+                throw new SignerPoolSendError(error.error, true)
             } catch (err) {
-                if (err instanceof Error) {
-                    // Check if this is a retryable error
-                    if (err.message.includes('capacity') || err.message.includes('paused')) {
-                        lastError = err
-                        continue
-                    }
+                if (
+                    err instanceof SignerPoolSendError &&
+                    signerSendDisposition({
+                        broadcastAttempted: err.broadcastAttempted,
+                        message: err.message,
+                    }) === 'retry'
+                ) {
+                    lastMessage = err.message
+                    continue
                 }
-                throw err
+                if (err instanceof SignerPoolSendError) throw err
+                // The attempt has no before-send flag. Keep the reservation.
+                throw new SignerPoolSendError(getErrorMessage(err), true)
             }
         }
 
-        // All candidates exhausted. None of the capacity or pause rejects reached send.
-        throw new SignerPoolSendError(
-            lastError?.message ?? 'No signers available - all at capacity',
-            false,
-        )
+        throw new SignerPoolSendError(lastMessage, poolSendBroadcastAttempted(attempts))
     }
 
     /**

@@ -93,12 +93,8 @@ function linkedWalletMatches(
 ): boolean {
     const target = getAddress(account)
     const candidates: string[] = []
-    if (typeof user.wallet?.address === 'string') candidates.push(user.wallet.address)
     for (const linked of user.linkedAccounts ?? []) {
-        if (
-            (linked.type === 'wallet' || linked.type === 'smart_wallet') &&
-            typeof linked.address === 'string'
-        ) {
+        if (linked.type === 'wallet' && typeof linked.address === 'string') {
             candidates.push(linked.address)
         }
     }

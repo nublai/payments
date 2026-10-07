@@ -141,10 +141,119 @@ export function releaseRateLimit(
 
 export function upgradeClientIp(request: Request | undefined): string {
     const raw = request?.headers.get('cf-connecting-ip')?.trim() ?? ''
-    if (/^[A-Za-z0-9.:]{1,128}$/.test(raw)) {
-        return raw
+    if (!/^[A-Za-z0-9.:]{1,128}$/.test(raw)) return 'unknown'
+    return canonicalUpgradeIp(raw) ?? 'unknown'
+}
+
+/**
+ * One bucket per IPv4, and one bucket per IPv6 /64. Text form is normalized
+ * first: compressed zeros, mixed case, and IPv4-mapped addresses.
+ * An IPv4-mapped address buckets as its IPv4.
+ */
+function canonicalUpgradeIp(raw: string): string | undefined {
+    const dotted = parseIpv4(raw)
+    if (dotted) return formatIpv4(dotted)
+
+    const bytes = parseIpv6(raw)
+    if (!bytes) return undefined
+    if (isIpv4Mapped(bytes)) {
+        return formatIpv4([bytes[12], bytes[13], bytes[14], bytes[15]])
     }
-    return 'unknown'
+
+    for (let index = 8; index < 16; index++) bytes[index] = 0
+    return formatIpv6(bytes)
+}
+
+function parseIpv4(text: string): [number, number, number, number] | undefined {
+    const parts = text.split('.')
+    if (parts.length !== 4) return undefined
+    const octets: number[] = []
+    for (const part of parts) {
+        if (!/^\d{1,3}$/.test(part)) return undefined
+        const value = Number(part)
+        if (value > 255) return undefined
+        octets.push(value)
+    }
+    return [octets[0], octets[1], octets[2], octets[3]]
+}
+
+function formatIpv4(octets: [number, number, number, number] | number[]): string {
+    return `${octets[0]}.${octets[1]}.${octets[2]}.${octets[3]}`
+}
+
+function parseIpv6(text: string): Uint8Array | undefined {
+    let input = text.toLowerCase()
+    if (input.includes('.')) {
+        const splitAt = input.lastIndexOf(':')
+        if (splitAt < 0) return undefined
+        const v4 = parseIpv4(input.slice(splitAt + 1))
+        if (!v4) return undefined
+        const hi = ((v4[0] << 8) | v4[1]).toString(16)
+        const lo = ((v4[2] << 8) | v4[3]).toString(16)
+        input = `${input.slice(0, splitAt)}:${hi}:${lo}`
+    }
+
+    const halves = input.split('::')
+    if (halves.length > 2) return undefined
+    const head = halves[0] === '' ? [] : halves[0].split(':')
+    const tail = halves.length === 2 ? (halves[1] === '' ? [] : halves[1].split(':')) : []
+    if (halves.length === 1 && head.length !== 8) return undefined
+    if (halves.length === 2 && head.length + tail.length > 7) return undefined
+    const groups =
+        halves.length === 2
+            ? [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail]
+            : head
+    if (groups.length !== 8) return undefined
+
+    const bytes = new Uint8Array(16)
+    for (let index = 0; index < 8; index++) {
+        const group = groups[index]
+        if (!/^[0-9a-f]{1,4}$/.test(group)) return undefined
+        const value = Number.parseInt(group, 16)
+        bytes[index * 2] = value >> 8
+        bytes[index * 2 + 1] = value & 0xff
+    }
+    return bytes
+}
+
+function isIpv4Mapped(bytes: Uint8Array): boolean {
+    for (let index = 0; index < 10; index++) {
+        if (bytes[index] !== 0) return false
+    }
+    return bytes[10] === 0xff && bytes[11] === 0xff
+}
+
+function formatIpv6(bytes: Uint8Array): string {
+    const groups: string[] = []
+    for (let index = 0; index < 8; index++) {
+        const value = (bytes[index * 2] << 8) | bytes[index * 2 + 1]
+        groups.push(value.toString(16))
+    }
+
+    let bestStart = -1
+    let bestLength = 0
+    let index = 0
+    while (index < 8) {
+        if (groups[index] !== '0') {
+            index++
+            continue
+        }
+        let end = index
+        while (end < 8 && groups[end] === '0') end++
+        if (end - index > bestLength) {
+            bestStart = index
+            bestLength = end - index
+        }
+        index = end
+    }
+
+    if (bestLength < 2) return groups.join(':')
+    const head = groups.slice(0, bestStart).join(':')
+    const tail = groups.slice(bestStart + bestLength).join(':')
+    if (head === '' && tail === '') return '::'
+    if (head === '') return `::${tail}`
+    if (tail === '') return `${head}::`
+    return `${head}::${tail}`
 }
 
 async function postUpgradeRateLimit(

@@ -378,6 +378,31 @@ describe('privy auth provider', () => {
         )
         expect(owns).toBe(true)
     })
+
+    it('rejects an upgrade when the only linked account is a smart wallet', async () => {
+        const account = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
+        verifyAuthTokenMock.mockResolvedValueOnce({
+            appId: 'app_123',
+            userId: 'did:privy:user_1',
+        })
+        getUserByWalletAddressMock.mockResolvedValueOnce({
+            id: 'did:privy:user_1',
+            linkedAccounts: [{ type: 'smart_wallet', address: account }],
+        })
+
+        const result = await authorizeRequest({
+            request: upgradeRequest(account),
+            env: makeEnv(),
+            nowSeconds: 1_700_000_000,
+            providers: [createPrivyProvider()],
+        })
+
+        expect(result).toEqual({
+            ok: false,
+            code: 'NO_LINKED_WALLET',
+            message: 'Privy user is not bound to the account',
+        })
+    })
 })
 
 function upgradeRequest(account: string): Request {
