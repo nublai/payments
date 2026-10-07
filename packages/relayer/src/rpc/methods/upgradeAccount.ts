@@ -7,13 +7,25 @@ import type {
     UpgradeAccountParams,
     UpgradeAccountResult,
 } from '../schema/upgradeAccount'
-import { RpcError, INVALID_PARAMS, SERVICE_UNAVAILABLE, INTERNAL_ERROR } from '../errors'
+import {
+    RpcError,
+    INVALID_PARAMS,
+    INVALID_SIGNATURE,
+    SERVICE_UNAVAILABLE,
+    INTERNAL_ERROR,
+} from '../errors'
 import { getChainConfig } from '../../config'
 import { logger } from '../../lib/logger'
 import { createRelayerPublicClient, isEip7702Delegated } from '../../lib/viem-utils'
-import { requireParam, unwrapParams } from '../../lib/rpc-utils'
-import { waitForDelegationCode, parseSignature, resolveChainId } from './shared/account-helpers'
+import { requireParam, unwrapParams, validateAddress } from '../../lib/rpc-utils'
+import {
+    waitForDelegationCode,
+    parseSignature,
+    resolveChainId,
+    authorizationSignerMatchesAccount,
+} from './shared/account-helpers'
 import { getSignerPool } from './shared/signer-pool'
+import { enforceUpgradeRateLimit } from './shared/upgrade-rate-limit'
 
 export type {
     UpgradeAccountParams,
@@ -44,6 +56,15 @@ export async function handleUpgradeAccount(
         )
     }
 
+    const accountAddress = validateAddress(context.address, 'context.address')
+    const delegation = validateAddress(
+        context.authorization.contractAddress,
+        'context.authorization.contractAddress',
+    )
+    if (!Number.isInteger(context.authorization.nonce) || context.authorization.nonce < 0) {
+        throw new RpcError(INVALID_PARAMS, 'Invalid authorization nonce')
+    }
+
     const chainId = resolveChainId(env, context.chainId)
     const config = getChainConfig(env, chainId)
 
@@ -54,6 +75,22 @@ export async function handleUpgradeAccount(
         if (error instanceof RpcError) throw error
         throw new RpcError(INVALID_PARAMS, 'Failed to parse auth signature')
     }
+
+    const authorizationMatches = await authorizationSignerMatchesAccount({
+        account: accountAddress,
+        contractAddress: delegation,
+        chainId: config.chainId,
+        nonce: context.authorization.nonce,
+        signature: signatures.auth,
+    })
+    if (!authorizationMatches) {
+        throw new RpcError(INVALID_SIGNATURE, 'Invalid authorization signature')
+    }
+
+    await enforceUpgradeRateLimit(env, chainId, ctx, {
+        kind: 'upgrade',
+        account: accountAddress,
+    })
 
     const signedAuth = {
         address: context.authorization.contractAddress,
@@ -72,8 +109,8 @@ export async function handleUpgradeAccount(
     const tx: CreateAccountTransaction = {
         id: crypto.randomUUID(),
         type: 'create-account',
-        accountAddress: context.address,
-        ownerAddress: context.address,
+        accountAddress,
+        ownerAddress: accountAddress,
         authorization: signedAuth,
         preCall:
             signedPreCall.executionData !== '0x'
@@ -94,9 +131,16 @@ export async function handleUpgradeAccount(
     })
 
     if (!response.ok) {
-        const error = (await response.json()) as { error: string }
-        logger.warn({ address: context.address, error: error.error }, 'account upgrade failed')
-        throw new RpcError(SERVICE_UNAVAILABLE, error.error)
+        let detail = 'unknown'
+        try {
+            const errorBody = (await response.json()) as { error?: unknown }
+            detail =
+                typeof errorBody.error === 'string' ? errorBody.error : JSON.stringify(errorBody)
+        } catch (parseError) {
+            detail = parseError instanceof Error ? parseError.message : 'unreadable pool error'
+        }
+        logger.warn({ address: accountAddress, error: detail }, 'account upgrade failed')
+        throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
 
     const result = (await response.json()) as SendResult
@@ -158,6 +202,6 @@ export async function handleUpgradeAccount(
             { address: context.address, txHash: result.txHash, error },
             'failed waiting for confirmation',
         )
-        throw new RpcError(INTERNAL_ERROR, `Failed to confirm account upgrade: ${error}`)
+        throw new RpcError(INTERNAL_ERROR, 'Failed to confirm account upgrade')
     }
 }

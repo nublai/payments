@@ -12,6 +12,7 @@ import { getChainConfig } from '../../config'
 import { logger } from '../../lib/logger'
 import { createRelayerPublicClient, toHexChainId } from '../../lib/viem-utils'
 import { requireParam, validateAddress, unwrapParams } from '../../lib/rpc-utils'
+import { enforceUpgradeRateLimit } from './shared/upgrade-rate-limit'
 import {
     MULTICHAIN_NONCE_PREFIX,
     SIGNED_CALL_TYPES,
@@ -56,6 +57,11 @@ export async function handlePrepareUpgradeAccount(
     const chainId = resolveChainId(env, typedParams?.chainId)
     const config = getChainConfig(env, chainId)
     const hexChainId = toHexChainId(config.chainId)
+
+    await enforceUpgradeRateLimit(env, chainId, ctx, {
+        kind: 'prepare',
+        account: accountAddress,
+    })
 
     const authorizeKeys = typedParams?.capabilities?.authorizeKeys ?? []
     const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)

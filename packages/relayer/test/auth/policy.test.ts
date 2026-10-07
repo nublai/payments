@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    ALWAYS_AUTH_PROTECTED_METHODS,
     DEFAULT_AUTH_PROTECTED_METHODS,
     parseAuthProtectedMethods,
+    resolveAuthProtectedMethods,
     extractAuthRequirement,
 } from '../../src/auth/policy'
 
@@ -56,6 +58,19 @@ describe('auth policy', () => {
         )
 
         expect(result).toEqual({ requiresAuth: false, id: 'abc' })
+    })
+
+    it('always protects account upgrade methods, including when auth is set to none', () => {
+        for (const value of [undefined, 'none', 'wallet_sendPreparedCalls', ' , ']) {
+            const methods = resolveAuthProtectedMethods(value)
+            for (const method of ALWAYS_AUTH_PROTECTED_METHODS) {
+                expect(methods.has(method)).toBe(true)
+            }
+        }
+
+        const explicit = resolveAuthProtectedMethods('wallet_sendPreparedCalls')
+        expect(explicit.has('wallet_sendPreparedCalls')).toBe(true)
+        expect(explicit.has('wallet_prepareCalls')).toBe(false)
     })
 
     it('normalizes non-jsonrpc id values to null', () => {

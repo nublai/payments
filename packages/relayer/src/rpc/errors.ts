@@ -73,6 +73,9 @@ export const PAYMENT_EXCEEDS_MAX = -32012
 /** Draft conflict - active draft exists for this nonce lane with a different prepare key */
 export const DRAFT_CONFLICT = -32013
 
+/** Upgrade prepare/broadcast rate limit exceeded */
+export const RATE_LIMITED = -32014
+
 // =============================================================================
 // Error Messages
 // =============================================================================
@@ -97,6 +100,7 @@ export const ERROR_MESSAGES: Record<number, string> = {
     [INVALID_QUOTE_SIGNATURE]: 'Invalid quote signature',
     [PAYMENT_EXCEEDS_MAX]: 'Payment amount exceeds maximum',
     [DRAFT_CONFLICT]: 'Draft conflict',
+    [RATE_LIMITED]: 'Upgrade rate limit exceeded',
 }
 
 // =============================================================================

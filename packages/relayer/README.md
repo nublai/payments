@@ -97,6 +97,8 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 
 Protected JSON-RPC methods are controlled by a shared policy used by all enabled auth mechanisms.
 
+`wallet_prepareUpgradeAccount` and `wallet_upgradeAccount` are always authenticated. They spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. No extra env var is required.
+
 | Name                     | Default                    | Description                                |
 | ------------------------ | -------------------------- | ------------------------------------------ |
 | `AUTH_PROTECTED_METHODS` | `wallet_sendPreparedCalls` | Comma-separated protected JSON-RPC methods |
@@ -123,6 +125,8 @@ Suggested rollout:
 
 - Stage: `AUTH_PROTECTED_METHODS=wallet_sendPreparedCalls,wallet_prepareCalls`
 - Prod: `AUTH_PROTECTED_METHODS=wallet_sendPreparedCalls`
+
+Account upgrade stays on the protected list in every environment, including those two.
 
 ## Deployment
 

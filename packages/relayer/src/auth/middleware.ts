@@ -3,7 +3,7 @@ import type { MiddlewareHandler } from 'hono'
 import { logger } from '../lib/logger'
 import type { Env } from '../types/env'
 import { authorizeRequest } from './engine'
-import { extractAuthRequirement, parseAuthProtectedMethods } from './policy'
+import { extractAuthRequirement, resolveAuthProtectedMethods } from './policy'
 import type { AuthFailure, AuthProvider } from './types'
 
 interface MiddlewareDeps {
@@ -41,7 +41,7 @@ export function authMiddleware(deps: MiddlewareDeps = {}): MiddlewareHandler<{
             .json()
             .catch(() => undefined)
 
-        const protectedMethods = parseAuthProtectedMethods(c.env.AUTH_PROTECTED_METHODS)
+        const protectedMethods = resolveAuthProtectedMethods(c.env.AUTH_PROTECTED_METHODS)
         const { requiresAuth, id } = extractAuthRequirement(payload, protectedMethods)
 
         if (!requiresAuth) {

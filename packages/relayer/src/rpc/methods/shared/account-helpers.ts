@@ -3,11 +3,12 @@ import {
     type Hex,
     type PublicClient,
     encodeFunctionData,
+    getAddress,
     keccak256,
     encodeAbiParameters,
     parseAbiParameters,
 } from 'viem'
-import { hashAuthorization, hashTypedData } from 'viem/utils'
+import { hashAuthorization, hashTypedData, verifyAuthorization } from 'viem/utils'
 import { accountAbi } from '@nubl/contracts/abis'
 import type { Env } from '../../../types/env'
 import type { AuthorizeKey, SpendPeriod } from '../../schema/upgradeAccount'
@@ -294,6 +295,33 @@ export function parseSignature(signature: Hex): { r: Hex; s: Hex; yParity: numbe
     const yParity = v >= 27 ? v - 27 : v
 
     return { r, s, yParity }
+}
+
+/**
+ * Recover the EIP-7702 authorization signer and compare it to the account
+ * that will be delegated. Uses the chain id, delegation, and nonce that the
+ * relayer will put on the type-4 transaction.
+ */
+export async function authorizationSignerMatchesAccount(args: {
+    account: Address
+    contractAddress: Address
+    chainId: number
+    nonce: number
+    signature: Hex
+}): Promise<boolean> {
+    try {
+        return await verifyAuthorization({
+            address: getAddress(args.account),
+            signature: args.signature,
+            authorization: {
+                contractAddress: getAddress(args.contractAddress),
+                chainId: args.chainId,
+                nonce: args.nonce,
+            },
+        })
+    } catch {
+        return false
+    }
 }
 
 export function resolveChainId(env: Env, chainIdHex?: string): number {

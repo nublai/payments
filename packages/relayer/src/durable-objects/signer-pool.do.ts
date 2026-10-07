@@ -30,6 +30,13 @@ import type {
     ExecuteIntentTransaction,
 } from '../types/pool'
 import { selectSignerForEoa } from '../lib/pool-utils'
+import {
+    consumeRateLimit,
+    rateWindowId,
+    rateWindowStart,
+    upgradeRateBuckets,
+    type UpgradeRateKind,
+} from '../rpc/methods/shared/upgrade-rate-limit'
 
 // Default configuration
 const DEFAULT_SIGNER_COUNT = 1
@@ -41,6 +48,7 @@ const DEFAULT_MAX_PENDING_TOTAL = 1000
 export class SignerPoolDO extends DurableObject<Env> {
     // Fallback for local dev where ctx.id.name is undefined
     private poolNameOverride: string | null = null
+    private upgradeRateSchemaReady = false
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env)
@@ -81,6 +89,20 @@ export class SignerPoolDO extends DurableObject<Env> {
                     return Response.json(result)
                 }
 
+                case '/upgrade-rate-limit': {
+                    if (request.method !== 'POST') {
+                        return new Response('Method not allowed', { status: 405 })
+                    }
+                    const body = (await request.json()) as {
+                        kind?: UpgradeRateKind
+                        chainId?: number
+                        account?: string
+                        ip?: string
+                    }
+                    const result = this.consumeUpgradeRateLimit(body)
+                    return Response.json(result)
+                }
+
                 default:
                     return new Response('Not found', { status: 404 })
             }
@@ -88,6 +110,92 @@ export class SignerPoolDO extends DurableObject<Env> {
             const message = getErrorMessage(error)
             return Response.json({ error: message } as SignerError, { status: 500 })
         }
+    }
+
+    /**
+     * Fixed-window limit for account upgrade prepare/broadcast.
+     * State lives here because SignerPoolDO is already bound on every chain.
+     */
+    private consumeUpgradeRateLimit(body: {
+        kind?: UpgradeRateKind
+        chainId?: number
+        account?: string
+        ip?: string
+    }): { allowed: boolean } {
+        if (
+            (body.kind !== 'prepare' && body.kind !== 'upgrade') ||
+            typeof body.chainId !== 'number' ||
+            !Number.isInteger(body.chainId) ||
+            typeof body.account !== 'string' ||
+            typeof body.ip !== 'string'
+        ) {
+            return { allowed: false }
+        }
+
+        const nowSeconds = Math.floor(Date.now() / 1000)
+        const buckets = upgradeRateBuckets({
+            kind: body.kind,
+            chainId: body.chainId,
+            account: body.account,
+            ip: body.ip,
+        })
+        const sql = this.ensureUpgradeRateSchema()
+
+        return this.ctx.storage.transactionSync(() => {
+            const store = new Map<string, number>()
+            for (const bucket of buckets) {
+                const windowStart = rateWindowStart(nowSeconds, bucket.windowSeconds)
+                const row = sql
+                    .exec<{ hits: number }>(
+                        'SELECT hits FROM upgrade_rate_windows WHERE bucket_key = ? AND window_start = ?',
+                        bucket.key,
+                        windowStart,
+                    )
+                    .toArray()
+                    .at(0)
+                if (row && Number.isFinite(row.hits)) {
+                    store.set(rateWindowId(bucket.key, windowStart), row.hits)
+                }
+            }
+
+            const decision = consumeRateLimit(store, buckets, nowSeconds)
+            if (!decision.allowed) {
+                return { allowed: false }
+            }
+
+            for (const bucket of buckets) {
+                const windowStart = rateWindowStart(nowSeconds, bucket.windowSeconds)
+                const hits = store.get(rateWindowId(bucket.key, windowStart))
+                if (hits === undefined) continue
+                sql.exec(
+                    `INSERT INTO upgrade_rate_windows (bucket_key, window_start, hits)
+                     VALUES (?, ?, ?)
+                     ON CONFLICT(bucket_key, window_start) DO UPDATE SET hits = excluded.hits`,
+                    bucket.key,
+                    windowStart,
+                    hits,
+                )
+            }
+
+            sql.exec('DELETE FROM upgrade_rate_windows WHERE window_start < ?', nowSeconds - 3600)
+            return { allowed: true }
+        })
+    }
+
+    private ensureUpgradeRateSchema(): SqlStorage {
+        const sql = this.ctx.storage.sql
+        if (!this.upgradeRateSchemaReady) {
+            sql.exec(`
+                CREATE TABLE IF NOT EXISTS upgrade_rate_windows (
+                    bucket_key TEXT NOT NULL,
+                    window_start INTEGER NOT NULL,
+                    hits INTEGER NOT NULL,
+                    PRIMARY KEY (bucket_key, window_start)
+                )
+            `)
+            this.upgradeRateSchemaReady = true
+        }
+        return sql
     }
 
     /**
