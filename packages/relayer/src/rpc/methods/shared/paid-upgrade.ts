@@ -180,7 +180,8 @@ export const PAID_UPGRADE_GAS_HOLD = 500_000n
 /**
  * The fee pull signs at most the reservation. A larger estimate is capped so
  * `gasUsed` cannot settle above the hold and push the daily books past the
- * budget that was checked before the reserve.
+ * budget that was checked before the reserve. Anvil measured a successful
+ * pull at 84,541 gas signed and used, and a reverted pull at 57,461 gas used.
  */
 export function capPaidUpgradeSignedGas(
     estimate: bigint,
