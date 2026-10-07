@@ -1,15 +1,17 @@
 import {
     bindPreparedCalls,
+    clampPaymentCeiling,
     firstQuotePaymentAmount,
     INTENT_EXPIRY_TTL_SECONDS,
     PreparedCallsBindingError,
+    requirePayerAndToken,
     resolveSignedFeeCap,
     wrapSignature,
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
-import { zeroAddress, type Address, type Hex } from 'viem'
+import type { Address, type Hex } from 'viem'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from './gas-ceiling'
 import { discloseFeeCap, isLocalFeeChain, resolveIntentPayment, type FeeCapDisclosure } from './intent-payment'
 import type { EnvName } from './network-config'
@@ -74,17 +76,22 @@ export async function executeSignedCalls(
     const now = params.now ?? BigInt(Math.floor(Date.now() / 1000))
     const expiry = params.expiry ?? now + INTENT_EXPIRY_TTL_SECONDS
     const policy = resolveIntentPayment(params.env, params.chainId, params.from)
-    // An explicit cap is a ceiling, not the signed value. Passing payer or token
-    // without a cap still uses the policy ceiling, so the omitted cap cannot be
-    // signed as 0. Passing only a cap leaves payer and token unset.
-    const callerSetPayment =
-        params.paymentMaxAmount !== undefined ||
-        params.payer !== undefined ||
-        params.paymentToken !== undefined
-    const ceiling = params.paymentMaxAmount ?? policy.paymentMaxAmount
-    const payer = callerSetPayment ? (params.payer ?? zeroAddress) : policy.payer
-    const paymentToken = callerSetPayment ? (params.paymentToken ?? zeroAddress) : policy.paymentToken
+    // An explicit cap is a ceiling, not the signed value, and it cannot exceed
+    // the policy ceiling. Payer and token are required with a cap so an omitted
+    // pair cannot fall through to native ETH. Omitting the cap still uses the
+    // policy ceiling, including when the caller passes payer and token.
+    if (params.paymentMaxAmount !== undefined) {
+        requirePayerAndToken(params.payer, params.paymentToken)
+    }
     const zeroFee = isLocalFeeChain(params.env, params.chainId)
+    const ceiling =
+        params.paymentMaxAmount === undefined
+            ? policy.paymentMaxAmount
+            : zeroFee
+              ? params.paymentMaxAmount
+              : clampPaymentCeiling(params.paymentMaxAmount, policy.paymentMaxAmount)
+    const payer = params.payer ?? policy.payer
+    const paymentToken = params.paymentToken ?? policy.paymentToken
     const payment = { payer, paymentToken, paymentMaxAmount: ceiling }
     const combinedGasCeiling =
         params.combinedGasCeiling ??

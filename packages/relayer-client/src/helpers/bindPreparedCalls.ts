@@ -27,6 +27,34 @@ export class PreparedCallsBindingError extends Error {
     }
 }
 
+/** Off-local hard ceiling. A caller cap above this is clamped down to it. */
+export const PAID_FEE_CAP = 5_000_000n
+
+export class PaymentCapError extends Error {
+    readonly code = 'PAYMENT_CAP_INCOMPLETE' as const
+
+    constructor(message: string) {
+        super(message)
+        this.name = 'PaymentCapError'
+    }
+}
+
+export function requirePayerAndToken(payer: Address | undefined, paymentToken: Address | undefined): void {
+    if (payer === undefined || paymentToken === undefined) {
+        throw new PaymentCapError(
+            'Refusing to sign prepared calls: paymentMaxAmount requires payer and paymentToken',
+        )
+    }
+}
+
+/** Use the caller cap when it is tighter than the policy ceiling. Never above it. */
+export function clampPaymentCeiling(requested: bigint, policyCeiling: bigint): bigint {
+    if (requested < 0n) {
+        throw new PaymentCapError('Refusing to sign prepared calls: paymentMaxAmount is negative')
+    }
+    return requested > policyCeiling ? policyCeiling : requested
+}
+
 export type PreparedCallsExpectation = {
     from: Address
     calls: readonly Call[]

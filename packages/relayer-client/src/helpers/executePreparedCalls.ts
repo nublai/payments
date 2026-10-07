@@ -9,9 +9,12 @@ import {
     type SignPreparedCallsSigner,
 } from './signPreparedCalls'
 import {
+    clampPaymentCeiling,
     firstQuotePaymentAmount,
     INTENT_EXPIRY_TTL_SECONDS,
+    PAID_FEE_CAP,
     PreparedCallsBindingError,
+    requirePayerAndToken,
     resolveSignedFeeCap,
 } from './bindPreparedCalls'
 
@@ -106,7 +109,16 @@ export async function executePreparedCalls(
         )
     }
     const zeroFee = localChain
-    const ceiling = params.paymentMaxAmount ?? 0n
+    if (params.paymentMaxAmount !== undefined) {
+        requirePayerAndToken(params.payer, params.paymentToken)
+    }
+    const policyCeiling = localChain ? 0n : PAID_FEE_CAP
+    const ceiling =
+        params.paymentMaxAmount === undefined
+            ? policyCeiling
+            : localChain
+              ? params.paymentMaxAmount
+              : clampPaymentCeiling(params.paymentMaxAmount, policyCeiling)
     const prepare = (paymentMaxAmount: bigint) =>
         params.client.prepareCalls({
             from: params.from,

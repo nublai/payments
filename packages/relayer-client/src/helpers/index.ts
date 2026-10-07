@@ -18,6 +18,10 @@ export {
 export {
     bindPreparedCalls,
     PreparedCallsBindingError,
+    PaymentCapError,
+    PAID_FEE_CAP,
+    requirePayerAndToken,
+    clampPaymentCeiling,
     ORCHESTRATOR_DOMAIN_NAME,
     ORCHESTRATOR_DOMAIN_VERSION,
     INTENT_EXPIRY_TTL_SECONDS,

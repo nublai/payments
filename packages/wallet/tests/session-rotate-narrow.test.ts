@@ -421,3 +421,173 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
         else process.env.RELAYER_URL_STAGE = previous
     }
 })
+
+function partialRotateHarness(mode: 'status' | 'throw') {
+    const unlinked: string[] = []
+    let savedIntent: Record<string, unknown> | null = null
+    let polygonSucceeds = false
+    let readOld = true
+    const oldSession = {
+        addresses: { session: oldAddress, delegated: account },
+        name: 'default',
+    }
+    const newSession = {
+        addresses: { session: newAddress, delegated: account },
+        name: 'default-next',
+        checkpoint: 'pending_rotation',
+    }
+    const prepares: { chainId: number }[] = []
+    const deps = rotateDeps({
+        readRotationIntent: mock(async () => savedIntent),
+        writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
+            savedIntent = { ...value, fileName: fileName ?? 'rotation.json' }
+            return savedIntent
+        }),
+        readSessionKeystoreFile: mock(async () => {
+            if (readOld) {
+                readOld = false
+                return oldSession
+            }
+            return newSession
+        }),
+        unlink: mock(async (path: string) => {
+            unlinked.push(path)
+        }),
+        readGuardCleanup: mock(async (input: { chainId: number }) => {
+            if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
+            return {
+                anyCalls: [{ target: PLANTED_TARGET, selector: PLANTED_SELECTOR }],
+                checkers: [],
+            }
+        }),
+        executeSignedCalls,
+        prepareCalls: mock(async (input: {
+            network: { chainId: number }
+            from: Address
+            calls: { target: Address; value: bigint; data: Hex }[]
+            nonce: bigint
+            expiry?: bigint
+            payer?: Address
+            paymentToken?: Address
+            paymentMaxAmount?: bigint
+        }) => {
+            prepares.push({ chainId: input.network.chainId })
+            return matchingPreparedCalls({
+                from: input.from,
+                calls: input.calls,
+                nonce: input.nonce,
+                network: { env: 'stage', chainId: input.network.chainId },
+                expiry: input.expiry,
+                payer: input.payer,
+                paymentToken: input.paymentToken,
+                paymentMaxAmount: input.paymentMaxAmount,
+            })
+        }),
+        signTypedData: mock(async () => rootPrivateKey),
+        sendPreparedCalls: mock(async () => ({ id: 'bundle-partial' })),
+        waitForBundle: mock(async (input: { network: { chainId: number } }) => {
+            if (input.network.chainId === POLYGON_CHAIN_ID && !polygonSucceeds) {
+                if (mode === 'throw') throw new Error('extra chain rpc down')
+                return {
+                    success: false,
+                    statusCode: 500,
+                    status: 'failed',
+                    error: 'polygon cleanup reverted',
+                }
+            }
+            return {
+                success: true,
+                statusCode: 200,
+                status: 'confirmed',
+                receipt: {
+                    transactionHash:
+                        '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
+                },
+            }
+        }),
+    })
+    const options = {
+        env: 'stage' as const,
+        chain: 'base' as const,
+        keystorePath: '/tmp/narrow-rotate-partial.json',
+        password: 'pw',
+        narrow: true,
+        newName: 'default-next',
+    }
+    return {
+        deps,
+        options,
+        unlinked,
+        prepares,
+        resetRead() {
+            readOld = true
+        },
+        allowPolygon() {
+            polygonSucceeds = true
+        },
+    }
+}
+
+test('a failed extra-chain bundle is a partial rotation and keeps both session files', async () => {
+    const previous = process.env.RELAYER_URL_STAGE
+    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const harness = partialRotateHarness('status')
+    try {
+        await expect(
+            executeSessionRotate(harness.options, harness.deps as never),
+        ).rejects.toMatchObject({
+            code: 'ROTATION_PARTIAL',
+            details: { chains: ['polygon'] },
+        })
+        expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
+        expect(harness.unlinked.some((path) => path.endsWith('default.json'))).toBe(false)
+    } finally {
+        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
+        else process.env.RELAYER_URL_STAGE = previous
+    }
+})
+
+test('a thrown extra-chain wait keeps the new session file', async () => {
+    const previous = process.env.RELAYER_URL_STAGE
+    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const harness = partialRotateHarness('throw')
+    try {
+        await expect(
+            executeSessionRotate(harness.options, harness.deps as never),
+        ).rejects.toMatchObject({
+            code: 'ROTATION_PARTIAL',
+            details: { chains: ['polygon'] },
+        })
+        expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
+    } finally {
+        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
+        else process.env.RELAYER_URL_STAGE = previous
+    }
+})
+
+test('resuming a partial rotation finishes the extra-chain cleanup', async () => {
+    const previous = process.env.RELAYER_URL_STAGE
+    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const harness = partialRotateHarness('status')
+    try {
+        await expect(
+            executeSessionRotate(harness.options, harness.deps as never),
+        ).rejects.toMatchObject({ code: 'ROTATION_PARTIAL' })
+        expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
+        const polygonBefore = harness.prepares.filter((prepare) => prepare.chainId === POLYGON_CHAIN_ID).length
+        harness.allowPolygon()
+        harness.resetRead()
+        const result = await executeSessionRotate(
+            { ...harness.options, resume: true },
+            harness.deps as never,
+        )
+        expect(result.status).toBe('complete')
+        expect(harness.prepares.filter((prepare) => prepare.chainId === POLYGON_CHAIN_ID).length).toBeGreaterThan(
+            polygonBefore,
+        )
+        expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
+    } finally {
+        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
+        else process.env.RELAYER_URL_STAGE = previous
+    }
+})

@@ -257,9 +257,64 @@ test('a second prepare that raises the quote is refused', async () => {
     expect(signTypedData).not.toHaveBeenCalled()
 })
 
+test('an over-ceiling caller cap is clamped to 5 USDC', async () => {
+    const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
+        preparedQuote(input, '1', 8453),
+    )
+    await executeSignedCalls(deps, {
+        ...prodParams,
+        paymentMaxAmount: 100_000_000n,
+        payer: EOA,
+        paymentToken: BASE_USDC,
+    })
+    expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signedCap(signTypedData)).toBe(1001n)
+    const signed = signTypedData.mock.calls[0]?.[0]?.typedData as {
+        message: { payer: Address; paymentToken: Address }
+    }
+    expect(signed.message.payer).toBe(EOA)
+    expect(signed.message.paymentToken).toBe(BASE_USDC)
+})
+
+test('a 50 USDC quote cannot be signed by raising the caller cap', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '50000000', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 100_000_000n,
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payment amount exceeds fee cap/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('a caller cap without payer or token is refused', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, paymentMaxAmount: 1001n }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, paymentMaxAmount: 1001n, payer: EOA }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 1001n,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
 test('an explicit 5 USDC ceiling still signs the quote plus margin', async () => {
     const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
-    await executeSignedCalls(deps, { ...prodParams, paymentMaxAmount: PAID_FEE_CAP })
+    await executeSignedCalls(deps, {
+        ...prodParams,
+        paymentMaxAmount: PAID_FEE_CAP,
+        payer: EOA,
+        paymentToken: BASE_USDC,
+    })
     expect(signedCap(signTypedData)).toBe(1001n)
 })
 

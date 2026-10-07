@@ -86,6 +86,7 @@ type SessionRotateErrorCode =
     | 'KEYSTORE_NOT_FOUND'
     | 'PASSWORD_REQUIRED'
     | 'ROTATION_FAILED'
+    | 'ROTATION_PARTIAL'
     | 'ROTATION_VERIFICATION_FAILED'
     | 'KEYSTORE_LOCKED'
     | 'UNKNOWN'
@@ -379,6 +380,82 @@ function guardCleanupCalls(account: Address, cleanup: GuardCleanup): Call[] {
     return calls
 }
 
+async function executeExtraCleanups(input: {
+    deps: SessionRotateDeps
+    env: EnvName
+    accountAddress: Address
+    rootPrivateKey: Hex
+    extras: { chainName: ChainName; calls: Call[] }[]
+}): Promise<ChainName[]> {
+    const failed: ChainName[] = []
+    for (const extra of input.extras) {
+        try {
+            const extraNetwork = {
+                ...resolveNetworkConfig(input.env, extra.chainName),
+                authSigner: createEthHttpSigner(
+                    input.rootPrivateKey,
+                    getChainConfig(extra.chainName).chainId,
+                ),
+            }
+            const extraNonce = await input.deps.readNonce({
+                network: extraNetwork,
+                account: input.accountAddress,
+            })
+            const submission = await input.deps.executeSignedCalls(
+                {
+                    prepareCalls: (call) =>
+                        input.deps.prepareCalls({
+                            network: extraNetwork,
+                            from: call.from,
+                            calls: call.calls,
+                            nonce: call.nonce,
+                            expiry: call.expiry,
+                            payer: call.payer,
+                            paymentToken: call.paymentToken,
+                            paymentMaxAmount: call.paymentMaxAmount,
+                            sessionKey: call.sessionKey,
+                        }),
+                    signTypedData: input.deps.signTypedData,
+                    sendPreparedCalls: (call) =>
+                        input.deps.sendPreparedCalls({
+                            network: extraNetwork,
+                            context: call.context,
+                            signature: call.signature,
+                        }),
+                    waitForBundle: (call) =>
+                        input.deps.waitForBundle({ network: extraNetwork, id: call.id }),
+                },
+                {
+                    from: input.accountAddress,
+                    calls: extra.calls,
+                    nonce: extraNonce,
+                    signerPrivateKey: input.rootPrivateKey,
+                    chainId: extraNetwork.chainId,
+                    env: extraNetwork.env,
+                },
+            )
+            const status = submission.finalStatus
+            if (!status?.success || ![200, 201].includes(status.statusCode ?? 0)) {
+                failed.push(extra.chainName)
+            }
+        } catch {
+            failed.push(extra.chainName)
+        }
+    }
+    return failed
+}
+
+function partialRotationError(chain: ChainName, failed: ChainName[]): SessionRotateError {
+    return new SessionRotateError(
+        'ROTATION_PARTIAL',
+        `Session rotation submitted on ${chain}, but cleanup failed on ${failed.join(', ')}. The new session file was kept. Resume with \`tw session rotate --resume\`.`,
+        {
+            details: { chains: failed },
+            recoveryCommand: 'tw session rotate --resume',
+        },
+    )
+}
+
 export async function executeSessionRotate(
     options: {
         env: EnvName
@@ -480,6 +557,7 @@ export async function executeSessionRotate(
         let bundleId = intent.status === 'submitted' ? intent.bundleId : undefined
         let finalStatus: BundleStatusResponse | null = null
         let feeCap: ExecuteSignedCallsResult['feeCap'] | undefined
+        let extraCleanups: { chainName: ChainName; calls: Call[] }[] = []
 
         if (intent.status === 'pending') {
             if (options.narrow && options.fullAccess) {
@@ -570,7 +648,7 @@ export async function executeSessionRotate(
             }
 
             let selectedCleanup: Call[] = []
-            const extraCleanups: { chainName: ChainName; calls: Call[] }[] = []
+            extraCleanups = []
             for (const chainName of chainsForEnv(options.env)) {
                 let cleanup: GuardCleanup
                 try {
@@ -716,58 +794,6 @@ export async function executeSessionRotate(
                 bundleId = submission.id
                 finalStatus = submission.finalStatus
                 feeCap = submission.feeCap
-                for (const extra of extraCleanups) {
-                    const extraNetwork = {
-                        ...resolveNetworkConfig(options.env, extra.chainName),
-                        authSigner: createEthHttpSigner(
-                            decryptedRoot.rootPrivateKey,
-                            getChainConfig(extra.chainName).chainId,
-                        ),
-                    }
-                    const extraNonce = await deps.readNonce({
-                        network: extraNetwork,
-                        account: accountAddress,
-                    })
-                    await deps.executeSignedCalls(
-                        {
-                            prepareCalls: (input) =>
-                                deps.prepareCalls({
-                                    network: extraNetwork,
-                                    from: input.from,
-                                    calls: input.calls,
-                                    nonce: input.nonce,
-                                    expiry: input.expiry,
-                                    payer: input.payer,
-                                    paymentToken: input.paymentToken,
-                                    paymentMaxAmount: input.paymentMaxAmount,
-                                    sessionKey: input.sessionKey,
-                                }),
-                            signTypedData: deps.signTypedData,
-                            sendPreparedCalls: (input) =>
-                                deps.sendPreparedCalls({
-                                    network: extraNetwork,
-                                    context: input.context,
-                                    signature: input.signature,
-                                }),
-                            waitForBundle: (input) =>
-                                deps.waitForBundle({ network: extraNetwork, id: input.id }),
-                        },
-                        {
-                            from: accountAddress,
-                            calls: extra.calls,
-                            nonce: extraNonce,
-                            signerPrivateKey: decryptedRoot.rootPrivateKey,
-                            chainId: extraNetwork.chainId,
-                            env: extraNetwork.env,
-                        },
-                    )
-                }
-                intent = await deps.writeRotationIntent(
-                    keystorePath,
-                    bundle.root.sessionRef.dir,
-                    markRotationIntentSubmitted(intent, submission.id),
-                    intent.fileName,
-                )
             } catch (error) {
                 await deps.unlink(newSessionPath).catch(() => undefined)
                 await deps
@@ -781,6 +807,18 @@ export async function executeSessionRotate(
                     },
                 )
             }
+            if (!bundleId) {
+                throw new SessionRotateError(
+                    'ROTATION_FAILED',
+                    'Session rotation transaction failed.',
+                )
+            }
+            intent = await deps.writeRotationIntent(
+                keystorePath,
+                bundle.root.sessionRef.dir,
+                markRotationIntentSubmitted(intent, bundleId),
+                intent.fileName,
+            )
         }
 
         if (intent.status === 'submitted' && !finalStatus) {
@@ -806,6 +844,40 @@ export async function executeSessionRotate(
                     },
                 },
             )
+        }
+
+        if (resumed) {
+            extraCleanups = []
+            const unreadable: ChainName[] = []
+            for (const chainName of chainsForEnv(options.env)) {
+                if (chainName === chain) continue
+                try {
+                    const cleanup = await deps.readGuardCleanup({
+                        rpcUrl: rpcUrlForChain(chainName),
+                        chainId: getChainConfig(chainName).chainId,
+                        account: accountAddress,
+                        keyHashes: [oldKeyHash, newKeyHash],
+                    })
+                    const cleanupCalls = guardCleanupCalls(accountAddress, cleanup)
+                    if (cleanupCalls.length > 0) extraCleanups.push({ chainName, calls: cleanupCalls })
+                } catch {
+                    unreadable.push(chainName)
+                }
+            }
+            if (unreadable.length > 0) {
+                throw partialRotationError(chain, unreadable)
+            }
+        }
+
+        const failedChains = await executeExtraCleanups({
+            deps,
+            env: options.env,
+            accountAddress,
+            rootPrivateKey: decryptedRoot.rootPrivateKey,
+            extras: extraCleanups,
+        })
+        if (failedChains.length > 0) {
+            throw partialRotationError(chain, failedChains)
         }
 
         const keys = await deps.getKeys({
