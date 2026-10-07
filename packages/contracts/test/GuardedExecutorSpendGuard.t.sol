@@ -22,7 +22,10 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(MockPaymentToken.increaseApproval.selector, bytes4(0xd73dd623));
     }
 
-    function testUntrackedSelectorBypassesSpendWhitelist() public {
+    /// @dev Intentional. A token with no spend period is not balance-metered, so a
+    /// non-root key can move it with an unrecognized selector and nothing is charged.
+    /// Set a period on every token that should be protected.
+    function testIntended_NonRootMovesUnperiodedTokenUncharged() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         _allow(d, k.keyHash, address(paymentToken), _ANY_FN_SEL);
         paymentToken.mint(d.eoa, 50 ether);
@@ -35,9 +38,10 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
             50 ether
         );
 
-        assertEq(_run(d, k, u, calls), bytes4(keccak256("NoSpendPermissions()")));
-        assertEq(paymentToken.balanceOf(d.eoa), 50 ether);
-        assertEq(paymentToken.balanceOf(_BEEF), 0);
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(d.eoa), 0);
+        assertEq(paymentToken.balanceOf(_BEEF), 50 ether);
+        assertEq(d.d.spendInfos(k.keyHash).length, 0);
     }
 
     function testIncreaseAllowanceBypassesSpendLimit() public {
@@ -131,6 +135,8 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(paymentToken.balanceOf(address(escrow)), 50 ether);
     }
 
+    /// @dev The spender has no `balanceOf`. The token is tracked because it has a period,
+    /// so the pull is still charged.
     function testThirdPartyPullWithinSpendLimitIsCharged() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         Escrow escrow = new Escrow();
@@ -276,8 +282,42 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(counter.counter(), 1);
     }
 
-    /// @dev Same residual as a root allowance with no spend period. The token address is
-    /// hardcoded in the spender, so there is nothing to snapshot except the spender itself.
+    /// @dev Two tokens that each have a period are charged their own amounts in one batch.
+    function testSeveralTrackedTokensChargedInOneBatch() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        MockPaymentToken other = new MockPaymentToken();
+        _allow(d, k.keyHash, address(paymentToken), bytes4(0xa9059cbb));
+        _allow(d, k.keyHash, address(other), bytes4(0xa9059cbb));
+        _limit(d, k.keyHash, address(paymentToken), GuardedExecutor.SpendPeriod.Day, 1 ether);
+        _limit(d, k.keyHash, address(other), GuardedExecutor.SpendPeriod.Day, 1 ether);
+        paymentToken.mint(d.eoa, 1 ether);
+        other.mint(d.eoa, 1 ether);
+
+        ERC7821.Call[] memory calls = new ERC7821.Call[](2);
+        calls[0] = _transferCall(address(paymentToken), _BEEF, 0.2 ether);
+        calls[1] = _transferCall(address(other), _BEEF, 0.5 ether);
+
+        assertEq(_run(d, k, u, calls), bytes4(0));
+        assertEq(paymentToken.balanceOf(_BEEF), 0.2 ether);
+        assertEq(other.balanceOf(_BEEF), 0.5 ether);
+
+        GuardedExecutor.SpendInfo[] memory infos = d.d.spendInfos(k.keyHash);
+        assertEq(infos.length, 2);
+        uint256 seen;
+        for (uint256 i; i < infos.length; ++i) {
+            if (infos[i].token == address(paymentToken)) {
+                assertEq(infos[i].spent, 0.2 ether);
+                seen += 1;
+            } else if (infos[i].token == address(other)) {
+                assertEq(infos[i].spent, 0.5 ether);
+                seen += 1;
+            }
+        }
+        assertEq(seen, 2);
+    }
+
+    /// @dev Same residual as a root allowance with no spend period. The token has no
+    /// period, so it is not balance-metered, and the pull is not charged.
     function testHardcodedSpenderPullWithoutLimitStaysUncovered() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         MockHardcodedPuller puller = new MockHardcodedPuller(address(paymentToken));

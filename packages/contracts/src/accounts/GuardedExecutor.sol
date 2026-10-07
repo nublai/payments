@@ -99,7 +99,7 @@ abstract contract GuardedExecutor is ERC7821 {
     /// @dev In order to spend a token, it must have spend permissions set.
     error NoSpendPermissions();
 
-    /// @dev A snapshotted token's `balanceOf` failed, reverted, or returned short data.
+    /// @dev A metered token's `balanceOf` failed, reverted, or returned short data.
     error SpendBalanceReadFailed();
 
     /// @dev Super admin keys can execute everything.
@@ -218,35 +218,36 @@ abstract contract GuardedExecutor is ERC7821 {
         DynamicArrayLib.DynamicArray permit2Spenders;
     }
 
-    /// @dev The `_execute` function imposes spending limits with the following:
-    /// 1. For every guarded token, the charge is
-    ///    `max(sum of recognized calldata amounts, sum of per-call balance decreases)`.
-    ///    Each call snapshots the balance before and after. Decreases are summed.
-    ///    An inflow on a later call does not reduce an earlier call's charge.
-    ///    An inflow inside the same call is netted with that call's decrease.
-    ///    Guarded tokens are:
-    ///    - every token that already has a spend period for `keyHash`
-    ///    - a call target, other than this account, that reports a 32-byte `balanceOf`
-    /// 2. A `balanceOf` read on a guarded token that fails, reverts, or returns fewer
-    ///    than 32 bytes reverts the batch with `SpendBalanceReadFailed`. It is not
-    ///    treated as a zero balance. A call target with no `balanceOf` (empty revert)
-    ///    is not a token and is not snapshotted.
-    /// 3. Non-zero `approve`, `increaseAllowance`, and `increaseApproval` are counted as
-    ///    spend and the allowance is reset to zero after the batch. Permit2 `approve` is
-    ///    counted and locked down.
-    /// 4. Except for the EOA and super admins, the token needs a spend period for `keyHash`
-    ///    or the batch reverts `NoSpendPermissions`.
+    /// @dev Spend guard for a non-root, non-super-admin key.
     ///
-    /// Still uncovered. There is no stored catalogue of every token the account might hold:
-    /// - an allowance the root key granted earlier to a spender, for a token that has no
-    ///   spend period for this key. The spender is the call target and does not report a
-    ///   token balance, so the pull is not charged.
-    /// - signature permits (EIP-2612, DAI `permit`, Permit2 `permit`) submitted by anyone
-    ///   outside this batch. An in-batch signature cannot be distinguished from one that
-    ///   will be relayed later, so those selectors are not revoked here.
+    /// Covered. The only balance-metered tokens are those with a spend period for
+    /// `keyHash`. Nothing else is probed: not the call target, and not addresses in
+    /// calldata. For each metered token the charge is
+    /// `max(sum of recognized calldata amounts, sum of per-call balance decreases)`.
+    /// Each call is snapshotted on its own. A later inflow does not reduce an earlier
+    /// call's charge. An inflow inside the same call is netted with that call.
+    /// A `balanceOf` that fails, reverts, or returns fewer than 32 bytes on a metered
+    /// token reverts the batch with `SpendBalanceReadFailed`.
     ///
-    /// `ANY_FN_SEL` on a token stays allowed. The balance snapshot charges the outflow, so
-    /// refusing the wildcard is unnecessary and would reject sessions that already have a limit.
+    /// Recognized selectors are priced from calldata even when that is the whole charge:
+    /// `transfer`, `transferFrom` (out of this account), `approve`, `increaseAllowance`,
+    /// `increaseApproval`, and Permit2 `approve`. Non-zero ERC20 approvals are reset to
+    /// zero after the batch. Permit2 approvals are locked down. A recognized non-zero
+    /// amount with no spend period reverts `NoSpendPermissions`.
+    ///
+    /// Not covered. Set a spend period on every token that should be protected.
+    /// - A non-root key can move a token that has no spend period, through any call that
+    ///   is not one of the recognized selectors above, and the move is not charged.
+    ///   Swap output and any other token the account holds are in this set until a
+    ///   period is configured.
+    /// - An allowance the root key granted earlier to a spender, for a token with no
+    ///   spend period, is not charged. The spender is not balance-metered.
+    /// - Signature permits (EIP-2612, DAI `permit`, Permit2 `permit`) submitted outside
+    ///   this batch are not revoked. An in-batch signature cannot be distinguished from
+    ///   one that will be relayed later.
+    ///
+    /// `ANY_FN_SEL` on a token that has a period stays allowed. The balance snapshot
+    /// charges the outflow.
     /// Note: Called internally in ERC7821, which coalesce zero-address `target`s to
     /// `address(this)`.
     function _execute(Call[] calldata calls, bytes32 keyHash) internal virtual override {
@@ -271,9 +272,8 @@ abstract contract GuardedExecutor is ERC7821 {
             }
         }
 
-        // Recognized selectors are priced from calldata. Anything else can still move a
-        // token, so an unrecognized call snapshots the target when it reports a balance.
-        // Signature permits are not revoked: anyone can submit the signature later.
+        // Recognized selectors are priced from calldata. Balance metering is only the
+        // tokens that already have a spend period. Signature permits are not revoked.
         uint256 totalNativeSpend;
         for (uint256 i; i < calls.length; ++i) {
             (address target, uint256 value, bytes calldata data) = _get(calls, i);
@@ -347,9 +347,9 @@ abstract contract GuardedExecutor is ERC7821 {
         }
     }
 
-    /// @dev Records spend for one call.
-    /// Recognized outflow and allowance selectors are priced from their arguments.
-    /// Other calls snapshot the target when it reports a token balance.
+    /// @dev Records recognized calldata spend for one call.
+    /// Unrecognized calls are not probed. A token with a spend period is already in
+    /// `t.erc20s` and is snapshotted around the call.
     function _accountForCall(
         _ExecuteTemps memory t,
         address target,
@@ -400,54 +400,23 @@ abstract contract GuardedExecutor is ERC7821 {
                 return;
             }
         }
-
-        // Custom token methods (for example `anotherTransfer`). A spender contract
-        // does not report `balanceOf`, so it is not added here. A token that has a
-        // spend period is already in `t.erc20s` and is snapshotted around this call.
-        if (target == address(this) || target.code.length == 0) return;
-        if (!_reportsTokenBalance(target)) return;
-        t.erc20s.p(target);
-        t.transferAmounts.p(uint256(0));
     }
 
-    /// @dev `token.balanceOf(address(this))`. Reverts unless the read succeeds with
-    /// at least 32 bytes.
+    /// @dev `token.balanceOf(address(this))` for a token that has a spend period.
+    /// A failed, reverted, or short read reverts the batch.
     function _balanceOfAccountStrict(address token) internal view returns (uint256 amount) {
-        (, amount) = _readAccountBalance(token, true);
-    }
-
-    /// @dev True when `target.balanceOf(address(this))` returns at least 32 bytes.
-    /// A short return or a revert that carries data reverts the batch.
-    /// An empty revert means the target has no `balanceOf` and is not a token.
-    function _reportsTokenBalance(address target) internal view returns (bool reports) {
-        (reports,) = _readAccountBalance(target, false);
-    }
-
-    /// @dev Reads `token.balanceOf(address(this))`.
-    /// When `strict` is true, any failed or short read reverts.
-    /// When `strict` is false, a missing function returns `(false, 0)` and a short
-    /// or reverting read still reverts.
-    function _readAccountBalance(
-        address token,
-        bool strict
-    ) internal view returns (bool ok, uint256 amount) {
         bytes4 err = SpendBalanceReadFailed.selector;
         /// @solidity memory-safe-assembly
         assembly {
             mstore(0x14, address())
             mstore(0x00, 0x70a08231000000000000000000000000) // `balanceOf(address)`.
             let success := staticcall(gas(), token, 0x10, 0x24, 0x20, 0x20)
-            let size := returndatasize()
-            if and(success, gt(size, 0x1f)) {
-                ok := 1
-                amount := mload(0x20)
-            }
-            // `err` is a left-aligned bytes4. A missing function (empty revert)
-            // is not a token unless this read is strict.
-            if and(iszero(ok), or(strict, or(success, gt(size, 0)))) {
+            if iszero(and(gt(returndatasize(), 0x1f), success)) {
+                // `err` is a left-aligned bytes4.
                 mstore(0x00, err)
                 revert(0x00, 0x04)
             }
+            amount := mload(0x20)
         }
     }
 

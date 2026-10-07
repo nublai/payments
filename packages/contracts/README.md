@@ -64,6 +64,20 @@ There is no `deployments/config.toml`. Committed address snapshots are `deployme
 | **LayerZeroSettler** | Cross-chain settlement via LayerZero v2 |
 | **Simulator** | Gas simulation for orchestrator calls |
 
+## Spend limits
+
+`GuardedExecutor` balance-meters only tokens that have a spend period for the key. The periods are the ones configured on that key (`Minute` through `Forever`). There is no hardcoded token list.
+
+A non-root key can move a token that has no spend period, through any call that is not a recognized selector, and that move is not charged. Swap output and any other token the account holds are in this set. Set a period on every token you want protected.
+
+These selectors are still priced from calldata, and a non-zero amount with no spend period reverts `NoSpendPermissions`: `transfer`, `transferFrom` out of this account, `approve`, `increaseAllowance`, `increaseApproval`, and Permit2 `approve`. `increaseAllowance` and `increaseApproval` are charged and the allowance is reset to zero after the batch. That reset is the leftover-allowance drain, not a balance probe. Permit2 approvals are locked down the same way.
+
+An allowance the root key granted earlier, for a token with no spend period, is not charged when a session key later spends it. The guard does not scan calldata for token addresses, and it does not call `balanceOf` on the call target.
+
+For a token that does have a period, each call is charged on its own. The charge is the max of the amount recognized from calldata and that call's balance drop, so a later inflow does not offset an earlier outflow. A failed, reverted, or short `balanceOf` on one of those tokens reverts the batch with `SpendBalanceReadFailed`.
+
+Only configured tokens are metered because of bytecode headroom under the 24,576-byte account limit, the gas of probing every target, and simpler logic.
+
 ## Deployment
 
 From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` chooses the chain and RPC.

@@ -573,13 +573,16 @@ contract GuardedExecutorTest is BaseTest {
             u.executionData = abi.encode(calls);
             u.signature = _sig(k, u);
 
-            // Intentional behavior change: a non-zero outflow is spend even when the
-            // selector is not `transfer` (anotherTransfer is 0xdfc924d5). A zero amount
-            // does not move the balance and is not charged.
-            if (amount == 0) {
-                assertEq(oc.execute(abi.encode(u)), 0);
+            // Intentional behavior change. With no spend period left, the token is not
+            // balance-metered. `_transferCall2` is `transfer` or `anotherTransfer`.
+            // `anotherTransfer` is not a recognized selector, so that move succeeds and
+            // is not charged. A recognized non-zero `transfer` still reverts
+            // `NoSpendPermissions`. A zero amount is not spend on either selector.
+            bytes4 result = oc.execute(abi.encode(u));
+            if (amount == 0 || bytes4(calls[0].data) != bytes4(0xa9059cbb)) {
+                assertEq(result, 0);
             } else {
-                assertEq(oc.execute(abi.encode(u)), bytes4(keccak256("NoSpendPermissions()")));
+                assertEq(result, bytes4(keccak256("NoSpendPermissions()")));
             }
         }
 
