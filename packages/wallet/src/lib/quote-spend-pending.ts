@@ -31,7 +31,9 @@ export type PendingQuoteLimitRecord = {
     /**
      * Key expiry this quote installed. Missing on older records, and when the
      * key already expired sooner than the quote window. Release restores
-     * `previous` with authorize. `0` means the key did not expire.
+     * `previous` only when the on-chain key still matches `installed`, the
+     * stored permissions, and the stored limits. `0` means the key did not expire.
+     * Permissions and limits are the full post-install sets. Older records omit them.
      */
     keyExpiry?: {
         previous: string
@@ -39,6 +41,8 @@ export type PendingQuoteLimitRecord = {
         keyType: number
         isSuperAdmin: boolean
         publicKey: Hex
+        permissions?: Array<{ target: Address; selector: Hex }>
+        limits?: Array<{ token: Address; period: number; limit: string }>
     }
 }
 
@@ -93,6 +97,32 @@ export async function readPendingQuoteLimit(
             !isHex(expiry.publicKey)
         ) {
             throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
+        }
+        if (expiry.permissions !== undefined && !Array.isArray(expiry.permissions)) {
+            throw new Error(`Pending quote limit at ${path} has invalid key permissions.`)
+        }
+        for (const permission of expiry.permissions ?? []) {
+            if (
+                !isAddress(permission.target) ||
+                !isHex(permission.selector) ||
+                permission.selector.length !== 10
+            ) {
+                throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
+            }
+        }
+        if (expiry.limits !== undefined && !Array.isArray(expiry.limits)) {
+            throw new Error(`Pending quote limit at ${path} has invalid key limits.`)
+        }
+        for (const limit of expiry.limits ?? []) {
+            if (
+                !isAddress(limit.token) ||
+                typeof limit.period !== 'number' ||
+                !Number.isInteger(limit.period) ||
+                typeof limit.limit !== 'string' ||
+                !/^\d+$/.test(limit.limit)
+            ) {
+                throw new Error(`Pending quote limit at ${path} has an invalid key limit.`)
+            }
         }
     }
     return parsed

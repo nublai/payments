@@ -33,7 +33,7 @@ import {
     getUsdcAddressByChainId,
     type CliNetworkConfig,
 } from './network-config'
-import { quoteSpendRecoverySuspended } from './quote-spend-guard'
+import { quoteSpendRecoverySuspended, withoutQuoteSpendRecovery } from './quote-spend-guard'
 import {
     QuoteSpendError,
     WETH_BY_CHAIN,
@@ -55,9 +55,16 @@ import {
 import { canExecuteChangeCalls, type SwapCallGrant } from './swap-session'
 import {
     authorizeKeyExpiryCall,
+    expectedInstalledKey,
+    limitsAfterInstall,
+    permissionsAfterInstall,
     planQuoteKeyExpiry,
+    quoteKeyDifferences,
     restoreQuoteKeyExpiryCall,
+    type QuoteKeyLimit,
     type QuoteKeyMaterial,
+    type QuoteKeyPermission,
+    type QuoteKeySnapshot,
 } from './quote-key-expiry'
 
 type NetworkConfig = CliNetworkConfig
@@ -104,6 +111,7 @@ export async function maybeRecoverPendingQuoteSpend(
         readMinuteLimits?: (
             record: PendingQuoteLimitRecord,
         ) => Promise<Map<string, bigint | null>>
+        readQuoteKey?: (record: PendingQuoteLimitRecord) => Promise<QuoteKeyRead>
         submit?: (record: PendingQuoteLimitRecord, calls: Call[]) => Promise<void>
     },
 ): Promise<void> {
@@ -139,11 +147,16 @@ export async function recoverPendingQuoteSpend(
         readMinuteLimits?: (
             record: PendingQuoteLimitRecord,
         ) => Promise<Map<string, bigint | null>>
+        readQuoteKey?: (record: PendingQuoteLimitRecord) => Promise<QuoteKeyRead>
         submit?: (record: PendingQuoteLimitRecord, calls: Call[]) => Promise<void>
     },
 ): Promise<void> {
     const record = await readPendingQuoteLimit(keystorePath)
     if (!record) return
+    const expiry = await keyExpiryRestoreDecision(record, options?.readQuoteKey)
+    if (expiry.differences.length > 0) {
+        await refuseChangedQuoteKey(keystorePath, expiry.differences)
+    }
     const minuteLimits = options?.readMinuteLimits
         ? await options.readMinuteLimits(record)
         : await readMinuteLimits(record.account, record.keyHash, record.rpcUrl, record.chainId)
@@ -153,10 +166,7 @@ export async function recoverPendingQuoteSpend(
             `Pending quote spend limit does not match the chain: ${planned.unexpected}`,
         )
     }
-    const calls = [
-        ...releaseCalls(record, planned.calls),
-        ...(await keyExpiryRestoreCall(record)),
-    ]
+    const calls = [...releaseCalls(record, planned.calls), ...expiry.calls]
     if (calls.length > 0) {
         if (options?.submit) {
             await options.submit(record, calls)
@@ -218,6 +228,8 @@ async function installTrackedQuoteSpendLimitNow(input: {
         balances,
     })
     let key: QuoteKeyMaterial
+    let permissions: QuoteKeyPermission[]
+    let limits: QuoteKeyLimit[]
     try {
         const stored = await client.readContract({
             address: input.bound.account,
@@ -231,6 +243,17 @@ async function installTrackedQuoteSpendLimitNow(input: {
             isSuperAdmin: stored.isSuperAdmin,
             publicKey: stored.publicKey,
         }
+        const packed = await client.readContract({
+            address: input.bound.account,
+            abi: accountAbi,
+            functionName: 'canExecutePackedInfos',
+            args: [input.bound.keyHash],
+        })
+        permissions = permissionsAfterInstall(
+            packed.map(decodePackedCanExecute),
+            input.callGrants ?? [],
+        )
+        limits = limitsAfterInstall(spendInfos, slots)
     } catch (error) {
         if (error instanceof QuoteSpendError) throw error
         throw new QuoteSpendError('Could not read the swap key. Refusing to sign.')
@@ -255,6 +278,15 @@ async function installTrackedQuoteSpendLimitNow(input: {
                   keyType: key.keyType,
                   isSuperAdmin: key.isSuperAdmin,
                   publicKey: key.publicKey,
+                  permissions: permissions.map((permission) => ({
+                      target: permission.target,
+                      selector: permission.selector,
+                  })),
+                  limits: limits.map((limit) => ({
+                      token: limit.token,
+                      period: limit.period,
+                      limit: limit.limit.toString(),
+                  })),
               }
             : undefined,
     })
@@ -322,15 +354,16 @@ async function releaseInstalledQuoteSpendLimit(
         record: current ?? record,
         minuteLimits,
     })
+    const expiry = await keyExpiryRestoreDecision(current ?? record)
+    if (expiry.differences.length > 0) {
+        await refuseChangedQuoteKey(input.keystorePath, expiry.differences)
+    }
     if (planned.unexpected) {
         throw new QuoteSpendError(
             `The per-quote spend limit could not be restored: ${planned.unexpected}`,
         )
     }
-    const calls = [
-        ...releaseCalls(current ?? record, planned.calls),
-        ...(await keyExpiryRestoreCall(current ?? record)),
-    ]
+    const calls = [...releaseCalls(current ?? record, planned.calls), ...expiry.calls]
     if (calls.length > 0) {
         await submitRootCalls({
             keystorePath: input.keystorePath,
@@ -356,40 +389,115 @@ function releaseCalls(record: PendingQuoteLimitRecord, spendCalls: Call[]): Call
     ]
 }
 
+export type QuoteKeyRead =
+    | { status: 'missing' }
+    | { status: 'live'; key: QuoteKeySnapshot }
+
 /**
- * Restores the previous key expiry only while the key still exists.
- * authorize on a missing key would create it again.
+ * Previous expiry is restored only when the on-chain key still matches the
+ * install snapshot. A missing key skips authorize. Any other read error keeps
+ * the pending record and does not authorize.
  */
-async function keyExpiryRestoreCall(record: PendingQuoteLimitRecord): Promise<Call[]> {
-    if (!record.keyExpiry) return []
+async function keyExpiryRestoreDecision(
+    record: PendingQuoteLimitRecord,
+    readQuoteKey?: (record: PendingQuoteLimitRecord) => Promise<QuoteKeyRead>,
+): Promise<{ calls: Call[]; differences: string[] }> {
+    if (!record.keyExpiry) return { calls: [], differences: [] }
+    const read = await readQuoteKeyForRestore(record, readQuoteKey)
+    if (read.status === 'missing') return { calls: [], differences: [] }
+    const installed = expectedInstalledKey({
+        installedExpiry: BigInt(record.keyExpiry.installed),
+        keyType: record.keyExpiry.keyType,
+        isSuperAdmin: record.keyExpiry.isSuperAdmin,
+        publicKey: record.keyExpiry.publicKey,
+        storedPermissions: record.keyExpiry.permissions,
+        storedLimits: record.keyExpiry.limits?.map((limit) => ({
+            token: limit.token,
+            period: limit.period,
+            limit: BigInt(limit.limit),
+        })),
+        callGrants: grantsFromPending(record),
+        minuteSlots: record.slots.map((slot) => ({
+            token: slot.token,
+            installedLimit: BigInt(slot.installedLimit),
+        })),
+        live: read.key,
+    })
+    const differences = quoteKeyDifferences(installed, read.key)
+    return {
+        calls: restoreQuoteKeyExpiryCall({
+            account: record.account,
+            keyStillExists: true,
+            previous: {
+                expiry: BigInt(record.keyExpiry.previous),
+                keyType: record.keyExpiry.keyType,
+                isSuperAdmin: record.keyExpiry.isSuperAdmin,
+                publicKey: record.keyExpiry.publicKey,
+            },
+            installed,
+            live: read.key,
+        }),
+        differences,
+    }
+}
+
+async function readQuoteKeyForRestore(
+    record: PendingQuoteLimitRecord,
+    readQuoteKey?: (record: PendingQuoteLimitRecord) => Promise<QuoteKeyRead>,
+): Promise<QuoteKeyRead> {
+    if (readQuoteKey) return readQuoteKey(record)
     const client = publicClient(networkFromRecord(record))
-    let keyStillExists = true
     try {
-        await client.readContract({
+        const stored = await client.readContract({
             address: record.account,
             abi: accountAbi,
             functionName: 'getKey',
             args: [record.keyHash],
         })
+        const packed = await client.readContract({
+            address: record.account,
+            abi: accountAbi,
+            functionName: 'canExecutePackedInfos',
+            args: [record.keyHash],
+        })
+        const spendInfos = await readSpendInfos(client, record.account, record.keyHash)
+        return {
+            status: 'live',
+            key: {
+                expiry: BigInt(stored.expiry),
+                keyType: Number(stored.keyType),
+                isSuperAdmin: stored.isSuperAdmin,
+                publicKey: stored.publicKey,
+                permissions: packed.map(decodePackedCanExecute),
+                limits: spendInfos.map((info) => ({
+                    token: info.token,
+                    period: info.period,
+                    limit: info.limit,
+                })),
+            },
+        }
     } catch (error) {
         const text = error instanceof Error ? error.message : String(error)
-        if (text.includes('KeyDoesNotExist')) keyStillExists = false
-        else {
-            throw new QuoteSpendError(
-                'Could not read the swap key expiry. The pending quote record was kept.',
-            )
-        }
+        if (text.includes('KeyDoesNotExist')) return { status: 'missing' }
+        throw new QuoteSpendError(
+            'Could not read the swap key expiry. The pending quote record was kept.',
+        )
     }
-    return restoreQuoteKeyExpiryCall({
-        account: record.account,
-        keyStillExists,
-        previous: {
-            expiry: BigInt(record.keyExpiry.previous),
-            keyType: record.keyExpiry.keyType,
-            isSuperAdmin: record.keyExpiry.isSuperAdmin,
-            publicKey: record.keyExpiry.publicKey,
-        },
-    })
+}
+
+async function refuseChangedQuoteKey(keystorePath: string, differences: string[]): Promise<never> {
+    await clearPendingQuoteLimit(keystorePath)
+    throw new QuoteSpendError(
+        `Pending quote spend limit was not restored. The on-chain key no longer matches the quote install, so it was left unchanged and the pending record was cleared. ${differences.join('; ')}`,
+    )
+}
+
+function decodePackedCanExecute(packed: Hex): QuoteKeyPermission {
+    const value = BigInt(packed)
+    return {
+        target: getAddress(`0x${(value >> 96n).toString(16).padStart(40, '0')}`),
+        selector: `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex,
+    }
 }
 
 function networkFromRecord(record: PendingQuoteLimitRecord): NetworkConfig {

@@ -1,4 +1,4 @@
-import { decodeFunctionData, getAddress, parseAbi, type Address, type Hex } from 'viem'
+import { decodeFunctionData, getAddress, parseAbi, zeroAddress, type Address, type Hex } from 'viem'
 import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import { INTENT_TYPES } from '@nubl/relayer-client'
 import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
@@ -10,6 +10,7 @@ import {
     getUsdcTokenConfig,
     type EnvName,
 } from './network-config'
+import { PAID_FEE_CAP, QuotePaymentRejected, reviewQuotePayment } from './intent-payment'
 import { RelayQuoteRejected, reviewRelayIntentCalls } from './relay-allowlist'
 import { isRecord } from './type-guards'
 
@@ -238,11 +239,24 @@ export function assessPhraseLessIntent(input: {
     return { chainId, usdc: usdcMoved }
 }
 
+export type SwapPaymentBounds = {
+    /**
+     * Quote fee in the chain's USDC. The signed amount must be at most this
+     * fee and at most 5 USDC. A larger fee does not raise the ceiling.
+     * Omitted means the ceiling is the only amount bound.
+     */
+    feeAmount?: bigint
+    /** Expected payment recipient. Omitted means the zero address. */
+    recipient?: Address
+}
+
 /**
  * A phrase-confirmed swap session may sign only an Orchestrator intent whose
- * calls pass the relay quote reviewer. Any other typed data is refused.
+ * calls pass the relay quote reviewer and whose payment is the quote fee in
+ * that chain's USDC, at most 5 USDC, paid to the expected recipient.
+ * Any other typed data is refused.
  */
-export function reviewSwapSessionSignature(typedData: unknown): void {
+export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaymentBounds): void {
     if (!isRecord(typedData)) {
         fail('Swap session refused typed data that is not an Orchestrator intent')
     }
@@ -296,6 +310,35 @@ export function reviewSwapSessionSignature(typedData: unknown): void {
         if (error instanceof RelayQuoteRejected) {
             fail(error.message)
         }
+        throw error
+    }
+    const paymentToken =
+        message.paymentToken === undefined ? zeroAddress : asAddress(message.paymentToken, 'paymentToken')
+    const paymentMax =
+        message.paymentMaxAmount === undefined
+            ? 0n
+            : asBigint(message.paymentMaxAmount, 'paymentMaxAmount')
+    const statedAmount =
+        message.paymentAmount === undefined
+            ? paymentMax
+            : asBigint(message.paymentAmount, 'paymentAmount')
+    const paymentRecipient =
+        message.paymentRecipient === undefined
+            ? zeroAddress
+            : asAddress(message.paymentRecipient, 'paymentRecipient')
+    const usdc = getUsdcTokenConfig(chainName).address
+    const quotedFee = bounds?.feeAmount ?? PAID_FEE_CAP
+    try {
+        reviewQuotePayment({
+            paymentToken,
+            paymentAmount: statedAmount > paymentMax ? statedAmount : paymentMax,
+            paymentRecipient,
+            feeToken: usdc,
+            feeAmount: quotedFee,
+            recipient: bounds?.recipient ?? zeroAddress,
+        })
+    } catch (error) {
+        if (error instanceof QuotePaymentRejected) fail(error.message)
         throw error
     }
 }

@@ -8,6 +8,7 @@ import {
     type Hex,
 } from 'viem'
 import { assertOrderRecipients, hashRelayOrder, orderPayees, RelayOrderRejected } from './relay-order'
+import { QuotePaymentRejected, reviewQuotePayment } from './intent-payment'
 import { WETH_BY_CHAIN } from './quote-spend'
 import { getUsdcAddressByChainId } from './network-config'
 import type { RelayCurrencyAmount, RelayQuoteResponse } from './relay-link'
@@ -206,6 +207,18 @@ export type RelayQuoteCheck = {
     originCurrency: Address
     user: Address
     recipient: Address
+    /**
+     * Orchestrator payment attached to this quote. Token and amount must match
+     * the quote fee and the 5 USDC ceiling, and the recipient must be
+     * `expectedRecipient`. Absent means this quote carries no payment.
+     */
+    payment?: {
+        token: Address
+        amount: bigint
+        recipient: Address
+        feeAmount: bigint
+        expectedRecipient: Address
+    }
 }
 
 export type RelayQuoteReview = {
@@ -767,6 +780,29 @@ export function reviewRelayQuote(
     if (!options?.callsOnly) {
         bindOrder(quote, { ...check, user }, depositIds)
         assertQuotedMinimum(quote, check.slippageBps)
+    }
+    if (check.payment) {
+        const feeToken = getUsdcAddressByChainId(check.sourceChainId)
+        if (!feeToken) {
+            throw new RelayQuoteRejected(
+                `Chain ${check.sourceChainId} has no USDC deployment. Refusing a quote payment.`,
+            )
+        }
+        try {
+            reviewQuotePayment({
+                paymentToken: check.payment.token,
+                paymentAmount: check.payment.amount,
+                paymentRecipient: check.payment.recipient,
+                feeToken,
+                feeAmount: check.payment.feeAmount,
+                recipient: check.payment.expectedRecipient,
+            })
+        } catch (error) {
+            if (error instanceof QuotePaymentRejected) {
+                throw new RelayQuoteRejected(error.message, { cause: error })
+            }
+            throw error
+        }
     }
     return { cap, tokens: [...tokens].map((token) => getAddress(token)) }
 }

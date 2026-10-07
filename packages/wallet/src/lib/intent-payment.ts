@@ -1,4 +1,4 @@
-import { zeroAddress, type Address } from 'viem'
+import { getAddress, zeroAddress, type Address } from 'viem'
 import { getUsdcAddressByChainId, type EnvName } from './network-config'
 
 /**
@@ -55,6 +55,68 @@ export function formatUsdcAmount(amount: bigint): string {
     const fraction = (value % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '')
     const text = fraction.length > 0 ? `${whole}.${fraction}` : whole.toString()
     return negative ? `-${text}` : text
+}
+
+export class QuotePaymentRejected extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'QuotePaymentRejected'
+    }
+}
+
+/**
+ * The signed payment must be the quote's fee, in that fee's token, paid to
+ * the expected recipient, and it must also sit at or under the 5 USDC ceiling.
+ * A zero token and a zero amount is no payment.
+ *
+ * `paymentAmount` and `paymentRecipient` are not in the Orchestrator intent
+ * typehash. This check refuses a message that already names a different token,
+ * amount, or recipient. The filler can still replace the recipient after the
+ * signature, because that field is not signed.
+ */
+export function reviewQuotePayment(input: {
+    paymentToken: Address
+    paymentAmount: bigint
+    paymentRecipient: Address
+    feeToken: Address
+    feeAmount: bigint
+    recipient: Address
+}): void {
+    const token = getAddress(input.paymentToken)
+    const recipient = getAddress(input.paymentRecipient)
+    const feeToken = getAddress(input.feeToken)
+    const expectedRecipient = getAddress(input.recipient)
+    if (input.paymentAmount < 0n || input.feeAmount < 0n) {
+        throw new QuotePaymentRejected('Payment amount is negative.')
+    }
+    if (input.paymentAmount === 0n && token === zeroAddress) {
+        if (recipient !== zeroAddress && recipient !== expectedRecipient) {
+            throw new QuotePaymentRejected(
+                `Payment recipient ${recipient} is not the expected recipient ${expectedRecipient}.`,
+            )
+        }
+        return
+    }
+    if (token !== feeToken) {
+        throw new QuotePaymentRejected(
+            `Payment token ${token} is not the quote fee token ${feeToken}.`,
+        )
+    }
+    if (input.paymentAmount > PAID_FEE_CAP || input.feeAmount > PAID_FEE_CAP) {
+        throw new QuotePaymentRejected(
+            `Payment amount ${input.paymentAmount} is over the 5 USDC ceiling (${PAID_FEE_CAP}).`,
+        )
+    }
+    if (input.paymentAmount > input.feeAmount) {
+        throw new QuotePaymentRejected(
+            `Payment amount ${input.paymentAmount} is over the quote fee ${input.feeAmount}.`,
+        )
+    }
+    if (recipient !== expectedRecipient) {
+        throw new QuotePaymentRejected(
+            `Payment recipient ${recipient} is not the expected recipient ${expectedRecipient}.`,
+        )
+    }
 }
 
 export function discloseFeeCap(token: Address, amount: bigint): FeeCapDisclosure {

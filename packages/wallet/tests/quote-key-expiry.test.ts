@@ -68,10 +68,21 @@ test('a revoked swap key is not recreated when the quote expiry is restored', ()
             keyStillExists: true,
         }),
     ).toEqual([])
+    const installedExpiry = 1_700_007_200n
+    const installed = {
+        expiry: installedExpiry,
+        keyType: 0,
+        isSuperAdmin: false,
+        publicKey: PUBLIC_KEY,
+        permissions: [],
+        limits: [],
+    }
     const calls = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
         keyStillExists: true,
+        installed,
+        live: installed,
     })
     expect(calls).toHaveLength(1)
     const decoded = decodeFunctionData({ abi: accountAbi, data: calls[0]!.data })
