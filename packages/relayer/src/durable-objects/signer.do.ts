@@ -23,6 +23,8 @@ import {
     encodeFunctionData,
     bytesToHex,
     parseEther,
+    toFunctionSelector,
+    type AbiFunction,
     type Address,
     type Hex,
     type PublicClient,
@@ -50,7 +52,11 @@ import type {
 } from '../types/pool'
 import { getContractAddresses } from '../config/addresses'
 import { getPaymentRecipient } from '../services/fees'
-import { encodeReceiveWithAuthorization } from '../rpc/schema/paid-upgrade-fee'
+import {
+    encodeReceiveWithAuthorization,
+    receiveWithAuthorizationAbi,
+} from '../rpc/schema/paid-upgrade-fee'
+import { capPaidUpgradeSignedGas } from '../rpc/methods/shared/paid-upgrade'
 import { encodeIntentCalldata } from '../services/encode-intent'
 import {
     assertAccountUpgradeFee,
@@ -78,6 +84,9 @@ const DEFAULT_REPLACEMENT_BUMP_BPS = 1250
 const DEFAULT_REPLACEMENT_TRIGGER_WEI = 0n
 const DEFAULT_REPLACEMENT_MAX_ATTEMPTS = 3
 const DEFAULT_REPLACEMENT_BACKOFF_MS = 30_000
+const PAID_UPGRADE_FEE_PULL_SELECTOR = toFunctionSelector(
+    receiveWithAuthorizationAbi[0] as AbiFunction,
+).toLowerCase()
 
 interface PreparedBroadcastTransaction {
     to: Address
@@ -1444,7 +1453,8 @@ export class SignerDO extends DurableObject<Env> {
         feeParams: FeeParams,
         broadcast: { attempted: boolean } = { attempted: false },
     ): Promise<Hex> {
-        const capped = await this.applyCreateAccountCaps(txParams, nonce, chainId, feeParams)
+        const pullCapped = await this.applyPaidUpgradePullGasCap(txParams, nonce, chainId, feeParams)
+        const capped = await this.applyCreateAccountCaps(pullCapped, nonce, chainId, feeParams)
         broadcast.attempted = true
         const broadcastParams = capped.txParams
         const broadcastFees = capped.feeParams
@@ -1497,6 +1507,45 @@ export class SignerDO extends DurableObject<Env> {
                     'BROADCAST_FAILED',
                 )
             }
+        }
+    }
+
+    /**
+     * Fee pulls are ordinary calls. Estimate, then sign at most the 500,000
+     * reservation. An estimate failure is not a broadcast.
+     */
+    private async applyPaidUpgradePullGasCap(
+        txParams: PreparedBroadcastTransaction,
+        nonce: number,
+        chainId: number,
+        feeParams: FeeParams,
+    ): Promise<PreparedBroadcastTransaction> {
+        if (!txParams.data.toLowerCase().startsWith(PAID_UPGRADE_FEE_PULL_SELECTOR)) {
+            return txParams
+        }
+        const { publicClient, account } = this.ensureClients(chainId)
+        let gas: bigint
+        try {
+            gas = await publicClient.estimateGas({
+                account: account.address,
+                to: txParams.to,
+                data: txParams.data,
+                value: txParams.value,
+                nonce,
+                maxFeePerGas: feeParams.maxFeePerGas,
+                maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
+            })
+        } catch (error) {
+            throw new SignerDOError(
+                `Failed to estimate paid upgrade fee pull: ${getErrorMessage(error)}`,
+                'BROADCAST_FAILED',
+                false,
+            )
+        }
+        try {
+            return { ...txParams, gas: capPaidUpgradeSignedGas(gas) }
+        } catch (error) {
+            throw new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED', false)
         }
     }
 

@@ -48,8 +48,10 @@ import {
     UPGRADE_PRECALL_NONCE,
 } from '../../src/rpc/methods/shared/account-helpers'
 import {
+    capPaidUpgradeSignedGas,
     eip7702DelegationCode,
     PAID_UPGRADE_AUTHORIZATION_GAS,
+    PAID_UPGRADE_GAS_HOLD,
     paidUpgradeRateBuckets,
 } from '../../src/rpc/methods/shared/paid-upgrade'
 import {
@@ -161,7 +163,12 @@ async function main(): Promise<void> {
     const receipts: TransactionReceipt[] = []
     const feeRecords = new Map<string, PaidUpgradeFeeRecord>()
     const sends = { pulls: 0, upgrades: 0 }
-    const measured: { pullRevertedGas?: bigint; upgradeFailedGas?: bigint; pullSuccessGas?: bigint } = {}
+    const measured: {
+        pullRevertedGas?: bigint
+        upgradeFailedGas?: bigint
+        pullSuccessGas?: bigint
+        pullSignedGas?: bigint
+    } = {}
 
     try {
         await waitForChain(publicClient)
@@ -228,7 +235,8 @@ async function main(): Promise<void> {
                             if (
                                 body.action === 'reserve-gas' ||
                                 body.action === 'release-gas' ||
-                                body.action === 'settle-gas'
+                                body.action === 'settle-gas' ||
+                                body.action === 'fits-gas'
                             ) {
                                 return json(applyAnvilGas(gasState, body))
                             }
@@ -534,6 +542,18 @@ async function main(): Promise<void> {
             `relayer nonce ${relayerNonceAfter}, expected pull plus upgrade`,
         )
         measured.pullSuccessGas = receipts[0]?.gasUsed
+        if (receipts[0]) {
+            const pullTx = await publicClient.getTransaction({ hash: receipts[0].transactionHash })
+            measured.pullSignedGas = pullTx.gas
+            assert(
+                pullTx.gas <= PAID_UPGRADE_GAS_HOLD,
+                `pull gas ${pullTx.gas} exceeds ${PAID_UPGRADE_GAS_HOLD}`,
+            )
+            assert(
+                measured.pullSuccessGas !== undefined && measured.pullSuccessGas <= pullTx.gas,
+                'pull gasUsed exceeds the signed limit',
+            )
+        }
         const ownerNonce = await publicClient.getTransactionCount({ address: owner.address })
         assert(ownerNonce === 1, `owner nonce ${ownerNonce}, expected the one authorization`)
 
@@ -742,7 +762,9 @@ async function main(): Promise<void> {
                 delegation: code,
                 bundleId: sent.id,
                 sweepBeforePullGas: '0',
+                pullGasCap: PAID_UPGRADE_GAS_HOLD.toString(),
                 pullSuccessGas: measured.pullSuccessGas?.toString() ?? '',
+                pullSignedGas: measured.pullSignedGas?.toString() ?? '',
                 pullRevertedGas: measured.pullRevertedGas?.toString() ?? '',
                 upgradeFailedGas: measured.upgradeFailedGas?.toString() ?? '',
                 sweepBeforePullUsdAt1Gwei: '0',
@@ -783,6 +805,13 @@ function applyAnvilGas(
 ): { allowed: boolean; gas: number; failures: number } {
     const budget = 2_000_000n
     const amount = BigInt(body.gas ?? '0')
+    if (body.action === 'fits-gas') {
+        return {
+            allowed: gasState.spent + gasState.held + amount <= budget,
+            gas: Number(gasState.spent),
+            failures: gasState.failures,
+        }
+    }
     if (body.action === 'reserve-gas') {
         if (gasState.spent + gasState.held + amount > budget) {
             return { allowed: false, gas: Number(gasState.spent), failures: gasState.failures }
@@ -1012,7 +1041,7 @@ async function measureRevertedPull(
             nonce,
             signature,
         }),
-        gas: 80_000n,
+        gas: capPaidUpgradeSignedGas(80_000n),
     })
     const receipt = await publicClient.waitForTransactionReceipt({ hash })
     assert(receipt.status === 'reverted', 'unfunded fee pull did not revert')
@@ -1037,20 +1066,32 @@ async function broadcastFeePull(
 ): Promise<Hex> {
     const relayer = privateKeyToAccount(RELAYER_KEY)
     assert(body.to.toLowerCase() === relayer.address.toLowerCase(), 'pull payee is not the relayer')
+    const data = encodeReceiveWithAuthorization({
+        from: body.from,
+        to: body.to,
+        value: BigInt(body.value),
+        validAfter: BigInt(body.validAfter),
+        validBefore: BigInt(body.validBefore),
+        nonce: body.nonce,
+        signature: body.signature,
+    })
+    const estimate = await publicClient.estimateGas({
+        account: relayer.address,
+        to: USDC,
+        data,
+        value: 0n,
+    })
+    const gas = capPaidUpgradeSignedGas(estimate)
     const hash = await broadcaster.sendTransaction({
         chain,
         account: relayer,
         to: USDC,
-        data: encodeReceiveWithAuthorization({
-            from: body.from,
-            to: body.to,
-            value: BigInt(body.value),
-            validAfter: BigInt(body.validAfter),
-            validBefore: BigInt(body.validBefore),
-            nonce: body.nonce,
-            signature: body.signature,
-        }),
+        data,
+        gas,
     })
+    const signed = await publicClient.getTransaction({ hash })
+    assert(signed.gas === gas, `signed pull gas ${signed.gas} != capped estimate ${gas}`)
+    assert(signed.gas <= PAID_UPGRADE_GAS_HOLD, `pull gas ${signed.gas} exceeds the reservation`)
     const receipt = await publicClient.waitForTransactionReceipt({ hash })
     receipts.push(receipt)
     return hash

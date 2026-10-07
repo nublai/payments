@@ -39,6 +39,7 @@ import {
     eip7702DelegationCode,
     PAID_UPGRADE_ADDRESS_LIMIT,
     PAID_UPGRADE_GAS_HOLD,
+    capPaidUpgradeSignedGas,
     paidUpgradeRateBuckets,
     recordPaidUpgradeRateLimit,
     signedPaymentMaxForQuote,
@@ -157,6 +158,16 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
     if (url.includes('upgrade-rate-limit')) {
+        if (body.action === 'fits-gas') {
+            if (rpc.gasThrow) return Promise.reject(new Error('gas budget down'))
+            const amount = BigInt(typeof body.gas === 'string' ? body.gas : '0')
+            return Promise.resolve(
+                jsonResponse({
+                    allowed: gasSpent + gasHeld + amount <= rpc.gasBudget,
+                    gas: Number(gasSpent),
+                }),
+            )
+        }
         if (
             body.action === 'reserve-gas' ||
             body.action === 'release-gas' ||
@@ -820,6 +831,30 @@ describe('paid upgrade send refusals', () => {
             message: 'Paid upgrade gas budget exceeded',
         })
         expect(captures).toHaveLength(0)
+        expect(gasLog.filter((entry) => entry.action === 'reserve-gas')).toHaveLength(0)
+    })
+
+    it('refuses the pull before reserving when the hold does not fit the daily budget', async () => {
+        gasSpent = 1_600_000n
+        const { params } = await signedParams({ callData: '0xbd' })
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toMatchObject({
+            code: RATE_LIMITED,
+            message: 'Paid upgrade gas budget exceeded',
+        })
+        expect(captures).toHaveLength(0)
+        expect(gasLog).toEqual([])
+        expect(gasHeld).toBe(0n)
+        expect(gasSpent).toBe(1_600_000n)
+        expect(feeStore.size).toBe(0)
+        expect(rateBodies.some((body) => body.action === 'reserve')).toBe(true)
+        expect(rateBodies.some((body) => body.action === 'release')).toBe(true)
+    })
+
+    it('caps the signed pull gas at the reservation', () => {
+        expect(capPaidUpgradeSignedGas(600_000n)).toBe(PAID_UPGRADE_GAS_HOLD)
+        expect(capPaidUpgradeSignedGas(84_541n)).toBe(84_541n)
+        expect(capPaidUpgradeSignedGas(PAID_UPGRADE_GAS_HOLD)).toBe(PAID_UPGRADE_GAS_HOLD)
+        expect(() => capPaidUpgradeSignedGas(0n)).toThrow(/gas limit exceeds cap/)
     })
 
     it('fails closed when the gas budget store is down', async () => {

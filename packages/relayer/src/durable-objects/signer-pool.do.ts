@@ -135,7 +135,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
                     const body = (await request.json()) as {
-                        action?: UpgradeRateAction | 'reserve-gas' | 'release-gas' | 'settle-gas'
+                        action?: UpgradeRateAction | 'reserve-gas' | 'release-gas' | 'settle-gas' | 'fits-gas'
                         kind?: UpgradeRateKind | 'paid-upgrade'
                         chainId?: number
                         account?: string
@@ -150,7 +150,8 @@ export class SignerPoolDO extends DurableObject<Env> {
                         body.kind === 'paid-upgrade' &&
                         (body.action === 'reserve-gas' ||
                             body.action === 'release-gas' ||
-                            body.action === 'settle-gas')
+                            body.action === 'settle-gas' ||
+                            body.action === 'fits-gas')
                     ) {
                         return Response.json(this.consumePaidUpgradeGas(body))
                     }
@@ -348,6 +349,14 @@ export class SignerPoolDO extends DurableObject<Env> {
                 gasSpent = row.gas
                 heldGas = row.held
                 failures = row.failures
+            }
+            if (body.action === 'fits-gas') {
+                return {
+                    allowed: BigInt(gasSpent) + BigInt(heldGas) + BigInt(gas) <= budget,
+                    gas: gasSpent,
+                    held: heldGas,
+                    failures,
+                }
             }
             if (body.action === 'reserve-gas') {
                 if (BigInt(gasSpent) + BigInt(heldGas) + BigInt(gas) > budget) {

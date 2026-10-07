@@ -17,6 +17,7 @@ import {
     INSUFFICIENT_FUNDS,
     INVALID_PARAMS,
     INVALID_SIGNATURE,
+    RATE_LIMITED,
     RpcError,
     SERVICE_UNAVAILABLE,
 } from '../../errors'
@@ -42,6 +43,7 @@ import {
     chainUsdcAddress,
     eip7702DelegationCode,
     paidUpgradeFieldsMatch,
+    paidUpgradeGasReservationFits,
     paidUpgradeMaxPayment,
     releasePaidUpgradeGas,
     releasePaidUpgradeRateLimit,
@@ -392,6 +394,19 @@ function storedSimulationError(error: unknown): boolean {
     )
 }
 
+async function releaseRateSlot(
+    env: Env,
+    chainId: number,
+    account: Address,
+    ip: string,
+    reservedAt: number | undefined,
+    releaseRate: boolean,
+): Promise<void> {
+    if (releaseRate && reservedAt !== undefined) {
+        await releasePaidUpgradeRateLimit(env, chainId, account, ip, reservedAt)
+    }
+}
+
 async function releaseAttempt(
     env: Env,
     chainId: number,
@@ -401,9 +416,7 @@ async function releaseAttempt(
     releaseRate: boolean,
 ): Promise<void> {
     await releasePaidUpgradeGas(env, chainId)
-    if (releaseRate && reservedAt !== undefined) {
-        await releasePaidUpgradeRateLimit(env, chainId, account, ip, reservedAt)
-    }
+    await releaseRateSlot(env, chainId, account, ip, reservedAt, releaseRate)
 }
 
 /**
@@ -692,10 +705,46 @@ async function ensureFeeCollected(args: {
     }
 
     try {
+        const fits = await paidUpgradeGasReservationFits(args.env, args.chainId)
+        if (!fits) {
+            throw new RpcError(RATE_LIMITED, 'Paid upgrade gas budget exceeded')
+        }
+    } catch (error) {
+        await writePaidUpgradeFee(args.env, args.chainId, args.quoteSignature, intent, 'delete')
+        await releaseRateSlot(
+            args.env,
+            args.chainId,
+            args.from,
+            args.ip,
+            args.reservedAt,
+            args.releaseRate,
+        )
+        throw error
+    }
+
+    try {
         await reservePaidUpgradeGas(args.env, args.chainId)
     } catch (error) {
         await writePaidUpgradeFee(args.env, args.chainId, args.quoteSignature, intent, 'delete')
-        await releaseAttempt(args.env, args.chainId, args.from, args.ip, args.reservedAt, args.releaseRate)
+        if (error instanceof RpcError && error.code === RATE_LIMITED) {
+            await releaseRateSlot(
+                args.env,
+                args.chainId,
+                args.from,
+                args.ip,
+                args.reservedAt,
+                args.releaseRate,
+            )
+        } else {
+            await releaseAttempt(
+                args.env,
+                args.chainId,
+                args.from,
+                args.ip,
+                args.reservedAt,
+                args.releaseRate,
+            )
+        }
         throw error
     }
     const balanceBefore = await balanceOf(args.publicClient, args.usdc, args.to)

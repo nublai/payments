@@ -178,6 +178,21 @@ export const DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT = 20
 export const PAID_UPGRADE_GAS_HOLD = 500_000n
 
 /**
+ * The fee pull signs at most the reservation. A larger estimate is capped so
+ * `gasUsed` cannot settle above the hold and push the daily books past the
+ * budget that was checked before the reserve.
+ */
+export function capPaidUpgradeSignedGas(
+    estimate: bigint,
+    reservation: bigint = PAID_UPGRADE_GAS_HOLD,
+): bigint {
+    if (estimate <= 0n || reservation <= 0n) {
+        throw new Error('Paid upgrade fee pull gas limit exceeds cap')
+    }
+    return estimate > reservation ? reservation : estimate
+}
+
+/**
  * Gas units one chain may spend on paid-upgrade broadcasts per UTC day.
  * About seven honest upgrades at the measured ~280k, or about thirty 60k
  * sweep receipts. At ~1 gwei that is about $6; at the 100 gwei refusal cap
@@ -624,6 +639,16 @@ async function postPaidUpgradeGas(
         gas: typeof result.gas === 'number' ? result.gas : undefined,
         failures: typeof result.failures === 'number' ? result.failures : undefined,
     }
+}
+
+/** Non-mutating check: spent + held + the reservation still fits today's budget. */
+export async function paidUpgradeGasReservationFits(env: Env, chainId: number): Promise<boolean> {
+    paidUpgradeDailyGasBudget(env)
+    const result = await postPaidUpgradeGas(env, chainId, {
+        action: 'fits-gas',
+        gas: PAID_UPGRADE_GAS_HOLD.toString(),
+    })
+    return result.allowed
 }
 
 export async function reservePaidUpgradeGas(env: Env, chainId: number): Promise<void> {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { encodeFunctionData, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { SignedAuthorization } from 'viem'
 
@@ -7,6 +8,8 @@ import {
     buildRawFallbackBroadcastRequest,
     isFillTransactionUnsupportedError,
 } from '../src/durable-objects/signer.do'
+import { receiveWithAuthorizationAbi } from '../src/rpc/schema/paid-upgrade-fee'
+import { PAID_UPGRADE_GAS_HOLD } from '../src/rpc/methods/shared/paid-upgrade'
 
 describe('signer broadcast fallback helpers', () => {
     afterEach(() => {
@@ -193,6 +196,183 @@ describe('signer broadcast fallback helpers', () => {
             expect(estimateGas).not.toHaveBeenCalled()
             expect(signTransaction).not.toHaveBeenCalled()
             expect(sendRawTransaction).not.toHaveBeenCalled()
+        })
+
+        it('signs a fee pull at the reservation when the estimate is larger', async () => {
+            const account = privateKeyToAccount(
+                '0x59c6995e998f97a5a0044966f0945383f8dcf63d8d8f3d6cce5f83b65e93a8f6',
+            )
+            const sendTransaction = vi.fn().mockResolvedValue('0xabc123')
+            const estimateGas = vi.fn().mockResolvedValue(600_000n)
+            const ensureClients = vi.fn().mockReturnValue({
+                publicClient: { estimateGas },
+                walletClient: { sendTransaction },
+                account,
+            })
+            const signer = Object.create(SignerDO.prototype) as {
+                ensureClients: typeof ensureClients
+            }
+            signer.ensureClients = ensureClients
+            const signAndBroadcastPrepared = Reflect.get(
+                SignerDO.prototype,
+                'signAndBroadcastPrepared',
+            ) as (
+                this: { ensureClients: typeof ensureClients },
+                txParams: { to: string; data: Hex; value: bigint },
+                nonce: number,
+                chainId: number,
+                feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
+                broadcast: { attempted: boolean },
+            ) => Promise<Hex>
+
+            const broadcast = { attempted: false }
+            await signAndBroadcastPrepared.call(
+                signer,
+                {
+                    to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                    data: encodeFunctionData({
+                        abi: receiveWithAuthorizationAbi,
+                        functionName: 'receiveWithAuthorization',
+                        args: [
+                            '0x0000000000000000000000000000000000000001',
+                            '0x0000000000000000000000000000000000000002',
+                            1n,
+                            0n,
+                            1n,
+                            `0x${'ab'.repeat(32)}`,
+                            27,
+                            `0x${'11'.repeat(32)}`,
+                            `0x${'22'.repeat(32)}`,
+                        ],
+                    }),
+                    value: 0n,
+                },
+                4,
+                8453,
+                { maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1n },
+                broadcast,
+            )
+
+            expect(broadcast.attempted).toBe(true)
+            expect(sendTransaction).toHaveBeenCalledWith(
+                expect.objectContaining({ gas: PAID_UPGRADE_GAS_HOLD }),
+            )
+        })
+
+        it('signs a fee pull at the estimate when that is under the reservation', async () => {
+            const account = privateKeyToAccount(
+                '0x59c6995e998f97a5a0044966f0945383f8dcf63d8d8f3d6cce5f83b65e93a8f6',
+            )
+            const sendTransaction = vi.fn().mockResolvedValue('0xabc123')
+            const estimateGas = vi.fn().mockResolvedValue(84_541n)
+            const ensureClients = vi.fn().mockReturnValue({
+                publicClient: { estimateGas },
+                walletClient: { sendTransaction },
+                account,
+            })
+            const signer = Object.create(SignerDO.prototype) as {
+                ensureClients: typeof ensureClients
+            }
+            signer.ensureClients = ensureClients
+            const signAndBroadcastPrepared = Reflect.get(
+                SignerDO.prototype,
+                'signAndBroadcastPrepared',
+            ) as (
+                this: { ensureClients: typeof ensureClients },
+                txParams: { to: string; data: Hex; value: bigint },
+                nonce: number,
+                chainId: number,
+                feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
+            ) => Promise<Hex>
+
+            await signAndBroadcastPrepared.call(
+                signer,
+                {
+                    to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                    data: encodeFunctionData({
+                        abi: receiveWithAuthorizationAbi,
+                        functionName: 'receiveWithAuthorization',
+                        args: [
+                            '0x0000000000000000000000000000000000000001',
+                            '0x0000000000000000000000000000000000000002',
+                            1n,
+                            0n,
+                            1n,
+                            `0x${'cd'.repeat(32)}`,
+                            28,
+                            `0x${'33'.repeat(32)}`,
+                            `0x${'44'.repeat(32)}`,
+                        ],
+                    }),
+                    value: 0n,
+                },
+                5,
+                8453,
+                { maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1n },
+            )
+
+            expect(sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: 84_541n }))
+        })
+
+        it('does not broadcast a fee pull when the gas estimate fails', async () => {
+            const account = privateKeyToAccount(
+                '0x59c6995e998f97a5a0044966f0945383f8dcf63d8d8f3d6cce5f83b65e93a8f6',
+            )
+            const sendTransaction = vi.fn()
+            const estimateGas = vi.fn().mockRejectedValue(new Error('execution reverted'))
+            const ensureClients = vi.fn().mockReturnValue({
+                publicClient: { estimateGas },
+                walletClient: { sendTransaction },
+                account,
+            })
+            const signer = Object.create(SignerDO.prototype) as {
+                ensureClients: typeof ensureClients
+            }
+            signer.ensureClients = ensureClients
+            const signAndBroadcastPrepared = Reflect.get(
+                SignerDO.prototype,
+                'signAndBroadcastPrepared',
+            ) as (
+                this: { ensureClients: typeof ensureClients },
+                txParams: { to: string; data: Hex; value: bigint },
+                nonce: number,
+                chainId: number,
+                feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
+                broadcast: { attempted: boolean },
+            ) => Promise<Hex>
+
+            const broadcast = { attempted: false }
+            await expect(
+                signAndBroadcastPrepared.call(
+                    signer,
+                    {
+                        to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                        data: encodeFunctionData({
+                            abi: receiveWithAuthorizationAbi,
+                            functionName: 'receiveWithAuthorization',
+                            args: [
+                                '0x0000000000000000000000000000000000000001',
+                                '0x0000000000000000000000000000000000000002',
+                                1n,
+                                0n,
+                                1n,
+                                `0x${'ef'.repeat(32)}`,
+                                27,
+                                `0x${'55'.repeat(32)}`,
+                                `0x${'66'.repeat(32)}`,
+                            ],
+                        }),
+                        value: 0n,
+                    },
+                    6,
+                    8453,
+                    { maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1n },
+                    broadcast,
+                ),
+            ).rejects.toMatchObject({ broadcastAttempted: false })
+
+            expect(broadcast.attempted).toBe(false)
+            expect(sendTransaction).not.toHaveBeenCalled()
         })
     })
 })
