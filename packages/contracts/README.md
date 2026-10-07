@@ -77,7 +77,18 @@ From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` choose
 
 `dev`, `stage`, and `prod` need `--account`, `--ledger`, or `--private-key`. `--sender` only adds Forge's `--sender` after one of those is set; it is not enough on its own. Local uses the Anvil deployer key. The same script is `bun run deploy:local`, `deploy:dev`, `deploy:stage`, and `deploy:prod`.
 
-`deploy.sh` hard-sets `FOUNDRY_PROFILE=release` (`via_ir`, 200 optimizer runs) for its forge build and forge script calls. Before any broadcast it runs `scripts/sh/check-runtime-size.sh`, which fails if Account or the other contracts `DeployUnified` deploys have runtime bytecode over 24,576 bytes. `bun run test` and `forge test` stay on the default profile. `build:contracts` and `generate` also use the release profile, because wagmi's forge build and the wallet passkey deploy read `out/Account.sol/Account.json`.
+`deploy.sh` hard-sets `FOUNDRY_PROFILE=release` (`via_ir`, 200 optimizer runs) for its forge build and forge script calls. Before any broadcast it refuses a symlink under `deployments/` or `deploy/` and runs `scripts/sh/check-runtime-size.sh`, which fails if Account or the other contracts `DeployUnified` deploys have runtime bytecode over 24,576 bytes, or if an artifact's `compilationTarget` is not that contract. `build:contracts` and `generate` run the same check after their release-profile forge build. `bun run test` stays on the default profile. CI runs that default suite and `FOUNDRY_PROFILE=release forge test --ffi`.
+
+Release-profile creation bytecode differs from the default profile for every CREATE2 contract, so a release deploy is a new address. It does not upgrade a contract already sitting at a published address. Salt is 0 and the factory is `0x4e59b44847b379578588920cA78FbF26c0B4956C`. No-arg contracts:
+
+| Contract | Published address | This tree, default profile | This tree, release profile |
+| --- | --- | --- | --- |
+| Escrow | `0x05f9597eed844410b7c0746A1C584188d0644730` | same as published | `0x13122A1dc74D0adc144c904e963d7d58BBe0E5f9` |
+| MultiSigSigner | `0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3` | same as published | `0x1DdE1F548A0b0a676D325B2633eA3E5F5E7C52c8` |
+| Orchestrator | `0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8` or `0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC` | `0x2a87aD816CD97423E731E15206F0a84941B35B23` | `0xE6CfdB399efdc88FA11964072AB519c65c044130` |
+| Simulator | `0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65` | `0x7abfE2f168Cc82229F00D9Dd529E48b0f2515c72` | `0x58915cA306aF01724EC5d9AfE75a1Ce4C8dc4A08` |
+
+Account, SimpleFunder, SimpleSettler, and LayerZeroSettler take constructor arguments. Their creation bytecode also differs between the two profiles, so the CREATE2 address for the same arguments changes. AccountProxy is deployed with `LibEIP7702`, not this salt-0 CREATE2. The published default-profile addresses will not match a release deploy.
 
 Flags the script accepts: `--chain`, `--rpc`, `--contracts`, `--context`, `--account`, `--password`, `--ledger`, `--private-key`, `--sender`, `--funder`, `--owner`, `--relayer-mnemonic`, `--relayer-count`, `--skip-relayer`, `--lz-endpoint`, `--lz-signer`, `--gas-price`, `--priority-fee`, `--verify`, `--etherscan-key`, `--dry-run`, `--resume`, `--help`. Run `./scripts/sh/deploy.sh --help` for the same list.
 

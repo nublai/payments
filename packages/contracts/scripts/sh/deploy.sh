@@ -513,6 +513,27 @@ echo "  Compiler: FOUNDRY_PROFILE=release"
 [[ -n "$RESUME" ]] && echo "  Resume: enabled"
 echo ""
 
+# Foundry fs_permissions follow a symlink inside an allowed directory.
+# Refuse those before any forge build or broadcast.
+refuse_deployment_symlinks() {
+    local dir link
+    for dir in "$PROJECT_ROOT/deployments" "$PROJECT_ROOT/deploy"; do
+        if [[ -L "$dir" ]]; then
+            echo -e "${RED}Error: refusing symlink $dir${NC}" >&2
+            exit 1
+        fi
+        if [[ ! -d "$dir" ]]; then
+            continue
+        fi
+        while IFS= read -r -d '' link; do
+            echo -e "${RED}Error: refusing symlink $link${NC}" >&2
+            exit 1
+        done < <(find -P "$dir" -type l -print0)
+    done
+}
+
+refuse_deployment_symlinks
+
 # Release-profile size check before any forge script broadcast.
 "$SCRIPT_DIR/check-runtime-size.sh"
 

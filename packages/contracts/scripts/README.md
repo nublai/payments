@@ -29,7 +29,7 @@ anvil
 
 ## deploy.sh
 
-The bash deployment script hard-sets `FOUNDRY_PROFILE=release` (via IR, 200 optimizer runs) on every `forge build` and `forge script` it runs. A caller cannot select another profile. Before any broadcast it runs `scripts/sh/check-runtime-size.sh`, which fails if release-profile runtime bytecode for Account, Orchestrator, Simulator, Escrow, MultiSigSigner, SimpleFunder, SimpleSettler, or LayerZeroSettler is over 24,576 bytes. `forge test` is separate and stays on the default profile.
+The bash deployment script hard-sets `FOUNDRY_PROFILE=release` (via IR, 200 optimizer runs) on every `forge build` and `forge script` it runs. A caller cannot select another profile. Before any broadcast it refuses a symlink under `deployments/` or `deploy/` and runs `scripts/sh/check-runtime-size.sh`, which fails if release-profile runtime bytecode for Account, Orchestrator, Simulator, Escrow, MultiSigSigner, SimpleFunder, SimpleSettler, or LayerZeroSettler is over 24,576 bytes, or if `compilationTarget` is not that contract. `build:contracts` and `generate` run the same check. `forge test` without `FOUNDRY_PROFILE=release` stays on the default profile; CI runs both.
 
 The bash deployment script is a chain-agnostic deployment tool supporting:
 - **Multi-chain deployment** - Deploy to any EVM chain, multiple chains at once
@@ -465,6 +465,17 @@ All contracts (except AccountProxy) use CREATE2 via `DeployFacetWithArgs`:
 - Same bytecode + salt = same address across chains
 - Already-deployed contracts are automatically skipped
 - Use `deployer.getDeployedAddress(name)` to get predicted/deployed address
+
+Release-profile bytecode is not the default-profile bytecode, so the addresses change. Salt is 0 and the factory is `0x4e59b44847b379578588920cA78FbF26c0B4956C`. A release deploy does not replace a contract already at a published address. The published default-profile addresses will not match.
+
+| Contract | Published address | This tree, default profile | This tree, release profile |
+| --- | --- | --- | --- |
+| Escrow | `0x05f9597eed844410b7c0746A1C584188d0644730` | same as published | `0x13122A1dc74D0adc144c904e963d7d58BBe0E5f9` |
+| MultiSigSigner | `0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3` | same as published | `0x1DdE1F548A0b0a676D325B2633eA3E5F5E7C52c8` |
+| Orchestrator | `0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8` or `0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC` | `0x2a87aD816CD97423E731E15206F0a84941B35B23` | `0xE6CfdB399efdc88FA11964072AB519c65c044130` |
+| Simulator | `0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65` | `0x7abfE2f168Cc82229F00D9Dd529E48b0f2515c72` | `0x58915cA306aF01724EC5d9AfE75a1Ce4C8dc4A08` |
+
+Account, SimpleFunder, SimpleSettler, and LayerZeroSettler append constructor arguments to that creation bytecode. The creation bytecode differs between profiles, so those CREATE2 addresses change for the same arguments. AccountProxy is not this salt-0 CREATE2 deployment.
 
 ## Local Setup
 
