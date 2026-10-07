@@ -260,7 +260,10 @@ abstract contract GuardedExecutor is ERC7821 {
     /// decreases)`. Each call is measured on its own. A later call's inflow does not
     /// reduce an earlier call's charge. The per-call figure is the drop in this
     /// account's own balance. A failed, reverted, or short `balanceOf` on a metered
-    /// token reverts the batch with `SpendBalanceReadFailed`.
+    /// token reverts the batch with `SpendBalanceReadFailed`. `pay` uses that same
+    /// read. For a metered token its charge is `max(paymentAmount, this account's
+    /// balance decrease)`. The approval reset and Permit2 lockdown are measured the
+    /// same way, and any extra debit is added to the per-call sum before the limit check.
     ///
     /// While this guarded batch is running, any nested `execute` into this account
     /// (orchestrator, signed `opData`, or self-execute) reverts `GuardedReentrancy`.
@@ -290,10 +293,7 @@ abstract contract GuardedExecutor is ERC7821 {
     ///   not reset. A later pull of a token that still has no spend period is not charged.
     /// - A hostile metered token. `balanceOf` returns 32 bytes of a lie (a constant,
     ///   or a proxy that pins the pre-transfer balance), or an unrecognized selector
-    ///   debits this account and refills the balance before the call returns. A token
-    ///   that transfers inside `approve(0)` moves its balance in the trailing
-    ///   `safeApprove` reset, which runs after the per-call snapshot, so that transfer
-    ///   is not charged. The charge stays at the non-zero approve amount from calldata.
+    ///   debits this account and refills the balance before the call returns.
     /// - A token with no spend period. A non-root key can move it through any call
     ///   that is not a recognized selector, and the move is not charged. That includes
     ///   swap output and any other token this account already holds, a spender the
@@ -341,24 +341,38 @@ abstract contract GuardedExecutor is ERC7821 {
         LibSort.groupSum(t.erc20s.data, t.transferAmounts.data);
 
         // Execute call by call. A later call's inflow cannot cancel an earlier call's decrease.
-        uint256[] memory decreases = _executeAndSumDecreases(calls, keyHash, t.erc20s);
+        _MeterSnap memory snap = _executeAndSumDecreases(calls, keyHash, t.erc20s);
 
         // Perform after the calls, so that in the case where `calls`
         // contain a `setSpendLimit`, it will affect the `_incrementSpent`.
         _incrementSpent(spends.spends[address(0)], address(0), totalNativeSpend);
 
-        // Revoke all non-zero approvals that have been made.
-        // As spend permissions are whitelist style, we need to make sure that
-        // approvals are revoked. This is to prevent sidestepping the guard.
-        for (uint256 i; i < t.approvedERC20s.length(); ++i) {
-            address token = t.approvedERC20s.getAddress(i);
-            SafeTransferLib.safeApprove(token, t.approvalSpenders.getAddress(i), 0);
+        // Revoke non-zero approvals, then measure any balance that left in the reset.
+        // The reset is outside the per-call snapshot. An `approve(0)` that transfers
+        // is still this account's spend.
+        if (t.approvedERC20s.length() != 0) {
+            _meter(snap, 0);
+            for (uint256 i; i < t.approvedERC20s.length(); ++i) {
+                SafeTransferLib.safeApprove(
+                    t.approvedERC20s.getAddress(i),
+                    t.approvalSpenders.getAddress(i),
+                    0
+                );
+            }
+            _meter(snap, 1);
         }
 
-        // Revoke all non-zero Permit2 direct approvals that have been made.
-        for (uint256 i; i < t.permit2ERC20s.length(); ++i) {
-            address token = t.permit2ERC20s.getAddress(i);
-            SafeTransferLib.permit2Lockdown(token, t.permit2Spenders.getAddress(i));
+        // Revoke non-zero Permit2 direct approvals. A debit here is charged on its own,
+        // so a later inflow cannot hide the approval reset.
+        if (t.permit2ERC20s.length() != 0) {
+            _meter(snap, 0);
+            for (uint256 i; i < t.permit2ERC20s.length(); ++i) {
+                SafeTransferLib.permit2Lockdown(
+                    t.permit2ERC20s.getAddress(i),
+                    t.permit2Spenders.getAddress(i)
+                );
+            }
+            _meter(snap, 1);
         }
 
         // Increments the spent amounts.
@@ -369,9 +383,9 @@ abstract contract GuardedExecutor is ERC7821 {
                 tokenSpends,
                 token,
                 // Calldata amounts cover allowance changes, which do not move the balance.
-                // Per-call decreases cover the tokens that actually left, including a fee
-                // above the calldata amount. The larger of the two is the charge.
-                Math.max(t.transferAmounts.get(i), decreases[i])
+                // Decreases cover tokens that left during the calls and during the reset,
+                // including a fee above the calldata amount. The larger of the two is the charge.
+                Math.max(t.transferAmounts.get(i), snap.buf[i])
             );
         }
         _setGuardedBatch(0);
@@ -383,10 +397,9 @@ abstract contract GuardedExecutor is ERC7821 {
         Call[] calldata calls,
         bytes32 keyHash,
         DynamicArrayLib.DynamicArray memory erc20s
-    ) internal returns (uint256[] memory decreases) {
-        _MeterSnap memory snap = _newMeterSnap(erc20s);
+    ) internal returns (_MeterSnap memory snap) {
+        snap = _newMeterSnap(erc20s);
         // First `n` words are the spent totals. The caller indexes with `erc20s.length()`.
-        decreases = snap.buf;
         uint256 callCount = calls.length;
         for (uint256 c; c < callCount; ++c) {
             (address target, uint256 value, bytes calldata data) = _get(calls, c);
@@ -394,6 +407,23 @@ abstract contract GuardedExecutor is ERC7821 {
             _execute(target, value, data, keyHash);
             _meter(snap, 1);
         }
+    }
+
+    /// @dev Snapshot a metered payment token before `pay` transfers. Native and
+    /// unperioded tokens are not read. A bad `balanceOf` reverts `SpendBalanceReadFailed`.
+    function _snapPayment(
+        bytes32 keyHash,
+        address token
+    ) internal view returns (_MeterSnap memory snap, bool meter) {
+        if (token == address(0)) return (snap, false);
+        if (_getGuardedExecutorKeyStorage(keyHash).spends.spends[token].periods.length() == 0) {
+            return (snap, false);
+        }
+        snap.buf = new uint256[](2);
+        snap.tokens = new uint256[](1);
+        snap.tokens[0] = uint256(uint160(token));
+        _meter(snap, 0);
+        meter = true;
     }
 
     /// @dev Allocates the reused balance buffers away from the execute loop.

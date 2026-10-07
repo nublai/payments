@@ -10,6 +10,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 /// @dev H2 regression: allowance increases and untracked outflows count as spend.
 contract GuardedExecutorSpendGuardTest is BaseTest {
     address internal constant _BEEF = address(0xBEEF);
+    address internal constant _FEE = address(0xFEE);
     bytes4 internal constant _BALANCE_READ_FAILED = bytes4(keccak256("SpendBalanceReadFailed()"));
 
     /// @dev Checker that authorizes every call. Spend limits still apply.
@@ -993,10 +994,11 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         assertEq(d.d.spendInfos(k.keyHash).length, 0);
     }
 
-    /// @dev Intentional. The trailing `safeApprove(token, spender, 0)` runs after the
-    /// per-call snapshot. A token that transfers inside `approve(0)` moves its whole
-    /// balance then, and the charge stays at the non-zero approve amount.
-    function testIntended_ApproveZeroResetMovesHostileBalance() public {
+    /// @dev The guard's own `approve(0)` is inside the limit. A narrow key whose only
+    /// permission is `approve`, with no standing allowance, cannot move more than the
+    /// day limit when that reset transfers. This is the same path a swap key takes
+    /// when a quote calls `approve` and the guard resets it.
+    function testApproveZeroResetOverLimitReverts() public {
         (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
         MockApproveZeroSteals token = new MockApproveZeroSteals();
         token.mint(d.eoa, 50 ether);
@@ -1007,14 +1009,60 @@ contract GuardedExecutorSpendGuardTest is BaseTest {
         calls[0].to = address(token);
         calls[0].data = abi.encodeCall(token.approve, (_BEEF, 1 ether));
 
-        assertEq(_run(d, k, u, calls), bytes4(0));
-        assertEq(token.balanceOf(d.eoa), 0);
-        assertEq(token.balanceOf(_BEEF), 50 ether);
+        assertEq(_run(d, k, u, calls), GuardedExecutor.ExceededSpendLimit.selector);
+        assertEq(token.balanceOf(d.eoa), 50 ether);
+        assertEq(token.balanceOf(_BEEF), 0);
         assertEq(token.allowance(d.eoa, _BEEF), 0);
         GuardedExecutor.SpendInfo[] memory infos = d.d.spendInfos(k.keyHash);
         assertEq(infos.length, 1);
         assertEq(infos[0].token, address(token));
-        assertEq(infos[0].spent, 1 ether);
+        assertEq(infos[0].spent, 0);
+    }
+
+    /// @dev `pay` charges the balance decrease, not only `paymentAmount`. A fee on top
+    /// of an in-limit payment reverts. The key's only `canExecute` row is a different token.
+    function testPayFeeOnTopRevertsOverDayLimit() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        FeeOnTop token = new FeeOnTop(_FEE, 9 ether);
+        token.mint(d.eoa, 10 ether);
+        _allow(d, k.keyHash, address(paymentToken), bytes4(0xa9059cbb));
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        u.paymentToken = address(token);
+        u.paymentAmount = 1 ether;
+        u.paymentMaxAmount = 1 ether;
+        u.paymentRecipient = _BEEF;
+
+        assertEq(
+            _run(d, k, u, new ERC7821.Call[](0)),
+            GuardedExecutor.ExceededSpendLimit.selector
+        );
+        assertEq(token.balanceOf(d.eoa), 10 ether);
+        assertEq(token.balanceOf(_BEEF), 0);
+        assertEq(token.balanceOf(_FEE), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
+    }
+
+    /// @dev `pay` of a token whose `transfer` forwards the whole balance is the full debit.
+    function testPayFullBalanceTransferRevertsOverDayLimit() public {
+        (DelegatedEOA memory d, PassKey memory k, Orchestrator.Intent memory u) = _session(false);
+        DrainOnTransfer token = new DrainOnTransfer();
+        token.mint(d.eoa, 10 ether);
+        _allow(d, k.keyHash, address(paymentToken), bytes4(0xa9059cbb));
+        _limit(d, k.keyHash, address(token), GuardedExecutor.SpendPeriod.Day, 1 ether);
+
+        u.paymentToken = address(token);
+        u.paymentAmount = 1 ether;
+        u.paymentMaxAmount = 1 ether;
+        u.paymentRecipient = _BEEF;
+
+        assertEq(
+            _run(d, k, u, new ERC7821.Call[](0)),
+            GuardedExecutor.ExceededSpendLimit.selector
+        );
+        assertEq(token.balanceOf(d.eoa), 10 ether);
+        assertEq(token.balanceOf(_BEEF), 0);
+        assertEq(d.d.spendInfos(k.keyHash)[0].spent, 0);
     }
 
     /// @dev Intentional. A narrow key with only `Escrow.escrow`, and no `ANY_FN_SEL`,
@@ -1365,6 +1413,33 @@ contract MockPinnedBalanceToken is MockPaymentToken {
 contract MockCustomApproveToken is MockPaymentToken {
     function customApprove(address spender, uint256 amount) external returns (bool) {
         return approve(spender, amount);
+    }
+}
+
+/// @dev Takes `fee` from the sender on top of `amount`, paid to `feeRecipient`.
+contract FeeOnTop is MockPaymentToken {
+    address public immutable feeRecipient;
+    uint256 public immutable fee;
+
+    constructor(address feeRecipient_, uint256 fee_) {
+        feeRecipient = feeRecipient_;
+        fee = fee_;
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        _burn(msg.sender, fee);
+        _mint(feeRecipient, fee);
+        return super.transfer(to, amount);
+    }
+}
+
+/// @dev `transfer` sends the caller's whole balance, ignoring `amount`.
+contract DrainOnTransfer is MockPaymentToken {
+    function transfer(address to, uint256) public override returns (bool) {
+        uint256 bal = balanceOf(msg.sender);
+        _burn(msg.sender, bal);
+        _mint(to, bal);
+        return true;
     }
 }
 
