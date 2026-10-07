@@ -518,7 +518,7 @@ async function main(): Promise<void> {
             `grief owner balance ${griefBalance} before approve`,
         )
         console.log(`grief owner funded balance ${griefBalance}`)
-        await wallet.writeContract({
+        const mintHash = await wallet.writeContract({
             address: USDC,
             abi: [
                 {
@@ -535,13 +535,43 @@ async function main(): Promise<void> {
             functionName: 'mint',
             args: [griefOwner.address, 20_000_000n],
         })
-        await createWalletClient({ account: griefOwner, chain, transport: http(RPC_URL) }).writeContract({
+        const mintReceipt = await publicClient.waitForTransactionReceipt({ hash: mintHash })
+        assert(mintReceipt.status === 'success', 'grief USDC mint failed')
+        const approveHash = await createWalletClient({
+            account: griefOwner,
+            chain,
+            transport: http(RPC_URL),
+        }).writeContract({
             address: USDC,
             abi: erc20Abi,
             functionName: 'approve',
             args: [relayer.address, 20_000_000n],
         })
-        const griefNonce = await publicClient.getTransactionCount({ address: griefOwner.address })
+        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        assert(approveReceipt.status === 'success', 'grief USDC approve failed')
+        await fetch(RPC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'anvil_mine',
+                params: ['0x1'],
+            }),
+        })
+        const griefNonce = await publicClient.getTransactionCount({
+            address: griefOwner.address,
+            blockTag: 'pending',
+        })
+        const griefLatest = await publicClient.getTransactionCount({
+            address: griefOwner.address,
+            blockTag: 'latest',
+        })
+        assert(
+            griefNonce === griefLatest,
+            `grief nonce pending ${griefNonce} != latest ${griefLatest}`,
+        )
+        console.log(`grief owner nonce ${griefNonce}`)
         const griefKey = {
             expiry: '0',
             type: 'secp256k1' as const,
