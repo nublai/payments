@@ -5,6 +5,7 @@ export type AuthFailureCode =
     | 'MISSING_HEADERS'
     | 'BAD_FORMAT'
     | 'BAD_KEYID'
+    | 'SIGNER_NOT_ALLOWED'
     | 'UNSUPPORTED_CHAIN'
     | 'INVALID_TIME'
     | 'INVALID_COVERAGE'
