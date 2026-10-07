@@ -13,6 +13,7 @@ import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createRootKeystore, createSessionKeystore, decryptRootKeystore } from '../src/lib/keystore'
 import { executeSessionRotate } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
@@ -65,9 +66,11 @@ async function stageDir(prefix: string) {
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const restoreStage = installFormerStageDeployments()
     try {
         return await fn()
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
