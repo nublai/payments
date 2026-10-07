@@ -184,7 +184,7 @@ export function assessPhraseLessIntent(input: {
     }
     const orchestrator = getAddressesWithFallback(input.env, chainId)?.orchestrator
     if (!orchestrator) {
-        fail('Phrase-less session refused an Orchestrator intent because the orchestrator is not configured')
+        fail('Phrase-less session refused an Orchestrator intent because the orchestrator is not deployed')
     }
     const verifyingContract = asAddress(domain.verifyingContract, 'verifyingContract')
     if (verifyingContract.toLowerCase() !== orchestrator.toLowerCase()) {

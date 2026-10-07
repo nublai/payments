@@ -26,7 +26,7 @@ export interface TestContracts {
 export function getTestContracts(context: string, chainId: number): TestContracts {
     const addresses = getAddressesWithFallback(context, chainId, { env: process.env })
     if (!addresses) {
-        throw new Error(`No deployment found for ${context}/${chainId}`)
+        throw new Error(`No deployment found for ${context}/${chainId}: contracts are not deployed`)
     }
 
     return {

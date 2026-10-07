@@ -1,4 +1,13 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 import { JsonRpcClientError, type GetKeysResponse } from '@nubl/relayer-client'
 import { zeroAddress } from 'viem'
 import { executeAccountSwap, resolveAccountSwapPassword } from '../src/lib/account-swap'

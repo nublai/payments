@@ -1,6 +1,15 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { executeEscrowStatus } from '../src/lib/escrow-status'
 import { EscrowError } from '../src/lib/escrow-common'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 const VALID_ESCROW_ID = '0x' + '00'.repeat(32)
 

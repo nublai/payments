@@ -34,7 +34,7 @@ The bash deployment script unsets inherited `FOUNDRY_*` and `DAPP_*` variables, 
 The bash deployment script is a chain-agnostic deployment tool supporting:
 - **Multi-chain deployment** - Deploy to any EVM chain, multiple chains at once
 - **Full or selective deployment** - Deploy all contracts or specific ones
-- **Resume failed deployments** - Skip already-deployed contracts
+- **Failed deployments** - Rerun the same command. `--resume` is refused
 - **Dry run mode** - Simulate without broadcasting
 - **Built-in chain support** - Optimism, Arbitrum, Polygon, Base (Sepolia/Mainnet), Anvil
 - **CREATE2 deterministic addresses** - Same address across chains
@@ -90,8 +90,9 @@ Verification:
 
 Other:
   --dry-run                Simulate without broadcasting
-  --resume                 Skip contracts that are already deployed
   --help                   Show this help message
+
+`--resume` is refused. `forge script --resume` rebroadcasts stored initcode and does not compare it to the release artifact.
 
 Compiler:
   FOUNDRY_PROFILE=release is hard-set for forge build and forge script.
@@ -124,9 +125,6 @@ Compiler:
 
 # Dry run to test deployment
 ./scripts/sh/deploy.sh prod --dry-run --account deployer
-
-# Resume a failed deployment
-./scripts/sh/deploy.sh prod --resume --account deployer
 
 # Deploy with custom gas settings on congested network
 ./scripts/sh/deploy.sh --chain 137 --gas-price 100 --priority-fee 30 --account deployer
@@ -201,19 +199,16 @@ Deploy specific contracts only:
 - `SimpleSettler` - Requires owner
 - `LayerZeroSettler` - Requires endpoint, owner, signer
 
-### Resume Failed Deployments
+### Resume is refused
 
-If a deployment fails partway through, resume from where it left off:
+`deploy.sh` does not forward `--resume`. `forge script --resume` rebroadcasts the initcode stored in `broadcast/` and does not compare it to the release artifact.
 
 ```bash
-# Resume prod deployment
 ./scripts/sh/deploy.sh prod --resume --account deployer
-
-# Resume with same options as original deployment
-./scripts/sh/deploy.sh --chain 10 --resume --account deployer
+# Error: refusing --resume
 ```
 
-The `--resume` flag skips contracts that are already deployed at their predicted CREATE2 addresses.
+CREATE2 already skips a contract whose predicted address has runtime that matches the release artifact. A failed broadcast is rerun with the same `deploy.sh` command, without `--resume`.
 
 ### Gas Configuration
 
@@ -466,7 +461,7 @@ All contracts (except AccountProxy) use CREATE2 via `DeployFacetWithArgs`:
 - Already-deployed contracts are automatically skipped
 - Use `deployer.getDeployedAddress(name)` to get predicted/deployed address
 
-Nubl contracts have never been deployed. The addresses in `addresses.json` and `envs/*.json` are inherited from the Towns deployment and are not ours. There are no existing nubl accounts to migrate or re-delegate. The first deploy uses the release build. That change must replace every address in `addresses.json` and `envs/*.json` with our release CREATE2 addresses in the same change, and check that each JSON address's on-chain code hash matches the release artifact.
+Nubl contracts have never been deployed. The addresses in `addresses.json` and `envs/*.json` are inherited from the Towns deployment and are not ours. There are no existing nubl accounts to migrate or re-delegate. The first deploy uses the release build. That change must replace every address in `addresses.json` and `envs/*.json` with our release CREATE2 addresses in the same change, and check that each JSON address's on-chain code hash matches the release artifact. That check is implemented. `DeployUnified` and `deploy.sh` compare on-chain runtime to the release artifact with `scripts/sh/match-release-runtime.py`, which masks every `immutableReferences` span, including Solady EIP-712 chain id and cached address. A JSON dependency address is used only when that compare matches. Code already at a CREATE2 address that does not match is a revert, because CREATE2 cannot replace it. Non-local entries in `addresses.json` and `envs/*.json` are the zero address until that first deploy, so the wallet and relayer fail closed with `not deployed`.
 
 Release-profile bytecode is not the default-profile bytecode, so the addresses change. Salt is 0 and the factory is `0x4e59b44847b379578588920cA78FbF26c0B4956C`.
 
@@ -548,21 +543,16 @@ export RPC_999=https://custom-rpc.com
 ```
 
 ### Contract already deployed
-CREATE2 ensures idempotency - if a contract exists at its predicted address, it's skipped automatically. This is expected behavior and not an error.
+CREATE2 skips a predicted address when the on-chain runtime matches the release artifact. Code at that address that does not match reverts, because CREATE2 cannot replace it. A JSON dependency address is used only when its code matches the same way.
 
-To redeploy anyway, manually remove the deployment JSON file:
+Removing the deployment JSON does not clear code at the CREATE2 address. A matching runtime stays. To redeploy a contract that has no matching code, remove the stale JSON file and run the same command:
 ```bash
 rm deployments/envs/dev/84532/orchestrator.json
 ./scripts/sh/deploy.sh dev --contracts Orchestrator --account deployer
 ```
 
 ### Deployment failed partway through
-Use `--resume` to skip already-deployed contracts:
-```bash
-./scripts/sh/deploy.sh prod --resume --account deployer
-```
-
-This is especially useful after network issues or gas price spikes.
+Rerun the same `deploy.sh` command. `--resume` is refused, because it would rebroadcast stored initcode without comparing it to the release artifact. CREATE2 skips a predicted address only when the on-chain runtime matches the release artifact.
 
 ### Gas price too low
 On congested networks, specify higher gas settings:
@@ -628,7 +618,4 @@ When deploying to multiple chains, if one fails:
 ./scripts/sh/deploy.sh --chain 137 --account deployer
 ```
 
-Or use `--resume` to automatically skip succeeded chains:
-```bash
-./scripts/sh/deploy.sh --chain 10,42161,137 --resume --account deployer
-```
+`--resume` is refused and does not skip succeeded chains. Pass only the chain ids that still need a deploy.

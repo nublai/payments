@@ -11,9 +11,33 @@ const newAddress = '0x3333333333333333333333333333333333333333' as Address
 const rootPrivateKey =
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
 
+const anvilDeployEnv = {
+    ORCHESTRATOR_31337: '0x2222222222222222222222222222222222222222',
+    SIMPLE_FUNDER_31337: '0x0000000000000000000000000000000000000004',
+    SIMULATOR_31337: '0x0000000000000000000000000000000000000005',
+    ACCOUNT_31337: '0x0000000000000000000000000000000000000003',
+    ACCOUNT_PROXY_31337: '0x1111111111111111111111111111111111111111',
+    SIMPLE_SETTLER_31337: '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE',
+    ESCROW_31337: '0x05f9597eed844410b7c0746A1C584188d0644730',
+    MULTI_SIG_SIGNER_31337: '0x0000000000000000000000000000000000000008',
+}
+
+function useAnvilDeployments(): () => void {
+    const previous: Record<string, string | undefined> = {}
+    for (const [key, value] of Object.entries(anvilDeployEnv)) {
+        previous[key] = process.env[key]
+        process.env[key] = value
+    }
+    return () => {
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+        }
+    }
+}
+
 test('executeSessionRotate --narrow revokes the old key and installs the narrow default', async () => {
-    const previous = process.env.RELAYER_URL_PROD
-    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:9'
+    const restore = useAnvilDeployments()
     const captured: Hex[] = []
     const oldSession = {
         addresses: { session: oldAddress, delegated: account },
@@ -28,8 +52,8 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
     try {
         const result = await executeSessionRotate(
             {
-                env: 'prod',
-                chain: 'base',
+                env: 'dev',
+                chain: 'anvil',
                 keystorePath: '/tmp/narrow-rotate.json',
                 password: 'pw',
                 narrow: true,
@@ -66,7 +90,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
                 readActiveUsdcDaily: mock(async () => 0n),
                 getKeys: mock(async () => ({
-                    '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+                    '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
                 })),
                 executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
@@ -108,7 +132,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
         const revoked = decoded.find((entry) => entry.functionName === 'revoke')
         expect(revoked?.args[0]).toBe(computeSessionKeyHash(oldAddress))
 
-        const expected = getDefaultSessionPermissions(8453, { env: 'prod' }).filter(
+        const expected = getDefaultSessionPermissions(31337, { env: 'dev' }).filter(
             (permission) => permission.type === 'call',
         )
         const installed = decoded
@@ -129,9 +153,9 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
         const spend = decoded.find((entry) => entry.functionName === 'setSpendLimit')
         expect(spend?.args[2]).toBe(2)
         expect(spend?.args[3]).toBe(10_000_000n)
+        expect(() => getDefaultSessionPermissions(8453, { env: 'prod' })).toThrow(/not deployed/)
     } finally {
-        if (previous === undefined) delete process.env.RELAYER_URL_PROD
-        else process.env.RELAYER_URL_PROD = previous
+        restore()
     }
 })
 
@@ -176,7 +200,7 @@ function rotateDeps(overrides: Record<string, unknown>) {
         decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
         readNonce: mock(async () => 1n),
         getKeys: mock(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
         })),
         executeSignedCalls: mock(async () => ({
             id: 'bundle-narrow',
@@ -209,14 +233,13 @@ function rotateDeps(overrides: Record<string, unknown>) {
 }
 
 test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers', async () => {
-    const previous = process.env.RELAYER_URL_PROD
-    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:9'
+    const restore = useAnvilDeployments()
     const captured: Hex[] = []
     try {
         await executeSessionRotate(
             {
-                env: 'prod',
-                chain: 'base',
+                env: 'dev',
+                chain: 'anvil',
                 keystorePath: '/tmp/narrow-rotate-clear.json',
                 password: 'pw',
                 narrow: true,
@@ -273,8 +296,7 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
             true,
         )
     } finally {
-        if (previous === undefined) delete process.env.RELAYER_URL_PROD
-        else process.env.RELAYER_URL_PROD = previous
+        restore()
     }
 })
 

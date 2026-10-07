@@ -542,6 +542,291 @@ metadata_fields_required() {
     rm -rf "$tmp"
 }
 
+# Masked runtime compare. A raw equality false-fails Solady EIP-712 chain id.
+immutable_spans_are_masked() {
+    python3 - <<'PY'
+import json
+import pathlib
+import subprocess
+import sys
+
+helper = "scripts/sh/match-release-runtime.py"
+artifact_path = pathlib.Path("out/Orchestrator.sol/Orchestrator.json")
+artifact = json.loads(artifact_path.read_text())
+deployed = artifact["deployedBytecode"]
+raw = deployed["object"]
+body = raw[2:] if raw.startswith("0x") else raw
+refs = deployed.get("immutableReferences") or {}
+spans = [(int(span["start"]), int(span["length"])) for group in refs.values() for span in group]
+if not spans:
+    sys.exit("Orchestrator artifact has no immutable spans to mask")
+
+def run(code: str) -> str:
+    return subprocess.check_output(["python3", helper, str(artifact_path), code], text=True)
+
+start, _length = spans[0]
+buf = bytearray.fromhex(body)
+buf[start] ^= 0xFF
+if run("0x" + buf.hex()) != "match":
+    sys.exit("immutable byte change was not masked")
+outside = next(i for i in range(len(buf)) if not any(s <= i < s + n for s, n in spans))
+buf = bytearray.fromhex(body)
+buf[outside] ^= 0xFF
+if run("0x" + buf.hex()) != "mismatch":
+    sys.exit("non-immutable byte change was ignored")
+if run("0x") != "mismatch":
+    sys.exit("empty code matched")
+PY
+}
+
+# Red's resume PoC. On 3d56401, forge --resume rebroadcasts stored MultiSigSigner
+# initcode (codesize 2614). deploy.sh must refuse before that broadcast.
+resume_rebroadcast_refused() {
+    local port=18545
+    local rpc="http://127.0.0.1:${port}"
+    local signer="0x1DdE1F548A0b0a676D325B2633eA3E5F5E7C52c8"
+    local tmp pid code size
+    tmp="$(mktemp -d)"
+    anvil --port "$port" --chain-id 31337 --silent >"$tmp/anvil.log" 2>&1 &
+    pid=$!
+    cleanup_resume() {
+        trap - RETURN
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        rm -rf \
+            "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/31337" \
+            "$PROJECT_ROOT/cache/DeployUnified.s.sol/31337" \
+            "$tmp"
+    }
+    trap cleanup_resume RETURN
+    local ready=0
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        if cast block-number --rpc-url "$rpc" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 0.25
+    done
+    if [[ "$ready" -ne 1 ]]; then
+        echo "anvil did not start for the resume proof" >&2
+        cat "$tmp/anvil.log" >&2
+        return 1
+    fi
+    python3 - "$rpc" "$PROJECT_ROOT" <<'PY'
+import json
+import sys
+from pathlib import Path
+rpc, root = sys.argv[1], Path(sys.argv[2])
+art = json.loads((root / "out/MultiSigSigner.sol/MultiSigSigner.json").read_text())
+init = art["bytecode"]["object"]
+if init.startswith("0x"):
+    init = init[2:]
+tx = {
+    "hash": None,
+    "transactionType": "CREATE2",
+    "contractName": "Account",
+    "contractAddress": "0x5D44479c3Fa8b08409dcabc57C75CaAd173202dA",
+    "function": None,
+    "arguments": None,
+    "transaction": {
+        "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "to": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "gas": "0x1e8480",
+        "value": "0x0",
+        "input": "0x" + ("00" * 32) + init,
+        "nonce": "0x0",
+        "chainId": "0x7a69",
+    },
+    "additionalContracts": [],
+    "isFixedGasLimit": True,
+}
+seq = {
+    "transactions": [tx],
+    "receipts": [],
+    "libraries": [],
+    "pending": [],
+    "returns": {},
+    "timestamp": 1,
+    "chain": 31337,
+    "commit": None,
+}
+broadcast = root / "broadcast/DeployUnified.s.sol/31337"
+cache = root / "cache/DeployUnified.s.sol/31337"
+broadcast.mkdir(parents=True, exist_ok=True)
+cache.mkdir(parents=True, exist_ok=True)
+(broadcast / "run-latest.json").write_text(json.dumps(seq))
+(cache / "run-latest.json").write_text(json.dumps({"transactions": [{"rpc": rpc}]}))
+PY
+    size="$(cast codesize "$signer" --rpc-url "$rpc")"
+    if [[ "$size" != "0" ]]; then
+        echo "MultiSigSigner was not empty before --resume (codesize $size)" >&2
+        return 1
+    fi
+    set +e
+    "$SCRIPT_DIR/deploy.sh" --chain 31337 --rpc "$rpc" --skip-relayer --resume \
+        >"$tmp/out" 2>"$tmp/err"
+    code=$?
+    set -e
+    if [[ "$code" -eq 0 ]]; then
+        echo "deploy.sh accepted --resume" >&2
+        cat "$tmp/err" >&2
+        return 1
+    fi
+    if ! grep -q "refusing --resume" "$tmp/err"; then
+        echo "deploy.sh failed without refusing --resume (exit $code)" >&2
+        cat "$tmp/err" >&2
+        return 1
+    fi
+    size="$(cast codesize "$signer" --rpc-url "$rpc")"
+    if [[ "$size" != "0" ]]; then
+        echo "--resume rebroadcast stored initcode (MultiSigSigner codesize $size)" >&2
+        return 1
+    fi
+}
+
+# Red's selective-deploy PoC. A Towns orchestrator.json with no matching code
+# must not be the Account constructor argument. Mismatched code at the CREATE2
+# address must revert.
+selective_json_must_match_release() {
+    local port=18547
+    local rpc="http://127.0.0.1:${port}"
+    local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    local orch="0xE6CfdB399efdc88FA11964072AB519c65c044130"
+    local account="0x5D44479c3Fa8b08409dcabc57C75CaAd173202dA"
+    local towns="0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8"
+    local wrong="0x77C054f302C2FeB1790588747991c81c1fF97F76"
+    local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
+    local tmp pid code size deployed
+    tmp="$(mktemp -d)"
+    cp -a "$dir" "$tmp/8453"
+    anvil --port "$port" --chain-id 8453 --silent >"$tmp/anvil.log" 2>&1 &
+    pid=$!
+    cleanup_selective() {
+        trap - RETURN
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        rm -rf "$dir"
+        mkdir -p "$dir"
+        cp -a "$tmp/8453/." "$dir/"
+        rm -rf \
+            "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/8453" \
+            "$PROJECT_ROOT/cache/DeployUnified.s.sol/8453" \
+            "$tmp"
+    }
+    trap cleanup_selective RETURN
+    local ready=0
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        if cast block-number --rpc-url "$rpc" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 0.25
+    done
+    if [[ "$ready" -ne 1 ]]; then
+        echo "anvil did not start for the selective proof" >&2
+        cat "$tmp/anvil.log" >&2
+        return 1
+    fi
+    local multicall
+    multicall="$(tr -d '[:space:]' < "$PROJECT_ROOT/scripts/sol/common/bytecodes/multicall3.txt")"
+    cast rpc anvil_setCode "0xcA11bde05977b3631167028862bE2a173976CA11" "$multicall" --rpc-url "$rpc" >/dev/null
+    python3 - "$dir" "$towns" <<'PY'
+import json, sys
+from pathlib import Path
+path, towns = Path(sys.argv[1]), sys.argv[2]
+(path / "orchestrator.json").write_text(json.dumps({"address": towns}) + "\n")
+PY
+    cast rpc anvil_setCode "$orch" "0x600160005260206000f3" --rpc-url "$rpc" >/dev/null
+    set +e
+    RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
+        --chain 8453 --rpc "$rpc" --context prod \
+        --contracts Account --skip-relayer --private-key "$pk" \
+        >"$tmp/mismatch.out" 2>"$tmp/mismatch.err"
+    code=$?
+    set -e
+    if [[ "$code" -eq 0 ]]; then
+        echo "selective deploy accepted mismatched CREATE2 Orchestrator code" >&2
+        cat "$tmp/mismatch.out" >&2
+        return 1
+    fi
+    if ! grep -q "at CREATE2 address does not match the release artifact" "$tmp/mismatch.out" "$tmp/mismatch.err"; then
+        echo "selective deploy failed without the CREATE2 mismatch revert (exit $code)" >&2
+        cat "$tmp/mismatch.err" >&2
+        tail -40 "$tmp/mismatch.out" >&2
+        return 1
+    fi
+    size="$(cast codesize "$wrong" --rpc-url "$rpc")"
+    if [[ "$size" != "0" ]]; then
+        echo "Towns orchestrator was used as the Account constructor (codesize $size at $wrong)" >&2
+        return 1
+    fi
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    anvil --port "$port" --chain-id 8453 --silent >"$tmp/anvil.log" 2>&1 &
+    pid=$!
+    ready=0
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        if cast block-number --rpc-url "$rpc" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 0.25
+    done
+    if [[ "$ready" -ne 1 ]]; then
+        echo "anvil did not restart for the selective proof" >&2
+        return 1
+    fi
+    cast rpc anvil_setCode "0xcA11bde05977b3631167028862bE2a173976CA11" "$multicall" --rpc-url "$rpc" >/dev/null
+    python3 - "$dir" "$towns" <<'PY'
+import json, sys
+from pathlib import Path
+path, towns = Path(sys.argv[1]), sys.argv[2]
+(path / "orchestrator.json").write_text(json.dumps({"address": towns}) + "\n")
+PY
+    set +e
+    RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
+        --chain 8453 --rpc "$rpc" --context prod \
+        --contracts Account --skip-relayer --private-key "$pk" \
+        >"$tmp/deploy.out" 2>"$tmp/deploy.err"
+    code=$?
+    set -e
+    if [[ "$code" -ne 0 ]]; then
+        echo "selective deploy did not replace an unmatched JSON orchestrator (exit $code)" >&2
+        cat "$tmp/deploy.err" >&2
+        tail -50 "$tmp/deploy.out" >&2
+        return 1
+    fi
+    if ! grep -q "Ignoring deployment file; on-chain code does not match the release artifact" "$tmp/deploy.out"; then
+        echo "selective deploy did not ignore the Towns orchestrator file" >&2
+        tail -50 "$tmp/deploy.out" >&2
+        return 1
+    fi
+    if grep -q "Found existing (file): orchestrator" "$tmp/deploy.out"; then
+        echo "selective deploy used the Towns orchestrator file" >&2
+        return 1
+    fi
+    size="$(cast codesize "$wrong" --rpc-url "$rpc")"
+    if [[ "$size" != "0" ]]; then
+        echo "Account landed at the Towns-constructor address $wrong (codesize $size)" >&2
+        return 1
+    fi
+    size="$(cast codesize "$account" --rpc-url "$rpc")"
+    if [[ "$size" == "0" ]]; then
+        echo "release Account was not deployed at $account" >&2
+        return 1
+    fi
+    size="$(cast codesize "$orch" --rpc-url "$rpc")"
+    if [[ "$size" == "0" ]]; then
+        echo "release Orchestrator was not deployed at $orch" >&2
+        return 1
+    fi
+    deployed="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["address"].lower())' "$dir/account.json")"
+    if [[ "$deployed" != "${account,,}" ]]; then
+        echo "account.json is $deployed, expected ${account,,}" >&2
+        return 1
+    fi
+}
+
 if [[ "${1:-}" == "--only" ]]; then
     "$2"
     exit $?
@@ -558,6 +843,9 @@ if release_tests_in_ci; then pass "CI runs release forge test"; else fail "CI ru
 if package_scripts_run_check; then pass "build:contracts and generate run the size check"; else fail "build:contracts and generate run the size check"; fi
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
+if immutable_spans_are_masked; then pass "immutable spans are masked"; else fail "immutable spans are masked"; fi
+if resume_rebroadcast_refused; then pass "--resume is refused"; else fail "--resume is refused"; fi
+if selective_json_must_match_release; then pass "JSON dependency must match the release runtime"; else fail "JSON dependency must match the release runtime"; fi
 
 if [[ "$failures" -ne 0 ]]; then
     echo "$failures check(s) failed" >&2

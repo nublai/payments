@@ -20,6 +20,16 @@ const createMockEnv = () => ({
     ORCHESTRATOR: '0x3456789012345678901234567890123456789012',
     SIMPLE_FUNDER: '0xSimpleFunder',
     SIMULATOR: '0xSimulator',
+    // Chain-suffixed so prod/8453 resolves after the JSON was zeroed.
+    // Unsuffixed placeholders stay incomplete, so an unknown chain still skips.
+    ACCOUNT_8453: '0xAccount',
+    ACCOUNT_PROXY_8453: '0xAccountProxy',
+    ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
+    SIMPLE_FUNDER_8453: '0xSimpleFunder',
+    SIMULATOR_8453: '0xSimulator',
+    SIMPLE_SETTLER_8453: '0xSimpleSettler',
+    ESCROW_8453: '0xEscrow',
+    MULTI_SIG_SIGNER_8453: '0xMultiSigSigner',
     SIGNER_POOL: {
         idFromName: vi.fn().mockReturnValue('pool-id'),
         get: vi.fn().mockReturnValue({

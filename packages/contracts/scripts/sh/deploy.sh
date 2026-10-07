@@ -102,8 +102,10 @@ Verification:
 
 Other:
   --dry-run                Simulate without broadcasting
-  --resume                 Skip contracts that are already deployed
   --help                   Show this help message
+
+--resume is refused. forge script --resume rebroadcasts stored initcode and
+does not compare it to the release artifact.
 
 Compiler:
   Inherited FOUNDRY_* and DAPP_* variables are unset. FOUNDRY_PROFILE=release
@@ -165,7 +167,6 @@ PRIORITY_FEE=""
 VERIFY=""
 ETHERSCAN_KEY=""
 DRY_RUN=""
-RESUME=""
 
 # Check for environment shortcut as first arg
 case "${1:-}" in
@@ -272,8 +273,8 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --resume)
-            RESUME="true"
-            shift
+            echo -e "${RED}Error: refusing --resume. forge script --resume rebroadcasts stored initcode and does not compare it to the release artifact.${NC}" >&2
+            exit 1
             ;;
         --help|-h)
             usage
@@ -499,9 +500,6 @@ deploy_to_chain() {
     if [[ -z "$DRY_RUN" ]]; then
         forge_cmd+=(--broadcast)
     fi
-    if [[ -n "$RESUME" ]]; then
-        forge_cmd+=(--resume)
-    fi
 
     refuse_bytecode_changing_flags "${forge_cmd[@]}"
 
@@ -509,6 +507,10 @@ deploy_to_chain() {
     echo ""
 
     "${forge_cmd[@]}"
+
+    if [[ -z "$DRY_RUN" ]]; then
+        verify_release_runtimes "$chain_id" "$context" "$rpc"
+    fi
 
     echo -e "${GREEN}✅ Deployment complete for $chain_name${NC}"
     echo ""
@@ -535,8 +537,50 @@ echo "  Compiler: FOUNDRY_PROFILE=release"
 [[ -n "$SKIP_RELAYER" ]] && echo "  Relayer setup: skipped"
 [[ -n "$VERIFY" ]] && echo "  Verification: enabled"
 [[ -n "$DRY_RUN" ]] && echo "  Mode: dry-run (no broadcast)"
-[[ -n "$RESUME" ]] && echo "  Resume: enabled"
 echo ""
+
+# Compare non-zero deployment JSON to the release runtime. Zero addresses and
+# empty code are skipped. AccountProxy is not the Account artifact.
+# Immutables are masked by match-release-runtime.py.
+verify_release_runtimes() {
+    local chain_id="$1"
+    local context="$2"
+    local rpc="$3"
+    local dir="$PROJECT_ROOT/deployments/envs/$context/$chain_id"
+    local file stem name addr code result
+    [[ -d "$dir" ]] || return 0
+    shopt -s nullglob
+    for file in "$dir"/*.json; do
+        stem="$(basename "$file" .json)"
+        case "$stem" in
+            account) name="Account" ;;
+            orchestrator) name="Orchestrator" ;;
+            simulator) name="Simulator" ;;
+            escrow) name="Escrow" ;;
+            multiSigSigner) name="MultiSigSigner" ;;
+            simpleFunder) name="SimpleFunder" ;;
+            simpleSettler) name="SimpleSettler" ;;
+            layerZeroSettler) name="LayerZeroSettler" ;;
+            *) continue ;;
+        esac
+        addr="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["address"])' "$file")"
+        addr="${addr,,}"
+        if [[ "$addr" == "0x0000000000000000000000000000000000000000" ]]; then
+            continue
+        fi
+        code="$(cast code "$addr" --rpc-url "$rpc")"
+        if [[ -z "$code" || "$code" == "0x" ]]; then
+            continue
+        fi
+        result="$(python3 "$SCRIPT_DIR/match-release-runtime.py" "$PROJECT_ROOT/out/${name}.sol/${name}.json" "$code")"
+        if [[ "$result" != "match" ]]; then
+            echo -e "${RED}Error: ${name} at ${addr} on-chain code hash does not match the release artifact${NC}" >&2
+            exit 1
+        fi
+        echo "  on-chain code hash matches the release artifact: $name $addr"
+    done
+    shopt -u nullglob
+}
 
 # Foundry fs_permissions follow a symlink inside an allowed directory.
 # Refuse those before any forge build or broadcast.

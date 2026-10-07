@@ -67,6 +67,10 @@ contract DeployUnified is DeployBase, DeployHelper {
         // Cache addresses
         address orchestrator = deployer.getDeployedAddress("Orchestrator");
         console.log("  Orchestrator:", orchestrator);
+        _requireReleaseRuntime(orchestrator, "Orchestrator");
+        _requireReleaseRuntime(deployer.getDeployedAddress("Simulator"), "Simulator");
+        _requireReleaseRuntime(deployer.getDeployedAddress("Escrow"), "Escrow");
+        _requireReleaseRuntime(deployer.getDeployedAddress("MultiSigSigner"), "MultiSigSigner");
 
         // =========================================================
         // PHASE 2: Account (depends on Orchestrator)
@@ -77,6 +81,7 @@ contract DeployUnified is DeployBase, DeployHelper {
 
         address account = deployer.getDeployedAddressWithArgs("Account");
         console.log("  Account:", account);
+        _requireReleaseRuntime(account, "Account");
 
         // =========================================================
         // PHASE 3: AccountProxy (LibEIP7702, not CREATE2)
@@ -111,12 +116,17 @@ contract DeployUnified is DeployBase, DeployHelper {
 
         deployer.deployArgsQueue(deployerAddr);
 
-        console.log("  SimpleFunder:", deployer.getDeployedAddressWithArgs("SimpleFunder"));
-        console.log("  SimpleSettler:", deployer.getDeployedAddressWithArgs("SimpleSettler"));
+        address simpleFunder = deployer.getDeployedAddressWithArgs("SimpleFunder");
+        address simpleSettler = deployer.getDeployedAddressWithArgs("SimpleSettler");
+        console.log("  SimpleFunder:", simpleFunder);
+        console.log("  SimpleSettler:", simpleSettler);
+        _requireReleaseRuntime(simpleFunder, "SimpleFunder");
+        _requireReleaseRuntime(simpleSettler, "SimpleSettler");
 
         address lzSettler = deployer.getDeployedAddressWithArgs("LayerZeroSettler");
         if (lzSettler != address(0)) {
             console.log("  LayerZeroSettler:", lzSettler);
+            _requireReleaseRuntime(lzSettler, "LayerZeroSettler");
         }
 
         // =========================================================
@@ -288,6 +298,7 @@ contract DeployUnified is DeployBase, DeployHelper {
             deployer.add(name);
             deployer.deployBatch(deployerAddr);
             address deployed = deployer.getDeployedAddress(name);
+            _requireReleaseRuntime(deployed, name);
             _writeContractDeployment(chainId, _toLowerFirst(name), deployed);
             console.log("  Deployed at:", deployed);
         }
@@ -297,6 +308,7 @@ contract DeployUnified is DeployBase, DeployHelper {
             deployer.addWithArgs("Account", abi.encode(orchestrator));
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("Account");
+            _requireReleaseRuntime(deployed, "Account");
             _writeContractDeployment(chainId, "account", deployed);
             console.log("  Deployed at:", deployed);
         }
@@ -316,6 +328,7 @@ contract DeployUnified is DeployBase, DeployHelper {
             deployer.addWithArgs("SimpleFunder", abi.encode(funder, owner));
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("SimpleFunder");
+            _requireReleaseRuntime(deployed, "SimpleFunder");
             _writeContractDeployment(chainId, "simpleFunder", deployed);
             console.log("  Deployed at:", deployed);
         }
@@ -325,6 +338,7 @@ contract DeployUnified is DeployBase, DeployHelper {
             deployer.addWithArgs("SimpleSettler", abi.encode(owner));
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("SimpleSettler");
+            _requireReleaseRuntime(deployed, "SimpleSettler");
             _writeContractDeployment(chainId, "simpleSettler", deployed);
             console.log("  Deployed at:", deployed);
         }
@@ -337,6 +351,7 @@ contract DeployUnified is DeployBase, DeployHelper {
             deployer.addWithArgs("LayerZeroSettler", abi.encode(endpoint, owner, signer));
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("LayerZeroSettler");
+            _requireReleaseRuntime(deployed, "LayerZeroSettler");
             _writeContractDeployment(chainId, "layerZeroSettler", deployed);
             console.log("  Deployed at:", deployed);
         } else {
@@ -344,37 +359,67 @@ contract DeployUnified is DeployBase, DeployHelper {
         }
     }
 
-    /// @notice Get existing deployed address or deploy the contract
+    /// @notice True when on-chain runtime matches the release artifact.
+    /// @dev Masks every immutableReferences span. A raw extcodehash false-fails
+    /// Solady EIP-712 contracts, whose immutables include the chain id.
+    function _runtimeMatchesRelease(
+        address instance,
+        string memory name
+    ) internal returns (bool) {
+        if (instance == address(0) || instance.code.length == 0) return false;
+        string memory artifact = string.concat("out/", name, ".sol/", name, ".json");
+        string[] memory args = new string[](4);
+        args[0] = "python3";
+        args[1] = "scripts/sh/match-release-runtime.py";
+        args[2] = artifact;
+        args[3] = vm.toString(instance.code);
+        return keccak256(vm.ffi(args)) == keccak256(bytes("match"));
+    }
+
+    /// @notice Revert unless the deployed runtime is the release artifact.
+    function _requireReleaseRuntime(address instance, string memory name) internal {
+        if (!_runtimeMatchesRelease(instance, name)) {
+            revert(string.concat(name, " runtime does not match the release artifact"));
+        }
+    }
+
+    /// @notice Get existing deployed address or deploy the contract.
+    /// A JSON address is used only when its code matches the release artifact.
+    /// Code already at the CREATE2 address that does not match cannot be replaced.
     function _getExistingOrDeploy(
         uint256 chainId,
         string memory name,
         address deployerAddr
     ) internal returns (address) {
-        // Check if already deployed via CREATE2 prediction
         address existing = deployer.getDeployedAddress(name);
         if (existing != address(0)) {
+            if (!_runtimeMatchesRelease(existing, name)) {
+                revert(
+                    string.concat(name, " at CREATE2 address does not match the release artifact")
+                );
+            }
             console.log("  Found existing (CREATE2):", name, existing);
             return existing;
         }
 
-        // Check deployment file
         existing = _tryReadDeploymentAddress(chainId, _toLowerFirst(name));
-        if (existing != address(0)) {
+        if (existing != address(0) && _runtimeMatchesRelease(existing, name)) {
             console.log("  Found existing (file):", name, existing);
-            // Cache it in the deployer for future lookups
             deployer.cacheDeployedAddress(name, existing);
             return existing;
         }
+        if (existing != address(0)) {
+            console.log(
+                "  Ignoring deployment file; on-chain code does not match the release artifact"
+            );
+            console.log("   ", name, existing);
+        }
 
-        // Deploy it
         console.log("  Deploying dependency:", name);
         _deployContract(chainId, name, deployerAddr);
 
-        // For no-arg contracts, get from deployer
         address deployed = deployer.getDeployedAddress(name);
         if (deployed != address(0)) return deployed;
-
-        // For with-arg contracts
         return deployer.getDeployedAddressWithArgs(name);
     }
 
@@ -434,14 +479,17 @@ contract DeployUnified is DeployBase, DeployHelper {
     }
 
     /// @notice Convert first character to lowercase (e.g., "Orchestrator" -> "orchestrator")
+    /// @dev Copies the bytes. `bytes(str)` aliases the argument, so an in-place edit
+    /// would also change the contract name used for the dependency deploy.
     function _toLowerFirst(string memory str) internal pure returns (string memory) {
         bytes memory b = bytes(str);
-        if (b.length == 0) return str;
-
-        // Only convert if first char is uppercase A-Z
-        if (b[0] >= 0x41 && b[0] <= 0x5A) {
-            b[0] = bytes1(uint8(b[0]) + 32);
+        bytes memory copy = new bytes(b.length);
+        for (uint256 i; i < b.length; i++) {
+            copy[i] = b[i];
         }
-        return string(b);
+        if (copy.length != 0 && copy[0] >= 0x41 && copy[0] <= 0x5A) {
+            copy[0] = bytes1(uint8(copy[0]) + 32);
+        }
+        return string(copy);
     }
 }
