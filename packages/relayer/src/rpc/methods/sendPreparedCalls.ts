@@ -28,8 +28,13 @@ import {
     assertErc8128BoundToQuotes,
 } from './shared/calls-helpers'
 import { getSignerPool } from './shared/signer-pool'
-import { upgradeClientIp } from './shared/upgrade-rate-limit'
-import { releasePaidUpgradeGas, releasePaidUpgradeRateLimit } from './shared/paid-upgrade'
+import {
+    enqueuePaidUpgradeReceipt,
+    paidUpgradeReceiptWaitMs,
+    releasePaidUpgradeGas,
+    releasePaidUpgradeRateLimit,
+    requirePaidUpgradeClientIp,
+} from './shared/paid-upgrade'
 import {
     bindAndPullPaidUpgrade,
     notePaidUpgradeReceipt,
@@ -111,7 +116,9 @@ export async function handleSendPreparedCalls(
 
     const signedQuotes = 'quote' in context && context.quote ? context.quote : undefined
     const quoted = signedQuotes?.quotes[0]
-    const paidUpgradeIp = upgradeClientIp(ctx.request)
+    const paidUpgradeIp = quoted?.accountUpgrade
+        ? requirePaidUpgradeClientIp(ctx.request, env)
+        : 'unknown'
     const paidUpgrade =
         quoted?.accountUpgrade && signedQuotes
             ? await bindAndPullPaidUpgrade({
@@ -195,7 +202,7 @@ export async function handleSendPreparedCalls(
             const receiptClient = createPublicClient({ transport: http(config.rpcUrl) })
             const receipt = await receiptClient.waitForTransactionReceipt({
                 hash: result.txHash,
-                timeout: 20_000,
+                timeout: paidUpgradeReceiptWaitMs(env),
             })
             const noted = await notePaidUpgradeReceipt(
                 env,
@@ -216,8 +223,16 @@ export async function handleSendPreparedCalls(
             if (error instanceof RpcError) throw error
             logger.error(
                 { error, eoa: intent.eoa, txHash: result.txHash },
-                'paid upgrade receipt was not settled; gas hold remains',
+                'paid upgrade receipt was not settled; gas hold remains until reconcile',
             )
+            try {
+                await enqueuePaidUpgradeReceipt(env, chainId, result.txHash)
+            } catch (enqueueError) {
+                logger.error(
+                    { error: enqueueError, eoa: intent.eoa, txHash: result.txHash },
+                    'paid upgrade receipt was not queued for reconcile',
+                )
+            }
         }
     }
     logger.info(

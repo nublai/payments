@@ -42,6 +42,7 @@ import {
     assertPaidUpgradeSimulation,
     chainUsdcAddress,
     eip7702DelegationCode,
+    enqueuePaidUpgradeReceipt,
     paidUpgradeFieldsMatch,
     paidUpgradeGasReservationFits,
     paidUpgradeMaxPayment,
@@ -50,6 +51,7 @@ import {
     reservePaidUpgradeGas,
     reservePaidUpgradeRateLimit,
     paidUpgradeReceiptOutcome,
+    paidUpgradeReceiptWaitMs,
     settlePaidUpgradeGas,
     signedPaymentMaxForQuote,
 } from './paid-upgrade'
@@ -554,6 +556,7 @@ export async function bindAndPullPaidUpgrade(args: {
             intent: args.intent,
             ...(retryWithoutAuthorization ? {} : { authorization: checked.authorization }),
             feeRecipient: args.env.FEE_RECIPIENT,
+            env: args.env,
         })
 
     let releaseRate = false
@@ -811,9 +814,17 @@ async function finishPull(
 ): Promise<PaidUpgradeFeeRecord> {
     let receipt: Awaited<ReturnType<PublicClient['waitForTransactionReceipt']>>
     try {
-        receipt = await args.publicClient.waitForTransactionReceipt({ hash, timeout: 20_000 })
+        receipt = await args.publicClient.waitForTransactionReceipt({
+            hash,
+            timeout: paidUpgradeReceiptWaitMs(args.env),
+        })
     } catch (error) {
         logger.error({ error, hash }, 'paid upgrade fee pull receipt unavailable')
+        try {
+            await enqueuePaidUpgradeReceipt(args.env, args.chainId, hash)
+        } catch (enqueueError) {
+            logger.error({ error: enqueueError, hash }, 'paid upgrade fee pull was not queued for reconcile')
+        }
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade fee pull failed')
     }
     const balanceAfter = await balanceOf(args.publicClient, args.usdc, args.to)
@@ -838,7 +849,11 @@ async function finishPull(
             pullTx: hash,
         })
         await writePaidUpgradeFee(args.env, args.chainId, args.quoteSignature, failed, 'update')
-        await settlePaidUpgradeGas(args.env, args.chainId, { gasUsed: receipt.gasUsed, failure: true })
+        await settlePaidUpgradeGas(args.env, args.chainId, {
+            gasUsed: receipt.gasUsed,
+            failure: true,
+            txHash: hash,
+        })
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade fee pull failed')
     }
     const collected = feeRecord({
@@ -851,7 +866,11 @@ async function finishPull(
         pullTx: hash,
     })
     await writePaidUpgradeFee(args.env, args.chainId, args.quoteSignature, collected, 'update')
-    await settlePaidUpgradeGas(args.env, args.chainId, { gasUsed: receipt.gasUsed, failure: false })
+    await settlePaidUpgradeGas(args.env, args.chainId, {
+        gasUsed: receipt.gasUsed,
+        failure: false,
+        txHash: hash,
+    })
     return collected
 }
 
@@ -865,9 +884,20 @@ async function settlePendingUpgrade(
     if (!record.upgradeTx) return 'pending'
     let receipt: Awaited<ReturnType<PublicClient['waitForTransactionReceipt']>>
     try {
-        receipt = await publicClient.waitForTransactionReceipt({ hash: record.upgradeTx, timeout: 20_000 })
+        receipt = await publicClient.waitForTransactionReceipt({
+            hash: record.upgradeTx,
+            timeout: paidUpgradeReceiptWaitMs(env),
+        })
     } catch (error) {
         logger.error({ error, hash: record.upgradeTx }, 'paid upgrade pending receipt unavailable')
+        try {
+            await enqueuePaidUpgradeReceipt(env, chainId, record.upgradeTx)
+        } catch (enqueueError) {
+            logger.error(
+                { error: enqueueError, hash: record.upgradeTx },
+                'paid upgrade receipt was not queued for reconcile',
+            )
+        }
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
     return notePaidUpgradeReceipt(env, chainId, quoteSignature, record, receipt.status, receipt.gasUsed, receipt)
@@ -916,7 +946,11 @@ export async function notePaidUpgradeReceipt(
         { ...record, status: next, upgradeTx: record.upgradeTx },
         'update',
     )
-    await settlePaidUpgradeGas(env, chainId, { gasUsed, failure: outcome.failure || !landed })
+    await settlePaidUpgradeGas(env, chainId, {
+        gasUsed,
+        failure: outcome.failure || !landed,
+        ...(record.upgradeTx ? { txHash: record.upgradeTx } : {}),
+    })
     if (!landed) return 'failed'
     return outcome.failure ? 'landed' : 'confirmed'
 }

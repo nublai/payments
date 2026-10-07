@@ -81,6 +81,7 @@ const rpc = {
     pullReverts: false,
     authUsed: false,
     upgradeRevertRemaining: 0,
+    receiptMissing: false,
 }
 
 const gasLog: Array<Record<string, unknown>> = []
@@ -100,6 +101,7 @@ function jsonResponse(body: unknown, ok = true): Response {
 }
 
 let captures: Array<Record<string, unknown>> = []
+const rpcCalls: Array<{ method?: string; params?: unknown[] }> = []
 const rateBodies: Array<Record<string, unknown>> = []
 const rateStore = new Map<string, number>()
 const feeStore = new Map<string, PaidUpgradeFeeRecord>()
@@ -151,6 +153,9 @@ function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: numb
         if (body.failure === true) gasFailures += 1
         return { allowed: true, gas: Number(gasSpent), failures: gasFailures }
     }
+    if (body.action === 'enqueue-receipt') {
+        return { allowed: true, gas: Number(gasSpent) }
+    }
     return { allowed: false }
 }
 
@@ -171,7 +176,8 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         if (
             body.action === 'reserve-gas' ||
             body.action === 'release-gas' ||
-            body.action === 'settle-gas'
+            body.action === 'settle-gas' ||
+            body.action === 'enqueue-receipt'
         ) {
             if (rpc.gasThrow) return Promise.reject(new Error('gas budget down'))
             return Promise.resolve(jsonResponse(applyGas(body)))
@@ -183,6 +189,7 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
             chainId: typeof body.chainId === 'number' ? body.chainId : CHAIN_ID,
             account: typeof body.account === 'string' ? body.account : 'unknown',
             ip: typeof body.ip === 'string' ? body.ip : 'unknown',
+            includeGlobal: body.action === 'reserve' || body.action === 'release',
         })
         if (body.action === 'peek') {
             return Promise.resolve(jsonResponse({ allowed: peekRateLimit(rateStore, buckets, now).allowed }))
@@ -217,7 +224,9 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     )
 }
 
-function createCtx(ip?: string): RpcContext {
+const TEST_MNEMONIC = 'test test test test test test test test test test test junk'
+
+function createCtx(ip?: string, context = 'local'): RpcContext {
     return {
         request: new Request('https://relayer.local/', {
             headers: ip ? { 'cf-connecting-ip': ip } : {},
@@ -226,7 +235,9 @@ function createCtx(ip?: string): RpcContext {
             RPC_URL: 'http://rpc.test/8453',
             RPC_8453: 'http://rpc.test/8453',
             CHAIN_IDS: String(CHAIN_ID),
-            CONTEXT: 'local',
+            CONTEXT: context,
+            RELAYER_MNEMONIC: TEST_MNEMONIC,
+            RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: SECRET,
             FEE_RECIPIENT,
             ORCHESTRATOR_8453: ORCHESTRATOR,
@@ -582,7 +593,9 @@ beforeEach(() => {
     rpc.pullReverts = false
     rpc.authUsed = false
     rpc.upgradeRevertRemaining = 0
+    rpc.receiptMissing = false
     feeStore.clear()
+    rpcCalls.length = 0
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
         const url =
             typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
@@ -596,8 +609,14 @@ beforeEach(() => {
               : {}
         const batch = Array.isArray(raw) ? raw : [raw]
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
+            rpcCalls.push(call)
             let result: unknown = '0x'
-            const tx = call.params?.[0] as { authorizationList?: unknown; data?: string; to?: string } | undefined
+            const tx = call.params?.[0] as {
+                authorizationList?: unknown
+                data?: string
+                to?: string
+                from?: string
+            } | undefined
             if (call.method === 'eth_getCode') result = rpc.code
             else if (call.method === 'eth_getTransactionCount') result = rpc.nonce
             else if (call.method === 'eth_call' && tx?.to?.toLowerCase() === ORCHESTRATOR.toLowerCase()) {
@@ -608,6 +627,13 @@ beforeEach(() => {
             } else if (call.method === 'eth_call') result = word(rpc.balance)
             else if (call.method === 'eth_chainId') result = '0x2105'
             else if (call.method === 'eth_getTransactionReceipt') {
+                if (rpc.receiptMissing && call.params?.[0] !== PULL_HASH) {
+                    return {
+                        jsonrpc: '2.0',
+                        id: call.id ?? 1,
+                        error: { code: -32000, message: 'receipt missing' },
+                    }
+                }
                 result = call.params?.[0] === PULL_HASH ? pullReceipt() : successReceipt()
             }
             return { jsonrpc: '2.0', id: call.id ?? 1, result }
@@ -877,6 +903,52 @@ describe('paid upgrade send refusals', () => {
         expect(gasHeld).toBe(0n)
     })
 
+    it('simulates the execute from the relayer signer that will broadcast', async () => {
+        const { params } = await signedParams()
+        await handleSendPreparedCalls(params, createCtx('203.0.113.50'))
+        const exec = rpcCalls.find((call) => {
+            const tx = call.params?.[0] as { authorizationList?: unknown } | undefined
+            return call.method === 'eth_call' && tx?.authorizationList !== undefined
+        })
+        const tx = exec?.params?.[0] as { from?: string } | undefined
+        expect(tx?.from?.toLowerCase()).toBe('0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266')
+    })
+
+    it('refuses a paid upgrade with no client IP outside local', async () => {
+        const { params } = await signedParams()
+        await expect(handleSendPreparedCalls(params, createCtx(undefined, 'prod'))).rejects.toMatchObject({
+            code: INVALID_PARAMS,
+            message: 'Paid upgrade client IP is required',
+        })
+        expect(captures).toHaveLength(0)
+        expect(gasLog).toHaveLength(0)
+    })
+
+    it('keeps a missing client IP on the local unknown bucket', async () => {
+        const { params } = await signedParams()
+        await handleSendPreparedCalls(params, createCtx())
+        expect(rateBodies.some((body) => body.ip === 'unknown' && body.action === 'reserve')).toBe(
+            true,
+        )
+    })
+
+    it('queues a missed receipt so the gas hold can be reconciled', async () => {
+        rpc.receiptMissing = true
+        const { params } = await signedParams()
+        const ctx = createCtx('203.0.113.50')
+        ;(ctx.env as Env).PAID_UPGRADE_RECEIPT_WAIT_MS = '200'
+        const result = await handleSendPreparedCalls(params, ctx)
+        expect(result.id).toEqual(expect.any(String))
+        expect(gasHeld).toBe(500_000n)
+        expect(gasLog.map((entry) => entry.action)).toEqual([
+            'reserve-gas',
+            'settle-gas',
+            'reserve-gas',
+            'enqueue-receipt',
+        ])
+        expect(gasLog.at(-1)?.txHash).toBe(UPGRADE_HASH)
+    }, 25_000)
+
     it('sends the caller IP into the paid rate buckets', async () => {
         const { params } = await signedParams()
         await handleSendPreparedCalls(params, createCtx('203.0.113.50'))
@@ -888,6 +960,7 @@ describe('paid upgrade send refusals', () => {
             chainId: CHAIN_ID,
             account: '0xabc',
             ip: '2001:db8:1:2::',
+            includeGlobal: true,
         })
         expect(buckets.map((bucket) => bucket.key)).toEqual([
             `paid-upgrade:address:${CHAIN_ID}:0xabc`,
@@ -896,7 +969,7 @@ describe('paid upgrade send refusals', () => {
             `paid-upgrade:global:${CHAIN_ID}`,
         ])
         expect(buckets.find((bucket) => bucket.key.includes(':ip56:'))?.limit).toBe(8)
-        expect(buckets.find((bucket) => bucket.key.includes(':global:'))?.limit).toBe(20)
+        expect(buckets.find((bucket) => bucket.key.includes(':global:'))?.limit).toBe(60)
         const store = new Map<string, number>()
         const now = 1_700_000_000
         for (let index = 0; index < 8; index++) {
@@ -924,33 +997,112 @@ describe('paid upgrade send refusals', () => {
         ).toBe(false)
     })
 
-    it('stops a fresh address once the chain ceiling is full', () => {
-        const store = new Map<string, number>()
+    it('refuses the 9th send from one IP', () => {
         const now = 1_700_000_000
-        for (let index = 0; index < 20; index++) {
-            expect(
-                consumeRateLimit(
-                    store,
-                    paidUpgradeRateBuckets({
-                        chainId: CHAIN_ID,
-                        account: `0x${(index + 1).toString(16).padStart(40, '0')}`,
-                        ip: `198.51.100.${index}`,
-                    }),
-                    now,
-                ).allowed,
-            ).toBe(true)
+        const store = new Map<string, number>()
+        for (let index = 0; index < 8; index++) {
+            const decision = consumeRateLimit(
+                store,
+                paidUpgradeRateBuckets({
+                    chainId: CHAIN_ID,
+                    account: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+                    ip: '203.0.113.8',
+                }),
+                now,
+            )
+            expect(decision.allowed).toBe(true)
         }
         expect(
             consumeRateLimit(
                 store,
                 paidUpgradeRateBuckets({
                     chainId: CHAIN_ID,
-                    account: `0x${'ab'.repeat(20)}`,
-                    ip: '198.51.100.200',
+                    account: `0x${'a'.repeat(40)}`,
+                    ip: '203.0.113.8',
                 }),
                 now,
             ).allowed,
         ).toBe(false)
+        expect(
+            consumeRateLimit(
+                store,
+                paidUpgradeRateBuckets({
+                    chainId: CHAIN_ID,
+                    account: `0x${'b'.repeat(40)}`,
+                    ip: '203.0.113.9',
+                }),
+                now,
+            ).allowed,
+        ).toBe(true)
+    })
+
+    it('counts only sends toward the chain ceiling of 60', () => {
+        const now = 1_700_000_000
+        const prepareBuckets = paidUpgradeRateBuckets({
+            chainId: CHAIN_ID,
+            account: '0xabc',
+            ip: '203.0.113.1',
+            includeGlobal: false,
+        })
+        const sendBuckets = paidUpgradeRateBuckets({
+            chainId: CHAIN_ID,
+            account: '0xabc',
+            ip: '203.0.113.1',
+            includeGlobal: true,
+        })
+        const prepareStore = new Map<string, number>()
+        let preparesAllowed = 0
+        for (let index = 0; index < 60; index++) {
+            const allowed = consumeRateLimit(
+                prepareStore,
+                paidUpgradeRateBuckets({
+                    chainId: CHAIN_ID,
+                    account: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+                    ip: `203.0.${index}.1`,
+                    includeGlobal: false,
+                }),
+                now,
+            ).allowed
+            if (allowed) preparesAllowed += 1
+        }
+        const sendStore = new Map<string, number>()
+        let sendsAllowed = 0
+        for (let index = 0; index < 60; index++) {
+            const allowed = consumeRateLimit(
+                sendStore,
+                paidUpgradeRateBuckets({
+                    chainId: CHAIN_ID,
+                    account: `0x${(index + 1).toString(16).padStart(40, 'a')}`,
+                    ip: `198.51.${index}.1`,
+                    includeGlobal: true,
+                }),
+                now,
+            ).allowed
+            if (allowed) sendsAllowed += 1
+        }
+        const sixtyFirst = consumeRateLimit(
+            sendStore,
+            paidUpgradeRateBuckets({
+                chainId: CHAIN_ID,
+                account: `0x${'cd'.repeat(20)}`,
+                ip: '198.51.100.200',
+                includeGlobal: true,
+            }),
+            now,
+        ).allowed
+        expect({
+            prepareHasGlobal: prepareBuckets.some((bucket) => bucket.key.includes(':global:')),
+            limit: sendBuckets.find((bucket) => bucket.key.includes(':global:'))?.limit,
+            preparesAllowed,
+            sendsAllowed,
+            sixtyFirst,
+        }).toEqual({
+            prepareHasGlobal: false,
+            limit: 60,
+            preparesAllowed: 60,
+            sendsAllowed: 60,
+            sixtyFirst: false,
+        })
     })
 
     it('does not sign a quote when the paid rate-limit commit is rejected', async () => {

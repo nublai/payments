@@ -32,15 +32,16 @@ import type {
     PrepareCallsContext,
     PrepareCallsResult,
 } from '../schema/prepareCalls'
-import { upgradeClientIp } from './shared/upgrade-rate-limit'
 import { paidUpgradeFeeRecipient } from './shared/paid-upgrade-fee-flow'
 import {
     assertPaidUpgrade,
     assertPaidUpgradeRateCapacity,
+    requirePaidUpgradeClientIp,
     chainUsdcAddress,
     clampPaidUpgradePaymentMax,
     encodeSignedPreCall,
     paidUpgradeMaxPayment,
+    paidUpgradeSignedGas,
     recordPaidUpgradeRateLimit,
 } from './shared/paid-upgrade'
 
@@ -102,7 +103,9 @@ export async function handlePrepareCalls(
     }))
 
     const requestedUpgrade = typedParams.capabilities?.accountUpgrade
-    const paidUpgradeIp = upgradeClientIp(ctx.request)
+    const paidUpgradeIp = requestedUpgrade
+        ? requirePaidUpgradeClientIp(ctx.request, env)
+        : 'unknown'
     let upgradePreCallEncoding: Hex[] | undefined
     if (requestedUpgrade) {
         await assertPaidUpgradeRateCapacity(env, config.chainId, typedParams.from, paidUpgradeIp)
@@ -156,6 +159,13 @@ export async function handlePrepareCalls(
     const publicClient = createPublicClient({ transport: http(config.rpcUrl) })
 
     const txGas = BigInt(result.txGas ?? '100000')
+    if (requestedUpgrade) {
+        try {
+            paidUpgradeSignedGas(txGas)
+        } catch {
+            throw new RpcError(INVALID_PARAMS, 'Paid upgrade gas limit exceeds the reserved hold')
+        }
+    }
     let feeEstimate
     try {
         feeEstimate = await getFeeEstimate(publicClient, txGas, feeConfig)
