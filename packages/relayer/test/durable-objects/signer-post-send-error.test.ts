@@ -10,6 +10,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import type { Address, Hex } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
+import { formerProd8453Env } from '../former-prod-env'
 import { authMiddleware } from '../../src/auth/middleware'
 import type { AuthProvider } from '../../src/auth/types'
 import { SignerDO } from '../../src/durable-objects/signer.do'
@@ -302,6 +303,7 @@ function createUpgradeEnv(
         RPC_URL: 'http://127.0.0.1:18545',
         RPC_8453: 'http://127.0.0.1:18545',
         CONTEXT: 'prod',
+        ...formerProd8453Env,
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',

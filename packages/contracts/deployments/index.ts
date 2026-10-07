@@ -34,10 +34,22 @@ const requiredAddressKeys = [
 
 type RequiredAddressKey = (typeof requiredAddressKeys)[number]
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+function isDeployedAddress(value: string | undefined): value is Address {
+  if (typeof value !== 'string') return false
+  const normalized = value.trim().toLowerCase()
+  // Reject only empty and zero sentinels. Callers such as the relayer
+  // capabilities mock use non-address placeholders (for example "0xAccount"),
+  // and Boolean(value) used to accept those.
+  if (normalized.length === 0 || normalized === '0x' || normalized === '0x0') return false
+  return normalized !== ZERO_ADDRESS
+}
+
 function hasRequiredAddresses(
   addresses: Record<string, Address | undefined>
 ): addresses is Record<RequiredAddressKey, Address> {
-  return requiredAddressKeys.every((key) => Boolean(addresses[key]))
+  return requiredAddressKeys.every((key) => isDeployedAddress(addresses[key]))
 }
 
 // Re-export raw JSON
@@ -97,7 +109,7 @@ export function getChainIds(context: string): number[] {
 }
 
 export function hasDeployment(context: string, chainId: number): boolean {
-  return context in (deployments as unknown as Deployments) && chainId in (deployments as unknown as Deployments)[context]
+  return getAddresses(context, chainId) !== undefined
 }
 
 // Env var keys (matches output from make-config.js)
@@ -174,17 +186,17 @@ export function getAddressesWithFallback(
   chainId: number,
   opts?: EnvOpts
 ): ContractAddresses | undefined {
-  // Try JSON first
+  // Try JSON first. A zero address in the file is not a deployment.
   const fromJson = getAddresses(context, chainId)
   if (fromJson) return fromJson
 
-  // Fallback to env vars for local contexts
-  if (context.startsWith('local') || chainId === 31337 || chainId === 41337) {
-    // Try chain-specific suffix first (e.g., ORCHESTRATOR_41337)
-    const chainSpecific = getAddressesFromEnvForChain(chainId, opts)
-    if (chainSpecific) return chainSpecific
+  // Chain-suffixed env (ORCHESTRATOR_8453 and the other seven keys) applies
+  // on every chain. Unsuffixed env stays local-only so a bare ORCHESTRATOR
+  // does not make a published chain look deployed.
+  const chainSpecific = getAddressesFromEnvForChain(chainId, opts)
+  if (chainSpecific) return chainSpecific
 
-    // Fall back to non-prefixed env vars (backwards compatible for primary chain)
+  if (context.startsWith('local') || chainId === 31337 || chainId === 41337) {
     return getAddressesFromEnv(opts)
   }
 

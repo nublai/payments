@@ -30,6 +30,15 @@ function readDeployEnvValue(name: string): string | undefined {
     return undefined
 }
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+function isUsableAddress(raw: string | undefined): raw is string {
+    if (!raw) return false
+    const normalized = raw.trim().toLowerCase()
+    if (!/^0x[0-9a-f]{40}$/.test(normalized)) return false
+    return normalized !== ZERO_ADDRESS
+}
+
 function resolveLocalOrPublished(
     env: EnvName,
     chainId: number,
@@ -40,22 +49,27 @@ function resolveLocalOrPublished(
     const fromJson = getAddresses(env, chainId)?.[field]
     if (fromJson) return getAddress(fromJson)
 
+    const key = `${envPrefix}_${chainId}`
+    const fromProcess = process.env[key]?.trim()
+    if (isUsableAddress(fromProcess)) return getAddress(fromProcess)
+
     if (chainId === 31337 || chainId === 41337) {
-        const key = `${envPrefix}_${chainId}`
         const raw = readDeployEnvValue(key)
-        if (raw) return getAddress(raw)
+        if (isUsableAddress(raw)) return getAddress(raw)
         throw new Error(
             `No ${label} for local chain ${chainId}. Set ${key} from the local deploy env (packages/contracts/deployments/envs/local/.env).`,
         )
     }
 
-    throw new Error(`No ${label} deployment for ${env}/${chainId}. Refusing to continue.`)
+    throw new Error(
+        `No ${label} deployment for ${env}/${chainId}. Contracts are not deployed. Refusing to continue.`,
+    )
 }
 
 /**
  * Orchestrator used as the EIP-712 verifying contract.
- * Published chains come from deployments JSON. Local Anvil (31337) reads
- * ORCHESTRATOR_31337 from the process env or the local deploy env file.
+ * Published chains come from deployments JSON, then from ORCHESTRATOR_<chainId>.
+ * Local Anvil (31337) also reads the local deploy env file.
  */
 export function resolveOrchestratorAddress(env: EnvName, chainId: number): Address {
     return resolveLocalOrPublished(env, chainId, 'orchestrator', 'ORCHESTRATOR', 'orchestrator')

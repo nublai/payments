@@ -1,4 +1,13 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 import {
     AccountSendError,
     executeAccountSend,

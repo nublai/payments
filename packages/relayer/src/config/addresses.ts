@@ -53,6 +53,6 @@ export function getContractAddresses(
     }
 
     throw new Error(
-        `No deployment found for ${context}/${chainId} and ORCHESTRATOR_${chainId} not set`,
+        `No deployment found for ${context}/${chainId}: contracts are not deployed and ORCHESTRATOR_${chainId} not set`,
     )
 }

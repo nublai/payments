@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http'
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { zeroAddress, type Address, type Hex } from 'viem'
 import { hashTypedData } from 'viem/utils'
 import { INTENT_TYPES, type Call } from '@nubl/relayer-client'
@@ -9,6 +9,15 @@ import { discloseFeeCap } from '../src/lib/intent-payment'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from '../src/lib/gas-ceiling'
 import { getEnvRelayerUrl, getUsdcAddressByChainId } from '../src/lib/network-config'
 import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 const EOA = '0x1111111111111111111111111111111111111111' as Address
 const TARGET = '0x2222222222222222222222222222222222222222' as Address

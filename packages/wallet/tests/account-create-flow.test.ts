@@ -127,7 +127,26 @@ test('resolveKeystorePath rejects invalid --profile', () => {
 })
 
 test('getDefaultSessionPermissions is the narrow USDC and escrow set', () => {
-    const permissions = getDefaultSessionPermissions(8453, { env: 'prod' })
+    const previous = {
+        ORCHESTRATOR_31337: process.env.ORCHESTRATOR_31337,
+        SIMPLE_FUNDER_31337: process.env.SIMPLE_FUNDER_31337,
+        SIMULATOR_31337: process.env.SIMULATOR_31337,
+        ACCOUNT_31337: process.env.ACCOUNT_31337,
+        ACCOUNT_PROXY_31337: process.env.ACCOUNT_PROXY_31337,
+        SIMPLE_SETTLER_31337: process.env.SIMPLE_SETTLER_31337,
+        ESCROW_31337: process.env.ESCROW_31337,
+        MULTI_SIG_SIGNER_31337: process.env.MULTI_SIG_SIGNER_31337,
+    }
+    process.env.ORCHESTRATOR_31337 = '0x2222222222222222222222222222222222222222'
+    process.env.SIMPLE_FUNDER_31337 = '0x0000000000000000000000000000000000000004'
+    process.env.SIMULATOR_31337 = '0x0000000000000000000000000000000000000005'
+    process.env.ACCOUNT_31337 = '0x0000000000000000000000000000000000000003'
+    process.env.ACCOUNT_PROXY_31337 = '0x1111111111111111111111111111111111111111'
+    process.env.SIMPLE_SETTLER_31337 = '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE'
+    process.env.ESCROW_31337 = '0x05f9597eed844410b7c0746A1C584188d0644730'
+    process.env.MULTI_SIG_SIGNER_31337 = '0x0000000000000000000000000000000000000008'
+    try {
+    const permissions = getDefaultSessionPermissions(31337, { env: 'dev' })
     expect(permissions.filter((permission) => permission.type === 'call')).toEqual([
         {
             type: 'call',
@@ -169,6 +188,13 @@ test('getDefaultSessionPermissions is the narrow USDC and escrow set', () => {
     expect(JSON.stringify(permissions)).not.toContain('32323232')
     expect(() => getDefaultSessionPermissions(31337)).toThrow(/wildcard/)
     expect(() => getDefaultSessionPermissions(1, { env: 'prod' })).toThrow(/wildcard/)
+    expect(() => getDefaultSessionPermissions(8453, { env: 'prod' })).toThrow(/not deployed/)
+    } finally {
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+        }
+    }
 })
 
 test('assertAccountCreateCanInitialize fails early when keystore exists', async () => {

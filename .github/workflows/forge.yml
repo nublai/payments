@@ -29,4 +29,17 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Test
-        run: bun run --cwd packages/contracts test -- --ffi
+        # Release profile (via_ir, 200 optimizer runs). This is the only
+        # forge build in this job, so out/ is not a default-profile artifact.
+        working-directory: packages/contracts
+        run: FOUNDRY_PROFILE=release forge test --ffi
+
+      - name: Check release runtime size
+        # Fails if Account runtime exceeds 24,576 bytes. The log prints the
+        # Account size and the bytes of headroom under that limit.
+        working-directory: packages/contracts
+        run: ./scripts/sh/check-runtime-size.sh
+
+      - name: Release follow-up checks
+        working-directory: packages/contracts
+        run: ./scripts/sh/test-release-followups.sh

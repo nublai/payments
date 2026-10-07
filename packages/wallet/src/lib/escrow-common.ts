@@ -74,7 +74,7 @@ export function resolveEscrowContracts(
     if (!addresses) {
         throw new EscrowError(
             'CONTRACTS_NOT_DEPLOYED',
-            `No escrow deployment found for ${env}/${chainId}. Escrow may not be deployed on this chain.`,
+            `No escrow deployment found for ${env}/${chainId}. Contracts are not deployed on this chain.`,
         )
     }
 

@@ -1,7 +1,16 @@
-import { expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import type { Hex } from 'viem'
 import { executeAccountDelegate, resolveAccountDelegatePassword } from '../src/lib/account-delegate'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+let restoreFormerProdDeployments = () => {}
+beforeAll(() => {
+    restoreFormerProdDeployments = installFormerProdDeployments()
+})
+afterAll(() => {
+    restoreFormerProdDeployments()
+})
 
 function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRootKeystoreV2 {
     return {

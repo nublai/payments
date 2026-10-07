@@ -15,6 +15,7 @@ import { createSessionKeystore, ensureOwnerOnlyDirectory } from '../src/lib/keys
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
@@ -68,9 +69,13 @@ async function stageDir(prefix: string) {
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    // Published JSON is zero. Stage rotations resolve the orchestrator from
+    // ORCHESTRATOR_<chainId> for this test only.
+    const restoreStage = installFormerStageDeployments()
     try {
         return await fn()
     } finally {
+        restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
