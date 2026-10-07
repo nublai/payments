@@ -58,7 +58,7 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
         } catch {
             if (!hasDeployment(context, chainId)) {
                 missing.push(
-                    `Contract addresses for chain ${chainId} (set ORCHESTRATOR_${chainId} or provide deployment)`,
+                    `Contract addresses for chain ${chainId} are not deployed (set ORCHESTRATOR_${chainId} or provide deployment)`,
                 )
             }
         }
