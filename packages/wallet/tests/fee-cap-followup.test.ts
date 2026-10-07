@@ -447,6 +447,24 @@ test('a local zero quote signs cap 0 with a zero payer and says so', async () =>
     })
 })
 
+test('dev on a non-local chain clamps an explicit cap to 5 USDC', async () => {
+    const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
+        preparedQuote(input, '10000000', 8453),
+    )
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 8453,
+            env: 'dev',
+            paymentMaxAmount: 100_000_000n,
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payment amount exceeds fee cap/)
+    expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
 test('dev on a non-local chain refuses a zero payer and token', async () => {
     const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '0', 8453))
     await expect(

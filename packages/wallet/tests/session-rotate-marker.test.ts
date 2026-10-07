@@ -370,6 +370,62 @@ test('rotation marker with fullAccess requires the human phrase on a plain resum
     })
 })
 
+test('plain resume of a full-access marker tells the user to rerun with --resume --full-access', async () => {
+    await withStage(async () => {
+        const { keystorePath, sessions } = await stageDir()
+        const hash = computeSessionKeyHash(newAddress)
+        await writeFile(
+            join(sessions, '.rotation-evil.json'),
+            `${JSON.stringify(
+                {
+                    oldSessionName: 'default',
+                    newSessionName: 'default-next',
+                    status: 'pending',
+                    chain: 'base',
+                    chainId: 8453,
+                    newKeyHash: hash,
+                    narrow: false,
+                    fullAccess: true,
+                },
+                null,
+                2,
+            )}\n`,
+        )
+
+        const signed: Hex[] = []
+        const signTypedData = mock(async () => {
+            throw new Error('signTypedData should not run')
+        })
+        const sendPreparedCalls = mock(async () => {
+            throw new Error('sendPreparedCalls should not run')
+        })
+        await expect(
+            executeSessionRotate(
+                {
+                    env: 'stage',
+                    chain: 'base',
+                    keystorePath,
+                    password: 'pw',
+                    resume: true,
+                },
+                rotateDeps(keystorePath, {
+                    signTypedData,
+                    sendPreparedCalls,
+                    executeSignedCalls: mock(
+                        async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                            for (const call of params.calls) signed.push(call.data)
+                            return confirmedBundle('bundle-evil')
+                        },
+                    ),
+                }) as never,
+            ),
+        ).rejects.toThrow(/tw session rotate --resume --full-access/)
+        expect(signed).toEqual([])
+        expect(signTypedData).not.toHaveBeenCalled()
+        expect(sendPreparedCalls).not.toHaveBeenCalled()
+    })
+})
+
 test('rotation marker newKeyHash must be 0x and 64 hex characters', async () => {
     await withStage(async () => {
         const { keystorePath, sessions } = await stageDir()
@@ -465,5 +521,143 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
         expect(raw.status).toBe('submitted')
         expect(raw.bundleId).toBe('bundle-timeout')
         expect(unlinked.some((path) => path.endsWith('default-next.json'))).toBe(false)
+    })
+})
+
+test('rotation without --resume refuses an existing marker and does not authorize again', async () => {
+    await withStage(async () => {
+        const { keystorePath, sessions } = await stageDir()
+        await expect(
+            executeSessionRotate(
+                {
+                    env: 'stage',
+                    chain: 'base',
+                    keystorePath,
+                    password: 'pw',
+                    narrow: true,
+                    newName: 'default-next',
+                },
+                rotateDeps(keystorePath, {
+                    readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
+                    executeSignedCalls: mock(async () => {
+                        throw new Error(
+                            'Timeout waiting for bundle bundle-timeout to reach final status. Current status: 100',
+                        )
+                    }),
+                }) as never,
+            ),
+        ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
+
+        const before = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        ) as { newSessionName?: string; bundleId?: string }
+        const signed: Hex[] = []
+        const signTypedData = mock(async () => {
+            throw new Error('signTypedData should not run')
+        })
+        const sendPreparedCalls = mock(async () => {
+            throw new Error('sendPreparedCalls should not run')
+        })
+        await expect(
+            executeSessionRotate(
+                {
+                    env: 'stage',
+                    chain: 'base',
+                    keystorePath,
+                    password: 'pw',
+                    narrow: true,
+                    newName: 'default-other',
+                },
+                rotateDeps(keystorePath, {
+                    readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
+                    signTypedData,
+                    sendPreparedCalls,
+                    executeSignedCalls: mock(
+                        async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                            for (const call of params.calls) signed.push(call.data)
+                            return confirmedBundle('bundle-second')
+                        },
+                    ),
+                }) as never,
+            ),
+        ).rejects.toThrow(/tw session rotate --resume/)
+        expect(signed).toEqual([])
+        expect(signTypedData).not.toHaveBeenCalled()
+        expect(sendPreparedCalls).not.toHaveBeenCalled()
+        const after = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
+            newSessionName?: string
+            bundleId?: string
+        }
+        expect(after.newSessionName).toBe(before.newSessionName)
+        expect(after.bundleId).toBe(before.bundleId)
+    })
+})
+
+test('resume after the pointer moved finishes cleanup and signs nothing', async () => {
+    await withStage(async () => {
+        const { keystorePath, sessions } = await stageDir()
+        await writeFile(join(sessions, 'default-next.json'), '{}\n')
+        const hash = computeSessionKeyHash(newAddress)
+        await writeFile(
+            join(sessions, '.rotation.json'),
+            `${JSON.stringify(
+                {
+                    oldSessionName: 'default',
+                    newSessionName: 'default-next',
+                    status: 'submitted',
+                    bundleId: 'bundle-done',
+                    chain: 'base',
+                    chainId: 8453,
+                    newKeyHash: hash,
+                    narrow: true,
+                    fullAccess: false,
+                },
+                null,
+                2,
+            )}\n`,
+        )
+
+        const signTypedData = mock(async () => {
+            throw new Error('signTypedData should not run')
+        })
+        const sendPreparedCalls = mock(async () => {
+            throw new Error('sendPreparedCalls should not run')
+        })
+        const executeSigned = mock(async () => {
+            throw new Error('executeSignedCalls should not run')
+        })
+        const result = await executeSessionRotate(
+            {
+                env: 'stage',
+                chain: 'base',
+                keystorePath,
+                password: 'pw',
+                resume: true,
+            },
+            rotateDeps(keystorePath, {
+                readKeystoreBundle: mock(async () => {
+                    const bundle = rootBundle()
+                    bundle.root.sessionRef.active = 'default-next'
+                    return bundle
+                }),
+                readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
+                getKeys: mock(async () => ({
+                    '0x2105': [{ hash }],
+                })),
+                signTypedData,
+                sendPreparedCalls,
+                executeSignedCalls: executeSigned,
+            }) as never,
+        )
+
+        expect(result.status).toBe('complete')
+        expect(result.newSessionName).toBe('default-next')
+        expect(signTypedData).not.toHaveBeenCalled()
+        expect(sendPreparedCalls).not.toHaveBeenCalled()
+        expect(executeSigned).not.toHaveBeenCalled()
+        const onDisk = await readdir(sessions)
+        expect(onDisk).not.toContain('.rotation.json')
+        expect(onDisk).not.toContain('default.json')
+        expect(onDisk).toContain('default-next.json')
     })
 })

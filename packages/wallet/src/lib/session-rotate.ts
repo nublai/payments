@@ -93,6 +93,7 @@ type SessionRotateErrorCode =
     | 'KEYSTORE_NOT_FOUND'
     | 'PASSWORD_REQUIRED'
     | 'ROTATION_FAILED'
+    | 'ROTATION_IN_PROGRESS'
     | 'ROTATION_PARTIAL'
     | 'ROTATION_SUBMITTED'
     | 'ROTATION_MARKER_AMBIGUOUS'
@@ -533,13 +534,20 @@ function rotationSubmittedError(bundleId: string | undefined): SessionRotateErro
     )
 }
 
-function requireRotateFullAccessPhrase(fullAccess: boolean, confirmed: boolean | undefined): void {
+function requireRotateFullAccessPhrase(
+    fullAccess: boolean,
+    confirmed: boolean | undefined,
+    resumed: boolean,
+): void {
     if (!fullAccess || confirmed) return
+    const rerun = resumed
+        ? ' Re-run `tw session rotate --resume --full-access` and type the phrase when prompted.'
+        : ''
     throw new HumanConfirmationError(
-        humanConfirmationMessage(
+        `${humanConfirmationMessage(
             'Rotating to a full-access session',
             CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
-        ),
+        )}${rerun}`,
     )
 }
 
@@ -614,6 +622,14 @@ export async function executeSessionRotate(
                 newSessionPath: oldSessionPath,
                 bundle: { id: 'noop', status: 'already-complete', statusCode: 0 },
             }
+        }
+
+        if (intent && !options.resume) {
+            throw new SessionRotateError(
+                'ROTATION_IN_PROGRESS',
+                'A session rotation is already in progress. The new session file was kept. Resume with `tw session rotate --resume`.',
+                { recoveryCommand: 'tw session rotate --resume' },
+            )
         }
 
         if (!intent || !options.resume) {
@@ -695,7 +711,72 @@ export async function executeSessionRotate(
                 )
             }
         }
-        requireRotateFullAccessPhrase(intent.fullAccess, options.fullAccessPhraseConfirmed)
+        if (resumed && activeSessionName === intent.newSessionName) {
+            const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+            const signedNetwork = {
+                ...network,
+                authSigner: createEthHttpSigner(decryptedRoot.rootPrivateKey, network.chainId),
+            }
+            const keysNow = await deps.getKeys({
+                network: signedNetwork,
+                account: accountAddress,
+                chainId: network.chainId,
+            })
+            const present = getChainKeys(keysNow, network.chainId)
+            const hasNew = present.some(
+                (entry: { hash?: string }) =>
+                    typeof entry.hash === 'string' &&
+                    entry.hash.toLowerCase() === newKeyHash.toLowerCase(),
+            )
+            if (!hasNew) {
+                throw new SessionRotateError(
+                    'ROTATION_VERIFICATION_FAILED',
+                    'Rotation confirmation failed on-chain verification.',
+                    { recoveryCommand: 'tw session list --on-chain --json' },
+                )
+            }
+            const previousSessionPath = resolveSessionKeystorePath(
+                keystorePath,
+                intent.oldSessionName,
+                bundle.root.sessionRef.dir,
+            )
+            await deps.writeSessionKeystoreFile(
+                newSessionPath,
+                { ...newSession, checkpoint: 'authorized' },
+                { overwrite: true },
+            )
+            await deps.deleteRotationIntent(
+                keystorePath,
+                bundle.root.sessionRef.dir,
+                intent.fileName,
+            )
+            if (previousSessionPath !== newSessionPath) {
+                await deps.unlink(previousSessionPath).catch(() => undefined)
+            }
+            const finishedId = intent.status === 'submitted' ? intent.bundleId : 'already-complete'
+            return {
+                type: 'session_rotate',
+                status: 'complete',
+                resumed: true,
+                keystorePath,
+                network,
+                accountAddress,
+                oldSessionName: intent.oldSessionName,
+                newSessionName: intent.newSessionName,
+                oldSessionPath: previousSessionPath,
+                newSessionPath,
+                bundle: {
+                    id: finishedId,
+                    status: 'already-complete',
+                    statusCode: 200,
+                },
+            }
+        }
+        requireRotateFullAccessPhrase(
+            intent.fullAccess,
+            options.fullAccessPhraseConfirmed,
+            resumed,
+        )
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
         const signedNetwork = {
             ...network,

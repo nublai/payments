@@ -15,7 +15,12 @@ import {
 } from '@nubl/relayer-client'
 import type { Address, type Hex } from 'viem'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from './gas-ceiling'
-import { discloseFeeCap, isLocalFeeChain, resolveIntentPayment, type FeeCapDisclosure } from './intent-payment'
+import {
+    discloseFeeCap,
+    PAID_FEE_CAP,
+    resolveIntentPayment,
+    type FeeCapDisclosure,
+} from './intent-payment'
 import type { EnvName } from './network-config'
 import { resolveOrchestratorAddress } from './orchestrator-address'
 
@@ -84,7 +89,10 @@ export async function executeSignedCalls(
     // a zero pair cannot sign native ETH and a raw 5_000_000 cap cannot apply
     // to WBTC. Omitting the cap still uses the policy ceiling when both payer
     // and token are passed, or when neither is.
-    const zeroFee = isLocalFeeChain(params.env, params.chainId)
+    // A zero quote and an unclamped caller cap are legal only on local chain ids.
+    // env "dev" on Base still uses the 5 USDC clamp.
+    const localFeeChain = params.chainId === 31337 || params.chainId === 41337
+    const zeroFee = localFeeChain
     refuseLonePayerOrToken(params.payer, params.paymentToken, params.paymentMaxAmount)
     if (params.paymentMaxAmount !== undefined) {
         requirePayerAndToken(params.payer, params.paymentToken)
@@ -94,11 +102,9 @@ export async function executeSignedCalls(
             ? policy.paymentMaxAmount
             : zeroFee
               ? params.paymentMaxAmount
-              : clampPaymentCeiling(params.paymentMaxAmount, policy.paymentMaxAmount)
+              : clampPaymentCeiling(params.paymentMaxAmount, PAID_FEE_CAP)
     const payer = params.payer ?? policy.payer
     const paymentToken = params.paymentToken ?? policy.paymentToken
-    // Zero payer/token is legal only on local chain ids 31337 and 41337.
-    const localFeeChain = params.chainId === 31337 || params.chainId === 41337
     if (!localFeeChain) assertOffLocalFeeToken(params.chainId, payer, paymentToken)
     const payment = { payer, paymentToken, paymentMaxAmount: ceiling }
     const combinedGasCeiling =
