@@ -1,14 +1,15 @@
 import { expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { encodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import { encodeAbiParameters, encodeFunctionData, getAddress, type Address, type Hex } from 'viem'
 import { simulateRelayQuote } from '../src/lib/relay-simulate'
 
 const ANVIL = `${process.env.HOME}/.foundry/bin/anvil`
 const FORGE = `${process.env.HOME}/.foundry/bin/forge`
 const USER = '0x1111111111111111111111111111111111111111' as Address
 const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
-const ORIGIN = '0x9999999999999999999999999999999999999999' as Address
+const RELAYER_SIGNER = '0x277b7440CE050d9e9e428d1f349E51D468c7eB7E' as Address
+const STAND_IN_ORIGIN = '0x9999999999999999999999999999999999999999' as Address
 const ROOT = new URL('./fixtures/sim-path/', import.meta.url).pathname
 
 function sleep(ms: number): Promise<void> {
@@ -89,7 +90,9 @@ test(
             const output = await deploy(url, bytecode('Mintable'))
             const forwarder = await deploy(url, bytecode('ForwardAccount'))
             const orchestrator = await deploy(url, bytecode('HarnessOrchestrator'))
-            const router = await deploy(url, bytecode('OriginRouter'))
+            const routerCode = bytecode('OriginRouter')
+            const routerArgs = encodeAbiParameters([{ type: 'address' }], [RELAYER_SIGNER])
+            const router = await deploy(url, `${routerCode}${routerArgs.slice(2)}` as Hex)
 
             const mint = encodeFunctionData({
                 abi: [
@@ -147,13 +150,13 @@ test(
                     args: [output, USER, ATTACKER, 1000n, alwaysUser],
                 })
 
-            const execution = {
+            const executionFor = (origin: Address) => ({
                 orchestrator,
                 delegation: forwarder,
-                origin: ORIGIN,
+                origin,
                 keyHash: `0x${'ab'.repeat(32)}` as Hex,
                 nonce: 0n,
-            }
+            })
             const watches = [
                 { kind: 'erc20' as const, token: input, role: 'origin' as const },
                 { kind: 'erc20' as const, token: output, role: 'output' as const },
@@ -170,7 +173,7 @@ test(
                 cap: 5n,
                 sameChain: true,
                 minimumOutput: 1000n,
-                execution,
+                execution: executionFor(RELAYER_SIGNER),
             })
 
             await expect(
@@ -186,9 +189,25 @@ test(
                     cap: 5n,
                     sameChain: true,
                     minimumOutput: 1000n,
-                    execution,
+                    execution: executionFor(RELAYER_SIGNER),
                 }),
             ).rejects.toThrow(/below the quoted minimum of 1000/)
+
+            // A stand-in origin is paid. That is the hole a constant origin misses.
+            await simulateRelayQuote({
+                rpcUrl: url,
+                chainId: 8453,
+                user: USER,
+                calls: [
+                    { to: input, data: transfer, value: 0n },
+                    { to: router, data: pay(false), value: 0n },
+                ],
+                watches,
+                cap: 5n,
+                sameChain: true,
+                minimumOutput: 1000n,
+                execution: executionFor(STAND_IN_ORIGIN),
+            })
         } finally {
             anvil.kill('SIGKILL')
         }

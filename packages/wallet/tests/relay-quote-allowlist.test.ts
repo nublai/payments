@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { executeAccountSwap } from '../src/lib/account-swap'
+import { computeSessionKeyHash } from '../src/lib/session-common'
 import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
@@ -170,6 +171,18 @@ function runQuote(input: {
             simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
             installQuoteSpendLimit: async () => async () => {},
             readAllowance: async () => 0n,
+            getKeys: async () => ({
+                '0x2105': [
+                    {
+                        hash: computeSessionKeyHash(SESSION_ADDRESS as Address),
+                        expiry: '0x0',
+                        type: 'secp256k1' as const,
+                        role: 'normal' as const,
+                        publicKey: '0x' as const,
+                        permissions: [],
+                    },
+                ],
+            }),
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',
@@ -217,6 +230,18 @@ test('executeAccountSwap refuses a USDC.transfer quote on chain 31337 before sig
                     }),
                 ) as any,
                 readNonce: mock(async () => 2n),
+                getKeys: async () => ({
+                    '0x7a69': [
+                        {
+                            hash: computeSessionKeyHash(SESSION_ADDRESS as Address),
+                            expiry: '0x0',
+                            type: 'secp256k1' as const,
+                            role: 'normal' as const,
+                            publicKey: '0x' as const,
+                            permissions: [],
+                        },
+                    ],
+                }),
                 prepareCalls: mock(async () => {
                     throw new Error('prepareCalls must not run')
                 }) as any,

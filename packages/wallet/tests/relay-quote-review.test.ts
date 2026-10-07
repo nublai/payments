@@ -348,7 +348,19 @@ function run(input: {
                     }
                 }),
             readAllowance: input.readAllowance ?? (async () => 0n),
-            ...(input.getKeys ? { getKeys: input.getKeys as any } : {}),
+            getKeys: (input.getKeys ??
+                (async () => ({
+                    '0x2105': [
+                        {
+                            hash: computeSessionKeyHash(SESSION_ADDRESS),
+                            expiry: '0x0',
+                            type: 'secp256k1',
+                            role: 'normal',
+                            publicKey: '0x',
+                            permissions: [],
+                        },
+                    ],
+                }))) as any,
         },
     )
     return { result, signTypedData, prepareCalls, confirmQuote }
@@ -767,6 +779,10 @@ test('refuses a simulation that drops an unspent balance', async () => {
         simulateQuoteCalls: (input) =>
             simulateRelayQuote({
                 ...input,
+                execution: {
+                    ...input.execution,
+                    origin: input.execution.origin ?? EXECUTION.origin,
+                },
                 request: scriptedBalances({
                     // Watches: quoted USDC, native, then WETH. The drop is WETH.
                     before: [10_000000n, 10n ** 18n, 10n ** 18n],

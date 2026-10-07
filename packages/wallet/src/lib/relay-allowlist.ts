@@ -47,6 +47,9 @@ import type { RelayCurrencyAmount, RelayQuoteResponse } from './relay-link'
  *   0xcd6e13f7 is multicall((address,bool,uint256,bytes)[],address,address,bytes).
  *   0xf9e4bab4 is transferAndMulticall(address[],uint256[],(address,bool,uint256,bytes)[],address,address,bytes).
  *   ERC-20 approve is 0x095ea7b3. transfer, transferFrom, and increaseAllowance are refused.
+ *   Inner calls are allowlisted, not denylisted: only cleanupErc20s (0x9bb43718)
+ *   and cleanupNative (0xa6bd8c96) on an allowlisted relay contract are signed.
+ *   Any other inner selector, including 0x12345678, is refused.
  */
 
 const APPROVE_SELECTOR = '0x095ea7b3'
@@ -59,6 +62,12 @@ const FORBIDDEN_SELECTORS: Record<string, string> = {
     '0xa9059cbb': 'transfer',
     '0x23b872dd': 'transferFrom',
     '0x39509351': 'increaseAllowance',
+}
+
+/** Inner calls Relay quotes use besides the outer entrypoint. Anything else is refused. */
+const ALLOWED_INNER_SELECTORS: Record<string, string> = {
+    '0x9bb43718': 'cleanupErc20s',
+    '0xa6bd8c96': 'cleanupNative',
 }
 
 const VALUE_SELECTORS = new Set([MULTICALL_SELECTOR, DEPOSIT_NATIVE_SELECTOR])
@@ -278,13 +287,19 @@ function assertParty(address: Address, user: Address, kind: 'refundTo' | 'nftRec
     )
 }
 
-function assertInnerCalls(calls: InnerCall[]): void {
+function assertInnerCalls(calls: InnerCall[], chainId: number): void {
     for (const call of calls) {
         const forbidden = FORBIDDEN_SELECTORS[call.selector]
         if (forbidden || call.selector === APPROVE_SELECTOR) {
             const name = forbidden ?? 'approve'
             throw new RelayQuoteRejected(
                 `relay.link quote inner call is ${name} (${call.selector}) on ${call.target}, which swap and bridge will not sign.`,
+            )
+        }
+        const allowed = ALLOWED_INNER_SELECTORS[call.selector]
+        if (!allowed || !contractAt(chainId, call.target)) {
+            throw new RelayQuoteRejected(
+                `relay.link quote inner call ${call.selector} on ${call.target} is not an allowlisted relay entrypoint.`,
             )
         }
     }
@@ -301,14 +316,14 @@ function innerCallOf(target: Address, data: Hex): InnerCall {
     return { target, selector, functionName: name }
 }
 
-function decodeMulticall(data: Hex, user: Address): PartyCall {
+function decodeMulticall(data: Hex, user: Address, chainId: number): PartyCall {
     try {
         const decoded = decodeFunctionData({ abi: multicallAbi, data })
         const [calls, refundTo, nftRecipient] = decoded.args
         assertParty(getAddress(refundTo), user, 'refundTo')
         assertParty(getAddress(nftRecipient), user, 'nftRecipient')
         const innerCalls = calls.map((call) => innerCallOf(getAddress(call.target), call.callData))
-        assertInnerCalls(innerCalls)
+        assertInnerCalls(innerCalls, chainId)
         return {
             refundTo: getAddress(refundTo),
             nftRecipient: getAddress(nftRecipient),
@@ -376,6 +391,7 @@ function decodeTransferAndMulticall(
     user: Address,
     originCurrency: Address,
     inputIsNative: boolean,
+    chainId: number,
 ): { pulls: { token: Address; amount: bigint }[]; party: PartyCall } {
     try {
         const decoded = decodeFunctionData({ abi: transferAndMulticallAbi, data })
@@ -386,7 +402,7 @@ function decodeTransferAndMulticall(
             throw new RelayQuoteRejected('relay.link quote transferAndMulticall calldata is invalid.')
         }
         const innerCalls = calls.map((call) => innerCallOf(getAddress(call.target), call.callData))
-        assertInnerCalls(innerCalls)
+        assertInnerCalls(innerCalls, chainId)
         const pulls = tokens.map((token, index) => {
             const address = getAddress(token)
             const amount = amounts[index] ?? 0n
@@ -689,13 +705,14 @@ export function reviewRelayQuote(
                 user,
                 check.originCurrency,
                 check.inputIsNative,
+                check.sourceChainId,
             )
             for (const pull of decoded.pulls) {
                 addAmount(pullTotals, pull.token, pull.amount)
                 tokens.add(pull.token)
             }
         } else if (selector === MULTICALL_SELECTOR && contract) {
-            decodeMulticall(item.data.data, user)
+            decodeMulticall(item.data.data, user, check.sourceChainId)
         }
 
         nativeValue += value

@@ -2,6 +2,9 @@ import {
     encodeAbiParameters,
     encodeFunctionData,
     getAddress,
+    isAddress,
+    keccak256,
+    toHex,
     zeroAddress,
     type Address,
     type Hex,
@@ -14,16 +17,19 @@ import { wrapSignature } from '@nubl/relayer-client'
  * 7702 designator `0xef0100 || accountProxy`. `from` is a non-user origin
  * so `tx.origin` is not the user.
  *
- * This is defense in depth. A hostile Relay API, or a router that branches
- * on the real relayer signer (chosen only at broadcast), is not fully
+ * This is defense in depth. A router that branches on one specific relayer
+ * signer, or an RPC that lies about both logs and balances, is not fully
  * excluded here. The per-quote spend limit is what caps the loss.
+ *
+ * `from` / `tx.origin` is a signer from `wallet_getCapabilities`
+ * (`pool.signers[].address`). The relayer does not publish a separate
+ * signer-address endpoint.
  *
  * Base `https://mainnet.base.org` and Polygon `https://polygon.drpc.org`
  * both answer `eth_simulateV1`. There is no anvil fallback.
  */
 
-/** Stand-in origin. The relayer's signer is selected when the bundle is broadcast. */
-export const RELAY_SIMULATION_ORIGIN: Address = '0x9999999999999999999999999999999999999999'
+const TRANSFER_TOPIC = keccak256(toHex('Transfer(address,address,uint256)'))
 
 const SIM_GAS = 12_000_000n
 const COMBINED_GAS = 5_000_000n
@@ -52,8 +58,11 @@ export type RelayExecutionContext = {
     orchestrator: Address
     /** Account proxy the 7702 designator points at. */
     delegation: Address
-    /** Transaction origin. Not the user. */
-    origin: Address
+    /**
+     * Transaction origin. Not the user. Omit to use a signer from
+     * `wallet_getCapabilities` on `relayerUrl`.
+     */
+    origin?: Address
     keyHash: Hex
     nonce: bigint
 }
@@ -68,6 +77,8 @@ export type SimulateRelayQuoteInput = {
     sameChain: boolean
     minimumOutput?: bigint
     execution: RelayExecutionContext
+    /** Relayer JSON-RPC URL. Required when `execution.origin` is omitted. */
+    relayerUrl?: string
     request?: (method: string, params: unknown[]) => Promise<unknown>
 }
 
@@ -288,7 +299,12 @@ async function readBefore(
     return readBook(watches, words)
 }
 
-function parseSimulateResult(result: unknown, userCallCount: number): bigint[] {
+type SimLog = { address?: string; topics?: string[]; data?: string }
+
+function parseSimulateResult(
+    result: unknown,
+    userCallCount: number,
+): { words: bigint[]; logs: SimLog[] | undefined } {
     if (!Array.isArray(result) || !result[0] || typeof result[0] !== 'object') {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
@@ -301,7 +317,7 @@ function parseSimulateResult(result: unknown, userCallCount: number): bigint[] {
         )
     }
     for (const call of calls) {
-        const row = call as { status?: string; error?: unknown }
+        const row = call as { status?: string | number; error?: unknown }
         const status = row?.status
         const ok = status === '0x1' || status === '0x01' || status === '1' || status === 1
         if (!ok || row.error) {
@@ -310,10 +326,98 @@ function parseSimulateResult(result: unknown, userCallCount: number): bigint[] {
             )
         }
     }
-    return calls.slice(userCallCount).map((call) => {
-        const row = call as { returnData?: string }
-        return decodeWord(row.returnData)
-    })
+    const first = calls[0] as { logs?: unknown }
+    const logs = Array.isArray(first.logs) ? (first.logs as SimLog[]) : undefined
+    return {
+        words: calls.slice(userCallCount).map((call) => {
+            const row = call as { returnData?: string }
+            return decodeWord(row.returnData)
+        }),
+        logs,
+    }
+}
+
+function outputLogSum(logs: SimLog[] | undefined, token: Address, user: Address): bigint | undefined {
+    if (!logs) return undefined
+    const userTopic = `0x${padAddress(user)}`
+    let sum = 0n
+    for (const log of logs) {
+        if (!log?.address || !isAddress(log.address)) continue
+        if (getAddress(log.address).toLowerCase() !== token.toLowerCase()) continue
+        if (log.topics?.[0]?.toLowerCase() !== TRANSFER_TOPIC) continue
+        if (log.topics[2]?.toLowerCase() !== userTopic) continue
+        sum += decodeWord(log.data)
+    }
+    return sum
+}
+
+export async function readRelayerSignerOrigin(input: {
+    relayerUrl: string
+    chainId: number
+    request?: (method: string, params: unknown[]) => Promise<unknown>
+}): Promise<Address> {
+    const request =
+        input.request ??
+        ((method: string, params: unknown[]) => defaultRequest(input.relayerUrl, method, params))
+    const hexChain = `0x${input.chainId.toString(16)}`
+    let result: unknown
+    try {
+        result = await request('wallet_getCapabilities', [{ chains: [hexChain] }])
+    } catch {
+        throw new RelaySimulationRejected(
+            'The relayer did not expose a signer address. Refusing to sign.',
+        )
+    }
+    const table = result && typeof result === 'object' ? (result as Record<string, unknown>) : {}
+    const chain =
+        table[hexChain] ??
+        table[hexChain.toLowerCase()] ??
+        Object.entries(table).find(([key]) => Number.parseInt(key, 16) === input.chainId)?.[1]
+    const pool =
+        chain && typeof chain === 'object' ? (chain as { pool?: { signers?: unknown } }).pool : undefined
+    const signers = Array.isArray(pool?.signers) ? pool.signers : []
+    for (const signer of signers) {
+        if (!signer || typeof signer !== 'object') continue
+        const row = signer as { address?: unknown; paused?: unknown }
+        if (row.paused === true) continue
+        if (typeof row.address === 'string' && isAddress(row.address)) {
+            return getAddress(row.address)
+        }
+    }
+    throw new RelaySimulationRejected(
+        'The relayer did not expose a signer address. Refusing to sign.',
+    )
+}
+
+function assertOutputLogs(input: {
+    watches: SimulatedWatch[]
+    before: BalanceBook
+    after: BalanceBook
+    logs: SimLog[] | undefined
+    user: Address
+}): void {
+    for (const watch of dedupedWatches(input.watches)) {
+        if (watch.kind !== 'erc20' || watch.role !== 'output') continue
+        const logSum = outputLogSum(input.logs, watch.token, input.user)
+        if (logSum === undefined) {
+            throw new RelaySimulationRejected(
+                'relay.link quote simulation did not return output logs. Refusing to sign.',
+            )
+        }
+        const before = input.before.tokens.get(watch.token.toLowerCase())
+        const after = input.after.tokens.get(watch.token.toLowerCase())
+        if (before === undefined || after === undefined) {
+            throw new RelaySimulationRejected(
+                'relay.link quote could not be simulated. Refusing to sign.',
+            )
+        }
+        const diff = after - before
+        if (logSum !== diff) {
+            throw new RelaySimulationRejected(
+                `relay.link quote output logs and balance differ for ${watch.token}: logs ${logSum}, balance ${diff}. Refusing to sign.`,
+            )
+        }
+    }
 }
 
 const intentTuple = {
@@ -413,7 +517,12 @@ async function simulateOnce(
     input: SimulateRelayQuoteInput,
     watches: SimulatedWatch[],
     request: (method: string, params: unknown[]) => Promise<unknown>,
-): Promise<BalanceBook> {
+): Promise<{ book: BalanceBook; logs: SimLog[] | undefined }> {
+    if (!input.execution.origin) {
+        throw new RelaySimulationRejected(
+            'relay.link quote could not be simulated. Refusing to sign.',
+        )
+    }
     const origin = getAddress(input.execution.origin)
     if (origin.toLowerCase() === input.user.toLowerCase()) {
         throw new RelaySimulationRejected(
@@ -444,13 +553,13 @@ async function simulateOnce(
         },
         'latest',
     ])
-    const words = parseSimulateResult(result, 1)
-    if (words.length !== watches.length) {
+    const parsed = parseSimulateResult(result, 1)
+    if (parsed.words.length !== watches.length) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
-    return readBook(watches, words)
+    return { book: readBook(watches, parsed.words), logs: parsed.logs }
 }
 
 export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promise<void> {
@@ -471,9 +580,26 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
         )
     }
     const request = input.request ?? ((method: string, params: unknown[]) => defaultRequest(input.rpcUrl, method, params))
+    let origin: Address
+    if (input.execution.origin) {
+        origin = getAddress(input.execution.origin)
+    } else if (!input.relayerUrl) {
+        throw new RelaySimulationRejected(
+            'The relayer did not expose a signer address. Refusing to sign.',
+        )
+    } else {
+        origin = await readRelayerSignerOrigin({
+            relayerUrl: input.relayerUrl,
+            chainId: input.chainId,
+        })
+    }
+    const simulating: SimulateRelayQuoteInput = {
+        ...input,
+        execution: { ...input.execution, origin },
+    }
     let before: BalanceBook
     try {
-        before = await readBefore(input, watches, request)
+        before = await readBefore(simulating, watches, request)
     } catch (error) {
         if (error instanceof RelaySimulationRejected) throw error
         throw new RelaySimulationRejected(
@@ -481,8 +607,11 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
         )
     }
     let after: BalanceBook
+    let logs: SimLog[] | undefined
     try {
-        after = await simulateOnce(input, watches, request)
+        const simulated = await simulateOnce(simulating, watches, request)
+        after = simulated.book
+        logs = simulated.logs
     } catch (error) {
         if (error instanceof RelaySimulationRejected) throw error
         throw new RelaySimulationRejected(
@@ -497,4 +626,5 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
         sameChain: input.sameChain,
         minimumOutput: input.minimumOutput,
     })
+    assertOutputLogs({ watches, before, after, logs, user: input.user })
 }

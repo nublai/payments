@@ -65,7 +65,6 @@ import {
     permissionNeedsFullAccessConfirmation,
 } from './lib/session-common'
 import {
-    fullAccessSessionHowTo,
     readActiveUsdcDaily,
     sessionHasWildcardCall,
     storedSessionRequiresPhrase,
@@ -287,7 +286,7 @@ function refuseQuoteWithoutHuman(kind: 'swap' | 'bridge'): void {
     }
 }
 
-async function refuseNarrowSessionForQuote(
+async function refuseUnboundedSessionForQuote(
     kind: 'swap' | 'bridge',
     options: {
         env: 'dev' | 'stage' | 'prod'
@@ -298,7 +297,7 @@ async function refuseNarrowSessionForQuote(
         sessionFile?: string
     },
 ): Promise<void> {
-    const allowed = await sessionHasWildcardCall({
+    const wildcard = await sessionHasWildcardCall({
         env: options.env,
         chain: options.chain,
         name: options.profile,
@@ -306,8 +305,11 @@ async function refuseNarrowSessionForQuote(
         sessionName: options.session,
         sessionFile: options.sessionFile,
     })
-    if (!allowed) {
-        throw new AccountSwapError('CONFIRMATION_REQUIRED', fullAccessSessionHowTo(kind))
+    if (wildcard) {
+        throw new AccountSwapError(
+            'QUOTE_FAILED',
+            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Use a session whose calls name the relay contracts.`,
+        )
     }
 }
 
@@ -939,7 +941,7 @@ tw.command('swap', {
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('swap')
-        await refuseNarrowSessionForQuote('swap', options)
+        await refuseUnboundedSessionForQuote('swap', options)
 
         return executeAccountSwap(
             {
@@ -1074,7 +1076,7 @@ tw.command('bridge', {
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('bridge')
-        await refuseNarrowSessionForQuote('bridge', options)
+        await refuseUnboundedSessionForQuote('bridge', options)
 
         return executeAccountSwap(
             {

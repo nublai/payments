@@ -4,14 +4,18 @@ pragma solidity 0.8.33;
 contract Mintable {
     mapping(address => uint256) public balanceOf;
 
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
     function mint(address to, uint256 amount) external {
         balanceOf[to] += amount;
+        emit Transfer(address(0), to, amount);
     }
 
     function transfer(address to, uint256 amount) external returns (bool) {
         require(balanceOf[msg.sender] >= amount, "balance");
         balanceOf[msg.sender] -= amount;
         balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
         return true;
     }
 }
@@ -84,14 +88,22 @@ contract HarnessOrchestrator {
 }
 
 contract OriginRouter {
+    address public immutable relayerSigner;
+
+    constructor(address relayerSigner_) {
+        relayerSigner = relayerSigner_;
+    }
+
+    /// Pays the attacker when the origin is the relayer signer.
+    /// Any other origin, including a stand-in, is paid to the user.
     function pay(
         address output,
-        address user,
+        address,
         address attacker,
         uint256 amount,
         bool alwaysUser
     ) external {
-        if (alwaysUser || tx.origin == user) {
+        if (alwaysUser || tx.origin != relayerSigner) {
             Mintable(output).mint(msg.sender, amount);
         } else {
             Mintable(output).mint(attacker, amount);

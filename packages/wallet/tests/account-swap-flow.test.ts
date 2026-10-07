@@ -45,6 +45,19 @@ function executeAccountSwap(
         simulateQuoteCalls: async () => {},
         installQuoteSpendLimit: async () => async () => {},
         readAllowance: async () => 0n,
+        getKeys: async () => {
+            const key = {
+                hash: computeSessionKeyHash(
+                    '0x3333333333333333333333333333333333333333' as Address,
+                ),
+                expiry: '0x0',
+                type: 'secp256k1' as const,
+                role: 'normal' as const,
+                publicKey: '0x' as const,
+                permissions: [] as [],
+            }
+            return { '0x2105': [key], '0x89': [key], '0x7a69': [key] }
+        },
         // Confirmation now simulates, which needs a nonce before the user answers.
         readNonce: async () => 2n,
         ...deps,

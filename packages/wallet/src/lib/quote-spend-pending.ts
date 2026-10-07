@@ -1,0 +1,154 @@
+import { access, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { getAddress, isAddress, type Address, type Hex } from 'viem'
+import type { EnvName } from './network-config'
+import {
+    quoteSpendRestoreCalls,
+    type QuoteSpendSlot,
+} from './quote-spend'
+
+export const PENDING_QUOTE_LIMIT_VERSION = 1
+
+export type PendingQuoteLimitRecord = {
+    version: typeof PENDING_QUOTE_LIMIT_VERSION
+    account: Address
+    keyHash: Hex
+    chainId: number
+    env: EnvName
+    rpcUrl: string
+    relayerUrl: string
+    slots: Array<{
+        token: Address
+        previousLimit: string | null
+        installedLimit: string
+    }>
+}
+
+export function pendingQuoteLimitPath(keystorePath: string): string {
+    return `${keystorePath}.pending-quote-limit.json`
+}
+
+export async function pendingQuoteLimitExists(keystorePath: string): Promise<boolean> {
+    try {
+        await access(pendingQuoteLimitPath(keystorePath))
+        return true
+    } catch {
+        return false
+    }
+}
+
+export async function readPendingQuoteLimit(
+    keystorePath: string,
+): Promise<PendingQuoteLimitRecord | undefined> {
+    const path = pendingQuoteLimitPath(keystorePath)
+    let text: string
+    try {
+        text = await readFile(path, 'utf8')
+    } catch (error) {
+        if (isEnoent(error)) return undefined
+        throw error
+    }
+    const parsed = JSON.parse(text) as PendingQuoteLimitRecord
+    if (parsed.version !== PENDING_QUOTE_LIMIT_VERSION) {
+        throw new Error(`Unsupported pending quote limit at ${path}.`)
+    }
+    if (!isAddress(parsed.account) || !Array.isArray(parsed.slots)) {
+        throw new Error(`Pending quote limit at ${path} is incomplete.`)
+    }
+    return parsed
+}
+
+export async function writePendingQuoteLimit(
+    keystorePath: string,
+    record: PendingQuoteLimitRecord,
+): Promise<void> {
+    const path = pendingQuoteLimitPath(keystorePath)
+    const temporary = `${path}.tmp`
+    await writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 })
+    await rename(temporary, path)
+}
+
+export async function clearPendingQuoteLimit(keystorePath: string): Promise<void> {
+    try {
+        await unlink(pendingQuoteLimitPath(keystorePath))
+    } catch (error) {
+        if (isEnoent(error)) return
+        throw error
+    }
+}
+
+export function pendingRecordFromSlots(input: {
+    account: Address
+    keyHash: Hex
+    chainId: number
+    env: EnvName
+    rpcUrl: string
+    relayerUrl: string
+    slots: readonly QuoteSpendSlot[]
+}): PendingQuoteLimitRecord {
+    return {
+        version: PENDING_QUOTE_LIMIT_VERSION,
+        account: getAddress(input.account),
+        keyHash: input.keyHash,
+        chainId: input.chainId,
+        env: input.env,
+        rpcUrl: input.rpcUrl,
+        relayerUrl: input.relayerUrl,
+        slots: input.slots.map((slot) => ({
+            token: getAddress(slot.token),
+            previousLimit: slot.previousLimit === null ? null : slot.previousLimit.toString(),
+            installedLimit: slot.installedLimit.toString(),
+        })),
+    }
+}
+
+export function slotsFromPending(record: PendingQuoteLimitRecord): QuoteSpendSlot[] {
+    return record.slots.map((slot) => ({
+        token: getAddress(slot.token),
+        previousLimit: slot.previousLimit === null ? null : BigInt(slot.previousLimit),
+        installedLimit: BigInt(slot.installedLimit),
+    }))
+}
+
+/**
+ * Calls that put the key back, given what the chain's minute slot is now.
+ * A limit we never landed is left alone. A pre-existing minute limit is set
+ * back. A minute period this quote added is removed.
+ */
+export function restoreCallsForChain(input: {
+    record: PendingQuoteLimitRecord
+    minuteLimits: ReadonlyMap<string, bigint | null>
+}): { calls: ReturnType<typeof quoteSpendRestoreCalls>; unexpected: string | undefined } {
+    const slots: { token: Address; previousLimit: bigint | null }[] = []
+    for (const slot of slotsFromPending(input.record)) {
+        const current = input.minuteLimits.get(slot.token.toLowerCase()) ?? null
+        if (current === slot.installedLimit) {
+            slots.push({ token: slot.token, previousLimit: slot.previousLimit })
+            continue
+        }
+        const alreadyRestored =
+            (slot.previousLimit === null && current === null) ||
+            (slot.previousLimit !== null && current === slot.previousLimit)
+        if (alreadyRestored) continue
+        return {
+            calls: [],
+            unexpected: `minute limit for ${slot.token} is ${current?.toString() ?? 'unset'}, not the quote limit ${slot.installedLimit.toString()} or the previous limit ${slot.previousLimit?.toString() ?? 'unset'}`,
+        }
+    }
+    return {
+        calls: quoteSpendRestoreCalls({
+            keyHash: input.record.keyHash,
+            account: input.record.account,
+            slots,
+        }),
+        unexpected: undefined,
+    }
+}
+
+function isEnoent(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+    )
+}
