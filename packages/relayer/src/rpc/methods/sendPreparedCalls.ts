@@ -38,6 +38,7 @@ import {
     assertPaidUpgradeSimulation,
     chainUsdcAddress,
     enqueuePaidUpgradeReceipt,
+    assertPaidUpgradeOidcOwner,
     paidUpgradeFieldsMatch,
     paidUpgradeFromQuote,
     paidUpgradeMaxPayment,
@@ -215,6 +216,10 @@ export async function handleSendPreparedCalls(
     const { context } = typedParams
 
     if ('quote' in context && context.quote) {
+        const paidQuote = context.quote.quotes?.[0]
+        if (paidQuote && paidUpgradeFromQuote(paidQuote)) {
+            assertPaidUpgradeOidcOwner(paidQuote.intent?.eoa ?? '')
+        }
         const quoteError = await validateQuote(context.quote, env)
         if (quoteError) throw quoteError
         const callerError = await assertErc8128BoundToQuotes(env, ctx.auth, context.quote.quotes)

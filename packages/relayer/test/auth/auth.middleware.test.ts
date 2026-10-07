@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
+import type { Address } from 'viem'
 
 import type { Env } from '../../src/types/env'
 import { authMiddleware } from '../../src/auth/middleware'
+import { upgradeRateIdentity } from '../../src/auth/identity'
 import type { AuthProvider } from '../../src/auth/types'
 
 function createEnv(overrides: Partial<Env> = {}): Env {
@@ -301,5 +303,41 @@ describe('auth middleware', () => {
         expect(response.status).toBe(200)
         expect(await response.json()).toEqual({ status: 'ok' })
         expect(verify).not.toHaveBeenCalled()
+    })
+
+    it('namespaces an OIDC caller on the rate-limit key', async () => {
+        const account = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
+        const app = new Hono<{ Bindings: Env }>()
+        app.use(
+            '*',
+            authMiddleware({
+                providers: [
+                    makeProvider('oidc', async () => ({
+                        ok: true,
+                        userId: 'User_1',
+                        issuer: 'https://Issuer.Example',
+                    })),
+                ],
+            }),
+        )
+        app.post('/', (c) => c.json({ key: upgradeRateIdentity(account) }))
+
+        const response = await app.request(
+            'http://localhost/',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'wallet_sendPreparedCalls',
+                    params: [],
+                }),
+            },
+            createEnv(),
+        )
+
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({ key: 'oidc:https://issuer.example:user_1' })
     })
 })
