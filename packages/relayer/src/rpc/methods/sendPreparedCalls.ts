@@ -348,7 +348,10 @@ export async function handleSendPreparedCalls(
                 'paid upgrade receipt was not settled; gas hold remains until reconcile',
             )
             try {
-                await enqueuePaidUpgradeReceipt(env, chainId, result.txHash)
+                await enqueuePaidUpgradeReceipt(env, chainId, result.txHash, {
+                    nonce: result.nonce,
+                    signerName: result.signerName,
+                })
             } catch (enqueueError) {
                 logger.error(
                     { error: enqueueError, eoa: intent.eoa, txHash: result.txHash },
