@@ -36,6 +36,7 @@ import {
     executeSignedCalls,
     type ExecuteSignedCallsDeps,
     type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
 } from './execute-calls'
 import {
     buildPermissionDefaults,
@@ -113,6 +114,7 @@ export type SessionRotateResult = {
         status: string
         statusCode: number
     }
+    feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
 type SessionRotateDeps = {
@@ -148,7 +150,7 @@ type SessionRotateDeps = {
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
         params: ExecuteSignedCallsParams,
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+    ) => Promise<ExecuteSignedCallsResult>
     prepareCalls: (input: {
         network: CliNetworkConfig
         from: Address
@@ -430,6 +432,7 @@ export async function executeSessionRotate(
 
         let bundleId = intent.status === 'submitted' ? intent.bundleId : undefined
         let finalStatus: BundleStatusResponse | null = null
+        let feeCap: ExecuteSignedCallsResult['feeCap'] | undefined
 
         if (intent.status === 'pending') {
             const permissionDefaults = buildPermissionDefaults({
@@ -533,6 +536,7 @@ export async function executeSessionRotate(
                 )
                 bundleId = submission.id
                 finalStatus = submission.finalStatus
+                feeCap = submission.feeCap
                 intent = await deps.writeRotationIntent(
                     keystorePath,
                     bundle.root.sessionRef.dir,
@@ -635,6 +639,7 @@ export async function executeSessionRotate(
                 status: finalStatus.status ?? 'unknown',
                 statusCode: finalStatus.statusCode ?? 0,
             },
+            feeCap,
         }
     })
 }

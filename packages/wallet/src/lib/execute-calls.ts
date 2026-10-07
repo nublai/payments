@@ -1,14 +1,17 @@
 import {
     bindPreparedCalls,
+    firstQuotePaymentAmount,
     INTENT_EXPIRY_TTL_SECONDS,
+    PreparedCallsBindingError,
+    resolveSignedFeeCap,
     wrapSignature,
     type BundleStatusResponse,
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
-import type { Address, Hex } from 'viem'
+import { zeroAddress, type Address, type Hex } from 'viem'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from './gas-ceiling'
-import { resolveIntentPayment } from './intent-payment'
+import { discloseFeeCap, isLocalFeeChain, resolveIntentPayment, type FeeCapDisclosure } from './intent-payment'
 import type { EnvName } from './network-config'
 import { resolveOrchestratorAddress } from './orchestrator-address'
 
@@ -58,20 +61,31 @@ export type ExecuteSignedCallsDeps = {
     waitForBundle: (input: { id: string }) => Promise<BundleStatusResponse>
 }
 
+export type ExecuteSignedCallsResult = {
+    id: string
+    finalStatus: BundleStatusResponse
+    feeCap: FeeCapDisclosure
+}
+
 export async function executeSignedCalls(
     deps: ExecuteSignedCallsDeps,
     params: ExecuteSignedCallsParams,
-): Promise<{ id: string; finalStatus: BundleStatusResponse }> {
+): Promise<ExecuteSignedCallsResult> {
     const now = params.now ?? BigInt(Math.floor(Date.now() / 1000))
     const expiry = params.expiry ?? now + INTENT_EXPIRY_TTL_SECONDS
-    const payment =
-        params.paymentMaxAmount !== undefined || params.payer !== undefined || params.paymentToken !== undefined
-            ? {
-                  payer: params.payer,
-                  paymentToken: params.paymentToken,
-                  paymentMaxAmount: params.paymentMaxAmount ?? 0n,
-              }
-            : resolveIntentPayment(params.env, params.chainId, params.from)
+    const policy = resolveIntentPayment(params.env, params.chainId, params.from)
+    // An explicit cap is a ceiling, not the signed value. Passing payer or token
+    // without a cap still uses the policy ceiling, so the omitted cap cannot be
+    // signed as 0. Passing only a cap leaves payer and token unset.
+    const callerSetPayment =
+        params.paymentMaxAmount !== undefined ||
+        params.payer !== undefined ||
+        params.paymentToken !== undefined
+    const ceiling = params.paymentMaxAmount ?? policy.paymentMaxAmount
+    const payer = callerSetPayment ? (params.payer ?? zeroAddress) : policy.payer
+    const paymentToken = callerSetPayment ? (params.paymentToken ?? zeroAddress) : policy.paymentToken
+    const zeroFee = isLocalFeeChain(params.env, params.chainId)
+    const payment = { payer, paymentToken, paymentMaxAmount: ceiling }
     const combinedGasCeiling =
         params.combinedGasCeiling ??
         (process.env.NODE_ENV === 'test' || !params.rpcUrl
@@ -83,16 +97,37 @@ export async function executeSignedCalls(
                   calls: params.calls,
               }))
 
-    const prepared = await deps.prepareCalls({
-        from: params.from,
-        calls: params.calls,
-        nonce: params.nonce,
-        sessionKey: params.sessionKey,
-        expiry,
-        payer: payment.payer,
-        paymentToken: payment.paymentToken,
-        paymentMaxAmount: payment.paymentMaxAmount,
+    const prepare = (paymentMaxAmount: bigint) =>
+        deps.prepareCalls({
+            from: params.from,
+            calls: params.calls,
+            nonce: params.nonce,
+            sessionKey: params.sessionKey,
+            expiry,
+            payer: payment.payer,
+            paymentToken: payment.paymentToken,
+            paymentMaxAmount,
+        })
+
+    let prepared = await prepare(ceiling)
+    let signedCap = resolveSignedFeeCap({
+        paymentAmount: firstQuotePaymentAmount(prepared),
+        ceiling,
+        zeroFee,
     })
+    if (signedCap !== ceiling) {
+        prepared = await prepare(signedCap)
+        const again = resolveSignedFeeCap({
+            paymentAmount: firstQuotePaymentAmount(prepared),
+            ceiling,
+            zeroFee,
+        })
+        if (again !== signedCap) {
+            throw new PreparedCallsBindingError(
+                'Refusing to sign prepared calls: fee cap does not match the quote',
+            )
+        }
+    }
 
     const verifyingContract =
         params.verifyingContract ?? resolveOrchestratorAddress(params.env, params.chainId)
@@ -104,7 +139,8 @@ export async function executeSignedCalls(
         nonce: params.nonce,
         payer: payment.payer,
         paymentToken: payment.paymentToken,
-        paymentMaxAmount: payment.paymentMaxAmount,
+        paymentMaxAmount: signedCap,
+        paymentCeiling: ceiling,
         expiry,
         now,
         combinedGasCeiling,
@@ -129,5 +165,6 @@ export async function executeSignedCalls(
     return {
         id: submission.id,
         finalStatus,
+        feeCap: discloseFeeCap(paymentToken, signedCap),
     }
 }

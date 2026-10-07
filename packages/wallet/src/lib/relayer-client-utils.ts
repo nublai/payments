@@ -1,7 +1,7 @@
 import { createPublicClient, http, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { getChain, relayerActions, type EthHttpSigner } from '@nubl/relayer-client'
-import type { CliNetworkConfig } from './network-config'
+import { allowInsecureRelayerHttp, type CliNetworkConfig } from './network-config'
 export { readAccountNonce } from './nonce-utils'
 
 export function createCliRelayerClient(network: CliNetworkConfig) {
@@ -13,7 +13,7 @@ export function createCliRelayerClient(network: CliNetworkConfig) {
         relayerActions({
             relayerUrl: network.relayerUrl,
             authSigner: network.authSigner,
-            allowInsecureHttp: network.env === 'dev',
+            allowInsecureHttp: allowInsecureRelayerHttp(network.env, network.chainId),
         }),
     )
 }

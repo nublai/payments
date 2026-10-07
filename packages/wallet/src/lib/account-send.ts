@@ -50,6 +50,7 @@ import {
     executeSignedCalls,
     type ExecuteSignedCallsDeps,
     type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
 } from './execute-calls'
 import { isMissingFileError } from './fs-utils'
 import { hasLegacyRecipientAlias } from './legacy-recipient-aliases'
@@ -145,6 +146,7 @@ export type AccountSendResult = {
     }
     signerMode: 'daemon' | 'direct' | 'fallback_direct'
     txHash?: Hex
+    feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
 type AccountSendDeps = {
@@ -178,7 +180,7 @@ type AccountSendDeps = {
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
         params: ExecuteSignedCallsParams,
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+    ) => Promise<ExecuteSignedCallsResult>
 }
 
 function normalizeChain(value?: string): ChainName {
@@ -661,6 +663,7 @@ export async function executeAccountSend(
             },
             signerMode,
             txHash: finalStatus.receipt?.transactionHash,
+            feeCap: submission.feeCap,
         }
     } catch (error) {
         throw toAccountSendError(error, { keystorePath })

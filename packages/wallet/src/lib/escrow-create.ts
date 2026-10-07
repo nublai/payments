@@ -3,7 +3,11 @@ import { createEscrowCalls, computeEscrowId } from '@nubl/relayer-client'
 import { resolveKeystorePath } from './account-create'
 import type { ChainName, EnvName } from './network-config'
 import type { ExecuteSignedCallsDeps } from './execute-calls'
-import { createEscrowPasswordResolver, executeEscrowCallsWithFallback } from './escrow-execute'
+import {
+    createEscrowPasswordResolver,
+    executeEscrowCallsWithFallback,
+    type EscrowExecuteResult,
+} from './escrow-execute'
 import {
     EscrowError,
     type EscrowChainNetworkContractsDeps,
@@ -56,6 +60,7 @@ export type EscrowCreateResult = {
     }
     signerMode: 'daemon' | 'direct' | 'fallback_direct'
     txHash?: Hex
+    feeCap: EscrowExecuteResult['feeCap']
 }
 
 function parseDeadline(value: string): bigint {
@@ -221,6 +226,7 @@ export async function executeEscrowCreate(
             },
             signerMode: result.signerMode,
             txHash: result.finalStatus.receipt?.transactionHash,
+            feeCap: result.feeCap,
         }
     } catch (error) {
         throw toEscrowError(error)

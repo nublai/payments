@@ -35,6 +35,7 @@ import {
     executeSignedCalls,
     type ExecuteSignedCallsDeps,
     type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
 } from './execute-calls'
 import {
     computeSessionKeyHash,
@@ -89,6 +90,7 @@ export type SessionRevokeResult = {
         statusCode: number
     }
     fileDeleted: boolean
+    feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
 type SessionRevokeDeps = {
@@ -111,7 +113,7 @@ type SessionRevokeDeps = {
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
         params: ExecuteSignedCallsParams,
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+    ) => Promise<ExecuteSignedCallsResult>
     prepareCalls: (input: {
         network: CliNetworkConfig
         from: Address
@@ -371,7 +373,7 @@ export async function executeSessionRevoke(
             },
         ]
 
-        let submission: { id: string; finalStatus: BundleStatusResponse }
+        let submission: ExecuteSignedCallsResult
         try {
             submission = await deps.executeSignedCalls(
                 {
@@ -489,6 +491,7 @@ export async function executeSessionRevoke(
                 statusCode,
             },
             fileDeleted,
+            feeCap: submission.feeCap,
         }
     })
 }
