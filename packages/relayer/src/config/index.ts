@@ -4,6 +4,7 @@
 
 import type { Env, RelayerConfig } from '../types/env'
 import { hasDeployment } from '@nubl/contracts/deployments'
+import { readOidcConfig, isOidcEnabled } from '../auth/oidc-config'
 import { parseErc8128Allowlist } from '../auth/erc8128/signer-policy'
 import { isLocalDevContext, quoteSigningSecret } from './runtime-context'
 import { getContractAddresses } from './addresses'
@@ -70,6 +71,13 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
         }
         if (!env.PRIVY_APP_SECRET) {
             missing.push('PRIVY_APP_SECRET')
+        }
+    }
+
+    if (isOidcEnabled(env)) {
+        const oidc = readOidcConfig(env)
+        if (!oidc.ok) {
+            for (const key of oidc.missing) missing.push(key)
         }
     }
 

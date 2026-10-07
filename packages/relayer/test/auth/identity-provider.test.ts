@@ -4,6 +4,7 @@ import type { Address } from 'viem'
 import { authorizeRequest } from '../../src/auth/engine'
 import {
     authIdentityOwnsAccount,
+    rateLimitIdentityKey,
     runWithAuthIdentity,
     upgradeRateIdentity,
 } from '../../src/auth/identity'
@@ -38,9 +39,9 @@ function stubProvider(args: {
 }
 
 describe('identity provider registry', () => {
-    it('keeps Privy as the only registered identity provider', () => {
+    it('registers Privy ahead of the OIDC identity provider', () => {
         const providers = identityAuthProviders()
-        expect(providers.map((provider) => provider.name)).toEqual(['privy'])
+        expect(providers.map((provider) => provider.name)).toEqual(['privy', 'oidc'])
     })
 
     it('accepts a stub provider beside a failing one without changing the identity gate', async () => {
@@ -115,5 +116,28 @@ describe('identity provider registry', () => {
             userId: 'user_oidc_1',
             boundAccounts: [ACCOUNT],
         })
+    })
+
+    it('namespaces privy and oidc rate-limit keys', () => {
+        expect(
+            rateLimitIdentityKey({ provider: 'privy', userId: 'did:privy:User' }),
+        ).toBe('privy:did:privy:user')
+        expect(
+            rateLimitIdentityKey({
+                provider: 'oidc',
+                userId: 'User',
+                issuer: 'https://Issuer-A.Example',
+            }),
+        ).toBe('oidc:https://issuer-a.example:user')
+        expect(
+            rateLimitIdentityKey({
+                provider: 'oidc',
+                userId: 'User',
+                issuer: 'https://Issuer-B.Example',
+            }),
+        ).toBe('oidc:https://issuer-b.example:user')
+        expect(
+            rateLimitIdentityKey({ provider: 'privy', userId: 'User' }),
+        ).not.toBe(rateLimitIdentityKey({ provider: 'oidc', userId: 'User', issuer: 'https://issuer.example' }))
     })
 })

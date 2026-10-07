@@ -4,6 +4,7 @@ import type { HttpAuthNonceDO } from '../durable-objects/http-auth-nonce.do'
 import type { IntentNonceDO } from '../durable-objects/intent-nonce.do'
 import type { SignerDO } from '../durable-objects/signer.do'
 import type { SignerPoolDO } from '../durable-objects/signer-pool.do'
+import type { WalletBindingDO } from '../durable-objects/wallet-binding.do'
 import {
     DEFAULT_ASSET_MAPPING,
     DEFAULT_COINGECKO_URL,
@@ -33,6 +34,8 @@ export interface Env {
     // Durable Objects - Bundle Status
     BUNDLE_STATUS_DO?: DurableObjectNamespace<BundleStatusDO>
     HTTP_AUTH_NONCE_MANAGER?: DurableObjectNamespace<HttpAuthNonceDO>
+    /** Single global object. See WalletBindingDO. */
+    WALLET_BINDING?: DurableObjectNamespace<WalletBindingDO>
 
     // Required secrets
     RPC_URL?: string
@@ -109,10 +112,19 @@ export interface Env {
     // not "anyone". Other protected methods in the same JSON-RPC batch require this list.
     ERC8128_ALLOWED_SIGNERS?: string
 
-    // Privy authentication
+    // Privy authentication. Unset enables Privy. `false` turns it off.
     PRIVY_ENABLED?: string
     PRIVY_APP_ID?: string
     PRIVY_APP_SECRET?: string
+
+    // OIDC authentication. Public config, not secrets. WorkOS is the first issuer.
+    // When OIDC_ENABLED=true, issuer, JWKS URL, and client id are all required.
+    OIDC_ENABLED?: string
+    OIDC_ISSUER?: string
+    OIDC_JWKS_URL?: string
+    OIDC_CLIENT_ID?: string
+    /** JWT claim that lists wallet addresses. Defaults to `wallets`. */
+    OIDC_WALLETS_CLAIM?: string
 
     /**
      * Cap on paymentMaxAmount for a USDC-paid first upgrade, in fee-token base

@@ -62,5 +62,18 @@ CONTEXT=local
 # ERC8128_ENABLED=false
 # ERC8128_ALLOWED_SIGNERS=
 
+# Privy. Unset enables the provider. Local dev.sh sets PRIVY_ENABLED=false.
+# PRIVY_ENABLED=false
+# PRIVY_APP_ID=
+# PRIVY_APP_SECRET=
+
+# OIDC (public config, not secrets). WorkOS is the first issuer. All three
+# OIDC_ISSUER, OIDC_JWKS_URL, and OIDC_CLIENT_ID are required when OIDC_ENABLED=true.
+# OIDC_ENABLED=false
+# OIDC_ISSUER=https://auth.example.com
+# OIDC_JWKS_URL=https://auth.example.com/oauth2/jwks
+# OIDC_CLIENT_ID=client_example
+# OIDC_WALLETS_CLAIM=wallets
+
 # CORS (optional). Comma-separated origins. Unset or "*" allows every origin.
 # CORS_ALLOWED_ORIGINS=

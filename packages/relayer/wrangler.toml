@@ -21,7 +21,19 @@ new_sqlite_classes = ["SignerDO", "SignerPoolDO", "IntentNonceDO", "BundleStatus
 tag = "v2"
 new_sqlite_classes = ["HttpAuthNonceDO"]
 
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["WalletBindingDO"]
+
 # Local Development
+# Public OIDC config (not secrets). Leave OIDC_ENABLED unset until issuer, JWKS
+# URL, and client id are all set. Example, not applied:
+# OIDC_ENABLED = "true"
+# OIDC_ISSUER = "https://auth.example.com"
+# OIDC_JWKS_URL = "https://auth.example.com/oauth2/jwks"
+# OIDC_CLIENT_ID = "client_example"
+# OIDC_WALLETS_CLAIM = "wallets"
+# PRIVY_ENABLED defaults to on in code. Set PRIVY_ENABLED = "false" for OIDC-only.
 [dev]
 ip = "0.0.0.0"
 port = 8787
@@ -42,7 +54,8 @@ bindings = [
   { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
   { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
   { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
-  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" },
+  { name = "WALLET_BINDING", class_name = "WalletBindingDO" }
 ]
 
 # Stage
@@ -67,7 +80,8 @@ bindings = [
   { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
   { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
   { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
-  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" },
+  { name = "WALLET_BINDING", class_name = "WalletBindingDO" }
 ]
 
 [[env.stage.queues.producers]]
@@ -101,7 +115,8 @@ bindings = [
   { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
   { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
   { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
-  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" },
+  { name = "WALLET_BINDING", class_name = "WalletBindingDO" }
 ]
 
 [[env.prod.queues.producers]]
