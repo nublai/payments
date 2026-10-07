@@ -29,6 +29,7 @@ import {
     executeSignedCalls,
     type ExecuteSignedCallsDeps,
     type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
 } from './execute-calls'
 import {
     LoginProfileError,
@@ -176,6 +177,7 @@ export type AccountSwapResult = {
     txHash?: Hex
     destinationTxHash?: Hex
     relayRequestId?: string
+    feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
 type AccountSwapDeps = {
@@ -219,7 +221,7 @@ type AccountSwapDeps = {
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
         params: ExecuteSignedCallsParams,
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+    ) => Promise<ExecuteSignedCallsResult>
     confirmQuote: (quote: RelayQuoteResponse) => Promise<boolean>
     auditQuote: (quote: RelayQuoteResponse) => void
 }
@@ -1020,6 +1022,7 @@ export async function executeAccountSwap(
             txHash: finalStatus.receipt?.transactionHash,
             destinationTxHash,
             relayRequestId,
+            feeCap: submission.feeCap,
         }
     } catch (error) {
         if (error instanceof PromptCancelledError) {

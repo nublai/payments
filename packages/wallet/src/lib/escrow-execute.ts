@@ -167,6 +167,7 @@ export type EscrowExecuteResult = {
     finalStatus: EscrowSubmission['finalStatus']
     signerMode: 'daemon' | 'direct' | 'fallback_direct'
     sender: Address
+    feeCap: EscrowSubmission['feeCap']
 }
 
 /**
@@ -375,5 +376,6 @@ export async function executeEscrowCallsWithFallback(params: {
         finalStatus,
         signerMode,
         sender,
+        feeCap: submission.feeCap,
     }
 }

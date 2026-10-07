@@ -1,9 +1,13 @@
 import { expect, mock, test } from 'bun:test'
 import { decodeFunctionData, type Address, type Hex } from 'viem'
+import { signedPaymentMaxForQuote } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
+import { executeSignedCalls } from '../src/lib/execute-calls'
+import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { executeSessionRotate } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldAddress = '0x2222222222222222222222222222222222222222' as Address
@@ -339,5 +343,103 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
     } finally {
         if (previous === undefined) delete process.env.RELAYER_URL_PROD
         else process.env.RELAYER_URL_PROD = previous
+    }
+})
+
+const POLYGON_CHAIN_ID = 137
+const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' as Address
+const PLANTED_TARGET = '0x4444444444444444444444444444444444444444' as Address
+const PLANTED_SELECTOR = '0x39509351' as Hex
+
+test('extra-chain cleanup resolves the fee policy for that chain', async () => {
+    const previous = process.env.RELAYER_URL_STAGE
+    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    const prepares: {
+        chainId: number
+        payer?: Address
+        paymentToken?: Address
+        paymentMaxAmount?: bigint
+        calls: { data: Hex }[]
+    }[] = []
+    try {
+        const result = await executeSessionRotate(
+            {
+                env: 'stage',
+                chain: 'base',
+                keystorePath: '/tmp/narrow-rotate-extra-chain.json',
+                password: 'pw',
+                narrow: true,
+                newName: 'default-next',
+            },
+            rotateDeps({
+                readGuardCleanup: mock(async (input: { chainId: number }) => {
+                    if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
+                    return {
+                        anyCalls: [{ target: PLANTED_TARGET, selector: PLANTED_SELECTOR }],
+                        checkers: [],
+                    }
+                }),
+                executeSignedCalls,
+                prepareCalls: mock(async (input: {
+                    network: { chainId: number }
+                    from: Address
+                    calls: { target: Address; value: bigint; data: Hex }[]
+                    nonce: bigint
+                    expiry?: bigint
+                    payer?: Address
+                    paymentToken?: Address
+                    paymentMaxAmount?: bigint
+                }) => {
+                    prepares.push({
+                        chainId: input.network.chainId,
+                        payer: input.payer,
+                        paymentToken: input.paymentToken,
+                        paymentMaxAmount: input.paymentMaxAmount,
+                        calls: input.calls,
+                    })
+                    return matchingPreparedCalls({
+                        from: input.from,
+                        calls: input.calls,
+                        nonce: input.nonce,
+                        network: { env: 'stage', chainId: input.network.chainId },
+                        expiry: input.expiry,
+                        payer: input.payer,
+                        paymentToken: input.paymentToken,
+                        paymentMaxAmount: input.paymentMaxAmount,
+                    })
+                }),
+                signTypedData: mock(async () => rootPrivateKey),
+                sendPreparedCalls: mock(async () => ({ id: 'bundle-extra-chain' })),
+                waitForBundle: mock(async () => ({
+                    success: true,
+                    statusCode: 200,
+                    status: 'confirmed',
+                    receipt: {
+                        transactionHash:
+                            '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
+                    },
+                })),
+            }) as never,
+        )
+
+        expect(result.status).toBe('complete')
+        const polygon = prepares.filter((prepare) => prepare.chainId === POLYGON_CHAIN_ID)
+        expect(polygon.length).toBeGreaterThan(0)
+        expect(polygon[0]?.payer).toBe(account)
+        expect(polygon[0]?.paymentToken).toBe(POLYGON_USDC)
+        expect(polygon[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+        expect(polygon[1]?.paymentMaxAmount).toBe(signedPaymentMaxForQuote(1n))
+        const decoded = decodeFunctionData({
+            abi: accountAbi,
+            data: polygon[0]!.calls[0]!.data,
+        })
+        expect(decoded.functionName).toBe('setCanExecute')
+        expect(decoded.args[0]).toBe(ANY_KEYHASH)
+        expect(String(decoded.args[1]).toLowerCase()).toBe(PLANTED_TARGET.toLowerCase())
+        expect(decoded.args[2]).toBe(PLANTED_SELECTOR)
+        expect(decoded.args[3]).toBe(false)
+    } finally {
+        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
+        else process.env.RELAYER_URL_STAGE = previous
     }
 })

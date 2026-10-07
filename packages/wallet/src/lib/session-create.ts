@@ -40,6 +40,7 @@ import {
     executeSignedCalls,
     type ExecuteSignedCallsDeps,
     type ExecuteSignedCallsParams,
+    type ExecuteSignedCallsResult,
 } from './execute-calls'
 import {
     CONFIRM_FULL_ACCESS_PHRASE,
@@ -158,6 +159,7 @@ export type SessionCreateResult = {
         statusCode: number
     }
     txHash?: Hex
+    feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
 type SessionCreateDeps = {
@@ -179,7 +181,7 @@ type SessionCreateDeps = {
     executeSignedCalls: (
         deps: ExecuteSignedCallsDeps,
         params: ExecuteSignedCallsParams,
-    ) => Promise<{ id: string; finalStatus: BundleStatusResponse }>
+    ) => Promise<ExecuteSignedCallsResult>
     prepareCalls: (input: {
         network: CliNetworkConfig
         from: Address
@@ -649,6 +651,7 @@ export async function executeSessionCreate(
                 statusCode,
             },
             txHash: finalStatus.receipt?.transactionHash,
+            feeCap: submission.feeCap,
         }
     })
 }

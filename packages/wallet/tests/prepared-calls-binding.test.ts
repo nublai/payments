@@ -27,7 +27,7 @@ const GAS_CEILING = 1_000_000n
 
 type IntentCall = { to: Address; value: bigint; data: Hex }
 
-function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount = 1000n) {
+function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount = 2000n) {
     const message = {
         multichain: false,
         eoa: EOA,
@@ -88,7 +88,7 @@ function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount =
                         paymentTokenDecimals: 6,
                         txGas: 1,
                         nativeFeeEstimate: { maxFeePerGas: 1, maxPriorityFeePerGas: 1 },
-                        paymentAmount: '0',
+                        paymentAmount: '1000',
                         feeTokenDeficit: '0x0',
                         assetDeficits: [],
                     },
@@ -106,7 +106,7 @@ const expected = {
     chainId: 8453,
     verifyingContract: ORCHESTRATOR,
     nonce: 7n,
-    paymentMaxAmount: 1000n,
+    paymentMaxAmount: 2000n,
     expiry: EXPIRY,
     now: NOW,
     combinedGasCeiling: GAS_CEILING,
@@ -158,7 +158,7 @@ async function expectWalletRefuses(
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
-            paymentMaxAmount: 1000n,
+            paymentMaxAmount: 2000n,
             expiry: overrides?.expiry ?? EXPIRY,
             now: overrides?.now ?? NOW,
             combinedGasCeiling: GAS_CEILING,
@@ -205,7 +205,7 @@ test('executeSignedCalls signs when the prepared intent matches the request', as
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
-            paymentMaxAmount: 1000n,
+            paymentMaxAmount: 2000n,
             expiry: EXPIRY,
             now: NOW,
             combinedGasCeiling: GAS_CEILING,
@@ -263,7 +263,8 @@ test('getEnvRelayerUrl refuses plain http for a non-loopback host off dev', () =
     try {
         expect(() => getEnvRelayerUrl('prod')).toThrow(/https/)
         expect(() => getEnvRelayerUrl('stage')).toThrow(/https/)
-        expect(getEnvRelayerUrl('dev')).toBe('http://relayer.example')
+        expect(() => getEnvRelayerUrl('dev')).toThrow(/https/)
+        expect(getEnvRelayerUrl('dev', 31337)).toBe('http://relayer.example')
         process.env.RELAYER_URL_PROD = 'http://127.0.0.1:8787'
         expect(getEnvRelayerUrl('prod')).toBe('http://127.0.0.1:8787')
     } finally {
@@ -346,7 +347,7 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
-            paymentMaxAmount: 1000n,
+            paymentMaxAmount: 2000n,
             expiry: EXPIRY,
             now: NOW,
             combinedGasCeiling: GAS_CEILING,
