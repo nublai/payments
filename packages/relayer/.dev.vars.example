@@ -69,7 +69,8 @@ CONTEXT=local
 
 # OIDC (public config, not secrets). WorkOS is the first issuer. All three
 # OIDC_ISSUER, OIDC_JWKS_URL, and OIDC_CLIENT_ID are required when OIDC_ENABLED=true.
-# An http JWKS URL is refused unless CONTEXT is local or dev.
+# An http JWKS URL is refused unless CONTEXT is local. CONTEXT=dev is Base Sepolia
+# and does not get that exception.
 # OIDC_ENABLED=false
 # OIDC_ISSUER=https://auth.example.com
 # OIDC_JWKS_URL=https://auth.example.com/oauth2/jwks

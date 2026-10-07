@@ -32,13 +32,13 @@ export interface WalletBindFields {
     nonce: string
     chainId: number
     expiry: number
-    /** `CONTEXT`, or `prod` when unset. Stage and prod do not share a domain separator. */
+    /** Trimmed `CONTEXT`. Unset or blank is refused before a nonce is issued. */
     environment: string
 }
 
-export function walletBindEnvironment(env: { CONTEXT?: string }): string {
+export function walletBindEnvironment(env: { CONTEXT?: string }): string | undefined {
     const context = env.CONTEXT?.trim().toLowerCase()
-    return context ? context : 'prod'
+    return context ? context : undefined
 }
 
 export function walletBindDomain(chainId: number, environment: string) {

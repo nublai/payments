@@ -42,6 +42,10 @@ export async function bindAccount(
     if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
         throw new RpcError(INVALID_SIGNATURE, 'Invalid bind signature')
     }
+    const environment = walletBindEnvironment(env)
+    if (!environment) {
+        throw new RpcError(INVALID_PARAMS, 'CONTEXT is required to bind an account')
+    }
 
     let charged: Awaited<ReturnType<ReturnType<typeof walletBindingStub>['chargeBind']>>
     try {
@@ -66,7 +70,7 @@ export async function bindAccount(
             nonce,
             chainId,
             expiry,
-            environment: walletBindEnvironment(env),
+            environment,
         },
         signature: signature as Hex,
         scheme,

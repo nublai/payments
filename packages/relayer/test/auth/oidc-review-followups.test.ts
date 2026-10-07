@@ -380,7 +380,7 @@ describe('oidc review follow-ups', () => {
         expect(new errors.JWKSTimeout().message).toBe('request timed out')
     })
 
-    it('refuses an http JWKS URL outside local and dev', () => {
+    it('refuses an http JWKS URL outside local', () => {
         const httpJwks = {
             OIDC_ISSUER: 'https://issuer.example',
             OIDC_JWKS_URL: 'http://issuer.example/jwks',
@@ -389,7 +389,7 @@ describe('oidc review follow-ups', () => {
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'stage' }).ok).toBe(false)
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'prod' }).ok).toBe(false)
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'local' }).ok).toBe(true)
-        expect(readOidcConfig({ ...httpJwks, CONTEXT: 'dev' }).ok).toBe(true)
+        expect(readOidcConfig({ ...httpJwks, CONTEXT: 'dev' }).ok).toBe(false)
     })
 
     it('uses a nubl EIP-712 domain whose salt differs for stage and prod', async () => {

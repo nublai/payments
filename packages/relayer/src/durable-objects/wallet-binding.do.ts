@@ -310,19 +310,25 @@ export class WalletBindingDO extends DurableObject<Env> {
         nowSeconds: number,
     ): boolean {
         const windowStart = nowSeconds - (nowSeconds % BIND_LIMITS.windowSeconds)
+        const subjectBucket = `${kind}:subject:${issuer}\n${subject}`
         const subjectLimit =
             kind === 'issue' ? BIND_LIMITS.issuePerSubject : BIND_LIMITS.bindPerSubject
-        if (!this.hit(`${kind}:subject:${issuer}\n${subject}`, windowStart, subjectLimit)) {
-            return false
-        }
-        if (ip) {
-            const ipLimit = kind === 'issue' ? BIND_LIMITS.issuePerIp : BIND_LIMITS.bindPerIp
-            if (!this.hit(`${kind}:ip:${ip}`, windowStart, ipLimit)) return false
-        }
+        const ipBucket = ip ? `${kind}:ip:${ip}` : undefined
+        const ipLimit = kind === 'issue' ? BIND_LIMITS.issuePerIp : BIND_LIMITS.bindPerIp
+        // A full IP bucket must not consume the subject window. Commit neither hit
+        // unless both buckets still have room. The caller holds transactionSync.
+        if (!this.hasRoom(subjectBucket, windowStart, subjectLimit)) return false
+        if (ipBucket && !this.hasRoom(ipBucket, windowStart, ipLimit)) return false
+        this.recordHit(subjectBucket, windowStart)
+        if (ipBucket) this.recordHit(ipBucket, windowStart)
         return true
     }
 
-    private hit(bucket: string, windowStart: number, limit: number): boolean {
+    private hasRoom(bucket: string, windowStart: number, limit: number): boolean {
+        return this.currentHits(bucket, windowStart) < limit
+    }
+
+    private currentHits(bucket: string, windowStart: number): number {
         const row = this.sql
             .exec<{ hits: number }>(
                 `SELECT hits FROM bind_rates WHERE bucket = ? AND window_start = ?`,
@@ -331,23 +337,32 @@ export class WalletBindingDO extends DurableObject<Env> {
             )
             .toArray()
             .at(0)
-        const hits = Number(row?.hits ?? 0)
-        if (hits >= limit) return false
+        return Number(row?.hits ?? 0)
+    }
+
+    private recordHit(bucket: string, windowStart: number): void {
+        const row = this.sql
+            .exec<{ hits: number }>(
+                `SELECT hits FROM bind_rates WHERE bucket = ? AND window_start = ?`,
+                bucket,
+                windowStart,
+            )
+            .toArray()
+            .at(0)
         if (row) {
             this.sql.exec(
                 `UPDATE bind_rates SET hits = ? WHERE bucket = ? AND window_start = ?`,
-                hits + 1,
+                Number(row.hits) + 1,
                 bucket,
                 windowStart,
             )
-        } else {
-            this.sql.exec(
-                `INSERT INTO bind_rates (bucket, window_start, hits) VALUES (?, ?, 1)`,
-                bucket,
-                windowStart,
-            )
+            return
         }
-        return true
+        this.sql.exec(
+            `INSERT INTO bind_rates (bucket, window_start, hits) VALUES (?, ?, 1)`,
+            bucket,
+            windowStart,
+        )
     }
 
     private count(query: string, ...bindings: (string | number)[]): number {

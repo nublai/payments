@@ -91,7 +91,7 @@ export interface Env {
     INTENT_EXPIRY_BUFFER_SECONDS?: string // Buffer before expiry to reject intent (default: "30")
 
     // HMAC-SHA256 secret for quote integrity.
-    // Required when CONTEXT is not local/dev. When unset locally, quote HMAC is skipped.
+    // Required when CONTEXT is not local. When unset locally, quote HMAC is skipped.
     // Set with `wrangler secret put QUOTE_SIGNING_SECRET --env <stage|prod>`. Do not commit the value.
     QUOTE_SIGNING_SECRET?: string
 

@@ -40,6 +40,10 @@ export async function issueBindNonce(
     typedData: ReturnType<typeof walletBindTypedData>
 }> {
     const caller = requireOidcCaller()
+    const environment = walletBindEnvironment(env)
+    if (!environment) {
+        throw new RpcError(INVALID_PARAMS, 'CONTEXT is required to issue a bind nonce')
+    }
     const typed = unwrapParams<IssueBindNonceParams>(params)
     const address = getAddress(validateAddress(requireParam(typed?.address, 'address'), 'address'))
     const chainId = resolveChainId(env, typed?.chainId)
@@ -79,7 +83,7 @@ export async function issueBindNonce(
         nonce: issued.nonce,
         chainId,
         expiry: issued.expiresAt,
-        environment: walletBindEnvironment(env),
+        environment,
     }
 
     return {
