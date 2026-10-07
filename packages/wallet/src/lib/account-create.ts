@@ -62,7 +62,7 @@ export function getDefaultSessionPermissions(
     if (!token || !addresses?.escrow || !addresses.simpleSettler) {
         throw new AccountCreateError(
             'UNKNOWN',
-            `No USDC or Escrow address for chain ${chainId}. Refusing a wildcard session.`,
+            `No USDC or Escrow address for chain ${chainId}. Contracts are not deployed. Refusing a wildcard session.`,
         )
     }
     const call = (to: Address, selector: Hex) => ({

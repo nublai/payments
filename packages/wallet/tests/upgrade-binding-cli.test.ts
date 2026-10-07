@@ -17,8 +17,6 @@ import { INTENT_TYPES } from '@nubl/relayer-client'
 
 const walletDir = resolve(import.meta.dir, '..')
 const PASSWORD = 'test-password'
-const PROD_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
-const PROD_ORCH = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
 const LOCAL_PROXY = '0x1111111111111111111111111111111111111111' as Address
 const LOCAL_ORCH = '0x2222222222222222222222222222222222222222' as Address
 const ATTACKER = getAddress('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF')
@@ -154,7 +152,7 @@ function evilAuthPayload(input: {
                 name: 'Orchestrator',
                 version: '0.5.5',
                 chainId: input.chainId,
-                verifyingContract: PROD_ORCH,
+                verifyingContract: LOCAL_ORCH,
             },
             types: {
                 SignedCall: [
@@ -639,13 +637,13 @@ let sharedDir = ''
 beforeAll(async () => {
     sharedDir = mkdtempSync(join(tmpdir(), 'tw-h5-profile-'))
     const keystore = join(sharedDir, 'account.json')
-    await withServer('honest-upgrade', 0, 8453, PROD_ORCH, PROD_PROXY, async (_server, url) => {
+    await withServer('honest-upgrade', 0, 31337, LOCAL_ORCH, LOCAL_PROXY, async (_server, url) => {
         const result = await runCli(
             [
                 'account',
                 'create',
                 '--env',
-                'prod',
+                'dev',
                 '--relayer-url',
                 url,
                 '--rpc-url',
@@ -655,7 +653,7 @@ beforeAll(async () => {
                 '--format',
                 'json',
             ],
-            {},
+            devEnv(url),
             90_000,
             'CREATE FULL ACCESS SESSION',
         )
@@ -690,13 +688,13 @@ function devEnv(url: string): Record<string, string> {
 }
 
 async function runCreate(mode: UpgradeMode, keystore: string) {
-    return withServer(mode, 0, 8453, PROD_ORCH, PROD_PROXY, async (server, url) => {
+    return withServer(mode, 0, 31337, LOCAL_ORCH, LOCAL_PROXY, async (server, url) => {
         const result = await runCli(
             [
                 'account',
                 'create',
                 '--env',
-                'prod',
+                'dev',
                 '--relayer-url',
                 url,
                 '--rpc-url',
@@ -706,7 +704,7 @@ async function runCreate(mode: UpgradeMode, keystore: string) {
                 '--format',
                 'json',
             ],
-            {},
+            devEnv(url),
             90_000,
             'CREATE FULL ACCESS SESSION',
         )
@@ -744,6 +742,31 @@ function assertNoSubmit(server: MockRelayer, result: { status: number; stdout: s
     expect(server.submitted(), output).toBe(false)
     expect(server.signed(), output).toBe(false)
 }
+
+test('account create on prod refuses because contracts are not deployed', async () => {
+    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-prod-')), 'account.json')
+    const result = await runCli(
+        [
+            'account',
+            'create',
+            '--env',
+            'prod',
+            '--relayer-url',
+            'https://127.0.0.1:9',
+            '--rpc-url',
+            'https://127.0.0.1:9',
+            '--keystore-path',
+            keystore,
+            '--format',
+            'json',
+        ],
+        { RELAYER_URL_PROD: 'https://127.0.0.1:9' },
+        30_000,
+        'CREATE FULL ACCESS SESSION',
+    )
+    expect(result.status).not.toBe(0)
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/not deployed/)
+}, 30_000)
 
 test('account create refuses an attacker delegation from getCapabilities', async () => {
     const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')

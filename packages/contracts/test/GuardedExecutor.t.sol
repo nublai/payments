@@ -573,17 +573,16 @@ contract GuardedExecutorTest is BaseTest {
             u.executionData = abi.encode(calls);
             u.signature = _sig(k, u);
 
-            // If first 4bytes are 0xdfc924d5, then it's "anotherTransfer" call, and the spend limit
-            // will not catch it.
-            if (
-                (calls[0].data[0] == bytes1(uint8(0xdf)) &&
-                    calls[0].data[1] == bytes1(uint8(0xc9)) &&
-                    calls[0].data[2] == bytes1(uint8(0x24)) &&
-                    calls[0].data[3] == bytes1(uint8(0xd5))) || amount == 0
-            ) {
-                assertEq(oc.execute(abi.encode(u)), 0);
+            // Intentional behavior change. With no spend period left, the token is not
+            // balance-metered. `_transferCall2` is `transfer` or `anotherTransfer`.
+            // `anotherTransfer` is not a recognized selector, so that move succeeds and
+            // is not charged. A recognized non-zero `transfer` still reverts
+            // `NoSpendPermissions`. A zero amount is not spend on either selector.
+            bytes4 result = oc.execute(abi.encode(u));
+            if (amount == 0 || bytes4(calls[0].data) != bytes4(0xa9059cbb)) {
+                assertEq(result, 0);
             } else {
-                assertEq(oc.execute(abi.encode(u)), bytes4(keccak256("NoSpendPermissions()")));
+                assertEq(result, bytes4(keccak256("NoSpendPermissions()")));
             }
         }
 
@@ -690,7 +689,9 @@ contract GuardedExecutorTest is BaseTest {
         DelegatedEOA memory d = _randomEIP7702DelegatedEOA();
 
         u.eoa = d.eoa;
-        u.combinedGas = 1_000_000;
+        // Per-call `balanceOf` on the widest fuzz batch (5 tokens, 16 calls), plus
+        // Permit2 lockdown. The cap stays 1_500_000. The spend assertion is unchanged.
+        u.combinedGas = 1_500_000;
         u.nonce = d.d.getNonce(0);
 
         PassKey memory k = _randomSecp256k1PassKey();
