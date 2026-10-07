@@ -2,6 +2,7 @@
 cache/
 out/
 deployments/envs/local/
+deployments/envs/local-verify-release-test/
 
 # Ignores development broadcast logs
 !/broadcast

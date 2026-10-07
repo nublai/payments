@@ -6,7 +6,7 @@ import {LibEIP7702} from "solady/accounts/LibEIP7702.sol";
 import {VerifyRelease} from "../scripts/sol/VerifyRelease.s.sol";
 
 contract VerifyReleaseTest is Test {
-    string internal constant CONTEXT = "verify-release-test";
+    string internal constant CONTEXT = "local-verify-release-test";
 
     VerifyRelease internal verify;
 
