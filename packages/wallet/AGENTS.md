@@ -38,7 +38,7 @@ src/
     address.ts              # executeAddress (funding address + QR/link)
     session-create.ts       # executeSessionCreate
     session-daemon.ts       # Session daemon server (runSessionDaemon, runSessionDaemonEntry)
-    session-daemon-client.ts # Daemon IPC client (ping, loadKey, list, sign, remove)
+    session-daemon-client.ts # Daemon IPC client (ping, loadKey, list, sign, remove). getSessionSecrets is refused.
     session-daemon-paths.ts # Daemon state dir, pid file, socket path resolution
     session-daemon-protocol.ts # Daemon JSON protocol (parse/serialize, error codes)
     session-list.ts         # executeSessionList
@@ -366,11 +366,12 @@ The `passwordDeps()` helper in `cli.ts` wires all three. The `password-readline.
 - `account export --show-private` and `session export` — type `EXPORT PRIVATE KEYS`. `TW_EXPORT_PASSWORD` does not skip it
 - `send`, `escrow create`, and `escrow refund` — type `SEND USDC`. Create and refund move USDC
 - `swap` and `bridge` — confirm the quote in the terminal. `--yes` / `yes: true` is ignored outside that terminal. On a TTY, `--yes` still skips the on-screen quote
-- `session create` / `session rotate` / `permissions grant` when the result is full access — type `CREATE FULL ACCESS SESSION` or `ROTATE FULL ACCESS SESSION` for rotate. Full access is the `--full-access` flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`), or a spend limit above the default 10 USDC
+- `account create` and `account delegate` — type `CREATE FULL ACCESS SESSION`. Both install the default session (`ANY_TARGET`, `ANY_FN_SEL`, and unlimited USDC). That set stays so a local escrow can `approve` and call the escrow contract; the phrase is what an MCP client cannot satisfy
+- `session create` / `session rotate` / `permissions grant` when the result is full access — type `CREATE FULL ACCESS SESSION` or `ROTATE FULL ACCESS SESSION` for rotate. Full access is the `--full-access` flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`), a spend period shorter than a day (`minute`, `hour`), a token other than that chain's USDC, or a spend limit above the default 10 USDC. A day-or-longer USDC limit of exactly 10 stays allowed, including when the amount is omitted on `session create`
 - `account passkey` — type `AUTHORIZE PASSKEY`. The `privateKey` argument is not accepted over MCP
 - `escrow settle` when signing with an oracle private key — type `SIGN ESCROW SETTLEMENT`. The `oraclePrivateKey` argument is not accepted over MCP
 
-A session created without those elevated permissions keeps the default USDC `transfer` permission and a 10 USDC daily spend, and does not need the full-access phrase. Metadata export and escrow status do not spend. Local `e2e:local-payment` types `SEND USDC` for `send`. Local `e2e:local-escrow` types `SEND USDC` for create and `SIGN ESCROW SETTLEMENT` for settle, through `scripts/tw-tty-confirm.py`, because those scripts are the operator, not an MCP client.
+A session created without those elevated permissions keeps the default USDC `transfer` permission and a 10 USDC daily spend, and does not need the full-access phrase. The daemon socket does not return raw session keys (`getSessionSecrets` is refused). `sign` and `signMessage` stay on the socket. Metadata export and escrow status do not spend. Local `e2e:local-payment` and `e2e:local-escrow` type `CREATE FULL ACCESS SESSION` for `account create`, `SEND USDC` for send and escrow create, and `SIGN ESCROW SETTLEMENT` for settle, through `scripts/tw-tty-confirm.py`, because those scripts are the operator, not an MCP client.
 
 ## Critical Gotchas
 

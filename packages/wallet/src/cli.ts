@@ -60,7 +60,12 @@ import { executePermissionsShow } from './lib/permissions-show'
 import { parseSpendLimit, permissionNeedsFullAccessConfirmation } from './lib/session-common'
 import { authUrlUnsetMessage, executeLogin, executeLogout, getAuthUrl, LoginError } from './lib/login'
 import { readKeystoreBundle } from './lib/keystore'
-import { normalizeChainName, type ChainName } from './lib/network-config'
+import {
+    getUsdcTokenConfig,
+    normalizeChainName,
+    selectDefaultChain,
+    type ChainName,
+} from './lib/network-config'
 import {
     getQuote as getRelayQuote,
     pollIntentStatus as pollRelayIntentStatus,
@@ -113,7 +118,9 @@ const legacySchema = z.boolean().optional().describe('Use legacy USDC.e on polyg
 const spendPeriodSchema = z
     .enum(['minute', 'hour', 'day', 'week', 'month', 'year', 'forever'])
     .optional()
-    .describe('Spend limit period (minute, hour, day, week, month, year, forever)')
+    .describe(
+        'Spend limit period (minute, hour, day, week, month, year, forever). minute and hour require the full-access phrase.',
+    )
 const permissionTypeSchema = z.enum(['call', 'spend']).describe('Permission type: call or spend')
 
 const passwordEnv = z.object({
@@ -296,6 +303,11 @@ async function confirmElevatedPermission(
         selector?: string
         spendLimit?: string
         spendLimitRaw?: string
+        spendPeriod?: 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year' | 'forever'
+        token?: string
+        chain?: string
+        /** Session create/rotate install 10 USDC per day when amount and period are omitted. */
+        defaultUsdcSpend?: boolean
         parseHumanAmount: (value: string) => bigint
     },
 ): Promise<void> {
@@ -304,6 +316,7 @@ async function confirmElevatedPermission(
         spendLimitRaw: input.spendLimitRaw,
         parseHumanAmount: input.parseHumanAmount,
     })
+    const chain = selectDefaultChain(input.env, input.chain)
     const accountAddresses = await readPublicAccountAddresses(
         resolveKeystorePath({
             env: input.env,
@@ -317,6 +330,10 @@ async function confirmElevatedPermission(
             target: input.target,
             selectors: input.selector ? [input.selector] : undefined,
             spendLimit,
+            spendPeriod: input.spendPeriod,
+            token: input.token,
+            usdcAddress: getUsdcTokenConfig(chain).address,
+            defaultUsdcSpend: input.defaultUsdcSpend,
             accountAddresses,
         })
     ) {
@@ -571,7 +588,8 @@ account.command('status', {
 })
 
 account.command('create', {
-    description: 'Create local account keystore and delegate account',
+    description:
+        'Create local account keystore and delegate account. The default session is full access (ANY_TARGET, ANY_FN_SEL, unlimited USDC) and requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,
@@ -594,7 +612,12 @@ account.command('create', {
         txHash: z.string().optional(),
     }),
     examples: [{ options: { env: 'prod', profile: 'agent' }, description: 'Create account' }],
-    async run({ options, env }) {
+    async run({ options, env, error: reportError }) {
+        await confirmHuman(
+            reportError,
+            'Creating an account installs a full-access session',
+            CONFIRM_FULL_ACCESS_PHRASE,
+        )
         const keystorePath = resolveKeystorePath({
             env: options.env,
             keystorePath: options.keystorePath,
@@ -626,7 +649,8 @@ account.command('create', {
 })
 
 account.command('delegate', {
-    description: 'Delegate existing account on one or more chains',
+    description:
+        'Delegate existing account on one or more chains. Installs the default full-access session and requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
     options: z.object({
         env: envSchema,
         profile: profileSchema,
@@ -653,7 +677,12 @@ account.command('delegate', {
             description: 'Delegate on base',
         },
     ],
-    async run({ options, env }) {
+    async run({ options, env, error: reportError }) {
+        await confirmHuman(
+            reportError,
+            'Delegating an account installs a full-access session',
+            CONFIRM_FULL_ACCESS_PHRASE,
+        )
         const password = await resolveAccountDelegatePassword(
             {
                 env: options.env,
@@ -1230,7 +1259,7 @@ session.command('create', {
             .boolean()
             .optional()
             .describe(
-                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing CREATE FULL ACCESS SESSION in an interactive terminal. MCP cannot confirm it.',
+                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing CREATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for a period shorter than a day or a spend above 10 USDC. MCP cannot confirm it.',
             ),
         target: z
             .string()
@@ -1296,6 +1325,9 @@ session.command('create', {
                 selector: options.selector,
                 spendLimit: options.spendLimit,
                 spendLimitRaw: options.spendLimitRaw,
+                spendPeriod: options.spendPeriod,
+                chain: options.chain,
+                defaultUsdcSpend: true,
                 parseHumanAmount: parseSpendLimit,
             },
         )
@@ -1477,7 +1509,7 @@ session.command('rotate', {
             .boolean()
             .optional()
             .describe(
-                'Grant full access. Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing ROTATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for ANY_TARGET, the account, ANY_FN_SEL, an account admin selector, or a spend limit above 10 USDC. MCP cannot confirm it.',
+                'Grant full access. Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing ROTATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for ANY_TARGET, the account, ANY_FN_SEL, an account admin selector, a period shorter than a day, a non-USDC token, or a spend limit above 10 USDC. MCP cannot confirm it.',
             ),
         target: z
             .string()
@@ -1527,6 +1559,9 @@ session.command('rotate', {
                 selector: options.selector,
                 spendLimit: options.spendLimit,
                 spendLimitRaw: options.spendLimitRaw,
+                spendPeriod: options.spendPeriod,
+                chain: options.chain,
+                defaultUsdcSpend: true,
                 parseHumanAmount: parseSpendLimit,
             },
         )
@@ -1884,7 +1919,12 @@ permissions.command('grant', {
             .describe(
                 'Function selector. ANY_FN_SEL or an account admin selector requires CREATE FULL ACCESS SESSION.',
             ),
-        token: z.string().optional().describe('Spend token address'),
+        token: z
+            .string()
+            .optional()
+            .describe(
+                'Spend token address. Any token other than this chain USDC requires CREATE FULL ACCESS SESSION.',
+            ),
         spendLimit: z
             .string()
             .optional()
@@ -1922,6 +1962,9 @@ permissions.command('grant', {
                 selector: options.selector,
                 spendLimit: options.spendLimit,
                 spendLimitRaw: options.spendLimitRaw,
+                spendPeriod: options.period,
+                token: options.token,
+                chain: options.chain,
                 parseHumanAmount: parseSpendLimitUnits,
             },
         )

@@ -94,3 +94,76 @@ test('permissionNeedsFullAccessConfirmation treats wildcards, the account, admin
         }),
     ).toBe(true)
 })
+
+const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+
+test('permissionNeedsFullAccessConfirmation treats short periods and non-USDC tokens as full access', () => {
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'minute',
+            defaultUsdcSpend: true,
+            usdcAddress: usdc,
+        }),
+    ).toBe(true)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'hour',
+            spendLimit: DEFAULT_SESSION_SPEND_LIMIT,
+            usdcAddress: usdc,
+        }),
+    ).toBe(true)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            defaultUsdcSpend: true,
+            usdcAddress: usdc,
+        }),
+    ).toBe(false)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'day',
+            spendLimit: DEFAULT_SESSION_SPEND_LIMIT,
+            token: usdc,
+            usdcAddress: usdc,
+        }),
+    ).toBe(false)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'week',
+            spendLimit: DEFAULT_SESSION_SPEND_LIMIT * 7n,
+            token: usdc,
+            usdcAddress: usdc,
+        }),
+    ).toBe(true)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'forever',
+            spendLimit: DEFAULT_SESSION_SPEND_LIMIT,
+            token: usdc,
+            usdcAddress: usdc,
+        }),
+    ).toBe(false)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'minute',
+            spendLimit: DEFAULT_SESSION_SPEND_LIMIT,
+            token: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
+            usdcAddress: usdc,
+        }),
+    ).toBe(true)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'minute',
+            spendLimit: DEFAULT_SESSION_SPEND_LIMIT,
+            token: '0x0000000000000000000000000000000000000000',
+            usdcAddress: usdc,
+        }),
+    ).toBe(true)
+    expect(
+        permissionNeedsFullAccessConfirmation({
+            spendPeriod: 'minute',
+            spendLimit: DEFAULT_SESSION_SPEND_LIMIT,
+            token: '0x0000000000000000000000000000000000000001',
+            usdcAddress: usdc,
+        }),
+    ).toBe(true)
+})

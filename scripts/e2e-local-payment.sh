@@ -110,9 +110,12 @@ USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 export TW_PASSWORD="e2e-local-payment"
 
 echo "Creating and delegating account..."
+# account create installs ANY_TARGET + unlimited USDC and requires the phrase.
+# This script is the operator: it allocates a terminal and types the phrase.
 CREATE_JSON="$(
   cd "$ROOT/packages/wallet"
-  bun ./src/cli.ts account create \
+  python3 "$ROOT/scripts/tw-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
+    bun ./src/cli.ts account create \
     --env dev \
     --keystore-path "$KEYSTORE" \
     --format json

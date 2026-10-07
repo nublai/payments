@@ -22,7 +22,10 @@ import { assertValidSessionName } from './keystore'
 import { getUsdcTokenConfig, type ChainName } from './network-config'
 
 export const ANY_FUNCTION_SELECTOR = RELAYER_ANY_FUNCTION_SELECTOR
-/** Default `session create` USDC spend: 10 USDC per day. A higher limit is full access. */
+/**
+ * Default `session create` USDC spend: 10 USDC per day.
+ * A higher limit, a period shorter than a day, or a non-USDC token is full access.
+ */
 export const DEFAULT_SESSION_SPEND_LIMIT = parseUnits('10', 6)
 const MAX_UINT256 = 2n ** 256n - 1n
 
@@ -255,20 +258,52 @@ function normalizeSelector(value: string): string | undefined {
     return withPrefix.toLowerCase()
 }
 
+function isChainUsdc(token: string, usdcAddress: string | undefined): boolean {
+    if (!usdcAddress) return false
+    const normalized = normalizeAddress(token)
+    const usdc = normalizeAddress(usdcAddress)
+    return normalized !== undefined && usdc !== undefined && normalized === usdc
+}
+
 /**
  * True when the requested permission is the same privilege as `--full-access`:
  * the flag itself, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account-admin
- * selector, or a spend limit above the default 10 USDC.
+ * selector, a period shorter than a day, a token other than the chain's USDC,
+ * or a spend that is not known to be at most 10 USDC per day.
+ *
+ * A day-or-longer USDC bucket can be emptied in one day, so any USDC limit
+ * above 10 is full access. Exactly 10 USDC on a day or longer period stays
+ * allowed. `minute` and `hour` reset more than once a day, so they are full
+ * access even when the amount is omitted or is exactly 10 USDC.
  */
 export function permissionNeedsFullAccessConfirmation(input: {
     fullAccess?: boolean
     target?: string
     selectors?: readonly string[]
     spendLimit?: bigint
+    spendPeriod?: SpendPeriod
+    /** Session create/rotate install 10 USDC per day when amount and period are omitted. */
+    defaultUsdcSpend?: boolean
+    token?: string
+    usdcAddress?: string
     accountAddresses?: readonly string[]
 }): boolean {
     if (input.fullAccess) return true
-    if (input.spendLimit !== undefined && input.spendLimit > DEFAULT_SESSION_SPEND_LIMIT) {
+    if (input.token !== undefined && !isChainUsdc(input.token, input.usdcAddress)) {
+        return true
+    }
+
+    const period = input.spendPeriod ?? (input.defaultUsdcSpend ? 'day' : undefined)
+    if (period === 'minute' || period === 'hour') {
+        return true
+    }
+
+    const limit =
+        input.spendLimit ?? (input.defaultUsdcSpend ? DEFAULT_SESSION_SPEND_LIMIT : undefined)
+    if (limit !== undefined && limit > DEFAULT_SESSION_SPEND_LIMIT) {
+        return true
+    }
+    if (period !== undefined && limit === undefined) {
         return true
     }
 

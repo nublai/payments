@@ -163,7 +163,7 @@ echo "my-password" | tw session create worker-1 --profile agent --resume --passw
 echo "my-password" | tw session create alice --profile agent --agent --password-stdin --env prod
 ```
 
-`--full-access` is mutually exclusive with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, and `--spend-period`. Creating or rotating a session, or granting a permission, asks an interactive terminal to type `CREATE FULL ACCESS SESSION` (`ROTATE FULL ACCESS SESSION` for `session rotate`) when the request is full access: the flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector, or a spend limit above 10 USDC. MCP and non-interactive callers cannot confirm it. Omitting `--target` and `--selector` allows USDC `transfer` only, with a 10 USDC daily spend, and does not need that phrase.
+`--full-access` is mutually exclusive with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, and `--spend-period`. Creating or rotating a session, or granting a permission, asks an interactive terminal to type `CREATE FULL ACCESS SESSION` (`ROTATE FULL ACCESS SESSION` for `session rotate`) when the request is full access: the flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector, a period shorter than a day, a token other than that chain's USDC, or a spend limit above 10 USDC. MCP and non-interactive callers cannot confirm it. Omitting `--target` and `--selector` allows USDC `transfer` only, with a 10 USDC daily spend, and does not need that phrase. `account create` and `account delegate` install `ANY_TARGET`, `ANY_FN_SEL`, and unlimited USDC, and they require the same phrase.
 
 #### `session list` / `session rotate` / `session revoke`
 
@@ -209,7 +209,7 @@ tw daemon status --json
 tw daemon stop --json
 ```
 
-`tw daemon start` is idempotent. Key material stays in daemon memory only; encrypted files remain unchanged.
+`tw daemon start` is idempotent. Key material stays in daemon memory only; encrypted files remain unchanged. The socket does not return raw session keys. `getSessionSecrets` is refused. `sign` and `signMessage` still run against keys that were unlocked.
 
 ### Permissions
 
@@ -284,4 +284,4 @@ tw --version           # Version
 
 `tw --mcp` registers one tool per leaf command. The ids are `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_passkey`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
 
-These calls are refused over MCP, with a message to run the command in a terminal: `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still skips the on-screen quote.
+These calls are refused over MCP, with a message to run the command in a terminal: `account_create` and `account_delegate` (they install a wildcard unlimited session); `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, a period shorter than a day, a non-USDC token, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still skips the on-screen quote. The daemon socket does not return raw session keys.

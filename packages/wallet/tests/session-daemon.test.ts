@@ -56,11 +56,8 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
     }
 
     const secrets = await client.getSessionSecrets('default')
-    expect(secrets?.ok).toBe(true)
-    if (secrets?.ok) {
-        expect(secrets.result.privateKey).toBe(TEST_PRIVATE_KEY)
-        expect(secrets.result.encryptionDevice).toBe('0x1234')
-    }
+    expect(secrets?.ok).toBe(false)
+    expect(JSON.stringify(secrets)).not.toContain(TEST_PRIVATE_KEY)
 
     const typedData = {
         domain: { name: 'session-daemon-test' },
@@ -81,13 +78,13 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
 
     await new Promise((resolve) => setTimeout(resolve, 1_100))
 
-    const expired = await client.getSessionSecrets('default')
+    const expired = await client.sign('default', typedData)
     expect(expired?.ok).toBe(false)
     if (expired && !expired.ok) {
         expect(expired.error.code).toBe('SESSION_EXPIRED')
     }
 
-    const missing = await client.getSessionSecrets('missing')
+    const missing = await client.sign('missing', typedData)
     expect(missing?.ok).toBe(false)
     if (missing && !missing.ok) {
         expect(missing.error.code).toBe('SESSION_NOT_FOUND')

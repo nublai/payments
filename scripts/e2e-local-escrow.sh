@@ -164,9 +164,11 @@ export TW_PASSWORD="e2e-local-payment"
 export TW_ORACLE_PRIVATE_KEY="$ORACLE_KEY"
 
 echo "Creating and delegating account..."
+# account create installs ANY_TARGET + unlimited USDC and requires the phrase.
 CREATE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out bun ./src/cli.ts account create \
+  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
+    bun ./src/cli.ts account create \
     --env dev \
     --keystore-path "$KEYSTORE" \
     --format json

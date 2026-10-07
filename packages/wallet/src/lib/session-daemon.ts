@@ -346,32 +346,14 @@ export async function runSessionDaemon(options?: {
                                 return
                             }
                             case 'getSessionSecrets': {
-                                const sessionName = normalizeSessionName(request.params.sessionName)
-                                const now = getNowMs()
-                                const entry = getLiveSessionOrWriteError(
-                                    keyStore,
-                                    sessionName,
-                                    now,
-                                    request.id,
-                                    writeResponse,
+                                // Raw keys stay off this socket. sign and signMessage remain (H7).
+                                writeResponse(
+                                    buildError(
+                                        request.id,
+                                        DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                        'getSessionSecrets is not available. The daemon socket does not return raw session keys.',
+                                    ),
                                 )
-                                if (!entry) {
-                                    return
-                                }
-                                writeResponse({
-                                    id: request.id,
-                                    result: {
-                                        name: sessionName,
-                                        privateKey: `0x${entry.privateKey.toString('hex')}`,
-                                        address: entry.address,
-                                        expiresAt: entry.expiresAt,
-                                        ...(entry.encryptionDevice
-                                            ? {
-                                                  encryptionDevice: `0x${entry.encryptionDevice.toString('hex')}`,
-                                              }
-                                            : {}),
-                                    },
-                                })
                                 return
                             }
                             case 'remove': {

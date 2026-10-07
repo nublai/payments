@@ -633,3 +633,147 @@ test('MCP escrow_refund cannot move USDC without human confirmation', async () =
     expect(output).toContain('SEND USDC')
     expect(output).toContain('"isError":true')
 })
+
+test('MCP account_create cannot install a wildcard session without the phrase', async () => {
+    const freshHome = mkdtempSync(join(tmpdir(), 'tw-h3-create-'))
+    const freshKeystore = join(freshHome, 'account.json')
+    const output = await callMcpTool(
+        'account_create',
+        {
+            env: 'dev',
+            keystorePath: freshKeystore,
+        },
+        { TW_PASSWORD: password, HOME: freshHome },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('accountProxy')
+    expect(output).not.toContain(sessionPrivateKey)
+    expect(existsSync(freshKeystore)).toBe(false)
+})
+
+test('MCP account_delegate cannot install a wildcard session without the phrase', async () => {
+    const output = await callMcpTool(
+        'account_delegate',
+        {
+            chain: 'anvil',
+            env: 'dev',
+            keystorePath,
+        },
+        { TW_PASSWORD: 'wrong-password', HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('Unsupported state')
+    expect(output).not.toContain(sessionPrivateKey)
+    expect(output).not.toContain(rootPrivateKey)
+})
+
+test('daemon socket does not return a wildcard session raw key without a phrase', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-daemon-'))
+    const socketPath = join(dir, 'session.sock')
+    const previous = process.env.TW_AGENT_SOCK
+    process.env.TW_AGENT_SOCK = socketPath
+    const { runSessionDaemon } = await import('../src/lib/session-daemon')
+    const { SessionDaemonClient } = await import('../src/lib/session-daemon-client')
+    const daemon = await runSessionDaemon()
+    try {
+        const unlock = await runCli(
+            [
+                'daemon',
+                'unlock',
+                'default',
+                '--env',
+                'dev',
+                '--keystore-path',
+                keystorePath,
+                '--json',
+            ],
+            { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
+        )
+        expect(unlock.status).toBe(0)
+        expect(unlock.output).not.toContain(sessionPrivateKey)
+        const client = new SessionDaemonClient(socketPath)
+        const secrets = await client.getSessionSecrets('default')
+        const serialized = JSON.stringify(secrets)
+        expect(serialized).not.toContain(sessionPrivateKey)
+        expect(secrets?.ok).toBe(false)
+    } finally {
+        await daemon.stop()
+        if (previous === undefined) {
+            delete process.env.TW_AGENT_SOCK
+        } else {
+            process.env.TW_AGENT_SOCK = previous
+        }
+    }
+})
+
+test('MCP session_create minute period with no amount requires confirmation before decrypt', async () => {
+    const output = await callMcpTool(
+        'session_create',
+        {
+            sessionName: 'per-minute',
+            env: 'dev',
+            spendPeriod: 'minute',
+            keystorePath,
+        },
+        { TW_PASSWORD: 'wrong-password', HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('Unsupported state')
+    expect(output).not.toContain('getNonce')
+    expect(output).not.toContain(rootPrivateKey)
+})
+
+test('MCP session_create hour period at 10 USDC requires confirmation before decrypt', async () => {
+    const output = await callMcpTool(
+        'session_create',
+        {
+            sessionName: 'per-hour',
+            env: 'dev',
+            spendPeriod: 'hour',
+            spendLimit: '10',
+            keystorePath,
+        },
+        { TW_PASSWORD: 'wrong-password', HOME: home },
+    )
+    expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+    expect(output).toContain('CREATE FULL ACCESS SESSION')
+    expect(output).toContain('"isError":true')
+    expect(output).not.toContain('Unsupported state')
+    expect(output).not.toContain('getNonce')
+})
+
+test('MCP permissions_grant raw 10000000 per minute on a non-USDC token requires confirmation', async () => {
+    const tokens = [
+        ['WBTC', '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'],
+        ['native', '0x0000000000000000000000000000000000000000'],
+        ['zero-decimal', '0x0000000000000000000000000000000000000001'],
+    ] as const
+    for (const [label, token] of tokens) {
+        const output = await callMcpTool(
+            'permissions_grant',
+            {
+                keyRef: 'default',
+                type: 'spend',
+                token,
+                spendLimitRaw: '10000000',
+                period: 'minute',
+                env: 'dev',
+                keystorePath,
+            },
+            { TW_PASSWORD: 'wrong-password', HOME: home },
+        )
+        const labeled = `${label}\n${output}`
+        expect(labeled).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(labeled).toContain('CREATE FULL ACCESS SESSION')
+        expect(labeled).toContain('"isError":true')
+        expect(labeled).not.toContain('Unable to connect')
+        expect(labeled).not.toContain('Unsupported state')
+        expect(labeled).not.toContain('getNonce')
+    }
+})
