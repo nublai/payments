@@ -35,6 +35,7 @@ import type {
 import { paidUpgradeFeeRecipient } from './shared/paid-upgrade-fee-flow'
 import {
     assertPaidUpgrade,
+    assertPaidUpgradeOidcOwner,
     assertPaidUpgradeRateCapacity,
     requirePaidUpgradeClientIp,
     chainUsdcAddress,
@@ -103,6 +104,9 @@ export async function handlePrepareCalls(
     }))
 
     const requestedUpgrade = typedParams.capabilities?.accountUpgrade
+    if (requestedUpgrade) {
+        assertPaidUpgradeOidcOwner(typedParams.from)
+    }
     const paidUpgradeIp = requestedUpgrade
         ? requirePaidUpgradeClientIp(ctx.request, env)
         : 'unknown'

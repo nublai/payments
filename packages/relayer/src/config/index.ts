@@ -6,6 +6,7 @@ import { getAddress, isAddress, zeroAddress } from 'viem'
 
 import type { Env, RelayerConfig } from '../types/env'
 import { hasDeployment } from '@nubl/contracts/deployments'
+import { readOidcConfig, isOidcEnabled } from '../auth/oidc-config'
 import { parseErc8128Allowlist } from '../auth/erc8128/signer-policy'
 import { isLocalDevContext, quoteSigningSecret } from './runtime-context'
 import { getContractAddresses } from './addresses'
@@ -75,6 +76,13 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
         }
     }
 
+    if (isOidcEnabled(env)) {
+        const oidc = readOidcConfig(env)
+        if (!oidc.ok) {
+            for (const key of oidc.missing) missing.push(key)
+        }
+    }
+
     if (!isLocalDevContext(env) && !quoteSigningSecret(env)) {
         missing.push('QUOTE_SIGNING_SECRET')
     }
@@ -90,7 +98,7 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
     return { valid: missing.length === 0, missing }
 }
 
-/** Stage and prod must name a non-zero fee recipient. Local may omit it. */
+/** Anything other than local must name a non-zero fee recipient. Local may omit it. */
 function isPaidFeeRecipient(value: string | undefined): boolean {
     const text = value?.trim()
     if (!text || !isAddress(text, { strict: false })) return false

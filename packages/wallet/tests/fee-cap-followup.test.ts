@@ -5,6 +5,7 @@ import { hashTypedData } from 'viem/utils'
 import { INTENT_TYPES, type Call } from '@nubl/relayer-client'
 import { executeAccountSend } from '../src/lib/account-send'
 import { executeSignedCalls } from '../src/lib/execute-calls'
+import { discloseFeeCap } from '../src/lib/intent-payment'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from '../src/lib/gas-ceiling'
 import { getEnvRelayerUrl, getUsdcAddressByChainId } from '../src/lib/network-config'
 import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
@@ -257,9 +258,152 @@ test('a second prepare that raises the quote is refused', async () => {
     expect(signTypedData).not.toHaveBeenCalled()
 })
 
+test('an over-ceiling caller cap is clamped to 5 USDC', async () => {
+    const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
+        preparedQuote(input, '1', 8453),
+    )
+    await executeSignedCalls(deps, {
+        ...prodParams,
+        paymentMaxAmount: 100_000_000n,
+        payer: EOA,
+        paymentToken: BASE_USDC,
+    })
+    expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signedCap(signTypedData)).toBe(1001n)
+    const signed = signTypedData.mock.calls[0]?.[0]?.typedData as {
+        message: { payer: Address; paymentToken: Address }
+    }
+    expect(signed.message.payer).toBe(EOA)
+    expect(signed.message.paymentToken).toBe(BASE_USDC)
+})
+
+test('a 50 USDC quote cannot be signed by raising the caller cap', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '50000000', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 100_000_000n,
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payment amount exceeds fee cap/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('a caller cap without payer or token is refused', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, paymentMaxAmount: 1001n }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, paymentMaxAmount: 1001n, payer: EOA }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 1001n,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+const USDC_E = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as Address
+const WBTC = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' as Address
+
+test('an explicit zero payer and token is refused off local', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 100_000_000n,
+            payer: zeroAddress,
+            paymentToken: zeroAddress,
+        }),
+    ).rejects.toThrow(/zero address/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('a payer or token without a cap is refused off local', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, payer: zeroAddress }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    await expect(
+        executeSignedCalls(deps, { ...prodParams, paymentToken: zeroAddress }),
+    ).rejects.toThrow(/payer and paymentToken/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('a non-USDC fee token is refused off local', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            paymentMaxAmount: 100_000_000n,
+            payer: EOA,
+            paymentToken: WBTC,
+        }),
+    ).rejects.toThrow(/native USDC/)
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 137,
+            paymentMaxAmount: 1001n,
+            payer: EOA,
+            paymentToken: USDC_E,
+        }),
+    ).rejects.toThrow(/native USDC/)
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 137,
+            paymentMaxAmount: 1001n,
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/native USDC/)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('polygon native USDC is the only fee token accepted on polygon', async () => {
+    const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
+        preparedQuote(input, '1', 137),
+    )
+    await executeSignedCalls(deps, {
+        ...prodParams,
+        chainId: 137,
+        paymentMaxAmount: 100_000_000n,
+        payer: EOA,
+        paymentToken: POLYGON_USDC,
+    })
+    expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signedCap(signTypedData)).toBe(1001n)
+})
+
+test('discloseFeeCap does not format native wei as USDC', () => {
+    expect(discloseFeeCap(zeroAddress, 1001n)).toEqual({
+        token: zeroAddress,
+        symbol: 'none',
+        amountUsdc: '1001 wei',
+        expiresIn: '1h',
+    })
+    expect(discloseFeeCap(zeroAddress, 0n)).toEqual({
+        token: zeroAddress,
+        symbol: 'none',
+        amountUsdc: '0',
+        expiresIn: '1h',
+    })
+})
+
 test('an explicit 5 USDC ceiling still signs the quote plus margin', async () => {
     const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
-    await executeSignedCalls(deps, { ...prodParams, paymentMaxAmount: PAID_FEE_CAP })
+    await executeSignedCalls(deps, {
+        ...prodParams,
+        paymentMaxAmount: PAID_FEE_CAP,
+        payer: EOA,
+        paymentToken: BASE_USDC,
+    })
     expect(signedCap(signTypedData)).toBe(1001n)
 })
 
@@ -301,6 +445,112 @@ test('a local zero quote signs cap 0 with a zero payer and says so', async () =>
         amountUsdc: '0',
         expiresIn: '1h',
     })
+})
+
+test('dev on a non-local chain clamps an explicit cap to 5 USDC', async () => {
+    const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
+        preparedQuote(input, '10000000', 8453),
+    )
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 8453,
+            env: 'dev',
+            paymentMaxAmount: 100_000_000n,
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payment amount exceeds fee cap/)
+    expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signTypedData).not.toHaveBeenCalled()
+})
+
+test('dev on Base omits the cap and does not sign', async () => {
+    const omitted = signingHarness((input) => preparedQuote(input, '10000000', 8453))
+    await expect(
+        executeSignedCalls(omitted.deps, {
+            ...prodParams,
+            chainId: 8453,
+            env: 'dev',
+        }),
+    ).rejects.toThrow(/zero address/)
+    expect(omitted.prepareCalls).not.toHaveBeenCalled()
+    expect(omitted.signTypedData).not.toHaveBeenCalled()
+
+    const withUsdc = signingHarness((input) => preparedQuote(input, '10000000', 8453))
+    await expect(
+        executeSignedCalls(withUsdc.deps, {
+            ...prodParams,
+            chainId: 8453,
+            env: 'dev',
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payment amount exceeds fee cap/)
+    expect(withUsdc.prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(0n)
+    expect(withUsdc.signTypedData).not.toHaveBeenCalled()
+})
+
+test('dev on Base signs an in-policy quote under an explicit cap at no more than 5 USDC', async () => {
+    const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
+        preparedQuote(input, '1', 8453),
+    )
+    await executeSignedCalls(deps, {
+        ...prodParams,
+        chainId: 8453,
+        env: 'dev',
+        paymentMaxAmount: 100_000_000n,
+        payer: EOA,
+        paymentToken: BASE_USDC,
+    })
+    expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signedCap(signTypedData)).toBe(1001n)
+    expect(signedCap(signTypedData) <= PAID_FEE_CAP).toBe(true)
+})
+
+test('dev on Base clamps a max uint256 cap to 5 USDC', async () => {
+    const max = 2n ** 256n - 1n
+    const hugeQuote = ((max * 10_000n) / 10_500n).toString()
+    const refused = signingHarness((input) => preparedQuote(input, hugeQuote, 8453))
+    await expect(
+        executeSignedCalls(refused.deps, {
+            ...prodParams,
+            chainId: 8453,
+            env: 'dev',
+            paymentMaxAmount: max,
+            payer: EOA,
+            paymentToken: BASE_USDC,
+        }),
+    ).rejects.toThrow(/payment amount exceeds fee cap/)
+    expect(refused.prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(refused.signTypedData).not.toHaveBeenCalled()
+
+    const signed = signingHarness((input) => preparedQuote(input, '4761904', 8453))
+    await executeSignedCalls(signed.deps, {
+        ...prodParams,
+        chainId: 8453,
+        env: 'dev',
+        paymentMaxAmount: max,
+        payer: EOA,
+        paymentToken: BASE_USDC,
+    })
+    expect(signed.prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
+    expect(signedCap(signed.signTypedData)).toBe(PAID_FEE_CAP)
+})
+
+test('dev on a non-local chain refuses a zero payer and token', async () => {
+    const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '0', 8453))
+    await expect(
+        executeSignedCalls(deps, {
+            ...prodParams,
+            chainId: 8453,
+            env: 'dev',
+            paymentMaxAmount: 100_000_000n,
+            payer: zeroAddress,
+            paymentToken: zeroAddress,
+        }),
+    ).rejects.toThrow(/zero address/)
+    expect(signTypedData).not.toHaveBeenCalled()
 })
 
 test('prod send returns the fee cap for human and json output', async () => {

@@ -14,6 +14,8 @@ import { handleSendPreparedCalls } from './sendPreparedCalls'
 import { handleGetCallsStatus } from './getCallsStatus'
 import { handlePrepareUpgradeAccount } from './prepareUpgradeAccount'
 import { handleUpgradeAccount } from './upgradeAccount'
+import { handleIssueBindNonce } from './issueBindNonce'
+import { handleBindAccount } from './bindAccount'
 import { handleGetKeys } from './getKeys'
 import { handleGetAssets } from './stubs'
 import { handleGetCallsHistory } from './getCallsHistory'
@@ -45,6 +47,8 @@ export function createMethods(_env: Env): MethodRegistry {
         // Account methods
         wallet_prepareUpgradeAccount: handlePrepareUpgradeAccount,
         wallet_upgradeAccount: handleUpgradeAccount,
+        wallet_issueBindNonce: handleIssueBindNonce,
+        wallet_bindAccount: handleBindAccount,
 
         // Calls history
         wallet_getCallsHistory: handleGetCallsHistory,
@@ -76,6 +80,8 @@ export const METHOD_NAMES = [
     // Account upgrade
     'wallet_prepareUpgradeAccount',
     'wallet_upgradeAccount',
+    'wallet_issueBindNonce',
+    'wallet_bindAccount',
     // Signature
     'wallet_verifySignature',
 ] as const
