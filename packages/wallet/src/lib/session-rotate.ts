@@ -736,6 +736,10 @@ export async function executeSessionRotate(
                                     from: input.from,
                                     calls: input.calls,
                                     nonce: input.nonce,
+                                    expiry: input.expiry,
+                                    payer: input.payer,
+                                    paymentToken: input.paymentToken,
+                                    paymentMaxAmount: input.paymentMaxAmount,
                                     sessionKey: input.sessionKey,
                                 }),
                             signTypedData: deps.signTypedData,
@@ -753,6 +757,8 @@ export async function executeSessionRotate(
                             calls: extra.calls,
                             nonce: extraNonce,
                             signerPrivateKey: decryptedRoot.rootPrivateKey,
+                            chainId: extraNetwork.chainId,
+                            env: extraNetwork.env,
                         },
                     )
                 }
