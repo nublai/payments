@@ -543,7 +543,10 @@ echo ""
 
 # Compare non-zero deployment JSON to the release runtime. Zero addresses and
 # empty code are skipped. AccountProxy is not the Account artifact.
-# Immutables are masked by match-release-runtime.py.
+# Immutables are masked by match-release-runtime.py, so VerifyRelease.s.sol then
+# requires the exact runtime: Account.ORCHESTRATOR() is the verified release
+# Orchestrator, LayerZeroSettler.endpoint() is LZ_ENDPOINT, and AccountProxy's
+# implementation is the verified Account.
 verify_release_runtimes() {
     local chain_id="$1"
     local context="$2"
@@ -582,6 +585,21 @@ verify_release_runtimes() {
         echo "  on-chain code hash matches the release artifact: $name $addr"
     done
     shopt -u nullglob
+
+    local -a verify_cmd=(
+        forge
+        script
+        scripts/sol/VerifyRelease.s.sol:VerifyRelease
+        --rpc-url "$rpc"
+        --sig "run(uint256)"
+        "$chain_id"
+        --ffi
+    )
+    refuse_bytecode_changing_flags "${verify_cmd[@]}"
+    if ! "${verify_cmd[@]}"; then
+        echo -e "${RED}Error: deployed immutables do not match the expected values on chain ${chain_id}${NC}" >&2
+        exit 1
+    fi
 }
 
 # Foundry fs_permissions follow a symlink inside an allowed directory.

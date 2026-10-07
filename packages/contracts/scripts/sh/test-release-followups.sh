@@ -827,6 +827,271 @@ PY
     fi
 }
 
+# Shared by Red's immutable PoCs on 4f1e464. Prints release initcode for
+# out/<name>.sol/<name>.json with address constructor args appended.
+release_initcode() {
+    python3 - "$PROJECT_ROOT" "$@" <<'PY'
+import json, sys
+from pathlib import Path
+root, name, args = Path(sys.argv[1]), sys.argv[2], sys.argv[3:]
+art = json.loads((root / f"out/{name}.sol/{name}.json").read_text())
+init = art["bytecode"]["object"]
+init = init[2:] if init.startswith("0x") else init
+print("0x" + init + "".join(a[2:].lower().rjust(64, "0") for a in args))
+PY
+}
+
+create2_release_address() {
+    local init="$1" hash
+    hash="$(cast keccak "$init")"
+    echo "0x$(cast keccak "0xff4e59b44847b379578588920ca78fbf26c0b4956c$(printf '0%.0s' {1..64})${hash#0x}" | cut -c27-66)"
+}
+
+start_anvil_8453() {
+    local port="$1" log="$2"
+    anvil --port "$port" --chain-id 8453 --silent >"$log" 2>&1 &
+    IMMUTABLE_ANVIL_PID=$!
+    for _ in $(seq 1 40); do
+        if cast block-number --rpc-url "http://127.0.0.1:${port}" >/dev/null 2>&1; then
+            cast rpc anvil_setCode "0xcA11bde05977b3631167028862bE2a173976CA11" \
+                "$(tr -d '[:space:]' < "$PROJECT_ROOT/scripts/sol/common/bytecodes/multicall3.txt")" \
+                --rpc-url "http://127.0.0.1:${port}" >/dev/null
+            return 0
+        fi
+        sleep 0.25
+    done
+    echo "anvil did not start on $port" >&2
+    cat "$log" >&2
+    return 1
+}
+
+stop_anvil_8453() {
+    kill "${IMMUTABLE_ANVIL_PID:-}" 2>/dev/null || true
+    wait "${IMMUTABLE_ANVIL_PID:-}" 2>/dev/null || true
+    IMMUTABLE_ANVIL_PID=""
+}
+
+masked_helper_matches() {
+    local name="$1" addr="$2" rpc="$3" result
+    result="$(python3 "$SCRIPT_DIR/match-release-runtime.py" \
+        "$PROJECT_ROOT/out/${name}.sol/${name}.json" "$(cast code "$addr" --rpc-url "$rpc")")"
+    if [[ "$result" != "match" ]]; then
+        echo "masked helper printed '$result' for $name at $addr; the PoC needs a masked match" >&2
+        return 1
+    fi
+}
+
+# Red's 4f1e464 PoC. An Account built with orchestrator 0x1111…1111 passes the
+# masked compare. deploy.sh --contracts AccountProxy must refuse to reuse it, and
+# the post-broadcast check must refuse it in account.json.
+wrong_orchestrator_account_refused() {
+    local port=18553
+    local rpc="http://127.0.0.1:${port}"
+    local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    local sender="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    local factory="0x4e59b44847b379578588920cA78FbF26c0B4956C"
+    local salt="0x0000000000000000000000000000000000000000000000000000000000000000"
+    local bad_orch="0x1111111111111111111111111111111111111111"
+    local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
+    local tmp code orch_init bad_init orch bad nonce_before nonce_after
+    tmp="$(mktemp -d)"
+    cp -a "$dir" "$tmp/8453"
+    cleanup_wrong_orch() {
+        trap - RETURN
+        stop_anvil_8453
+        rm -rf "$dir"
+        mkdir -p "$dir"
+        cp -a "$tmp/8453/." "$dir/"
+        rm -rf \
+            "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/8453" \
+            "$PROJECT_ROOT/cache/DeployUnified.s.sol/8453" \
+            "$tmp"
+    }
+    trap cleanup_wrong_orch RETURN
+    start_anvil_8453 "$port" "$tmp/anvil.log" || return 1
+
+    orch_init="$(release_initcode Orchestrator)"
+    orch="$(cast to-check-sum-address "$(create2_release_address "$orch_init")")"
+    cast send --private-key "$pk" --rpc-url "$rpc" "$factory" "${salt}${orch_init#0x}" >/dev/null
+    bad_init="$(release_initcode Account "$bad_orch")"
+    bad="$(cast to-check-sum-address "$(create2_release_address "$bad_init")")"
+    cast send --private-key "$pk" --rpc-url "$rpc" "$factory" "${salt}${bad_init#0x}" >/dev/null
+    if [[ "$(cast call "$bad" "ORCHESTRATOR()(address)" --rpc-url "$rpc")" != "$bad_orch" ]]; then
+        echo "PoC Account at $bad does not report orchestrator $bad_orch" >&2
+        return 1
+    fi
+    masked_helper_matches Account "$bad" "$rpc" || return 1
+    python3 -c 'import json,sys; open(sys.argv[1],"w").write(json.dumps({"address": sys.argv[2]})+"\n")' \
+        "$dir/account.json" "$bad"
+    cp "$dir/accountProxy.json" "$tmp/accountProxy.before"
+
+    # Solidity reuse path.
+    nonce_before="$(cast nonce "$sender" --rpc-url "$rpc")"
+    set +e
+    RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
+        --chain 8453 --rpc "$rpc" --context prod \
+        --contracts AccountProxy --skip-relayer --private-key "$pk" \
+        >"$tmp/proxy.out" 2>"$tmp/proxy.err"
+    code=$?
+    set -e
+    nonce_after="$(cast nonce "$sender" --rpc-url "$rpc")"
+    if [[ "$code" -eq 0 ]]; then
+        echo "deploy.sh --contracts AccountProxy reused the wrong-orchestrator Account $bad" >&2
+        grep -n "Found existing\|Deployed at" "$tmp/proxy.out" >&2 || true
+        return 1
+    fi
+    if ! grep -q "Account.ORCHESTRATOR() at ${bad} is ${bad_orch}, not the verified release Orchestrator ${orch}" \
+        "$tmp/proxy.out" "$tmp/proxy.err"; then
+        echo "AccountProxy deploy failed without the ORCHESTRATOR refusal (exit $code)" >&2
+        cat "$tmp/proxy.err" >&2
+        tail -40 "$tmp/proxy.out" >&2
+        return 1
+    fi
+    if [[ "$nonce_after" != "$nonce_before" ]]; then
+        echo "refused AccountProxy deploy still broadcast (nonce $nonce_before -> $nonce_after)" >&2
+        return 1
+    fi
+    if ! cmp -s "$dir/accountProxy.json" "$tmp/accountProxy.before"; then
+        echo "refused AccountProxy deploy rewrote accountProxy.json" >&2
+        return 1
+    fi
+
+    # deploy.sh post-broadcast path. SimpleSettler does not read account.json.
+    set +e
+    RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
+        --chain 8453 --rpc "$rpc" --context prod \
+        --contracts SimpleSettler --skip-relayer --private-key "$pk" \
+        >"$tmp/post.out" 2>"$tmp/post.err"
+    code=$?
+    set -e
+    if [[ "$code" -eq 0 ]]; then
+        echo "post-broadcast check accepted account.json -> wrong-orchestrator Account $bad" >&2
+        grep -n "code hash matches" "$tmp/post.out" >&2 || true
+        return 1
+    fi
+    if ! grep -q "on-chain code hash matches the release artifact: Account ${bad,,}" "$tmp/post.out"; then
+        echo "post-broadcast masked check did not match the PoC Account first (exit $code)" >&2
+        tail -40 "$tmp/post.out" >&2
+        return 1
+    fi
+    if ! grep -q "Account.ORCHESTRATOR() at ${bad} is ${bad_orch}, not the verified release Orchestrator ${orch}" \
+        "$tmp/post.out" "$tmp/post.err"; then
+        echo "post-broadcast check failed without the ORCHESTRATOR refusal (exit $code)" >&2
+        cat "$tmp/post.err" >&2
+        tail -40 "$tmp/post.out" >&2
+        return 1
+    fi
+    if ! grep -q "deployed immutables do not match the expected values on chain 8453" "$tmp/post.err"; then
+        echo "deploy.sh did not report the post-broadcast immutable failure" >&2
+        cat "$tmp/post.err" >&2
+        return 1
+    fi
+}
+
+# Same PoC for LayerZeroSettler.endpoint(). Endpoints are stubs whose code is
+# STOP, which is enough for the OApp constructor's setDelegate call.
+wrong_endpoint_lz_settler_refused() {
+    local port=18555
+    local rpc="http://127.0.0.1:${port}"
+    local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    local owner="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    local signer="0x0000000000000000000000000000000000005151"
+    local endpoint="0x1a44076050125825900e736c501f859c50fE728c"
+    local bad_endpoint="0x2222222222222222222222222222222222222222"
+    local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
+    local tmp code good_init reused bad
+    tmp="$(mktemp -d)"
+    cp -a "$dir" "$tmp/8453"
+    cleanup_wrong_endpoint() {
+        trap - RETURN
+        stop_anvil_8453
+        rm -rf "$dir"
+        mkdir -p "$dir"
+        cp -a "$tmp/8453/." "$dir/"
+        rm -rf \
+            "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/8453" \
+            "$PROJECT_ROOT/cache/DeployUnified.s.sol/8453" \
+            "$tmp"
+    }
+    trap cleanup_wrong_endpoint RETURN
+    start_anvil_8453 "$port" "$tmp/anvil.log" || return 1
+    cast rpc anvil_setCode "$endpoint" 0x00 --rpc-url "$rpc" >/dev/null
+    cast rpc anvil_setCode "$bad_endpoint" 0x00 --rpc-url "$rpc" >/dev/null
+
+    bad="$(cast send --private-key "$pk" --rpc-url "$rpc" --json \
+        --create "$(release_initcode LayerZeroSettler "$bad_endpoint" "$owner" "$signer")" \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["contractAddress"])')"
+    bad="$(cast to-check-sum-address "$bad")"
+    if [[ "$(cast call "$bad" "endpoint()(address)" --rpc-url "$rpc")" != "$bad_endpoint" ]]; then
+        echo "PoC LayerZeroSettler at $bad does not report endpoint $bad_endpoint" >&2
+        return 1
+    fi
+    masked_helper_matches LayerZeroSettler "$bad" "$rpc" || return 1
+
+    # Solidity reuse path: wrong-endpoint code etched at the CREATE2 address
+    # for the expected (endpoint, owner, signer).
+    good_init="$(release_initcode LayerZeroSettler "$endpoint" "$owner" "$signer")"
+    reused="$(cast to-check-sum-address "$(create2_release_address "$good_init")")"
+    cast rpc anvil_setCode "$reused" "$(cast code "$bad" --rpc-url "$rpc")" --rpc-url "$rpc" >/dev/null
+    masked_helper_matches LayerZeroSettler "$reused" "$rpc" || return 1
+    set +e
+    RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
+        --chain 8453 --rpc "$rpc" --context prod \
+        --contracts LayerZeroSettler --skip-relayer --private-key "$pk" \
+        --owner "$owner" --lz-endpoint "$endpoint" --lz-signer "$signer" \
+        >"$tmp/reuse.out" 2>"$tmp/reuse.err"
+    code=$?
+    set -e
+    if [[ "$code" -eq 0 ]]; then
+        echo "deploy.sh --contracts LayerZeroSettler reused wrong-endpoint code at $reused" >&2
+        return 1
+    fi
+    if ! grep -q "LayerZeroSettler.endpoint() at ${reused} is ${bad_endpoint}, not the expected endpoint ${endpoint}" \
+        "$tmp/reuse.out" "$tmp/reuse.err"; then
+        echo "LayerZeroSettler deploy failed without the endpoint refusal (exit $code)" >&2
+        cat "$tmp/reuse.err" >&2
+        tail -40 "$tmp/reuse.out" >&2
+        return 1
+    fi
+    if [[ -e "$dir/layerZeroSettler.json" ]]; then
+        echo "refused LayerZeroSettler deploy wrote layerZeroSettler.json" >&2
+        return 1
+    fi
+
+    # deploy.sh post-broadcast path. SimpleSettler does not read layerZeroSettler.json.
+    python3 -c 'import json,sys; open(sys.argv[1],"w").write(json.dumps({"address": sys.argv[2]})+"\n")' \
+        "$dir/layerZeroSettler.json" "$bad"
+    set +e
+    RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
+        --chain 8453 --rpc "$rpc" --context prod \
+        --contracts SimpleSettler --skip-relayer --private-key "$pk" \
+        --owner "$owner" --lz-endpoint "$endpoint" --lz-signer "$signer" \
+        >"$tmp/post.out" 2>"$tmp/post.err"
+    code=$?
+    set -e
+    if [[ "$code" -eq 0 ]]; then
+        echo "post-broadcast check accepted layerZeroSettler.json -> wrong-endpoint settler $bad" >&2
+        return 1
+    fi
+    if ! grep -q "on-chain code hash matches the release artifact: LayerZeroSettler ${bad,,}" "$tmp/post.out"; then
+        echo "post-broadcast masked check did not match the PoC settler first (exit $code)" >&2
+        tail -40 "$tmp/post.out" >&2
+        return 1
+    fi
+    if ! grep -q "LayerZeroSettler.endpoint() at ${bad} is ${bad_endpoint}, not the expected endpoint ${endpoint}" \
+        "$tmp/post.out" "$tmp/post.err"; then
+        echo "post-broadcast check failed without the endpoint refusal (exit $code)" >&2
+        cat "$tmp/post.err" >&2
+        tail -40 "$tmp/post.out" >&2
+        return 1
+    fi
+    if ! grep -q "deployed immutables do not match the expected values on chain 8453" "$tmp/post.err"; then
+        echo "deploy.sh did not report the post-broadcast immutable failure" >&2
+        cat "$tmp/post.err" >&2
+        return 1
+    fi
+}
+
 # Release profile write access is deployments/ only. Foundry 1.5 has no
 # --profile flag; deploy.sh selects the profile with FOUNDRY_PROFILE.
 release_can_write_deployments() {
@@ -953,6 +1218,8 @@ if release_can_write_deployments; then pass "release profile can write deploymen
 if immutable_spans_are_masked; then pass "immutable spans are masked"; else fail "immutable spans are masked"; fi
 if resume_rebroadcast_refused; then pass "--resume is refused"; else fail "--resume is refused"; fi
 if selective_json_must_match_release; then pass "JSON dependency must match the release runtime"; else fail "JSON dependency must match the release runtime"; fi
+if wrong_orchestrator_account_refused; then pass "wrong-orchestrator Account is refused"; else fail "wrong-orchestrator Account is refused"; fi
+if wrong_endpoint_lz_settler_refused; then pass "wrong-endpoint LayerZeroSettler is refused"; else fail "wrong-endpoint LayerZeroSettler is refused"; fi
 
 if [[ "$failures" -ne 0 ]]; then
     echo "$failures check(s) failed" >&2

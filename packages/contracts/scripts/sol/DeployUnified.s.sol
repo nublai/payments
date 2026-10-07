@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {DeployFacetWithArgs} from "./common/DeployFacetWithArgs.sol";
-import {DeployHelper} from "./common/DeployHelper.s.sol";
+import {ReleaseRuntime} from "./common/ReleaseRuntime.sol";
 // @towns-protocol/diamond is an upstream package, not this product's name.
 import {DeployBase} from "@towns-protocol/diamond/scripts/common/DeployBase.s.sol";
 import {console} from "forge-std/console.sol";
@@ -16,7 +16,7 @@ import {SimpleFunder} from "src/accounts/SimpleFunder.sol";
 /// @title DeployUnified
 /// @notice Unified deployment script for the Account system
 /// @dev Uses environment variables for all configuration
-contract DeployUnified is DeployBase, DeployHelper {
+contract DeployUnified is DeployBase, ReleaseRuntime {
     using LibString for string;
 
     /// @dev Our extended deployer with constructor args support
@@ -67,10 +67,14 @@ contract DeployUnified is DeployBase, DeployHelper {
         // Cache addresses
         address orchestrator = deployer.getDeployedAddress("Orchestrator");
         console.log("  Orchestrator:", orchestrator);
-        _requireReleaseRuntime(orchestrator, "Orchestrator");
-        _requireReleaseRuntime(deployer.getDeployedAddress("Simulator"), "Simulator");
-        _requireReleaseRuntime(deployer.getDeployedAddress("Escrow"), "Escrow");
-        _requireReleaseRuntime(deployer.getDeployedAddress("MultiSigSigner"), "MultiSigSigner");
+        _requireReleaseRuntime(orchestrator, "Orchestrator", "");
+        _requireReleaseRuntime(deployer.getDeployedAddress("Simulator"), "Simulator", "");
+        _requireReleaseRuntime(deployer.getDeployedAddress("Escrow"), "Escrow", "");
+        _requireReleaseRuntime(
+            deployer.getDeployedAddress("MultiSigSigner"),
+            "MultiSigSigner",
+            ""
+        );
 
         // =========================================================
         // PHASE 2: Account (depends on Orchestrator)
@@ -81,7 +85,7 @@ contract DeployUnified is DeployBase, DeployHelper {
 
         address account = deployer.getDeployedAddressWithArgs("Account");
         console.log("  Account:", account);
-        _requireReleaseRuntime(account, "Account");
+        _requireReleaseRuntime(account, "Account", abi.encode(orchestrator));
 
         // =========================================================
         // PHASE 3: AccountProxy (LibEIP7702, not CREATE2)
@@ -100,18 +104,21 @@ contract DeployUnified is DeployBase, DeployHelper {
         // SimpleFunder
         address funderAddr = _getEnvAddressOrDefault("FUNDER", deployerAddr);
         address funderOwner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
-        deployer.addWithArgs("SimpleFunder", abi.encode(funderAddr, funderOwner));
+        bytes memory funderArgs = abi.encode(funderAddr, funderOwner);
+        deployer.addWithArgs("SimpleFunder", funderArgs);
 
         // SimpleSettler
         address settlerOwner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
-        deployer.addWithArgs("SimpleSettler", abi.encode(settlerOwner));
+        bytes memory settlerArgs = abi.encode(settlerOwner);
+        deployer.addWithArgs("SimpleSettler", settlerArgs);
 
         // LayerZeroSettler (optional - only if endpoint is configured)
-        address lzEndpoint = vm.envOr("LZ_ENDPOINT", address(0));
-        if (lzEndpoint != address(0)) {
+        bytes memory lzArgs;
+        if (vm.envOr("LZ_ENDPOINT", address(0)) != address(0)) {
             address lzOwner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
             address lzSigner = vm.envAddress("LZ_SETTLER_SIGNER");
-            deployer.addWithArgs("LayerZeroSettler", abi.encode(lzEndpoint, lzOwner, lzSigner));
+            lzArgs = abi.encode(_expectedLzEndpoint(), lzOwner, lzSigner);
+            deployer.addWithArgs("LayerZeroSettler", lzArgs);
         }
 
         deployer.deployArgsQueue(deployerAddr);
@@ -120,13 +127,13 @@ contract DeployUnified is DeployBase, DeployHelper {
         address simpleSettler = deployer.getDeployedAddressWithArgs("SimpleSettler");
         console.log("  SimpleFunder:", simpleFunder);
         console.log("  SimpleSettler:", simpleSettler);
-        _requireReleaseRuntime(simpleFunder, "SimpleFunder");
-        _requireReleaseRuntime(simpleSettler, "SimpleSettler");
+        _requireReleaseRuntime(simpleFunder, "SimpleFunder", funderArgs);
+        _requireReleaseRuntime(simpleSettler, "SimpleSettler", settlerArgs);
 
         address lzSettler = deployer.getDeployedAddressWithArgs("LayerZeroSettler");
         if (lzSettler != address(0)) {
             console.log("  LayerZeroSettler:", lzSettler);
-            _requireReleaseRuntime(lzSettler, "LayerZeroSettler");
+            _requireReleaseRuntime(lzSettler, "LayerZeroSettler", lzArgs);
         }
 
         // =========================================================
@@ -298,17 +305,18 @@ contract DeployUnified is DeployBase, DeployHelper {
             deployer.add(name);
             deployer.deployBatch(deployerAddr);
             address deployed = deployer.getDeployedAddress(name);
-            _requireReleaseRuntime(deployed, name);
+            _requireReleaseRuntime(deployed, name, "");
             _writeContractDeployment(chainId, _toLowerFirst(name), deployed);
             console.log("  Deployed at:", deployed);
         }
         // Account - needs Orchestrator
         else if (name.eq("Account")) {
             address orchestrator = _getExistingOrDeploy(chainId, "Orchestrator", deployerAddr);
-            deployer.addWithArgs("Account", abi.encode(orchestrator));
+            bytes memory args = abi.encode(orchestrator);
+            deployer.addWithArgs("Account", args);
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("Account");
-            _requireReleaseRuntime(deployed, "Account");
+            _requireReleaseRuntime(deployed, "Account", args);
             _writeContractDeployment(chainId, "account", deployed);
             console.log("  Deployed at:", deployed);
         }
@@ -325,33 +333,35 @@ contract DeployUnified is DeployBase, DeployHelper {
         else if (name.eq("SimpleFunder")) {
             address funder = _getEnvAddressOrDefault("FUNDER", deployerAddr);
             address owner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
-            deployer.addWithArgs("SimpleFunder", abi.encode(funder, owner));
+            bytes memory args = abi.encode(funder, owner);
+            deployer.addWithArgs("SimpleFunder", args);
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("SimpleFunder");
-            _requireReleaseRuntime(deployed, "SimpleFunder");
+            _requireReleaseRuntime(deployed, "SimpleFunder", args);
             _writeContractDeployment(chainId, "simpleFunder", deployed);
             console.log("  Deployed at:", deployed);
         }
         // SimpleSettler - uses env vars
         else if (name.eq("SimpleSettler")) {
             address owner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
-            deployer.addWithArgs("SimpleSettler", abi.encode(owner));
+            bytes memory args = abi.encode(owner);
+            deployer.addWithArgs("SimpleSettler", args);
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("SimpleSettler");
-            _requireReleaseRuntime(deployed, "SimpleSettler");
+            _requireReleaseRuntime(deployed, "SimpleSettler", args);
             _writeContractDeployment(chainId, "simpleSettler", deployed);
             console.log("  Deployed at:", deployed);
         }
         // LayerZeroSettler - uses env vars
         else if (name.eq("LayerZeroSettler")) {
-            address endpoint = vm.envOr("LZ_ENDPOINT", address(0));
-            require(endpoint != address(0), "LZ_ENDPOINT not set");
+            address endpoint = _expectedLzEndpoint();
             address owner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
             address signer = vm.envAddress("LZ_SETTLER_SIGNER");
-            deployer.addWithArgs("LayerZeroSettler", abi.encode(endpoint, owner, signer));
+            bytes memory args = abi.encode(endpoint, owner, signer);
+            deployer.addWithArgs("LayerZeroSettler", args);
             deployer.deployArgsQueue(deployerAddr);
             address deployed = deployer.getDeployedAddressWithArgs("LayerZeroSettler");
-            _requireReleaseRuntime(deployed, "LayerZeroSettler");
+            _requireReleaseRuntime(deployed, "LayerZeroSettler", args);
             _writeContractDeployment(chainId, "layerZeroSettler", deployed);
             console.log("  Deployed at:", deployed);
         } else {
@@ -359,33 +369,10 @@ contract DeployUnified is DeployBase, DeployHelper {
         }
     }
 
-    /// @notice True when on-chain runtime matches the release artifact.
-    /// @dev Masks every immutableReferences span. A raw extcodehash false-fails
-    /// Solady EIP-712 contracts, whose immutables include the chain id.
-    function _runtimeMatchesRelease(
-        address instance,
-        string memory name
-    ) internal returns (bool) {
-        if (instance == address(0) || instance.code.length == 0) return false;
-        string memory artifact = string.concat("out/", name, ".sol/", name, ".json");
-        string[] memory args = new string[](4);
-        args[0] = "python3";
-        args[1] = "scripts/sh/match-release-runtime.py";
-        args[2] = artifact;
-        args[3] = vm.toString(instance.code);
-        return keccak256(vm.ffi(args)) == keccak256(bytes("match"));
-    }
-
-    /// @notice Revert unless the deployed runtime is the release artifact.
-    function _requireReleaseRuntime(address instance, string memory name) internal {
-        if (!_runtimeMatchesRelease(instance, name)) {
-            revert(string.concat(name, " runtime does not match the release artifact"));
-        }
-    }
-
     /// @notice Get existing deployed address or deploy the contract.
     /// A JSON address is used only when its code matches the release artifact.
     /// Code already at the CREATE2 address that does not match cannot be replaced.
+    /// Reused code whose immutables differ from the expected values reverts.
     function _getExistingOrDeploy(
         uint256 chainId,
         string memory name,
@@ -398,12 +385,14 @@ contract DeployUnified is DeployBase, DeployHelper {
                     string.concat(name, " at CREATE2 address does not match the release artifact")
                 );
             }
+            _requireExpectedImmutables(existing, name, _dependencyArgs(chainId, name, deployerAddr));
             console.log("  Found existing (CREATE2):", name, existing);
             return existing;
         }
 
         existing = _tryReadDeploymentAddress(chainId, _toLowerFirst(name));
         if (existing != address(0) && _runtimeMatchesRelease(existing, name)) {
+            _requireExpectedImmutables(existing, name, _dependencyArgs(chainId, name, deployerAddr));
             console.log("  Found existing (file):", name, existing);
             deployer.cacheDeployedAddress(name, existing);
             return existing;
@@ -423,19 +412,25 @@ contract DeployUnified is DeployBase, DeployHelper {
         return deployer.getDeployedAddressWithArgs(name);
     }
 
-    /// @notice Try to read deployment address, returns address(0) if file doesn't exist
-    function _tryReadDeploymentAddress(
+    /// @notice Constructor args a reused dependency must have been built with.
+    /// @dev Account's Orchestrator is itself resolved and verified first.
+    function _dependencyArgs(
         uint256 chainId,
-        string memory contractName
-    ) internal view returns (address) {
-        string memory dirPath = _getDeploymentDir(chainId);
-        string memory path = string.concat(dirPath, "/", contractName, ".json");
-
-        // Check if file exists
-        if (!vm.exists(path)) return address(0);
-
-        string memory json = vm.readFile(path);
-        return vm.parseJsonAddress(json, ".address");
+        string memory name,
+        address deployerAddr
+    ) internal returns (bytes memory) {
+        if (
+            name.eq("Orchestrator") ||
+            name.eq("Simulator") ||
+            name.eq("Escrow") ||
+            name.eq("MultiSigSigner")
+        ) {
+            return "";
+        }
+        if (name.eq("Account")) {
+            return abi.encode(_getExistingOrDeploy(chainId, "Orchestrator", deployerAddr));
+        }
+        revert(string.concat("No expected constructor args for dependency ", name));
     }
 
     /// @notice Parse comma-separated contract names into array
