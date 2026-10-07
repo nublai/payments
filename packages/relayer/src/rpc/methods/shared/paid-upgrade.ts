@@ -196,11 +196,26 @@ export const PAID_UPGRADE_IP_LIMIT = 8
 export const DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT = 60
 
 /**
- * Gas units reserved before a paid-upgrade broadcast. Above the measured
- * ~456k `eth_estimateGas` and below the 1,500,000 broadcast cap. The receipt
- * settles the hold down to `gasUsed`.
+ * Gas units reserved before a paid-upgrade broadcast, and the maximum
+ * type-4 gas limit that broadcast may sign. Measured on Anvil for an honest
+ * upgrade (type-4 `execute`, fee pulled inside that transaction): `gasUsed`
+ * 279,862 and `eth_estimateGas` 456,207. Both sit under 500,000. A quote
+ * whose estimate is higher is refused. The receipt settles the hold down to
+ * `gasUsed`, which cannot exceed the signed limit.
  */
 export const PAID_UPGRADE_GAS_HOLD = 500_000n
+
+/**
+ * Gas limit signed for a paid-upgrade type-4. Equal to the estimate when
+ * that estimate fits in the reserved hold. Above the hold, refuse. The
+ * sponsored path keeps the separate 1,500,000 cap.
+ */
+export function paidUpgradeSignedGas(estimate: bigint): bigint {
+    if (estimate <= 0n || estimate > PAID_UPGRADE_GAS_HOLD) {
+        throw new Error('Paid upgrade gas limit exceeds the reserved hold')
+    }
+    return estimate
+}
 
 /**
  * Gas units one chain may spend on paid-upgrade broadcasts per UTC day.

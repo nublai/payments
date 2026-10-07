@@ -778,6 +778,45 @@ describe('paid upgrade send refusals', () => {
         ).toBe(false)
     })
 
+    it('refuses the 9th send from one IP', () => {
+        const now = 1_700_000_000
+        const store = new Map<string, number>()
+        for (let index = 0; index < 8; index++) {
+            const decision = consumeRateLimit(
+                store,
+                paidUpgradeRateBuckets({
+                    chainId: CHAIN_ID,
+                    account: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+                    ip: '203.0.113.8',
+                }),
+                now,
+            )
+            expect(decision.allowed).toBe(true)
+        }
+        expect(
+            consumeRateLimit(
+                store,
+                paidUpgradeRateBuckets({
+                    chainId: CHAIN_ID,
+                    account: `0x${'a'.repeat(40)}`,
+                    ip: '203.0.113.8',
+                }),
+                now,
+            ).allowed,
+        ).toBe(false)
+        expect(
+            consumeRateLimit(
+                store,
+                paidUpgradeRateBuckets({
+                    chainId: CHAIN_ID,
+                    account: `0x${'b'.repeat(40)}`,
+                    ip: '203.0.113.9',
+                }),
+                now,
+            ).allowed,
+        ).toBe(true)
+    })
+
     it('counts only sends toward the chain ceiling of 60', () => {
         const now = 1_700_000_000
         const prepareBuckets = paidUpgradeRateBuckets({

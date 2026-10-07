@@ -126,10 +126,11 @@ describe('SignerPoolDO upgrade rate limit', () => {
         expect(await blocked.json()).toMatchObject({ allowed: false })
     })
 
-    it('rechecks the budget when a receipt settles above the hold', async () => {
-        const poolName = 'pool-8453-paid-gas-over'
+    it('keeps spent and held inside the daily budget, including four concurrent holds', async () => {
+        const poolName = 'pool-8453-paid-gas-ceiling'
         const id = env.SIGNER_POOL.idFromName(poolName)
         const stub = env.SIGNER_POOL.get(id)
+        const budget = 2_000_000
         const post = (body: Record<string, unknown>) =>
             stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
                 method: 'POST',
@@ -137,21 +138,30 @@ describe('SignerPoolDO upgrade rate limit', () => {
                 body: JSON.stringify({ kind: 'paid-upgrade', chainId: 8453, ...body }),
             })
 
-        expect(await (await post({ action: 'reserve-gas', gas: '500000' })).json()).toMatchObject({
-            allowed: true,
-        })
-        expect(
-            await (
-                await post({ action: 'settle-gas', hold: '500000', gas: '1500000' })
-            ).json(),
-        ).toMatchObject({ allowed: true, gas: 1500000 })
-        expect(await (await post({ action: 'reserve-gas', gas: '500000' })).json()).toMatchObject({
-            allowed: true,
-        })
-        const over = await post({ action: 'settle-gas', hold: '500000', gas: '600000' })
-        expect(await over.json()).toMatchObject({ allowed: false, overBudget: true, gas: 2100000 })
+        const aboveHold = await post({ action: 'reserve-gas', gas: '500001' })
+        expect(await aboveHold.json()).toMatchObject({ allowed: false, gas: 0, held: 0 })
+
+        for (let index = 1; index <= 4; index++) {
+            const reserved = await post({ action: 'reserve-gas', gas: '500000' })
+            expect(await reserved.json()).toMatchObject({ allowed: true, held: index * 500_000 })
+        }
+        const fifth = await post({ action: 'reserve-gas', gas: '500000' })
+        expect(await fifth.json()).toMatchObject({ allowed: false, held: budget })
+
+        let books = { gas: 0, held: budget }
+        for (let index = 0; index < 4; index++) {
+            const settled = await post({
+                action: 'settle-gas',
+                hold: '500000',
+                gas: '1500000',
+            })
+            books = (await settled.json()) as { gas: number; held: number }
+            expect(books.gas + books.held).toBeLessThanOrEqual(budget)
+            expect(books.gas).not.toBe(2_100_000)
+        }
+        expect(books).toMatchObject({ gas: budget, held: 0 })
         const blocked = await post({ action: 'reserve-gas', gas: '500000' })
-        expect(await blocked.json()).toMatchObject({ allowed: false })
+        expect(await blocked.json()).toMatchObject({ allowed: false, gas: budget, held: 0 })
     })
 
     it('settles one receipt once and releases a hold when the reconciler finds no transaction', async () => {

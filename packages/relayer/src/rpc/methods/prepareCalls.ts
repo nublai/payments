@@ -40,6 +40,7 @@ import {
     clampPaidUpgradePaymentMax,
     encodeSignedPreCall,
     paidUpgradeMaxPayment,
+    paidUpgradeSignedGas,
     recordPaidUpgradeRateLimit,
 } from './shared/paid-upgrade'
 
@@ -157,6 +158,13 @@ export async function handlePrepareCalls(
     const publicClient = createPublicClient({ transport: http(config.rpcUrl) })
 
     const txGas = BigInt(result.txGas ?? '100000')
+    if (requestedUpgrade) {
+        try {
+            paidUpgradeSignedGas(txGas)
+        } catch {
+            throw new RpcError(INVALID_PARAMS, 'Paid upgrade gas limit exceeds the reserved hold')
+        }
+    }
     let feeEstimate
     try {
         feeEstimate = await getFeeEstimate(publicClient, txGas, feeConfig)
