@@ -61,9 +61,16 @@ export async function waitForBundle(
 
     while (true) {
         const status = await getCallsStatus(client, { id, chainId })
+        const elapsed = Date.now() - startTime
 
         if (!status.success) {
-            throw new Error(`Failed to get bundle status: ${status.error ?? 'Unknown error'}`)
+            if (elapsed >= timeoutMs) {
+                throw new Error(
+                    `Timeout waiting for bundle ${id} to reach final status. Current status: ${status.error ?? 'unknown'}`,
+                )
+            }
+            await new Promise((resolve) => setTimeout(resolve, intervalMs))
+            continue
         }
 
         if (
@@ -73,7 +80,6 @@ export async function waitForBundle(
             return status
         }
 
-        const elapsed = Date.now() - startTime
         if (elapsed >= timeoutMs) {
             throw new Error(
                 `Timeout waiting for bundle ${id} to reach final status. Current status: ${status.statusCode ?? 'unknown'}`,

@@ -118,6 +118,8 @@ TX_GAS_BUFFER=50000
 # Stage and prod require QUOTE_SIGNING_SECRET. They accept an ERC-8128 key
 # only when it is in ERC8128_ALLOWED_SIGNERS, or it is the intent EOA, or it
 # is the session signer stored on the quote. Do not reuse these local defaults there.
+# Unset PRIVY_ENABLED means on. This script sets false so local payment and
+# escrow stay on ERC-8128.
 ERC8128_ENABLED=${ERC8128_ENABLED:-true}
 PRIVY_ENABLED=${PRIVY_ENABLED:-false}
 AUTH_PROTECTED_METHODS=${AUTH_PROTECTED_METHODS:-wallet_sendPreparedCalls}

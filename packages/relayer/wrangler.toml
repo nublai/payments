@@ -21,7 +21,21 @@ new_sqlite_classes = ["SignerDO", "SignerPoolDO", "IntentNonceDO", "BundleStatus
 tag = "v2"
 new_sqlite_classes = ["HttpAuthNonceDO"]
 
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["WalletBindingDO"]
+
 # Local Development
+# Public OIDC config (not secrets). Leave OIDC_ENABLED unset until issuer, JWKS
+# URL, and client id are all set. Example, not applied:
+# OIDC_ENABLED = "true"
+# OIDC_ISSUER = "https://auth.example.com"
+# OIDC_JWKS_URL = "https://auth.example.com/oauth2/jwks"
+# OIDC_CLIENT_ID = "client_example"
+# OIDC_WALLETS_CLAIM_ENABLED = "true"
+# OIDC_WALLETS_CLAIM = "wallets"
+# Stage and prod set PRIVY_ENABLED explicitly. Unset still means on in code.
+# Set PRIVY_ENABLED = "false" for OIDC-only.
 [dev]
 ip = "0.0.0.0"
 port = 8787
@@ -42,7 +56,8 @@ bindings = [
   { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
   { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
   { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
-  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" },
+  { name = "WALLET_BINDING", class_name = "WalletBindingDO" }
 ]
 
 # Stage
@@ -51,7 +66,13 @@ bindings = [
 # hostname in the Cloudflare dashboard (Workers → this worker → Domains).
 # Point the wallet at that origin with RELAYER_URL_STAGE.
 [env.stage]
-vars = { NODE_ENV = "production" }
+# FEE_RECIPIENT is required. Startup refuses the worker when it is missing or
+# the zero address. Set it before deploy:
+#   wrangler secret put FEE_RECIPIENT --env stage
+# Do not commit the address.
+# PRIVY_ENABLED is set explicitly. Startup then requires PRIVY_APP_ID and
+# PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
 preview_urls = false
 
 [env.stage.observability]
@@ -67,7 +88,8 @@ bindings = [
   { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
   { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
   { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
-  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" },
+  { name = "WALLET_BINDING", class_name = "WalletBindingDO" }
 ]
 
 [[env.stage.queues.producers]]
@@ -85,7 +107,13 @@ crons = ["*/5 * * * *"]
 # Prod
 # Same as stage: set the hostname in the Cloudflare dashboard, then RELAYER_URL_PROD.
 [env.prod]
-vars = { NODE_ENV = "production" }
+# FEE_RECIPIENT is required. Startup refuses the worker when it is missing or
+# the zero address. Set it before deploy:
+#   wrangler secret put FEE_RECIPIENT --env prod
+# Do not commit the address.
+# PRIVY_ENABLED is set explicitly. Startup then requires PRIVY_APP_ID and
+# PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
 preview_urls = false
 
 [env.prod.observability]
@@ -101,7 +129,8 @@ bindings = [
   { name = "SIGNER_POOL", class_name = "SignerPoolDO" },
   { name = "INTENT_NONCE_MANAGER", class_name = "IntentNonceDO" },
   { name = "BUNDLE_STATUS_DO", class_name = "BundleStatusDO" },
-  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" }
+  { name = "HTTP_AUTH_NONCE_MANAGER", class_name = "HttpAuthNonceDO" },
+  { name = "WALLET_BINDING", class_name = "WalletBindingDO" }
 ]
 
 [[env.prod.queues.producers]]

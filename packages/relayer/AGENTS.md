@@ -103,6 +103,8 @@ All persistent state lives in Durable Objects with SQLite storage for atomicity:
 | `SignerPoolDO`   | Stateless coordinator: routes txs to signers, queries capacity, runs maintenance |
 | `IntentNonceDO`  | 2D nonce (seqKey:192 \| seq:64) for per-account intent ordering                  |
 | `BundleStatusDO` | Maps intent requests to on-chain transaction status                              |
+| `HttpAuthNonceDO` | Single-use HTTP auth nonces                                                     |
+| `WalletBindingDO` | Global OIDC wallet bindings. One named object so address and `(iss, sub)` uniqueness share one SQLite transaction. Not D1; this repo has no D1 database. |
 
 **Schema & migrations**
 

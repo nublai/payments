@@ -40,7 +40,9 @@ TARGET_SIGNER_BALANCE=0.01
 # Stage and prod must set CONTEXT to stage or prod. Unset is not local.
 CONTEXT=local
 
-# Fee config (optional)
+# Fee config. Local may omit FEE_RECIPIENT; the signer address is the fallback.
+# Stage and prod must set it (`wrangler secret put FEE_RECIPIENT --env stage`).
+# Startup refuses those workers when it is missing. Do not commit the address.
 # FEE_RECIPIENT=0x...
 # INTENT_GAS_BUFFER=50000
 # PAYMENT_GAS_BUFFER=70000
@@ -61,6 +63,23 @@ CONTEXT=local
 # "any key". Enforced in local too when set.
 # ERC8128_ENABLED=false
 # ERC8128_ALLOWED_SIGNERS=
+
+# Privy. Unset enables the provider. Local dev.sh sets PRIVY_ENABLED=false.
+# PRIVY_ENABLED=false
+# PRIVY_APP_ID=
+# PRIVY_APP_SECRET=
+
+# OIDC (public config, not secrets). WorkOS is the first issuer. All three
+# OIDC_ISSUER, OIDC_JWKS_URL, and OIDC_CLIENT_ID are required when OIDC_ENABLED=true.
+# An http JWKS URL is refused unless CONTEXT is local. CONTEXT=dev is Base Sepolia
+# and does not get that exception.
+# OIDC_ENABLED=false
+# OIDC_ISSUER=https://auth.example.com
+# OIDC_JWKS_URL=https://auth.example.com/oauth2/jwks
+# OIDC_CLIENT_ID=client_example
+# Wallets claim is off unless the flag is true. An empty claim name stays off.
+# OIDC_WALLETS_CLAIM_ENABLED=false
+# OIDC_WALLETS_CLAIM=wallets
 
 # CORS (optional). Comma-separated origins. Unset or "*" allows every origin.
 # CORS_ALLOWED_ORIGINS=
