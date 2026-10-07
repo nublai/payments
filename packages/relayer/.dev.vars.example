@@ -36,7 +36,9 @@ TARGET_SIGNER_BALANCE=0.01
 # ACCOUNT_PROXY_41337=0x...
 # SIMPLE_FUNDER_41337=0x...
 # SIMULATOR_41337=0x...
-# CONTEXT=prod
+# local skips quote HMAC when QUOTE_SIGNING_SECRET is unset and leaves ERC-8128 open.
+# Stage and prod must set CONTEXT to stage or prod. Unset is not local.
+CONTEXT=local
 
 # Fee config (optional)
 # FEE_RECIPIENT=0x...
@@ -47,9 +49,18 @@ TARGET_SIGNER_BALANCE=0.01
 # PRIORITY_FEE_PERCENTILE=50
 # QUOTE_TTL_SECONDS=300
 
-# Validation (optional)
+# Validation (optional locally)
 # INTENT_EXPIRY_BUFFER_SECONDS=30
-# QUOTE_SIGNING_SECRET=your-secret-for-quote-signing
+# Required on stage and prod (`wrangler secret put QUOTE_SIGNING_SECRET --env stage`).
+# Leave unset for local. Do not commit a real secret. When unset and CONTEXT is local,
+# quote HMAC is skipped and the relayer still recomputes paymentAmount from gas fields.
+# QUOTE_SIGNING_SECRET=
+
+# ERC-8128 allowlist. Comma-separated addresses. Outside local, a key must be listed
+# here, or be the intent EOA, or be the session signer on the quote. Empty is not
+# "any key". Enforced in local too when set.
+# ERC8128_ENABLED=false
+# ERC8128_ALLOWED_SIGNERS=
 
 # CORS (optional). Comma-separated origins. Unset or "*" allows every origin.
 # CORS_ALLOWED_ORIGINS=
