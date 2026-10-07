@@ -20,7 +20,7 @@ bun run dev
 ```bash
 bun run dev              # Start Anvil, deploy contracts, generate config
 bun run build            # Typecheck with tsc and copy addresses and config into dist
-bun run build:contracts  # forge build, wagmi generate, tsc, and copy addresses and config into dist
+bun run build:contracts  # release-profile forge build, wagmi generate, tsc, and copy addresses and config into dist
 bun run generate         # Generate TypeScript ABIs with wagmi
 bun run test             # Run tests with verbose output
 bun run test:gas         # Run tests with gas report
@@ -76,6 +76,8 @@ From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` choose
 | `./scripts/sh/deploy.sh prod` | Base 8453 | `prod` | `RPC_8453`, or `https://mainnet.base.org` if unset |
 
 `dev`, `stage`, and `prod` need `--account`, `--ledger`, or `--private-key`. `--sender` only adds Forge's `--sender` after one of those is set; it is not enough on its own. Local uses the Anvil deployer key. The same script is `bun run deploy:local`, `deploy:dev`, `deploy:stage`, and `deploy:prod`.
+
+`deploy.sh` hard-sets `FOUNDRY_PROFILE=release` (`via_ir`, 200 optimizer runs) for its forge build and forge script calls. Before any broadcast it runs `scripts/sh/check-runtime-size.sh`, which fails if Account or the other contracts `DeployUnified` deploys have runtime bytecode over 24,576 bytes. `bun run test` and `forge test` stay on the default profile. `build:contracts` and `generate` also use the release profile, because wagmi's forge build and the wallet passkey deploy read `out/Account.sol/Account.json`.
 
 Flags the script accepts: `--chain`, `--rpc`, `--contracts`, `--context`, `--account`, `--password`, `--ledger`, `--private-key`, `--sender`, `--funder`, `--owner`, `--relayer-mnemonic`, `--relayer-count`, `--skip-relayer`, `--lz-endpoint`, `--lz-signer`, `--gas-price`, `--priority-fee`, `--verify`, `--etherscan-key`, `--dry-run`, `--resume`, `--help`. Run `./scripts/sh/deploy.sh --help` for the same list.
 

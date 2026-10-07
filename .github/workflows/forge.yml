@@ -29,4 +29,12 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Test
+        # Default profile (via_ir false, 500 runs). Tests compile the contracts
+        # they execute; they do not deploy release bytecode.
         run: bun run --cwd packages/contracts test -- --ffi
+
+      - name: Check release runtime size
+        # Release profile only. Fails if Account or the other deployed contracts
+        # exceed the 24,576-byte EIP-170 runtime limit.
+        working-directory: packages/contracts
+        run: ./scripts/sh/check-runtime-size.sh

@@ -103,8 +103,8 @@ Tests extend `test/Base.t.sol` which sets up mock orchestrator, accounts, and pa
 
 ## Relayer-Contracts Gotchas
 
-- **Account bytecode limit**: must stay under 24KB; optimizer runs are tuned for this (`foundry.toml`).
-- **Release profile differs**: deployments should use `forge build --profile release` (via IR, 200 runs).
+- **Account bytecode limit**: EIP-170 caps runtime bytecode at 24,576 bytes. `scripts/sh/check-runtime-size.sh` builds with `FOUNDRY_PROFILE=release` and fails if Account, or the other contracts `DeployUnified` deploys, exceed that. `deploy.sh` runs it before any broadcast. The forge CI job runs it after `forge test`.
+- **Release profile is selected by the scripts**: `deploy.sh` hard-sets `FOUNDRY_PROFILE=release` (via IR, 200 runs) on its `forge build` (via the size check) and `forge script` calls. `build:contracts` and `generate` do the same. Foundry 1.5 writes those artifacts to `out/` (no profile suffix), which is what `DeployFacet` and the wallet passkey deploy read (`out/Account.sol/Account.json`). `forge test` stays on the default profile (`via_ir` false, 500 runs).
 - **CREATE2 determinism**: most contracts use CREATE2; redeploys are skipped if address is already used.
 - **Local deploy preloads code**: `deploy.sh local` writes Multicall3 + MockUSDC bytecode via `anvil_setCode`.
 - **Relayer setup is optional**: `--skip-relayer` avoids mnemonic-derived signer setup (useful for partial deploys).

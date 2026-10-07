@@ -11,6 +11,10 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Deployments compile with the release profile (via IR, 200 runs).
+# Hard-set so a caller cannot select the default profile.
+export FOUNDRY_PROFILE=release
+
 # =============================================================================
 # DEFAULT VALUES
 # =============================================================================
@@ -77,6 +81,10 @@ Other:
   --dry-run                Simulate without broadcasting
   --resume                 Skip contracts that are already deployed
   --help                   Show this help message
+
+Compiler:
+  FOUNDRY_PROFILE=release is hard-set for forge build and forge script.
+  Runtime bytecode must be <= 24576 bytes or the script exits before broadcast.
 
 Examples:
   # Local development
@@ -432,8 +440,8 @@ deploy_to_chain() {
     export LZ_ENDPOINT="${LZ_ENDPOINT:-}"
     export LZ_SETTLER_SIGNER="${LZ_SIGNER:-0x0000000000000000000000000000000000000000}"
 
-    # Build forge command
-    local forge_cmd="forge script scripts/sol/DeployUnified.s.sol:DeployUnified"
+    # Build forge command. FOUNDRY_PROFILE is hard-set on the command, not taken from the caller.
+    local forge_cmd="FOUNDRY_PROFILE=release forge script scripts/sol/DeployUnified.s.sol:DeployUnified"
     forge_cmd="$forge_cmd --rpc-url $rpc"
     forge_cmd="$forge_cmd --sig \"$script_sig\" $script_args"
     forge_cmd="$forge_cmd --ffi"
@@ -498,11 +506,15 @@ echo -e "${YELLOW}Deployment Plan:${NC}"
 echo "  Chains: ${CHAIN_ARRAY[*]}"
 echo "  Contracts: ${CONTRACTS:-all}"
 echo "  Context: ${CONTEXT:-auto}"
+echo "  Compiler: FOUNDRY_PROFILE=release"
 [[ -n "$SKIP_RELAYER" ]] && echo "  Relayer setup: skipped"
 [[ -n "$VERIFY" ]] && echo "  Verification: enabled"
 [[ -n "$DRY_RUN" ]] && echo "  Mode: dry-run (no broadcast)"
 [[ -n "$RESUME" ]] && echo "  Resume: enabled"
 echo ""
+
+# Release-profile size check before any forge script broadcast.
+"$SCRIPT_DIR/check-runtime-size.sh"
 
 # Deploy to each chain
 for chain_id in "${CHAIN_ARRAY[@]}"; do

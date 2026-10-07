@@ -29,7 +29,9 @@ anvil
 
 ## deploy.sh
 
-The bash deployment script is a powerful, chain-agnostic deployment tool supporting:
+The bash deployment script hard-sets `FOUNDRY_PROFILE=release` (via IR, 200 optimizer runs) on every `forge build` and `forge script` it runs. A caller cannot select another profile. Before any broadcast it runs `scripts/sh/check-runtime-size.sh`, which fails if release-profile runtime bytecode for Account, Orchestrator, Simulator, Escrow, MultiSigSigner, SimpleFunder, SimpleSettler, or LayerZeroSettler is over 24,576 bytes. `forge test` is separate and stays on the default profile.
+
+The bash deployment script is a chain-agnostic deployment tool supporting:
 - **Multi-chain deployment** - Deploy to any EVM chain, multiple chains at once
 - **Full or selective deployment** - Deploy all contracts or specific ones
 - **Resume failed deployments** - Skip already-deployed contracts
@@ -90,6 +92,10 @@ Other:
   --dry-run                Simulate without broadcasting
   --resume                 Skip contracts that are already deployed
   --help                   Show this help message
+
+Compiler:
+  FOUNDRY_PROFILE=release is hard-set for forge build and forge script.
+  Runtime bytecode must be <= 24576 bytes or the script exits before broadcast.
 ```
 
 ### Quick Examples
