@@ -254,6 +254,9 @@ describe('signer broadcast fallback helpers', () => {
             )
 
             expect(broadcast.attempted).toBe(true)
+            const signedGas = sendTransaction.mock.calls[0]?.[0]?.gas as bigint
+            expect(signedGas).toBeLessThanOrEqual(PAID_UPGRADE_GAS_HOLD)
+            expect(signedGas).toBeLessThan(600_000n)
             expect(sendTransaction).toHaveBeenCalledWith(
                 expect.objectContaining({ gas: PAID_UPGRADE_GAS_HOLD }),
             )

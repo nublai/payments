@@ -79,6 +79,7 @@ const rpc = {
     failBroadcast: false,
     gasBudget: 2_000_000n,
     pullReverts: false,
+    pullGas: '0x5208' as Hex,
     authUsed: false,
     upgradeRevertRemaining: 0,
     receiptMissing: false,
@@ -138,7 +139,9 @@ function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: numb
     gasLog.push(body)
     const amount = BigInt(typeof body.gas === 'string' ? body.gas : '0')
     if (body.action === 'reserve-gas') {
-        if (gasSpent + gasHeld + amount > rpc.gasBudget) return { allowed: false, gas: Number(gasSpent) }
+        if (amount > PAID_UPGRADE_GAS_HOLD || gasSpent + gasHeld + amount > rpc.gasBudget) {
+            return { allowed: false, gas: Number(gasSpent) }
+        }
         gasHeld += amount
         return { allowed: true, gas: Number(gasSpent) }
     }
@@ -149,7 +152,11 @@ function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: numb
     if (body.action === 'settle-gas') {
         const hold = BigInt(typeof body.hold === 'string' ? body.hold : '0')
         gasHeld = gasHeld > hold ? gasHeld - hold : 0n
-        gasSpent += amount
+        const holdCap = hold > 0n && hold < PAID_UPGRADE_GAS_HOLD ? hold : PAID_UPGRADE_GAS_HOLD
+        let accounted = amount > holdCap ? holdCap : amount
+        const room = rpc.gasBudget - gasSpent - gasHeld
+        if (accounted > room) accounted = room > 0n ? room : 0n
+        gasSpent += accounted
         if (body.failure === true) gasFailures += 1
         return { allowed: true, gas: Number(gasSpent), failures: gasFailures }
     }
@@ -540,7 +547,7 @@ function pullReceipt() {
         from: FEE_RECIPIENT,
         to: USDC,
         cumulativeGasUsed: '0x5208',
-        gasUsed: '0x5208',
+        gasUsed: rpc.pullGas,
         contractAddress: null,
         logs: rpc.pullReverts ? [] : [transferLog(value)],
         logsBloom: `0x${'00'.repeat(256)}`,
@@ -591,6 +598,7 @@ beforeEach(() => {
     rpc.failBroadcast = false
     rpc.gasBudget = 2_000_000n
     rpc.pullReverts = false
+    rpc.pullGas = '0x5208'
     rpc.authUsed = false
     rpc.upgradeRevertRemaining = 0
     rpc.receiptMissing = false
@@ -877,10 +885,32 @@ describe('paid upgrade send refusals', () => {
     })
 
     it('caps the signed pull gas at the reservation', () => {
-        expect(capPaidUpgradeSignedGas(600_000n)).toBe(PAID_UPGRADE_GAS_HOLD)
+        const estimate = 600_000n
+        const signed = capPaidUpgradeSignedGas(estimate)
+        expect(signed).toBe(PAID_UPGRADE_GAS_HOLD)
+        expect(signed).toBeLessThanOrEqual(PAID_UPGRADE_GAS_HOLD)
+        expect(signed).toBeLessThan(estimate)
         expect(capPaidUpgradeSignedGas(84_541n)).toBe(84_541n)
         expect(capPaidUpgradeSignedGas(PAID_UPGRADE_GAS_HOLD)).toBe(PAID_UPGRADE_GAS_HOLD)
         expect(() => capPaidUpgradeSignedGas(0n)).toThrow(/gas limit exceeds cap/)
+    })
+
+    it('counts the pull and the upgrade inside the gas that was reserved', async () => {
+        rpc.pullGas = '0x927c0'
+        rpc.receiptGas = '0x927c0'
+        const { params } = await signedParams({ callData: '0xce' })
+        await handleSendPreparedCalls(params, createCtx())
+        const reserves = gasLog.filter((entry) => entry.action === 'reserve-gas')
+        const reserved = reserves.reduce(
+            (sum, entry) => sum + BigInt(typeof entry.gas === 'string' ? entry.gas : '0'),
+            0n,
+        )
+        expect(reserves).toHaveLength(2)
+        expect(reserved).toBe(PAID_UPGRADE_GAS_HOLD * 2n)
+        expect(gasSpent).toBe(PAID_UPGRADE_GAS_HOLD * 2n)
+        expect(gasSpent).toBeLessThanOrEqual(reserved)
+        expect(gasHeld).toBe(0n)
+        expect(rateBodies.filter((body) => body.action === 'reserve')).toHaveLength(1)
     })
 
     it('fails closed when the gas budget store is down', async () => {
