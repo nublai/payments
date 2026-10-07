@@ -19,7 +19,15 @@ import {
 import { isMissingFileError } from './fs-utils'
 import { parseDuration, parseSessionName } from './session-common'
 import { sessionOnChainRequiresPhrase } from './session-gates'
-import type { EnvName } from './network-config'
+import { isSwapSessionKey } from './swap-session'
+import { computeSessionKeyHash } from './session-common'
+import { readAccountKeysFromChain } from './session-chain-permissions'
+import {
+    chainsForEnv,
+    getChainConfig,
+    rpcUrlForChain,
+    type EnvName,
+} from './network-config'
 
 const DEFAULT_DURATION_SECONDS = 60 * 60
 const MAX_DURATION_SECONDS = 24 * 60 * 60
@@ -59,6 +67,11 @@ type SessionUnlockDeps = {
         account: Address
         sessionAddress: Address
     }) => Promise<boolean>
+    sessionIsSwap: (input: {
+        env: EnvName
+        account: Address
+        sessionAddress: Address
+    }) => Promise<boolean>
 }
 
 function getDefaultDeps(): SessionUnlockDeps {
@@ -69,7 +82,32 @@ function getDefaultDeps(): SessionUnlockDeps {
         decryptAgentDevice,
         createDaemonClient: () => new SessionDaemonClient(),
         sessionRequiresPhrase: (input) => sessionOnChainRequiresPhrase(input),
+        sessionIsSwap: (input) => sessionIsSwapOnChain(input),
     }
+}
+
+/** True when any configured chain shows this key as a swap session. A failed read is not one. */
+export async function sessionIsSwapOnChain(input: {
+    env: EnvName
+    account: Address
+    sessionAddress: Address
+}): Promise<boolean> {
+    const keyHash = computeSessionKeyHash(input.sessionAddress).toLowerCase()
+    for (const chainName of chainsForEnv(input.env)) {
+        const chain = getChainConfig(chainName)
+        try {
+            const keys = await readAccountKeysFromChain({
+                rpcUrl: rpcUrlForChain(chainName),
+                chainId: chain.chainId,
+                account: input.account,
+            })
+            const key = keys.find((entry) => entry.hash.toLowerCase() === keyHash)
+            if (key && isSwapSessionKey(key.permissions, chain.chainId)) return true
+        } catch {
+            continue
+        }
+    }
+    return false
 }
 
 export async function resolveSessionUnlockPassword(
@@ -204,6 +242,13 @@ export async function executeSessionUnlock(
         kind: options.device ? 'agent' : undefined,
         encryptionDevice: encryptionDeviceHex,
         phraseConfirmed: options.humanConfirmed === true,
+        swapSession: sessionKeystore.addresses.delegated
+            ? await deps.sessionIsSwap({
+                  env: options.env,
+                  account: getAddress(sessionKeystore.addresses.delegated),
+                  sessionAddress: getAddress(sessionKeystore.addresses.session),
+              })
+            : false,
         env: options.env,
     })
 

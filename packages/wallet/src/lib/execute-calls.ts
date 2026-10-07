@@ -122,6 +122,11 @@ export type ExecuteSignedCallsParams = {
 
 export type ExecuteSignedCallsDeps = {
     prepareCalls: (input: PreparedCallRequest) => Promise<PrepareCallsResponse>
+    /**
+     * Runs after the prepared calls are bound to the exact calls about to be
+     * signed, and before `signTypedData`.
+     */
+    beforeSign?: (input: { calls: Call[]; nonce: bigint }) => Promise<void>
     signTypedData: (input: {
         privateKey: Hex
         typedData: PrepareCallsResponse['typedData']
@@ -229,6 +234,10 @@ export async function executeSignedCalls(
         now,
         combinedGasCeiling,
     })
+
+    if (deps.beforeSign) {
+        await deps.beforeSign({ calls: params.calls, nonce: params.nonce })
+    }
 
     const signature = await deps.signTypedData({
         privateKey: params.signerPrivateKey,

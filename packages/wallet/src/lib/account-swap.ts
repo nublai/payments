@@ -24,6 +24,7 @@ import {
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
+import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import { AccountCreateError, resolveKeystorePath } from './account-create'
 import {
     executeSignedCalls,
@@ -43,6 +44,7 @@ import {
     type RelayerSessionKeystoreV2,
 } from './keystore'
 import { isMissingFileError } from './fs-utils'
+import { resolveIntentPayment } from './intent-payment'
 import { PromptCancelledError } from './password-readline'
 import {
     createCliRelayerClient,
@@ -62,10 +64,36 @@ import {
     type RelayQuoteResponse,
 } from './relay-link'
 import {
+    formatQuotedBuy,
+    quoteExecutionFingerprint,
+    quotedOutputMinimum,
+    RelayQuoteRejected,
+    reviewRelayQuote,
+    type RelayQuoteReview,
+} from './relay-allowlist'
+import {
+    QuoteSpendError,
+    WETH_BY_CHAIN,
+    type QuoteSpendBound,
+} from './quote-spend'
+import {
+    installTrackedQuoteSpendLimit,
+    maybeRecoverPendingQuoteSpend,
+    withQuoteAccountLock,
+} from './quote-spend-lifecycle'
+import { withoutQuoteSpendRecovery } from './quote-spend-guard'
+import {
+    RelaySimulationRejected,
+    simulateRelayQuote,
+    type RelayExecutionContext,
+    type SimulatedWatch,
+} from './relay-simulate'
+import {
     ETH_ADDRESS,
     getChainConfig,
     getChainNameByChainId,
     getTokenAddress,
+    getUsdcAddressByChainId,
     getTokenDecimals,
     normalizeTokenSymbol,
     resolveNetworkConfig,
@@ -75,7 +103,22 @@ import {
     type EnvName,
     type TokenSymbol,
 } from './network-config'
-import { getChainKeys, parseSessionName } from './session-common'
+import { callsIncludeWildcard, getChainKeys, parseSessionName } from './session-common'
+import {
+    isExactRelaySession,
+    planSwapSessionUse,
+    SwapSessionRejected,
+    type SwapCallGrant,
+} from './swap-session'
+import {
+    assertNoStandingRights,
+    chainStandingRightsReaders,
+    knownErc20Tokens,
+    relayStandingTargets,
+    StandingRightsRejected,
+    type Permit2Allowance,
+    type StandingRightsRegistry,
+} from './standing-rights'
 import { isRecord } from './type-guards'
 import { resolveSessionSigner, SessionSignerDaemonError, SessionSignerExpiredError } from './signer'
 import type { ResolvedSessionSigner } from './signer'
@@ -224,6 +267,40 @@ type AccountSwapDeps = {
     ) => Promise<ExecuteSignedCallsResult>
     confirmQuote: (quote: RelayQuoteResponse) => Promise<boolean>
     auditQuote: (quote: RelayQuoteResponse) => void
+    simulateQuoteCalls: (input: Parameters<typeof simulateRelayQuote>[0]) => Promise<void>
+    /**
+     * Install the per-quote minute spend, then return a function that removes it
+     * after the quote transaction is included.
+     */
+    installQuoteSpendLimit: (input: {
+        bound: QuoteSpendBound
+        network: NetworkConfig
+        password: string
+        keystorePath: string
+        sessionFile?: string
+        callGrants?: readonly SwapCallGrant[]
+    }) => Promise<() => Promise<void>>
+    /** Serializes quote spend-limit installs for one account. */
+    withAccountLock: <T>(keystorePath: string, action: () => Promise<T>) => Promise<T>
+    readAllowance: (input: {
+        network: NetworkConfig
+        token: Address
+        owner: Address
+        spender: Address
+    }) => Promise<bigint>
+    readPermit2Allowance: (input: {
+        network: NetworkConfig
+        owner: Address
+        token: Address
+        spender: Address
+    }) => Promise<Permit2Allowance>
+    standingRightsRegistry?: StandingRightsRegistry
+    readErc721ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
+    readErc721GetApproved?: (token: Address, tokenId: bigint) => Promise<Address>
+    readErc1155ApprovedForAll?: (token: Address, operator: Address) => Promise<boolean>
+    readErc4626ShareBalance?: (vault: Address) => Promise<bigint>
+    readErc4626ShareAllowance?: (vault: Address, spender: Address) => Promise<bigint>
+    readApprovedSignatureCheckers?: (keyHash: Hex) => Promise<readonly Address[]>
 }
 
 function normalizeChain(value: string | undefined, env: EnvName): ChainName {
@@ -300,15 +377,20 @@ function parseRecipient(value: string | Address | undefined): Address | undefine
 }
 
 function getEstimatedOutputAmount(quote: RelayQuoteResponse): string {
-    const formatted = quote.details?.currencyOut?.amountFormatted
-    if (formatted) {
-        return formatted
+    const minimum = formatQuotedBuy(quote.details?.currencyOut)
+    if (minimum.startsWith('minimum ')) {
+        return minimum.slice('minimum '.length)
     }
     const raw = quote.details?.currencyOut?.amount
     if (raw) {
         return raw
     }
     return '0'
+}
+
+function quoteNeedsReconfirmation(previous: RelayQuoteResponse, next: RelayQuoteResponse): boolean {
+    if (quoteExecutionFingerprint(previous) !== quoteExecutionFingerprint(next)) return true
+    return hasMaterialQuoteDrift(previous, next)
 }
 
 function hasMaterialQuoteDrift(previous: RelayQuoteResponse, next: RelayQuoteResponse): boolean {
@@ -343,7 +425,135 @@ function getQuoteChainMismatch(
     return undefined
 }
 
-function validateQuoteForExecution(quote: RelayQuoteResponse, sourceChainId: number): void {
+function quoteWatches(input: {
+    origin: Address
+    originIsNative: boolean
+    output: Address
+    outputIsNative: boolean
+    sameChain: boolean
+    chainId: number
+    extraTokens: Address[]
+}): SimulatedWatch[] {
+    const watches: SimulatedWatch[] = [
+        {
+            kind: 'native',
+            role: input.originIsNative
+                ? 'origin'
+                : input.sameChain && input.outputIsNative
+                  ? 'output'
+                  : 'other',
+        },
+    ]
+    if (!input.originIsNative) {
+        watches.push({ kind: 'erc20', token: getAddress(input.origin), role: 'origin' })
+    }
+    if (input.sameChain && !input.outputIsNative) {
+        watches.push({ kind: 'erc20', token: getAddress(input.output), role: 'output' })
+    }
+    const usdc = getUsdcAddressByChainId(input.chainId)
+    if (usdc) watches.push({ kind: 'erc20', token: usdc, role: 'other' })
+    const legacyUsdc = getUsdcAddressByChainId(input.chainId, true)
+    if (legacyUsdc && legacyUsdc.toLowerCase() !== usdc?.toLowerCase()) {
+        watches.push({ kind: 'erc20', token: legacyUsdc, role: 'other' })
+    }
+    for (const token of input.extraTokens) {
+        watches.push({ kind: 'erc20', token, role: 'other' })
+    }
+    const weth = WETH_BY_CHAIN[input.chainId]
+    if (weth) watches.push({ kind: 'erc20', token: weth, role: 'other' })
+    return watches
+}
+
+async function assertNoStandingRightsForQuote(input: {
+    deps: AccountSwapDeps
+    network: NetworkConfig
+    chainId: number
+    owner: Address
+    keyHash: Hex
+    inputToken: Address | undefined
+}): Promise<void> {
+    const chainReaders = chainStandingRightsReaders({
+        network: input.network,
+        owner: input.owner,
+    })
+    try {
+        await assertNoStandingRights({
+            chainId: input.chainId,
+            owner: input.owner,
+            targets: relayStandingTargets(input.chainId),
+            tokens: knownErc20Tokens(input.chainId, input.inputToken),
+            keyHash: input.keyHash,
+            registry: input.deps.standingRightsRegistry,
+            readers: {
+                readErc20Allowance: (token, spender) =>
+                    input.deps.readAllowance({
+                        network: input.network,
+                        token,
+                        owner: input.owner,
+                        spender,
+                    }),
+                readPermit2Allowance: (token, spender) =>
+                    input.deps.readPermit2Allowance({
+                        network: input.network,
+                        owner: input.owner,
+                        token,
+                        spender,
+                    }),
+                readErc721ApprovedForAll:
+                    input.deps.readErc721ApprovedForAll ??
+                    ((token, operator) => chainReaders.readErc721ApprovedForAll(token, operator)),
+                readErc721GetApproved:
+                    input.deps.readErc721GetApproved ??
+                    ((token, tokenId) => chainReaders.readErc721GetApproved(token, tokenId)),
+                readErc1155ApprovedForAll:
+                    input.deps.readErc1155ApprovedForAll ??
+                    ((token, operator) => chainReaders.readErc1155ApprovedForAll(token, operator)),
+                readErc4626ShareBalance:
+                    input.deps.readErc4626ShareBalance ??
+                    ((vault) => chainReaders.readErc4626ShareBalance(vault)),
+                readErc4626ShareAllowance:
+                    input.deps.readErc4626ShareAllowance ??
+                    ((vault, spender) => chainReaders.readErc4626ShareAllowance(vault, spender)),
+                readApprovedSignatureCheckers:
+                    input.deps.readApprovedSignatureCheckers ??
+                    ((keyHash) => chainReaders.readApprovedSignatureCheckers(keyHash)),
+            },
+        })
+    } catch (error) {
+        if (error instanceof StandingRightsRejected) {
+            throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
+        }
+        if (error instanceof AccountSwapError) throw error
+        throw new AccountSwapError('QUOTE_FAILED', 'Could not read standing rights. Refusing to sign.', {
+            cause: error,
+        })
+    }
+}
+
+function quotedMinimumOutput(quote: RelayQuoteResponse): bigint {
+    try {
+        return quotedOutputMinimum(quote)
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) {
+            throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
+        }
+        throw error
+    }
+}
+
+function validateQuoteForExecution(
+    quote: RelayQuoteResponse,
+    sourceChainId: number,
+    destinationChainId: number,
+    slippageBps: number,
+    limits: {
+        amount: bigint
+        native: boolean
+        originCurrency: Address
+        user: Address
+        recipient: Address
+    },
+): RelayQuoteReview {
     if (quote.steps.length === 0) {
         throw new AccountSwapError('QUOTE_FAILED', 'relay.link returned no executable steps.')
     }
@@ -361,6 +571,24 @@ function validateQuoteForExecution(quote: RelayQuoteResponse, sourceChainId: num
             'QUOTE_FAILED',
             `relay.link returned a step for chain ${mismatchedChainId}, expected source chain ${chainLabel} (${sourceChainId}).`,
         )
+    }
+
+    try {
+        return reviewRelayQuote(quote, {
+            sourceChainId,
+            destinationChainId,
+            slippageBps,
+            inputAmount: limits.amount,
+            inputIsNative: limits.native,
+            originCurrency: limits.originCurrency,
+            user: limits.user,
+            recipient: limits.recipient,
+        })
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) {
+            throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
+        }
+        throw error
     }
 }
 
@@ -397,6 +625,31 @@ function assertEthSpendPermission(input: {
     const sessionKey = getChainKeys(input.keys, input.chainId).find(
         (key) => key.hash.toLowerCase() === input.sessionKeyHash.toLowerCase(),
     )
+    // A resting swap session has a minute limit of 0 on native. The quote
+    // installer raises that minute slot to the input before signing. A
+    // non-minute native period is still required to cover the amount, because
+    // the guard checks every period. Keys that are not the exact Relay set
+    // keep the previous check.
+    if (sessionKey && isExactRelaySession(sessionKey.permissions, input.chainId)) {
+        const nonMinute = sessionKey.permissions.filter(
+            (permission) =>
+                permission.type === 'spend' &&
+                permission.token.toLowerCase() === ETH_ADDRESS.toLowerCase() &&
+                permission.period !== 'minute',
+        )
+        for (const permission of nonMinute) {
+            if (permission.type !== 'spend') continue
+            const limit = BigInt(permission.limit)
+            const spent = BigInt(permission.spent)
+            if (limit - spent < input.amount) {
+                throw new AccountSwapError(
+                    'MISSING_NATIVE_SPEND_PERMISSION',
+                    `Session key native ETH spend permission on ${input.sourceChain} has insufficient remaining limit for ${formatUnits(input.amount, 18)} ETH.`,
+                )
+            }
+        }
+        return
+    }
     const nativeSpend = sessionKey?.permissions.find(
         (permission) =>
             permission.type === 'spend' &&
@@ -486,6 +739,54 @@ function getDefaultDeps(): AccountSwapDeps {
         executeSignedCalls,
         confirmQuote: async () => true,
         auditQuote: () => {},
+        simulateQuoteCalls: (input) => simulateRelayQuote(input),
+        installQuoteSpendLimit: (input) => installTrackedQuoteSpendLimit(input),
+        withAccountLock: (path, action) => withQuoteAccountLock(path, action),
+        readAllowance: async (input) => {
+            const client = createPublicClient({
+                chain: getChain(input.network.chainId, input.network.rpcUrl),
+                transport: http(input.network.rpcUrl),
+            })
+            return client.readContract({
+                address: input.token,
+                abi: erc20Abi,
+                functionName: 'allowance',
+                args: [input.owner, input.spender],
+            })
+        },
+        readPermit2Allowance: async (input) =>
+            chainStandingRightsReaders({
+                network: input.network,
+                owner: input.owner,
+            }).readPermit2Allowance(input.token, input.spender),
+    }
+}
+
+function assertBoundedSession(
+    keys: GetKeysResponse,
+    chainId: number,
+    sessionKeyHash: Hex,
+): void {
+    const sessionKey = getChainKeys(keys, chainId).find(
+        (key) => key.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
+    )
+    if (!sessionKey) {
+        throw new AccountSwapError(
+            'QUOTE_FAILED',
+            'The session key is not on this account. Refusing to sign.',
+        )
+    }
+    if (sessionKey.role === 'admin') {
+        throw new AccountSwapError(
+            'QUOTE_FAILED',
+            'This session is a super-admin. The spend guard does not apply to it. Refusing to sign.',
+        )
+    }
+    if (callsIncludeWildcard(sessionKey.permissions)) {
+        throw new AccountSwapError(
+            'QUOTE_FAILED',
+            'This session is a wildcard (ANY_TARGET or ANY_FN_SEL). Refusing to sign.',
+        )
     }
 }
 
@@ -645,16 +946,30 @@ async function maybeRefreshQuoteAfterConfirmation(input: {
     request: Parameters<typeof getQuote>[0]
     options: AccountSwapOptions
     deps: Pick<AccountSwapDeps, 'getQuote'>
+    slippageBps: number
+    limits: {
+        amount: bigint
+        native: boolean
+        originCurrency: Address
+        user: Address
+        recipient: Address
+    }
 }): Promise<{ quote: RelayQuoteResponse; needsReconfirmation: boolean }> {
     if (input.options.yes || Date.now() - input.confirmedAt <= QUOTE_STALE_MS) {
         return { quote: input.initialQuote, needsReconfirmation: false }
     }
 
     const refreshedQuote = await input.deps.getQuote(input.request, { env: input.options.env })
-    validateQuoteForExecution(refreshedQuote, input.request.originChainId)
+    validateQuoteForExecution(
+        refreshedQuote,
+        input.request.originChainId,
+        input.request.destinationChainId,
+        input.slippageBps,
+        input.limits,
+    )
     return {
         quote: refreshedQuote,
-        needsReconfirmation: hasMaterialQuoteDrift(input.initialQuote, refreshedQuote),
+        needsReconfirmation: quoteNeedsReconfirmation(input.initialQuote, refreshedQuote),
     }
 }
 
@@ -771,12 +1086,13 @@ export async function executeAccountSwap(
                 `Insufficient ${fromToken} balance: have ${formatUnits(balance, getTokenDecimals(fromToken))}, need ${parsedAmount.normalized}`,
             )
         }
+        const keys = await deps.getKeys({
+            network: signedNetwork,
+            account: sender,
+            chainId: effectiveNetwork.chainId,
+        })
+        assertBoundedSession(keys, effectiveNetwork.chainId, sessionKeyHash)
         if (fromToken === 'ETH') {
-            const keys = await deps.getKeys({
-                network: signedNetwork,
-                account: sender,
-                chainId: effectiveNetwork.chainId,
-            })
             assertEthSpendPermission({
                 keys,
                 chainId: effectiveNetwork.chainId,
@@ -799,33 +1115,151 @@ export async function executeAccountSwap(
         }
 
         let quote = await deps.getQuote(quoteRequest, { env: options.env })
-        validateQuoteForExecution(quote, quoteRequest.originChainId)
-
-        if (!options.yes) {
-            for (let attempt = 1; attempt <= MAX_CONFIRMATION_ATTEMPTS; attempt += 1) {
-                const confirmedAt = Date.now()
-                const confirmed = await deps.confirmQuote(quote)
-                if (!confirmed) {
-                    throw new AccountSwapError('QUOTE_FAILED', 'Swap cancelled.')
-                }
-
-                const refresh = await maybeRefreshQuoteAfterConfirmation({
-                    initialQuote: quote,
-                    confirmedAt,
-                    request: quoteRequest,
-                    options,
-                    deps,
+        const quoteLimits = {
+            amount: parsedAmount.baseUnits,
+            native: fromToken === 'ETH',
+            originCurrency: quoteRequest.originCurrency,
+            user: sender,
+            recipient,
+        }
+        const slippageBps = Number(slippagePercentToBps(slippage))
+        let review = validateQuoteForExecution(
+            quote,
+            quoteRequest.originChainId,
+            quoteRequest.destinationChainId,
+            slippageBps,
+            quoteLimits,
+        )
+        const swapChainLabel = getChainNameByChainId(quoteRequest.originChainId) ?? sourceChain
+        let swapGrants: SwapCallGrant[] = []
+        const bindSwapKey = (current: RelayQuoteResponse) => {
+            const sessionKey = getChainKeys(keys, effectiveNetwork.chainId).find(
+                (key) => key.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
+            )
+            try {
+                swapGrants = planSwapSessionUse({
+                    chainId: quoteRequest.originChainId,
+                    permissions: sessionKey?.permissions ?? [],
+                    inputToken: fromToken === 'ETH' ? undefined : quoteRequest.originCurrency,
+                    quoteCalls: stepsToRelayerCalls(current.steps),
+                    chainLabel: swapChainLabel,
                 })
-                quote = refresh.quote
-                if (!refresh.needsReconfirmation) {
-                    break
+            } catch (error) {
+                if (error instanceof SwapSessionRejected) {
+                    throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
                 }
-                if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
-                    throw new AccountSwapError(
-                        'QUOTE_FAILED',
-                        'Quote changed materially too many times during confirmation. Re-run the command and confirm promptly, or use --yes if appropriate.',
-                    )
+                throw error
+            }
+        }
+        bindSwapKey(quote)
+        const sameChain = quoteRequest.originChainId === quoteRequest.destinationChainId
+        const deployed = getAddressesWithFallback(options.env, quoteRequest.originChainId)
+        if (!deployed?.orchestrator || !deployed.accountProxy) {
+            throw new AccountSwapError(
+                'QUOTE_FAILED',
+                'This chain has no orchestrator to simulate the quote against. Refusing to sign.',
+            )
+        }
+        const executionBase: Omit<RelayExecutionContext, 'nonce'> = {
+            orchestrator: getAddress(deployed.orchestrator),
+            delegation: getAddress(deployed.accountProxy),
+            keyHash: sessionKeyHash,
+        }
+
+        const simulateQuote = async (
+            current: RelayQuoteResponse,
+            currentReview: RelayQuoteReview,
+            nonce: bigint,
+            callsOverride?: Call[],
+        ) => {
+            await assertNoStandingRightsForQuote({
+                deps,
+                network: effectiveNetwork,
+                chainId: quoteRequest.originChainId,
+                owner: sender,
+                keyHash: sessionKeyHash,
+                inputToken: fromToken === 'ETH' ? undefined : quoteRequest.originCurrency,
+            })
+            const watches = quoteWatches({
+                origin: quoteRequest.originCurrency,
+                originIsNative: fromToken === 'ETH',
+                output: quoteRequest.destinationCurrency,
+                outputIsNative: toToken === 'ETH',
+                sameChain,
+                chainId: quoteRequest.originChainId,
+                extraTokens: currentReview.tokens,
+            })
+            try {
+                const sourceCalls = callsOverride ?? stepsToRelayerCalls(current.steps)
+                await deps.simulateQuoteCalls({
+                    rpcUrl: effectiveNetwork.rpcUrl,
+                    relayerUrl: effectiveNetwork.relayerUrl,
+                    chainId: quoteRequest.originChainId,
+                    user: sender,
+                    calls: sourceCalls.map((call) => ({
+                        to: call.target,
+                        data: call.data ?? '0x',
+                        value: call.value,
+                    })),
+                    watches,
+                    cap: currentReview.cap,
+                    sameChain,
+                    minimumOutput: sameChain ? quotedMinimumOutput(current) : undefined,
+                    execution: { ...executionBase, nonce },
+                })
+            } catch (error) {
+                if (error instanceof AccountSwapError) throw error
+                if (error instanceof RelayQuoteRejected || error instanceof RelaySimulationRejected) {
+                    throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
                 }
+                throw new AccountSwapError(
+                    'QUOTE_FAILED',
+                    'relay.link quote could not be simulated. Refusing to sign.',
+                    { cause: error },
+                )
+            }
+        }
+
+        // `yes` does not skip this review. It only skips refreshing a quote that
+        // went stale while the human was confirming.
+        let simulationNonce = await deps.readNonce({
+            network: signedNetwork,
+            account: sender,
+        })
+        for (let attempt = 1; attempt <= MAX_CONFIRMATION_ATTEMPTS; attempt += 1) {
+            await simulateQuote(quote, review, simulationNonce)
+            const confirmedAt = Date.now()
+            const confirmed = await deps.confirmQuote(quote)
+            if (!confirmed) {
+                throw new AccountSwapError('QUOTE_FAILED', 'Swap cancelled.')
+            }
+
+            const refresh = await maybeRefreshQuoteAfterConfirmation({
+                initialQuote: quote,
+                confirmedAt,
+                request: quoteRequest,
+                options,
+                deps,
+                slippageBps,
+                limits: quoteLimits,
+            })
+            quote = refresh.quote
+            if (!refresh.needsReconfirmation) {
+                break
+            }
+            review = validateQuoteForExecution(
+                quote,
+                quoteRequest.originChainId,
+                quoteRequest.destinationChainId,
+                slippageBps,
+                quoteLimits,
+            )
+            bindSwapKey(quote)
+            if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
+                throw new AccountSwapError(
+                    'QUOTE_FAILED',
+                    'Quote changed materially too many times during confirmation. Re-run the command and confirm promptly.',
+                )
             }
         }
 
@@ -836,8 +1270,60 @@ export async function executeAccountSwap(
         }
 
         const relayRequestId = isBridge ? extractRequestId(quote) : undefined
+        const usdc = getUsdcAddressByChainId(quoteRequest.originChainId)
+        if (!usdc) {
+            throw new AccountSwapError(
+                'QUOTE_FAILED',
+                'This chain has no USDC address to bound the quote against. Refusing to sign.',
+            )
+        }
+        const legacyUsdc = getUsdcAddressByChainId(quoteRequest.originChainId, true)
+        const frozenTokens = [
+            WETH_BY_CHAIN[quoteRequest.originChainId],
+            legacyUsdc && legacyUsdc.toLowerCase() !== usdc.toLowerCase() ? legacyUsdc : undefined,
+            ...review.tokens,
+        ].filter((token): token is Address => Boolean(token))
+        // The Orchestrator fee is charged against the same USDC minute slot as
+        // the swap input, so that slot also has to fit the signed fee cap.
+        const intentPayment = resolveIntentPayment(
+            signedNetwork.env,
+            signedNetwork.chainId,
+            sender,
+        )
+        const usdcFeeCap =
+            getAddress(intentPayment.paymentToken) === getAddress(usdc)
+                ? intentPayment.paymentMaxAmount
+                : 0n
+        const bound: QuoteSpendBound = {
+            keyHash: sessionKeyHash,
+            account: sender,
+            nativeLimit: fromToken === 'ETH' ? parsedAmount.baseUnits : 0n,
+            usdc,
+            usdcLimit: (fromToken === 'USDC' ? parsedAmount.baseUnits : 0n) + usdcFeeCap,
+            frozenTokens,
+        }
+        return await deps.withAccountLock(keystorePath, async () => {
+            await maybeRecoverPendingQuoteSpend(keystorePath, {
+                resolvePassword,
+            })
+            return withoutQuoteSpendRecovery(async () => {
+        const releaseSpendLimit = await deps.installQuoteSpendLimit({
+            bound,
+            network: effectiveNetwork,
+            password: await resolvePassword(),
+            keystorePath,
+            sessionFile: options.sessionFile,
+            callGrants: swapGrants,
+        })
+        let released = false
+        const releaseOnce = async () => {
+            if (released) return
+            released = true
+            await releaseSpendLimit()
+        }
 
-        const nonce = await deps.readNonce({
+        try {
+        simulationNonce = await deps.readNonce({
             network: signedNetwork,
             account: sender,
         })
@@ -868,11 +1354,15 @@ export async function executeAccountSwap(
                             signature: input.signature,
                         }),
                     waitForBundle: async (input) => deps.waitForBundle({ network, id: input.id }),
+                    beforeSign: async ({ calls: signedCalls, nonce }) => {
+                        simulationNonce = nonce
+                        await simulateQuote(quote, review, nonce, signedCalls)
+                    },
                 },
                 {
                     from: sender,
                     calls,
-                    nonce,
+                    nonce: simulationNonce,
                     sessionKey: sessionPublicKey,
                     signerPrivateKey: signer.signerPrivateKey,
                     signerKeyHash: sessionKeyHash,
@@ -1024,6 +1514,11 @@ export async function executeAccountSwap(
             relayRequestId,
             feeCap: submission.feeCap,
         }
+        } finally {
+            await releaseOnce()
+        }
+            })
+        })
     } catch (error) {
         if (error instanceof PromptCancelledError) {
             throw error
@@ -1046,6 +1541,10 @@ function toAccountSwapError(error: unknown, context: { keystorePath: string }): 
 
     if (error instanceof AccountCreateError && error.code === 'INVALID_NAME') {
         return new AccountSwapError('UNKNOWN', error.message, { cause: error })
+    }
+
+    if (error instanceof QuoteSpendError) {
+        return new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
     }
 
     if (error instanceof RelayLinkError) {

@@ -1,4 +1,4 @@
-import { decodeFunctionData, getAddress, parseAbi, type Address, type Hex } from 'viem'
+import { decodeFunctionData, getAddress, parseAbi, zeroAddress, type Address, type Hex } from 'viem'
 import { getAddressesWithFallback } from '@nubl/contracts/deployments'
 import { INTENT_TYPES } from '@nubl/relayer-client'
 import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
@@ -10,6 +10,8 @@ import {
     getUsdcTokenConfig,
     type EnvName,
 } from './network-config'
+import { PAID_FEE_CAP, QuotePaymentRejected, reviewQuotePayment } from './intent-payment'
+import { RelayQuoteRejected, reviewRelayIntentCalls } from './relay-allowlist'
 import { isRecord } from './type-guards'
 
 export const ORCHESTRATOR_DOMAIN_NAME = 'Orchestrator'
@@ -235,4 +237,108 @@ export function assessPhraseLessIntent(input: {
         fail('Phrase-less session exceeds the 10 USDC daily budget')
     }
     return { chainId, usdc: usdcMoved }
+}
+
+export type SwapPaymentBounds = {
+    /**
+     * Quote fee in the chain's USDC. The signed amount must be at most this
+     * fee and at most 5 USDC. A larger fee does not raise the ceiling.
+     * Omitted means the ceiling is the only amount bound.
+     */
+    feeAmount?: bigint
+    /** Expected payment recipient. Omitted means the zero address. */
+    recipient?: Address
+}
+
+/**
+ * A phrase-confirmed swap session may sign only an Orchestrator intent whose
+ * calls pass the relay quote reviewer and whose payment is the quote fee in
+ * that chain's USDC, at most 5 USDC, paid to the expected recipient.
+ * Any other typed data is refused.
+ */
+export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaymentBounds): void {
+    if (!isRecord(typedData)) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    const domain = typedData.domain
+    if (!isRecord(domain)) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    if (domain.name !== ORCHESTRATOR_DOMAIN_NAME || domain.version !== ORCHESTRATOR_DOMAIN_VERSION) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    if (typedData.primaryType !== 'Intent' || !typesMatch(typedData.types)) {
+        fail('Swap session refused typed data that is not an Orchestrator intent')
+    }
+    const chainId = Number(asBigint(domain.chainId, 'chainId'))
+    const chainName = getChainNameByChainId(chainId)
+    if (!chainName) {
+        fail('Swap session refused an Orchestrator intent for an unconfigured chain')
+    }
+    const orchestrator = getAddressesWithFallback('prod', chainId)?.orchestrator
+        ?? getAddressesWithFallback('stage', chainId)?.orchestrator
+        ?? getAddressesWithFallback('dev', chainId)?.orchestrator
+    if (!orchestrator) {
+        fail('Swap session refused an Orchestrator intent because the orchestrator is not configured')
+    }
+    const verifyingContract = asAddress(domain.verifyingContract, 'verifyingContract')
+    if (verifyingContract.toLowerCase() !== orchestrator.toLowerCase()) {
+        fail('Swap session refused an Orchestrator intent for a different verifying contract')
+    }
+    const message = typedData.message
+    if (!isRecord(message) || !Array.isArray(message.calls)) {
+        fail('Swap session refused an intent whose calls could not be read')
+    }
+    const user = asAddress(message.eoa, 'eoa')
+    const calls: { to: Address; value: bigint; data: Hex }[] = []
+    for (const call of message.calls) {
+        if (!isRecord(call)) {
+            fail('Swap session refused an intent whose calls could not be read')
+        }
+        calls.push({
+            to: asAddress(call.to, 'call.to'),
+            value: asBigint(call.value, 'call.value'),
+            data: asHex(call.data, 'call.data'),
+        })
+    }
+    if (calls.length === 0) {
+        fail('Swap session refused an intent with no calls')
+    }
+    try {
+        reviewRelayIntentCalls({ chainId, user, calls })
+    } catch (error) {
+        if (error instanceof RelayQuoteRejected) {
+            fail(error.message)
+        }
+        throw error
+    }
+    const paymentToken =
+        message.paymentToken === undefined ? zeroAddress : asAddress(message.paymentToken, 'paymentToken')
+    const paymentMax =
+        message.paymentMaxAmount === undefined
+            ? 0n
+            : asBigint(message.paymentMaxAmount, 'paymentMaxAmount')
+    const statedAmount =
+        message.paymentAmount === undefined
+            ? paymentMax
+            : asBigint(message.paymentAmount, 'paymentAmount')
+    const paymentRecipient =
+        message.paymentRecipient === undefined
+            ? zeroAddress
+            : asAddress(message.paymentRecipient, 'paymentRecipient')
+    const usdc = getUsdcTokenConfig(chainName).address
+    const quotedFee = bounds?.feeAmount ?? PAID_FEE_CAP
+    try {
+        reviewQuotePayment({
+            paymentToken,
+            paymentAmount: statedAmount > paymentMax ? statedAmount : paymentMax,
+            paymentRecipient,
+            feeToken: usdc,
+            feeAmount: quotedFee,
+            recipient: bounds?.recipient ?? zeroAddress,
+        })
+    } catch (error) {
+        if (error instanceof QuotePaymentRejected) fail(error.message)
+        throw error
+    }
 }

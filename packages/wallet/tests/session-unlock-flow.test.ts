@@ -137,6 +137,7 @@ test('executeSessionUnlock --device sends encryption device + kind to daemon', a
             decryptAgentDevice: mock(async () => exportedDevice),
             createDaemonClient: () => ({ loadKey }),
             sessionRequiresPhrase: async () => false,
+            sessionIsSwap: async () => false,
         },
     )
 
@@ -317,6 +318,7 @@ test('executeSessionUnlock falls back to session.json for login profiles', async
             }),
             createDaemonClient: () => ({ loadKey }),
             sessionRequiresPhrase: async () => false,
+            sessionIsSwap: async () => false,
         },
     )
 
@@ -375,6 +377,7 @@ test('executeSessionUnlock falls back to session.json for SessionOnlyProfileErro
             }),
             createDaemonClient: () => ({ loadKey }),
             sessionRequiresPhrase: async () => false,
+            sessionIsSwap: async () => false,
         },
     )
 

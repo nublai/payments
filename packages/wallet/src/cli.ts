@@ -65,7 +65,6 @@ import {
     permissionNeedsFullAccessConfirmation,
 } from './lib/session-common'
 import {
-    fullAccessSessionHowTo,
     readActiveUsdcDaily,
     sessionHasWildcardCall,
     storedSessionRequiresPhrase,
@@ -86,6 +85,7 @@ import {
     type RelayCurrencyAmount,
     type RelayQuoteResponse,
 } from './lib/relay-link'
+import { formatQuotedBuy, formatRelayQuoteCalls } from './lib/relay-allowlist'
 import {
     PromptCancelledError,
     readlineExistingPassword,
@@ -104,6 +104,7 @@ import {
     CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
     CONFIRM_ROTATE_FULL_ACCESS_PHRASE,
     CONFIRM_SEND_PHRASE,
+    CONFIRM_SWAP_SESSION_PHRASE,
     CONFIRM_UNLOCK_FULL_ACCESS_PHRASE,
     HumanConfirmationError,
     isInteractiveTerminal,
@@ -212,27 +213,20 @@ function formatQuoteSummary(quote: RelayQuoteResponse, kind: 'swap' | 'bridge'):
     const lines = [
         `${kind === 'swap' ? 'Swap' : 'Bridge'} Quote:`,
         `  Sell: ${formatQuoteAmount(quote.details?.currencyIn)}`,
-        `  Buy:  ${formatQuoteAmount(quote.details?.currencyOut)}`,
+        `  Buy:  ${formatQuotedBuy(quote.details?.currencyOut)}`,
         `  Rate: ${quote.details?.rate ?? 'unknown'}`,
         `  Total fees: $${sumQuoteFeeUsd(quote)}`,
         `  Estimated time: ${quote.details?.timeEstimate ? `~${quote.details.timeEstimate}s` : 'unknown'}`,
     ]
-    return `${lines.join('\n')}\n`
+    return `${lines.join('\n')}\n${formatRelayQuoteCalls(quote)}`
 }
 
 function writeRelayAudit(quote: RelayQuoteResponse): void {
-    const lines = quote.steps.flatMap((step, stepIndex) =>
-        step.items
-            .filter((item) => item.status === 'incomplete')
-            .map(
-                (item, itemIndex) =>
-                    `  [${stepIndex + 1}.${itemIndex + 1}] to=${item.data.to} value=${item.data.value} chainId=${item.data.chainId}`,
-            ),
-    )
-    if (lines.length === 0) {
+    const review = formatRelayQuoteCalls(quote)
+    if (review.length === 0) {
         return
     }
-    process.stderr.write(`Relay execution targets:\n${lines.join('\n')}\n`)
+    process.stderr.write(review)
 }
 
 async function withStderrSpinner<T>(
@@ -293,7 +287,7 @@ function refuseQuoteWithoutHuman(kind: 'swap' | 'bridge'): void {
     }
 }
 
-async function refuseNarrowSessionForQuote(
+async function refuseUnboundedSessionForQuote(
     kind: 'swap' | 'bridge',
     options: {
         env: 'dev' | 'stage' | 'prod'
@@ -304,7 +298,7 @@ async function refuseNarrowSessionForQuote(
         sessionFile?: string
     },
 ): Promise<void> {
-    const allowed = await sessionHasWildcardCall({
+    const wildcard = await sessionHasWildcardCall({
         env: options.env,
         chain: options.chain,
         name: options.profile,
@@ -312,8 +306,11 @@ async function refuseNarrowSessionForQuote(
         sessionName: options.session,
         sessionFile: options.sessionFile,
     })
-    if (!allowed) {
-        throw new AccountSwapError('CONFIRMATION_REQUIRED', fullAccessSessionHowTo(kind))
+    if (wildcard) {
+        throw new AccountSwapError(
+            'QUOTE_FAILED',
+            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Create a dedicated swap session with \`tw session create <name> --swap\` and pass it with --session <name>.`,
+        )
     }
 }
 
@@ -916,7 +913,7 @@ tw.command('swap', {
             .boolean()
             .optional()
             .describe(
-                'Skip the quote prompt in an interactive terminal. Refused for MCP and non-interactive callers.',
+                'Skip re-quoting after you confirm. Does not skip the call-target review. Refused for MCP and non-interactive callers.',
             ),
         env: envSchema,
         profile: profileSchema,
@@ -945,7 +942,7 @@ tw.command('swap', {
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('swap')
-        await refuseNarrowSessionForQuote('swap', options)
+        await refuseUnboundedSessionForQuote('swap', options)
 
         return executeAccountSwap(
             {
@@ -1024,7 +1021,7 @@ tw.command('bridge', {
             .boolean()
             .optional()
             .describe(
-                'Skip the quote prompt in an interactive terminal. Refused for MCP and non-interactive callers.',
+                'Skip re-quoting after you confirm. Does not skip the call-target review. Refused for MCP and non-interactive callers.',
             ),
         env: envSchema,
         profile: profileSchema,
@@ -1080,7 +1077,7 @@ tw.command('bridge', {
     }),
     async run({ options, env }) {
         refuseQuoteWithoutHuman('bridge')
-        await refuseNarrowSessionForQuote('bridge', options)
+        await refuseUnboundedSessionForQuote('bridge', options)
 
         return executeAccountSwap(
             {
@@ -1376,7 +1373,13 @@ session.command('create', {
             .boolean()
             .optional()
             .describe(
-                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. Requires typing CREATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for a period shorter than a day or a spend above 10 USDC. MCP cannot confirm it.',
+                'Grant full access (wildcard permissions). Cannot be combined with --target, --selector, --spend-limit, --spend-limit-raw, --spend-period, or --swap. Requires typing CREATE FULL ACCESS SESSION in an interactive terminal. The same phrase is required for a period shorter than a day or a spend above 10 USDC. MCP cannot confirm it.',
+            ),
+        swap: z
+            .boolean()
+            .optional()
+            .describe(
+                'Create a dedicated swap session for this chain: the Relay router, approval proxy, and depository entrypoints, plus a minute spend of 0 on native, USDC, legacy USDC when it differs, and WETH. Does not install the 10 USDC/day default and does not replace the active payment session. Input-token approve is granted only for a quote, then revoked. Requires typing CREATE SWAP SESSION in an interactive terminal. MCP cannot confirm it. Cannot be combined with --full-access, --activate, --target, --selector, or a spend limit.',
             ),
         target: z
             .string()
@@ -1421,6 +1424,14 @@ session.command('create', {
         bundle: z.object({ id: z.string() }),
         txHash: z.string().optional(),
         feeCap: feeCapOutput,
+        swap: z
+            .object({
+                calls: z.array(z.object({ target: z.string(), selector: z.string() })),
+                spend: z.array(
+                    z.object({ token: z.string(), limit: z.string(), period: z.string() }),
+                ),
+            })
+            .optional(),
     }),
     examples: [
         {
@@ -1430,26 +1441,53 @@ session.command('create', {
         },
     ],
     async run({ args, options, env, error: reportError }) {
-        const phraseConfirmed = await confirmElevatedPermission(
-            reportError,
-            'Creating a full-access session',
-            CONFIRM_FULL_ACCESS_PHRASE,
-            {
-                env: options.env,
-                profile: options.profile,
-                keystorePath: options.keystorePath,
-                fullAccess: options.fullAccess,
-                target: options.target,
-                selector: options.selector,
-                spendLimit: options.spendLimit,
-                spendLimitRaw: options.spendLimitRaw,
-                spendPeriod: options.spendPeriod,
-                chain: options.chain,
-                defaultUsdcSpend: true,
-                stack: 'create',
-                parseHumanAmount: parseSpendLimit,
-            },
-        )
+        if (
+            options.swap &&
+            (options.fullAccess ||
+                options.activate ||
+                options.target ||
+                options.selector ||
+                options.spendLimit ||
+                options.spendLimitRaw ||
+                options.spendPeriod)
+        ) {
+            return reportError({
+                code: 'INVALID_ARGUMENT',
+                message:
+                    '--swap cannot be combined with --full-access, --activate, --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. The swap session stays inactive so the payment key remains the active session.',
+            })
+        }
+        let phraseConfirmed = false
+        let swapPhraseConfirmed = false
+        if (options.swap) {
+            await confirmHuman(
+                reportError,
+                'Creating a swap session',
+                CONFIRM_SWAP_SESSION_PHRASE,
+            )
+            swapPhraseConfirmed = true
+        } else {
+            phraseConfirmed = await confirmElevatedPermission(
+                reportError,
+                'Creating a full-access session',
+                CONFIRM_FULL_ACCESS_PHRASE,
+                {
+                    env: options.env,
+                    profile: options.profile,
+                    keystorePath: options.keystorePath,
+                    fullAccess: options.fullAccess,
+                    target: options.target,
+                    selector: options.selector,
+                    spendLimit: options.spendLimit,
+                    spendLimitRaw: options.spendLimitRaw,
+                    spendPeriod: options.spendPeriod,
+                    chain: options.chain,
+                    defaultUsdcSpend: true,
+                    stack: 'create',
+                    parseHumanAmount: parseSpendLimit,
+                },
+            )
+        }
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1484,6 +1522,8 @@ session.command('create', {
                 expiry: options.expiry,
                 password,
                 fullAccessPhraseConfirmed: phraseConfirmed,
+                swapPhraseConfirmed,
+                swap: options.swap,
             })
         } catch (error) {
             if (error instanceof HumanConfirmationError) {

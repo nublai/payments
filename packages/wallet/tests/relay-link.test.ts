@@ -173,6 +173,7 @@ test('getQuote normalizes a successful response', async () => {
     expect(quote.steps[0]?.items[0]?.data.to).toBe('0x1111111111111111111111111111111111111111')
     const requestOptions = fetchMock.mock.calls[0]?.[1]
     expect(requestOptions?.signal).toBeDefined()
+    expect(requestOptions?.redirect).toBe('error')
 })
 
 test('getQuote surfaces relay.link API errors', async () => {
@@ -399,6 +400,57 @@ test('getIntentStatus parses status responses', async () => {
     ])
     const requestOptions = fetchMock.mock.calls[0]?.[1]
     expect(requestOptions?.signal).toBeDefined()
+    expect(requestOptions?.redirect).toBe('error')
+})
+
+test('getQuote refuses a redirect', async () => {
+    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+        expect(init?.redirect).toBe('error')
+        return new Response('{}', {
+            status: 302,
+            headers: { location: 'https://evil.example/quote' },
+        })
+    })
+
+    await expect(
+        getQuote(
+            {
+                user: '0x2222222222222222222222222222222222222222',
+                originChainId: 8453,
+                destinationChainId: 8453,
+                originCurrency: '0x3333333333333333333333333333333333333333',
+                destinationCurrency: '0x0000000000000000000000000000000000000000',
+                amount: '1000000',
+                tradeType: 'EXACT_INPUT',
+                slippageTolerance: '50',
+            },
+            { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+        ),
+    ).rejects.toMatchObject({
+        message: expect.stringContaining('redirect'),
+    })
+})
+
+test('getIntentStatus refuses a redirect', async () => {
+    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+        expect(init?.redirect).toBe('error')
+        return {
+            redirected: true,
+            status: 200,
+            ok: true,
+            json: async () => ({ status: 'success' }),
+            text: async () => '{"status":"success"}',
+        } as Response
+    })
+
+    await expect(
+        getIntentStatus('request-1', {
+            fetch: fetchMock as typeof fetch,
+            baseUrl: 'https://api.relay.link',
+        }),
+    ).rejects.toMatchObject({
+        message: expect.stringContaining('redirect'),
+    })
 })
 
 test('pollIntentStatus uses stepped intervals until terminal success', async () => {
