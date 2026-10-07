@@ -12,7 +12,7 @@ import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
-import { installFormerProdDeployments, installFormerStageDeployments } from './helpers/former-deployment-env'
+import { installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
 const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
@@ -485,6 +485,9 @@ function partialRotateHarness(mode: 'status' | 'throw') {
     }
     const prepares: { chainId: number }[] = []
     const deps = rotateDeps({
+        getKeys: mock(async () => ({
+            '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+        })),
         readRotationIntent: mock(async () => savedIntent),
         writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
             savedIntent = { ...value, fileName: fileName ?? 'rotation.json' }
@@ -651,9 +654,7 @@ function stageEnv<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     const restoreStage = installFormerStageDeployments()
-    const restoreProd = installFormerProdDeployments()
     return fn().finally(() => {
-        restoreProd()
         restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
@@ -665,6 +666,9 @@ test('resume after a successful rotation does not start another rotation', async
         let intent: Record<string, unknown> | null = null
         const signed: string[] = []
         const deps = rotateDeps({
+            getKeys: mock(async () => ({
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
             readRotationIntent: mock(async () => intent),
             writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
                 intent = { ...value, fileName: fileName ?? '.rotation.json' }
@@ -897,6 +901,9 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
     await stageEnv(async () => {
         const daily = mock(async () => 0n)
         const deps = rotateDeps({
+            getKeys: mock(async () => ({
+                '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
+            })),
             readRotationIntent: mock(async () => ({
                 ...(await sealRotationMarker(
                     {

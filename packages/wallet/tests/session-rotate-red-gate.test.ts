@@ -92,12 +92,12 @@ async function stageDir(prefix: string) {
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+    // Published JSON is zero. Stage rotations resolve the orchestrator from
+    // ORCHESTRATOR_<chainId> for this test only.
     const restoreStage = installFormerStageDeployments()
-    const restoreProd = installFormerProdDeployments()
     try {
         return await fn()
     } finally {
-        restoreProd()
         restoreStage()
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
@@ -1027,6 +1027,10 @@ test('pointer-moved full-access resume requires the phrase and does not delete a
 
 test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () => {
     await withStage(async () => {
+        // This quote is built for prod/8453 and the signed domain is the former
+        // prod orchestrator. Stage addresses share ORCHESTRATOR_8453, so this
+        // test installs the prod book and restores it before the helper exits.
+        const restoreProd = installFormerProdDeployments()
         const methods: string[] = []
         const server = Bun.serve({
             port: 0,
@@ -1110,6 +1114,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
             expect(methods).toContain('eth_estimateGas')
             expect(methods).not.toContain('eth_chainId')
         } finally {
+            restoreProd()
             server.stop(true)
             if (previousNodeEnv === undefined) delete process.env.NODE_ENV
             else process.env.NODE_ENV = previousNodeEnv
@@ -1119,6 +1124,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
 
 test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and before sign', async () => {
     await withStage(async () => {
+        const restoreProd = installFormerProdDeployments()
         const methods: string[] = []
         const server = Bun.serve({
             port: 0,
@@ -1222,6 +1228,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
             expect(signedCaps).toEqual([1001n])
             expect(methods).not.toContain('eth_chainId')
         } finally {
+            restoreProd()
             server.stop(true)
             if (previousNodeEnv === undefined) delete process.env.NODE_ENV
             else process.env.NODE_ENV = previousNodeEnv
