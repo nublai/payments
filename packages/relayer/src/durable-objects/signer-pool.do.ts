@@ -426,7 +426,13 @@ export class SignerPoolDO extends DurableObject<Env> {
             const books = this.readGasBooks(sql, dayStart)
             let { gasSpent, heldGas, failures } = books
             if (body.action === 'reserve-gas') {
-                if (BigInt(gasSpent) + BigInt(heldGas) + BigInt(gas) > budget) {
+                // The signed gas limit cannot exceed this reservation, and the
+                // reservation cannot exceed the approved hold. spent + held +
+                // this reservation must still fit in the daily budget.
+                if (
+                    BigInt(gas) > PAID_UPGRADE_GAS_HOLD ||
+                    BigInt(gasSpent) + BigInt(heldGas) + BigInt(gas) > budget
+                ) {
                     return { allowed: false, gas: gasSpent, held: heldGas, failures }
                 }
                 heldGas += gas
@@ -442,9 +448,9 @@ export class SignerPoolDO extends DurableObject<Env> {
 
     /**
      * Record gas that was already spent. A repeat settle for the same tx hash
-     * does not add again. If the receipt's gas pushes the day over the budget,
-     * the spend is still recorded and `overBudget` is set so the next reserve
-     * fails closed.
+     * does not add again. The accounted amount is at most the reserved hold
+     * and at most the room left in the daily budget, so spent + held cannot
+     * pass the budget.
      */
     private applyPaidUpgradeSettle(
         sql: SqlStorage,
@@ -473,7 +479,14 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
             const holdToRelease = prior?.status === 'released' ? 0 : input.hold
             heldGas = Math.max(0, heldGas - holdToRelease)
-            gasSpent += input.gas
+            const holdCap =
+                input.hold > 0 && input.hold < Number(PAID_UPGRADE_GAS_HOLD)
+                    ? input.hold
+                    : Number(PAID_UPGRADE_GAS_HOLD)
+            let accounted = Math.min(input.gas, holdCap)
+            const room = Number(input.budget - BigInt(gasSpent) - BigInt(heldGas))
+            if (accounted > room) accounted = Math.max(0, room)
+            gasSpent += accounted
             if (input.failure) failures += 1
             const overBudget = BigInt(gasSpent) + BigInt(heldGas) > input.budget
             this.writeGasBooks(sql, input.dayStart, gasSpent, heldGas, failures)

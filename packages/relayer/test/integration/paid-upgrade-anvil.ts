@@ -51,7 +51,9 @@ import {
 import {
     eip7702DelegationCode,
     PAID_UPGRADE_AUTHORIZATION_GAS,
+    PAID_UPGRADE_GAS_HOLD,
     paidUpgradeRateBuckets,
+    paidUpgradeSignedGas,
 } from '../../src/rpc/methods/shared/paid-upgrade'
 import {
     consumeRateLimit,
@@ -59,7 +61,6 @@ import {
     releaseRateLimit,
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
 import {
-    ACCOUNT_UPGRADE_GAS_LIMIT,
     ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
     ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS,
 } from '../../src/rpc/methods/shared/upgrade-gas'
@@ -152,7 +153,11 @@ async function main(): Promise<void> {
         held: 0n,
         failures: 0,
     }
-    const broadcastPlan = { sweepOwner: undefined as Address | undefined }
+    const broadcastPlan: {
+        sweepOwner?: Address
+        beforeBroadcast?: () => Promise<void>
+        expectSuccess?: boolean
+    } = {}
     const receipts: TransactionReceipt[] = []
 
     try {
@@ -415,6 +420,10 @@ async function main(): Promise<void> {
                 },
             },
             ctx,
+        )
+        assert(
+            gasState.held === 0n && gasState.spent === 0n,
+            'prepare reserved a gas hold or spent the daily budget',
         )
         const quote = prepared.context.quote.quotes[0]
         assert(quote, 'missing quote')
@@ -689,6 +698,161 @@ async function main(): Promise<void> {
                 bundleId: sent.id,
             }),
         )
+
+        const burner = await deployBytecode(wallet, publicClient, BURNER_BYTECODE)
+        const gasBomb = await deployBytecode(wallet, publicClient, GAS_BOMB_BYTECODE)
+        const heavyOwner = privateKeyToAccount(generatePrivateKey())
+        await fundAndApprove(wallet, publicClient, heavyOwner.address, relayer.address)
+        const heavyNonceBefore = await publicClient.getTransactionCount({
+            address: relayer.address,
+        })
+        const heavyUsdcBefore = await publicClient.readContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [relayer.address],
+        })
+        let heavyRefused = false
+        try {
+            await sendPaidUpgrade(ctx, {
+                owner: heavyOwner,
+                accountProxy,
+                orchestrator,
+                calls: [
+                    {
+                        to: burner,
+                        data: encodeFunctionData({
+                            abi: [
+                                {
+                                    type: 'function',
+                                    name: 'burn',
+                                    stateMutability: 'pure',
+                                    inputs: [{ name: 'rounds', type: 'uint256' }],
+                                    outputs: [{ name: 'n', type: 'uint256' }],
+                                },
+                            ],
+                            functionName: 'burn',
+                            args: [800n],
+                        }),
+                        value: '0x0',
+                    },
+                ],
+            })
+        } catch (error) {
+            heavyRefused = true
+            const message = error instanceof Error ? error.message : String(error)
+            assert(
+                message.includes('reserved hold'),
+                `heavy upgrade refused for a different reason: ${message}`,
+            )
+        }
+        assert(heavyRefused, 'burn(800) quote was signed above the 500k hold')
+        const heavyNonceAfter = await publicClient.getTransactionCount({
+            address: relayer.address,
+        })
+        assert(heavyNonceAfter === heavyNonceBefore, 'refused burn broadcast a relayer transaction')
+        const heavyUsdcAfter = await publicClient.readContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [relayer.address],
+        })
+        assert(heavyUsdcAfter === heavyUsdcBefore, 'refused burn moved USDC')
+
+        const bombOwner = privateKeyToAccount(generatePrivateKey())
+        const bombHelper = privateKeyToAccount(generatePrivateKey())
+        await fundAndApprove(wallet, publicClient, bombOwner.address, relayer.address)
+        const helperFunded = await fetch(RPC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'anvil_setBalance',
+                params: [bombHelper.address, '0xDE0B6B3A7640000'],
+            }),
+        })
+        const helperFundedBody = (await helperFunded.json()) as { error?: { message?: string } }
+        assert(!helperFundedBody.error, 'helper anvil_setBalance failed')
+        const bombUsdcBefore = await publicClient.readContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [relayer.address],
+        })
+        broadcastPlan.beforeBroadcast = async () => {
+            const bombAuth = await bombOwner.sign({
+                hash: hashAuthorization({
+                    contractAddress: gasBomb,
+                    chainId: CHAIN_ID,
+                    nonce: 0,
+                }),
+            })
+            const helper = createWalletClient({
+                account: bombHelper,
+                chain,
+                transport: http(RPC_URL),
+            })
+            const bombHash = await helper.sendTransaction({
+                to: bombHelper.address,
+                value: 0n,
+                gas: 100_000n,
+                maxFeePerGas: ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS + 1_000_000_000n,
+                maxPriorityFeePerGas: ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS + 1_000_000_000n,
+                authorizationList: [
+                    {
+                        address: gasBomb,
+                        chainId: CHAIN_ID,
+                        nonce: 0,
+                        ...splitSignature(bombAuth),
+                    },
+                ],
+                type: 'eip7702',
+            })
+            const bombReceipt = await publicClient.waitForTransactionReceipt({ hash: bombHash })
+            assert(bombReceipt.status === 'success', 'gas bomb authorization was not mined')
+        }
+        broadcastPlan.expectSuccess = false
+        const bombSent = await sendPaidUpgrade(ctx, {
+            owner: bombOwner,
+            accountProxy,
+            orchestrator,
+            calls: [
+                {
+                    to: USDC,
+                    data: encodeFunctionData({
+                        abi: erc20Abi,
+                        functionName: 'balanceOf',
+                        args: [bombOwner.address],
+                    }),
+                    value: '0x0',
+                },
+            ],
+        })
+        broadcastPlan.beforeBroadcast = undefined
+        broadcastPlan.expectSuccess = undefined
+        assert(typeof bombSent.id === 'string', 'bomb race did not return a bundle id')
+        const bombUpgrade = receipts[receipts.length - 1]
+        assert(bombUpgrade, 'missing bomb-race receipt')
+        assert(
+            bombUpgrade.gasUsed <= PAID_UPGRADE_GAS_HOLD,
+            `bomb race gasUsed ${bombUpgrade.gasUsed} exceeded the hold`,
+        )
+        const bombUsdcAfter = await publicClient.readContract({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [relayer.address],
+        })
+        assert(bombUsdcAfter === bombUsdcBefore, 'bomb race pulled USDC')
+        const bombCode = await publicClient.getCode({ address: bombOwner.address })
+        assert(
+            bombCode?.toLowerCase() === eip7702DelegationCode(gasBomb).toLowerCase(),
+            `bomb race delegated to ${bombCode}`,
+        )
+        console.log(
+            `bomb race gasUsed=${bombUpgrade.gasUsed} hold=${PAID_UPGRADE_GAS_HOLD} usdcDelta=0`,
+        )
     } finally {
         anvil.kill('SIGTERM')
         cleanupDeployArtifacts()
@@ -720,7 +884,7 @@ function applyAnvilGas(
     const budget = 2_000_000n
     const amount = BigInt(body.gas ?? '0')
     if (body.action === 'reserve-gas') {
-        if (gasState.spent + gasState.held + amount > budget) {
+        if (amount > PAID_UPGRADE_GAS_HOLD || gasState.spent + gasState.held + amount > budget) {
             return { allowed: false, gas: Number(gasState.spent), failures: gasState.failures }
         }
         gasState.held += amount
@@ -733,7 +897,11 @@ function applyAnvilGas(
     if (body.action === 'settle-gas') {
         const hold = BigInt(body.hold ?? '0')
         gasState.held = gasState.held > hold ? gasState.held - hold : 0n
-        gasState.spent += amount
+        let accounted = amount > hold ? hold : amount
+        if (accounted > PAID_UPGRADE_GAS_HOLD) accounted = PAID_UPGRADE_GAS_HOLD
+        const room = budget - gasState.spent - gasState.held
+        if (accounted > room) accounted = room > 0n ? room : 0n
+        gasState.spent += accounted
         if (body.failure === true) gasState.failures += 1
         return { allowed: true, gas: Number(gasState.spent), failures: gasState.failures }
     }
@@ -757,16 +925,169 @@ function intentError(receipt: TransactionReceipt): Hex | undefined {
     return undefined
 }
 
+const BURNER_BYTECODE =
+    '0x6080604052348015600e575f5ffd5b5060dc80601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106026575f3560e01c806342966c6814602a575b5f5ffd5b603960353660046090565b604b565b60405190815260200160405180910390f35b5f5f5b82811015608a57604080516020810183905290810183905260600160408051601f1981840301815291905280516020909101209150600101604e565b50919050565b5f60208284031215609f575f5ffd5b503591905056fea2646970667358221220d689a7628662cc20b0c58cb6cdd976cdd2833b83857cfb1efcee9c35cf7adeff64736f6c634300081c0033' as Hex
+const GAS_BOMB_BYTECODE =
+    '0x6080604052348015600e575f5ffd5b50604580601a5f395ff3fe60806040525b6113885a1160055700fea26469706673582212209c62d81a64e8ae9e7363a468b7838b1978378a04080cd49131c4b68d3a139f1d64736f6c634300081c0033' as Hex
+
+async function deployBytecode(
+    wallet: ReturnType<typeof createWalletClient>,
+    publicClient: PublicClient,
+    bytecode: Hex,
+): Promise<Address> {
+    const hash = await wallet.sendTransaction({ data: bytecode, chain })
+    const receipt = await publicClient.waitForTransactionReceipt({ hash })
+    assert(receipt.contractAddress, 'toy contract deploy failed')
+    return receipt.contractAddress
+}
+
+async function fundAndApprove(
+    wallet: ReturnType<typeof createWalletClient>,
+    publicClient: PublicClient,
+    owner: Address,
+    spender: Address,
+): Promise<void> {
+    const funded = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'anvil_setBalance',
+            params: [owner, '0xDE0B6B3A7640000'],
+        }),
+    })
+    const fundedBody = (await funded.json()) as { error?: { message?: string } }
+    assert(!fundedBody.error, `anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
+    const mintHash = await wallet.writeContract({
+        address: USDC,
+        abi: [
+            {
+                type: 'function',
+                name: 'mint',
+                stateMutability: 'nonpayable',
+                inputs: [
+                    { name: 'to', type: 'address' },
+                    { name: 'amount', type: 'uint256' },
+                ],
+                outputs: [],
+            },
+        ],
+        functionName: 'mint',
+        args: [owner, 20_000_000n],
+        chain,
+    })
+    const mintReceipt = await publicClient.waitForTransactionReceipt({ hash: mintHash })
+    assert(mintReceipt.status === 'success', 'USDC mint failed')
+}
+
+async function sendPaidUpgrade(
+    ctx: RpcContext,
+    input: {
+        owner: ReturnType<typeof privateKeyToAccount>
+        accountProxy: Address
+        orchestrator: Address
+        calls: { to: Address; data: Hex; value: string }[]
+    },
+): Promise<{ id: string }> {
+    const { orchestrator } = input
+    const session = privateKeyToAccount(generatePrivateKey())
+    const sessionKey = {
+        expiry: '0',
+        type: 'secp256k1' as const,
+        role: 'admin' as const,
+        publicKey: encodeAbiParameters([{ type: 'address' }], [session.address]),
+        permissions: [],
+    }
+    const { calls, executionData } = buildKeyInitializationData([sessionKey], input.owner.address)
+    const execSignature = await input.owner.signTypedData({
+        domain: getSignedCallDomain(CHAIN_ID, orchestrator),
+        types: SIGNED_CALL_TYPES,
+        primaryType: 'SignedCall',
+        message: {
+            multichain: false,
+            eoa: input.owner.address,
+            calls,
+            nonce: UPGRADE_PRECALL_NONCE,
+        },
+    })
+    const authorizationSignature = await input.owner.sign({
+        hash: hashAuthorization({
+            contractAddress: input.accountProxy,
+            chainId: CHAIN_ID,
+            nonce: 0,
+        }),
+    })
+    const prepared = await handlePrepareCalls(
+        {
+            from: input.owner.address,
+            chain_id: '0x7a69',
+            calls: input.calls,
+            capabilities: {
+                meta: {
+                    nonce: '0',
+                    fee_payer: input.owner.address,
+                    fee_token: USDC,
+                    fee_max_amount: '10000000',
+                },
+                accountUpgrade: {
+                    authorization: {
+                        contractAddress: input.accountProxy,
+                        chainId: CHAIN_ID,
+                        nonce: 0,
+                        signature: authorizationSignature,
+                    },
+                    preCall: {
+                        eoa: input.owner.address,
+                        executionData,
+                        nonce: UPGRADE_PRECALL_NONCE.toString(),
+                        signature: execSignature,
+                    },
+                },
+            },
+        },
+        ctx,
+    )
+    const signature = await input.owner.sign({ hash: prepared.digest })
+    const sent = await handleSendPreparedCalls(
+        { context: prepared.context, signature },
+        ctx,
+    )
+    return { id: sent.id }
+}
+
 async function broadcastPaidUpgrade(
     publicClient: PublicClient,
     tx: ExecuteIntentTransaction,
     orchestrator: Address,
     broadcaster: ReturnType<typeof createWalletClient>,
-    plan: { sweepOwner?: Address },
+    plan: {
+        sweepOwner?: Address
+        beforeBroadcast?: () => Promise<void>
+        expectSuccess?: boolean
+    },
     receipts: TransactionReceipt[],
 ): Promise<Hex> {
     const relayer = privateKeyToAccount(RELAYER_KEY)
     assert(tx.authorization, 'execute-intent is missing the authorization')
+    const intent = {
+        ...tx.intent,
+        paymentRecipient: getPaymentRecipient(undefined, relayer.address),
+    }
+    const data = encodeFunctionData({
+        abi: orchestratorAbi,
+        functionName: 'execute',
+        args: [encodeIntentCalldata(intent)],
+    })
+    const estimate = await publicClient.estimateGas({
+        account: relayer,
+        to: orchestrator,
+        data,
+        value: 0n,
+        authorizationList: [tx.authorization],
+    })
+    const gas = paidUpgradeSignedGas(estimate)
+    if (plan.beforeBroadcast) await plan.beforeBroadcast()
     if (plan.sweepOwner) {
         const balance = await publicClient.readContract({
             address: USDC,
@@ -785,28 +1106,25 @@ async function broadcastPaidUpgrade(
         const sweepReceipt = await publicClient.waitForTransactionReceipt({ hash: sweepHash })
         assert(sweepReceipt.status === 'success', 'sweep transferFrom failed')
     }
-    const intent = {
-        ...tx.intent,
-        paymentRecipient: getPaymentRecipient(undefined, relayer.address),
-    }
     const hash = await broadcaster.sendTransaction({
         chain,
         account: relayer,
         to: orchestrator,
-        data: encodeFunctionData({
-            abi: orchestratorAbi,
-            functionName: 'execute',
-            args: [encodeIntentCalldata(intent)],
-        }),
+        data,
         value: 0n,
-        gas: ACCOUNT_UPGRADE_GAS_LIMIT,
+        gas,
         maxFeePerGas: ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
         maxPriorityFeePerGas: ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS,
         authorizationList: [tx.authorization],
         type: 'eip7702',
     })
     const receipt = await publicClient.waitForTransactionReceipt({ hash })
-    assert(receipt.status === 'success', `upgrade tx ${hash} reverted`)
+    if (plan.expectSuccess !== false) {
+        assert(receipt.status === 'success', `upgrade tx ${hash} reverted`)
+    }
+    console.log(
+        `paid upgrade measure estimate=${estimate} signedGas=${gas} gasUsed=${receipt.gasUsed} sweep=${plan.sweepOwner ? 'yes' : 'no'}`,
+    )
     receipts.push(receipt)
     return hash
 }

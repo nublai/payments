@@ -50,6 +50,7 @@ import type {
 import { getContractAddresses } from '../config/addresses'
 import { getPaymentRecipient } from '../services/fees'
 import { encodeIntentCalldata } from '../services/encode-intent'
+import { paidUpgradeSignedGas } from '../rpc/methods/shared/paid-upgrade'
 import {
     assertAccountUpgradeFee,
     assertAccountUpgradeGas,
@@ -83,6 +84,8 @@ interface PreparedBroadcastTransaction {
     value: bigint
     authorizationList?: SignedAuthorization[]
     gas?: bigint
+    /** User-paid upgrade. The signed gas limit cannot exceed the 500k hold. */
+    paidUpgrade?: boolean
 }
 
 interface FeeParams {
@@ -1365,7 +1368,9 @@ export class SignerDO extends DurableObject<Env> {
                         args: [encodedIntent],
                     }),
                     value: 0n,
-                    ...(tx.authorization ? { authorizationList: [tx.authorization] } : {}),
+                    ...(tx.authorization
+                        ? { authorizationList: [tx.authorization], paidUpgrade: true }
+                        : {}),
                 }
             }
 
@@ -1508,6 +1513,12 @@ export class SignerDO extends DurableObject<Env> {
         }
 
         try {
+            if (txParams.paidUpgrade) {
+                return {
+                    txParams: { ...txParams, gas: paidUpgradeSignedGas(gas) },
+                    feeParams,
+                }
+            }
             const capped = assertAccountUpgradeGas({
                 gas,
                 maxFeePerGas: feeParams.maxFeePerGas,
