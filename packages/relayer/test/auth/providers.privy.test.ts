@@ -38,6 +38,12 @@ describe('privy auth provider', () => {
         expect(provider.enabled({ PRIVY_ENABLED: 'false' } as Env)).toBe(false)
     })
 
+    it('stays enabled when PRIVY_ENABLED is unset', () => {
+        const provider = createPrivyProvider()
+        expect(provider.enabled({} as Env)).toBe(true)
+        expect(provider.enabled({ PRIVY_ENABLED: '' } as Env)).toBe(true)
+    })
+
     it('returns INVALID_TOKEN when Authorization header is missing', async () => {
         const provider = createPrivyProvider()
         const result = await provider.verify(new Request('https://relayer.example.com/'), {

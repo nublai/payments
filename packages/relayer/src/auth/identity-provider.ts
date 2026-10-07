@@ -4,15 +4,16 @@ import type { Env } from '../types/env'
 import type { AuthFailure, AuthProvider, AuthResult, AuthSuccess } from './types'
 
 /**
- * Sponsored-upgrade identity. Privy is the first implementation. A later OIDC
- * provider implements this same shape and is added to the ordered registry.
- * Rate-limit keys stay the raw `userId` (no provider prefix).
+ * Sponsored-upgrade identity. Privy and OIDC implement this shape.
+ * Rate-limit keys are `privy:<user id>` and `oidc:<issuer>:<sub>`.
  */
 export interface IdentitySuccess {
     ok: true
     provider: string
     userId: string
-    /** Empty when the request is not an account upgrade. */
+    /** Set for OIDC. Rate-limit keys include it so two issuers do not share a bucket. */
+    issuer?: string
+    /** Empty when the identity has no bound wallet yet. */
     boundAccounts: Address[]
 }
 
@@ -46,6 +47,7 @@ export function authProviderFromIdentity(identity: IdentityProvider): AuthProvid
             const result = await identity.verify(request, ctx)
             if (!result.ok) return result
             const success: AuthSuccess = { ok: true, userId: result.userId }
+            if (result.issuer) success.issuer = result.issuer
             if (result.boundAccounts.length > 0) {
                 success.boundAccounts = result.boundAccounts
             }

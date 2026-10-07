@@ -174,6 +174,50 @@ describe('validateEnv', () => {
         expect(result.valid).toBe(true)
     })
 
+    it('requires every OIDC value when OIDC_ENABLED=true', () => {
+        const env = createMockEnv({ OIDC_ENABLED: 'true' })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(false)
+        expect(result.missing).toEqual(
+            expect.arrayContaining(['OIDC_ISSUER', 'OIDC_JWKS_URL', 'OIDC_CLIENT_ID']),
+        )
+    })
+
+    it('rejects an OIDC issuer that is not an http(s) URL', () => {
+        const env = createMockEnv({
+            OIDC_ENABLED: 'true',
+            OIDC_ISSUER: 'not a url',
+            OIDC_JWKS_URL: 'https://issuer.example/jwks',
+            OIDC_CLIENT_ID: 'client_123',
+        })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(false)
+        expect(result.missing).toContain('OIDC_ISSUER')
+    })
+
+    it('accepts OIDC config when issuer, JWKS URL, and client id are set', () => {
+        const env = createMockEnv({
+            OIDC_ENABLED: 'true',
+            OIDC_ISSUER: 'https://issuer.example/realms/app',
+            OIDC_JWKS_URL: 'https://issuer.example/jwks',
+            OIDC_CLIENT_ID: 'client_123',
+        })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(true)
+    })
+
+    it('accepts OIDC-only mode without Privy credentials', () => {
+        const env = createMockEnv({
+            PRIVY_ENABLED: 'false',
+            OIDC_ENABLED: 'true',
+            OIDC_ISSUER: 'https://issuer.example',
+            OIDC_JWKS_URL: 'https://issuer.example/jwks',
+            OIDC_CLIENT_ID: 'client_123',
+        })
+        const result = validateEnv(env)
+        expect(result.valid).toBe(true)
+    })
+
     it('requires FEE_RECIPIENT outside local', () => {
         const missing = validateEnv(createMockEnv({ FEE_RECIPIENT: '' }))
         expect(missing.valid).toBe(false)

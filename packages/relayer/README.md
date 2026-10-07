@@ -88,7 +88,7 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 | `PRIORITY_FEE_PERCENTILE`   | `50`     | Fee percentile from block history                                    |
 | `QUOTE_TTL_SECONDS`         | `300`    | Fee quote validity (seconds)                                         |
 
-`QUOTE_SIGNING_SECRET` is required when `CONTEXT` is anything other than `local` or `dev` (including when `CONTEXT` is unset). The relayer signs each quote with HMAC-SHA256 and rejects a send whose quote does not verify. It also recomputes `paymentAmount` from `txGas`, `maxFeePerGas`, and `nativeRate`. The client-supplied `paymentAmount` is not collected. If fee history fails, `wallet_prepareCalls` fails instead of signing a zero fee. Outside local and dev, a quote whose recomputed fee is 0 is not signed, and a payer-set quote that recomputes to 0 is rejected on send. Local and dev may omit the secret; quote HMAC is then skipped, and a zero fee quote can still be returned. Do not copy a local secret into stage or prod. Set a unique value with `wrangler secret put QUOTE_SIGNING_SECRET --env stage` (and `--env prod`).
+`QUOTE_SIGNING_SECRET` is required when `CONTEXT` is anything other than `local` (including when `CONTEXT` is unset or `dev`). The relayer signs each quote with HMAC-SHA256 and rejects a send whose quote does not verify. It also recomputes `paymentAmount` from `txGas`, `maxFeePerGas`, and `nativeRate`. The client-supplied `paymentAmount` is not collected. If fee history fails, `wallet_prepareCalls` fails instead of signing a zero fee. Outside local, a quote whose recomputed fee is 0 is not signed, and a payer-set quote that recomputes to 0 is rejected on send. Only `CONTEXT=local` may omit the secret; quote HMAC is then skipped, and a zero fee quote can still be returned. `CONTEXT=dev` still selects the Base Sepolia deployment files. It does not skip the secret, allow an http JWKS URL, or leave ERC-8128 open. Do not copy a local secret into stage or prod. Set a unique value with `wrangler secret put QUOTE_SIGNING_SECRET --env stage` (and `--env prod`).
 
 ### Optional: Validation
 
@@ -100,7 +100,7 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 
 Protected JSON-RPC methods are controlled by a shared policy used by all enabled auth mechanisms.
 
-`wallet_prepareUpgradeAccount` and `wallet_upgradeAccount` are always authenticated. They spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. The authenticated identity must be the account (ERC-8128) or a Privy user with a linked account of type `wallet` whose address checksum-matches that account. A Privy smart wallet does not match. The delegation must be the configured account proxy, the authorization nonce must be the account's pending nonce, and arbitrary preCalls are rejected. Key initialization (`authorize`, `setCanExecute`, `setSpendLimit`) is still allowed because `tw account create` / `tw account delegate` and the local payment and escrow flows submit it. Gas, max fee, and priority fee are capped before the upgrade is signed. An upgrade reserves its identity, IP, IPv6 /56, and chain slots in the same step that decides to broadcast, and releases them only when the signer returns before `eth_sendRawTransaction`. Per 10-minute window the upgrade ceilings are 5 per identity, 100 per IP, and 2,000 per chain. Prepare is 10, 400, and 2,000. IPv6 is bucketed by /64 and by /56, both at that IP ceiling, after the text form is normalized. An IPv4 or IPv4-mapped address keeps a single IP bucket and has no /56 bucket. No extra env var is required.
+`wallet_prepareUpgradeAccount`, `wallet_upgradeAccount`, `wallet_issueBindNonce`, and `wallet_bindAccount` are always authenticated. Upgrade methods spend the relayer's gas, so `AUTH_PROTECTED_METHODS=none` or a list that omits them does not turn that check off. The authenticated identity must be the account (ERC-8128), a Privy user with a linked account of type `wallet` whose address checksum-matches that account, or an OIDC user whose binding contains that account. A wallets claim counts only when `OIDC_WALLETS_CLAIM_ENABLED=true`. A Privy smart wallet does not match. The delegation must be the configured account proxy, the authorization nonce must be the account's pending nonce, and arbitrary preCalls are rejected. Key initialization (`authorize`, `setCanExecute`, `setSpendLimit`) is still allowed because `tw account create` / `tw account delegate` and the local payment and escrow flows submit it. Gas, max fee, and priority fee are capped before the upgrade is signed. An upgrade reserves its identity, IP, IPv6 /56, and chain slots in the same step that decides to broadcast, and releases them only when the signer returns before `eth_sendRawTransaction`. Per 10-minute window the upgrade ceilings are 5 per identity, 100 per IP, and 2,000 per chain. Prepare is 10, 400, and 2,000. Identity buckets are `privy:<user id>` and `oidc:<issuer>:<sub>`. A deploy that changes Privy's bucket from the raw user id to `privy:<user id>` resets in-flight windows once. IPv6 is bucketed by /64 and by /56, both at that IP ceiling, after the text form is normalized. An IPv4 or IPv4-mapped address keeps a single IP bucket and has no /56 bucket. No extra env var is required for the numeric ceilings.
 
 | Name                     | Default                    | Description                                |
 | ------------------------ | -------------------------- | ------------------------------------------ |
@@ -127,9 +127,34 @@ Outside `local` and `dev`, a recovered ERC-8128 key is accepted only when one of
 
 | Name               | Default | Description                                   |
 | ------------------ | ------- | --------------------------------------------- |
-| `PRIVY_ENABLED`    | `false` | Enable Privy bearer-token auth provider       |
+| `PRIVY_ENABLED`    | `true`  | Set to `false` to turn Privy off. Unset stays on. |
 | `PRIVY_APP_ID`     | -       | Privy app id used to verify token ownership   |
 | `PRIVY_APP_SECRET` | -       | Privy app secret used by server-side verifier |
+
+Startup still requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET` only when `PRIVY_ENABLED=true`. An unset flag enables the provider and does not by itself fail boot; a Privy token is rejected when those secrets are missing.
+
+#### OIDC Access Tokens
+
+WorkOS is the first issuer. Verification uses `jose` (`jwtVerify` against a module-scoped `createRemoteJWKSet`). There is no WorkOS SDK. `iss` must equal `OIDC_ISSUER`. `exp` is required. `nbf` and `exp` allow 60 seconds of clock skew. Algorithms are RS256 and ES256 only. When `aud` is present it is passed to `jwtVerify` and must be `OIDC_CLIENT_ID`. An array `aud` must also set `azp` to that client id. `client_id` is accepted only when `aud` is absent, which is the WorkOS session-token shape.
+
+`sub` is the user id. `provider` is `oidc`. An address-shaped `sub` does not own that account. Wallet addresses come from `WalletBindingDO`. Ownership is global across the chains this worker serves: one address maps to one `(iss, sub)` everywhere, because the address is one key. The signed chain id stops nonce replay. It does not split ownership. The wallets claim is off unless `OIDC_WALLETS_CLAIM_ENABLED=true`. An empty `OIDC_WALLETS_CLAIM` stays off. When the flag is on, a claim address the table has already given to another `(iss, sub)` is refused.
+
+`wallet_issueBindNonce` and `wallet_bindAccount` are always on the auth-protected list and are rate-limited per subject and per IP. The caller must present an OIDC access token. `wallet_issueBindNonce` returns a single-use nonce, an EIP-191 message (`Bind address X to sub Y`, plus issuer, nonce, chain id, expiry, and environment), and the EIP-712 typed data. The domain is `Nubl Relayer`, version `1`, with a `salt` of `keccak256` of `CONTEXT`. Unset or blank `CONTEXT` refuses the nonce instead of using the prod salt. `wallet_bindAccount` accepts `scheme` `eip712` (default) or `eip191`. Used and expired nonces are deleted. Each subject may have 3 open nonces and 4 bindings. Per 10-minute window: 5 nonce issues and 5 binds per subject, 20 of each per IP. A full IP bucket does not consume the subject window.
+
+These OIDC values are public. Do not store them with `wrangler secret put`. If `OIDC_ENABLED=true` and any of issuer, JWKS URL, or client id is missing, the worker fails startup. The issuer must be an http(s) URL. The JWKS URL must be https, except `CONTEXT=local`, which may use http. `CONTEXT=dev` may not.
+
+| Name                        | Default   | Description                                      |
+| --------------------------- | --------- | ------------------------------------------------ |
+| `OIDC_ENABLED`              | `false`   | Enable the OIDC bearer-token provider            |
+| `OIDC_ISSUER`               | -         | Expected `iss`                                   |
+| `OIDC_JWKS_URL`             | -         | JWKS document used by `createRemoteJWKSet`       |
+| `OIDC_CLIENT_ID`            | -         | Accepted `aud`, `azp`, or `client_id`            |
+| `OIDC_WALLETS_CLAIM_ENABLED`| `false`   | Turn on the signed wallets claim                 |
+| `OIDC_WALLETS_CLAIM`        | `wallets` | Claim name when the flag is on. Empty means off. |
+
+Both providers can be on at once. A token whose `iss` is `OIDC_ISSUER` is verified as OIDC and is not sent to Privy. Any other bearer token is left to Privy.
+
+OIDC JWKS fetch failures, including a jose `JWKSTimeout` (`request timed out`), emit `IDP_UNAVAILABLE`. Privy upstream failures still emit `PRIVY_API_UNAVAILABLE`. Clients should treat both codes as identity-provider unavailable. The server does not rewrite one into the other. Stage and prod set `PRIVY_ENABLED=true` in wrangler. That makes startup require `PRIVY_APP_ID` and `PRIVY_APP_SECRET`. Set the var to `false` instead when those secrets are not ready.
 
 Auth mode is OR across enabled providers: a protected request is authorized if any enabled provider succeeds.
 
@@ -206,6 +231,8 @@ wrangler tail --env prod
 - **SignerPoolDO** - Distributes transactions across signers (SQLite-backed)
 - **IntentNonceDO** - Intent deduplication and ordering (SQLite-backed)
 - **BundleStatusDO** - Transaction bundle status tracking (SQLite-backed)
+- **HttpAuthNonceDO** - Single-use HTTP auth nonces (SQLite-backed)
+- **WalletBindingDO** - Global OIDC wallet bindings (one SQLite Durable Object, not D1)
 - **MONITOR_QUEUE** - Processes transaction monitoring jobs
 
 ## Endpoints
@@ -217,4 +244,4 @@ Local `wrangler dev` listens on `http://127.0.0.1:8787`.
 - `RELAYER_URL_STAGE` for stage
 - `RELAYER_URL_PROD` for prod
 
-Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, `CONTEXT` (`stage` or `prod`), and `QUOTE_SIGNING_SECRET`. Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, set `ERC8128_ALLOWED_SIGNERS` for operator keys that are not the user's account and not a key registered on that account. The on-chain key check uses the same RPC. Stage and prod need a worker redeploy to pick up this code, plus those env values. No contract redeploy and no storage migration. No new secret. In-flight quotes signed without the secret, and in-flight quotes whose recomputed fee is 0, are rejected until the client calls `wallet_prepareCalls` again.
+Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, `CONTEXT` (`stage` or `prod`), and `QUOTE_SIGNING_SECRET`. Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, set `ERC8128_ALLOWED_SIGNERS` for operator keys that are not the user's account and not a key registered on that account. The on-chain key check uses the same RPC. Stage and prod set `PRIVY_ENABLED=true`, which requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET` at startup. Unset still means on in code; set `false` to turn Privy off. OIDC is off until `OIDC_ENABLED=true`, and then `OIDC_ISSUER`, `OIDC_JWKS_URL`, and `OIDC_CLIENT_ID` are required public vars (not secrets). The wallets claim stays off until `OIDC_WALLETS_CLAIM_ENABLED=true`. Stage and prod need a worker redeploy to pick up this code, plus those env values, and a new Durable Object migration (`WalletBindingDO`). No contract redeploy. No new secret. The Privy rate-limit bucket key changes from the raw user id to `privy:<user id>`, which resets in-flight identity windows once. In-flight quotes signed without the secret, and in-flight quotes whose recomputed fee is 0, are rejected until the client calls `wallet_prepareCalls` again.
