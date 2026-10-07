@@ -66,6 +66,12 @@ bindings = [
 # hostname in the Cloudflare dashboard (Workers → this worker → Domains).
 # Point the wallet at that origin with RELAYER_URL_STAGE.
 [env.stage]
+# FEE_RECIPIENT is required. Startup refuses the worker when it is missing or
+# the zero address. Set it before deploy:
+#   wrangler secret put FEE_RECIPIENT --env stage
+# Do not commit the address.
+# PRIVY_ENABLED is set explicitly. Startup then requires PRIVY_APP_ID and
+# PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
 vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
 preview_urls = false
 
@@ -101,6 +107,12 @@ crons = ["*/5 * * * *"]
 # Prod
 # Same as stage: set the hostname in the Cloudflare dashboard, then RELAYER_URL_PROD.
 [env.prod]
+# FEE_RECIPIENT is required. Startup refuses the worker when it is missing or
+# the zero address. Set it before deploy:
+#   wrangler secret put FEE_RECIPIENT --env prod
+# Do not commit the address.
+# PRIVY_ENABLED is set explicitly. Startup then requires PRIVY_APP_ID and
+# PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
 vars = { NODE_ENV = "production", PRIVY_ENABLED = "true" }
 preview_urls = false
 

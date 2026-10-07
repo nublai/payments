@@ -40,7 +40,9 @@ TARGET_SIGNER_BALANCE=0.01
 # Stage and prod must set CONTEXT to stage or prod. Unset is not local.
 CONTEXT=local
 
-# Fee config (optional)
+# Fee config. Local may omit FEE_RECIPIENT; the signer address is the fallback.
+# Stage and prod must set it (`wrangler secret put FEE_RECIPIENT --env stage`).
+# Startup refuses those workers when it is missing. Do not commit the address.
 # FEE_RECIPIENT=0x...
 # INTENT_GAS_BUFFER=50000
 # PAYMENT_GAS_BUFFER=70000

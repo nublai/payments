@@ -15,10 +15,9 @@
  */
 
 import { DurableObject } from 'cloudflare:workers'
-import type { Hex } from 'viem'
+import { createPublicClient, http, type Hex } from 'viem'
 
 import type { Env } from '../types/env'
-import { getErrorMessage } from '../lib/logger'
 import type {
     RelayTransaction,
     CapacityInfo,
@@ -29,6 +28,8 @@ import type {
     SignerError,
     ExecuteIntentTransaction,
 } from '../types/pool'
+import { getErrorMessage, logger } from '../lib/logger'
+import { getChainRpcUrl } from '../lib/multi-chain-client'
 import { selectSignerForEoa } from '../lib/pool-utils'
 import { poolSendBroadcastAttempted, signerSendDisposition } from './signer-pool-send'
 import {
@@ -40,10 +41,23 @@ import {
     type UpgradeRateKind,
 } from '../rpc/methods/shared/upgrade-rate-limit'
 import {
+    PAID_UPGRADE_GAS_HOLD,
     paidUpgradeDailyGasBudget,
     paidUpgradeGlobalLimit,
     paidUpgradeRateBuckets,
+    paidUpgradeReceiptOutcome,
 } from '../rpc/methods/shared/paid-upgrade'
+
+function parseTxHash(value: unknown): Hex | undefined {
+    if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return undefined
+    return value as Hex
+}
+
+function isTransactionMissing(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false
+    const name = 'name' in error && typeof error.name === 'string' ? error.name : ''
+    return name === 'TransactionNotFoundError' || name === 'TransactionReceiptNotFoundError'
+}
 
 function parseGasUnits(value: unknown): number | undefined {
     if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) return undefined
@@ -118,7 +132,14 @@ export class SignerPoolDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
                     const body = (await request.json()) as {
-                        action?: UpgradeRateAction | 'reserve-gas' | 'release-gas' | 'settle-gas'
+                        action?:
+                            | UpgradeRateAction
+                            | 'reserve-gas'
+                            | 'release-gas'
+                            | 'settle-gas'
+                            | 'enqueue-receipt'
+                            | 'reconcile-receipt'
+                            | 'reconcile-pending'
                         kind?: UpgradeRateKind | 'paid-upgrade'
                         chainId?: number
                         account?: string
@@ -128,14 +149,26 @@ export class SignerPoolDO extends DurableObject<Env> {
                         hold?: string
                         failure?: boolean
                         reservedAt?: number
+                        txHash?: string
+                        found?: boolean
+                    }
+                    if (body.kind === 'paid-upgrade' && body.action === 'reconcile-pending') {
+                        await this.reconcilePendingReceipts()
+                        return Response.json({ allowed: true })
                     }
                     if (
                         body.kind === 'paid-upgrade' &&
                         (body.action === 'reserve-gas' ||
                             body.action === 'release-gas' ||
-                            body.action === 'settle-gas')
+                            body.action === 'settle-gas' ||
+                            body.action === 'enqueue-receipt' ||
+                            body.action === 'reconcile-receipt')
                     ) {
-                        return Response.json(this.consumePaidUpgradeGas(body))
+                        const result = this.consumePaidUpgradeGas(body)
+                        if (body.action === 'enqueue-receipt' && result.allowed) {
+                            await this.schedulePaidUpgradeReconcile()
+                        }
+                        return Response.json(result)
                     }
                     const result = this.consumeUpgradeRateLimit(body)
                     return Response.json(result)
@@ -164,7 +197,14 @@ export class SignerPoolDO extends DurableObject<Env> {
      * returns a reservation that never reached eth_sendRawTransaction.
      */
     private consumeUpgradeRateLimit(body: {
-        action?: UpgradeRateAction | 'reserve-gas' | 'release-gas' | 'settle-gas'
+        action?:
+            | UpgradeRateAction
+            | 'reserve-gas'
+            | 'release-gas'
+            | 'settle-gas'
+            | 'enqueue-receipt'
+            | 'reconcile-receipt'
+            | 'reconcile-pending'
         kind?: UpgradeRateKind | 'paid-upgrade'
         chainId?: number
         account?: string
@@ -208,6 +248,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                   account: body.account,
                   ip: body.ip,
                   globalLimit,
+                  includeGlobal: action === 'reserve' || action === 'release',
               })
             : upgradeRateBuckets({
                   kind: body.kind as UpgradeRateKind,
@@ -300,7 +341,15 @@ export class SignerPoolDO extends DurableObject<Env> {
         gas?: string
         hold?: string
         failure?: boolean
-    }): { allowed: boolean; gas?: number; held?: number; failures?: number } {
+        txHash?: string
+        found?: boolean
+    }): {
+        allowed: boolean
+        gas?: number
+        held?: number
+        failures?: number
+        overBudget?: boolean
+    } {
         if (typeof body.chainId !== 'number' || !Number.isInteger(body.chainId)) {
             return { allowed: false }
         }
@@ -310,28 +359,72 @@ export class SignerPoolDO extends DurableObject<Env> {
         } catch {
             return { allowed: false }
         }
+        const dayStart = Math.floor(Date.now() / 1000 / 86_400) * 86_400
+        const sql = this.ensureUpgradeRateSchema()
+        const txHash = parseTxHash(body.txHash)
+
+        if (body.action === 'enqueue-receipt') {
+            if (!txHash) return { allowed: false }
+            return this.ctx.storage.transactionSync(() => {
+                const existing = this.pendingReceipt(sql, txHash)
+                if (!existing) {
+                    sql.exec(
+                        `INSERT INTO paid_upgrade_pending_receipt (tx_hash, chain_id, status, enqueued_at)
+                         VALUES (?, ?, 'pending', ?)`,
+                        txHash,
+                        body.chainId,
+                        Math.floor(Date.now() / 1000),
+                    )
+                }
+                return { allowed: true }
+            })
+        }
+
+        if (body.action === 'reconcile-receipt') {
+            if (!txHash) return { allowed: false }
+            if (body.found === true) {
+                const gas = parseGasUnits(body.gas)
+                if (gas === undefined) return { allowed: false }
+                return this.applyPaidUpgradeSettle(sql, {
+                    budget,
+                    dayStart,
+                    gas,
+                    hold: Number(PAID_UPGRADE_GAS_HOLD),
+                    failure: body.failure === true,
+                    txHash,
+                    chainId: body.chainId,
+                })
+            }
+            if (body.found === false) {
+                return this.applyPaidUpgradeRelease(sql, {
+                    dayStart,
+                    txHash,
+                    hold: Number(PAID_UPGRADE_GAS_HOLD),
+                })
+            }
+            return { allowed: false }
+        }
+
         const gas = parseGasUnits(body.gas)
         if (gas === undefined) return { allowed: false }
         const hold = body.action === 'settle-gas' ? parseGasUnits(body.hold) : gas
         if (hold === undefined) return { allowed: false }
-        const dayStart = Math.floor(Date.now() / 1000 / 86_400) * 86_400
-        const sql = this.ensureUpgradeRateSchema()
+
+        if (body.action === 'settle-gas') {
+            return this.applyPaidUpgradeSettle(sql, {
+                budget,
+                dayStart,
+                gas,
+                hold,
+                failure: body.failure === true,
+                txHash,
+                chainId: body.chainId,
+            })
+        }
 
         return this.ctx.storage.transactionSync(() => {
-            const rows = sql
-                .exec<{ day_start: number; gas: number; held: number; failures: number }>(
-                    `SELECT day_start, gas, held, failures FROM paid_upgrade_gas_budget WHERE id = 1`,
-                )
-                .toArray()
-            const row = rows[0]
-            let gasSpent = 0
-            let heldGas = 0
-            let failures = 0
-            if (row && row.day_start === dayStart) {
-                gasSpent = row.gas
-                heldGas = row.held
-                failures = row.failures
-            }
+            const books = this.readGasBooks(sql, dayStart)
+            let { gasSpent, heldGas, failures } = books
             if (body.action === 'reserve-gas') {
                 if (BigInt(gasSpent) + BigInt(heldGas) + BigInt(gas) > budget) {
                     return { allowed: false, gas: gasSpent, held: heldGas, failures }
@@ -339,28 +432,226 @@ export class SignerPoolDO extends DurableObject<Env> {
                 heldGas += gas
             } else if (body.action === 'release-gas') {
                 heldGas = Math.max(0, heldGas - gas)
-            } else if (body.action === 'settle-gas') {
-                heldGas = Math.max(0, heldGas - hold)
-                gasSpent += gas
-                if (body.failure === true) failures += 1
             } else {
                 return { allowed: false }
             }
-            sql.exec(
-                `INSERT INTO paid_upgrade_gas_budget (id, day_start, gas, held, failures)
-                 VALUES (1, ?, ?, ?, ?)
-                 ON CONFLICT(id) DO UPDATE SET
-                    day_start = excluded.day_start,
-                    gas = excluded.gas,
-                    held = excluded.held,
-                    failures = excluded.failures`,
-                dayStart,
-                gasSpent,
-                heldGas,
+            this.writeGasBooks(sql, dayStart, gasSpent, heldGas, failures)
+            return { allowed: true, gas: gasSpent, held: heldGas, failures }
+        })
+    }
+
+    /**
+     * Record gas that was already spent. A repeat settle for the same tx hash
+     * does not add again. If the receipt's gas pushes the day over the budget,
+     * the spend is still recorded and `overBudget` is set so the next reserve
+     * fails closed.
+     */
+    private applyPaidUpgradeSettle(
+        sql: SqlStorage,
+        input: {
+            budget: bigint
+            dayStart: number
+            gas: number
+            hold: number
+            failure: boolean
+            txHash?: Hex
+            chainId: number
+        },
+    ): {
+        allowed: boolean
+        gas?: number
+        held?: number
+        failures?: number
+        overBudget?: boolean
+    } {
+        return this.ctx.storage.transactionSync(() => {
+            const books = this.readGasBooks(sql, input.dayStart)
+            let { gasSpent, heldGas, failures } = books
+            const prior = input.txHash ? this.pendingReceipt(sql, input.txHash) : undefined
+            if (prior?.status === 'settled') {
+                return { allowed: true, gas: gasSpent, held: heldGas, failures }
+            }
+            const holdToRelease = prior?.status === 'released' ? 0 : input.hold
+            heldGas = Math.max(0, heldGas - holdToRelease)
+            gasSpent += input.gas
+            if (input.failure) failures += 1
+            const overBudget = BigInt(gasSpent) + BigInt(heldGas) > input.budget
+            this.writeGasBooks(sql, input.dayStart, gasSpent, heldGas, failures)
+            if (input.txHash) {
+                sql.exec(
+                    `INSERT INTO paid_upgrade_pending_receipt (tx_hash, chain_id, status, enqueued_at)
+                     VALUES (?, ?, 'settled', ?)
+                     ON CONFLICT(tx_hash) DO UPDATE SET status = 'settled'`,
+                    input.txHash,
+                    input.chainId,
+                    Math.floor(Date.now() / 1000),
+                )
+            }
+            return {
+                allowed: !overBudget,
+                overBudget,
+                gas: gasSpent,
+                held: heldGas,
                 failures,
+            }
+        })
+    }
+
+    private applyPaidUpgradeRelease(
+        sql: SqlStorage,
+        input: { dayStart: number; txHash: Hex; hold: number },
+    ): { allowed: boolean; gas?: number; held?: number; failures?: number } {
+        return this.ctx.storage.transactionSync(() => {
+            const books = this.readGasBooks(sql, input.dayStart)
+            let { gasSpent, heldGas, failures } = books
+            const prior = this.pendingReceipt(sql, input.txHash)
+            if (!prior || prior.status !== 'pending') {
+                return { allowed: true, gas: gasSpent, held: heldGas, failures }
+            }
+            heldGas = Math.max(0, heldGas - input.hold)
+            this.writeGasBooks(sql, input.dayStart, gasSpent, heldGas, failures)
+            sql.exec(
+                `UPDATE paid_upgrade_pending_receipt SET status = 'released' WHERE tx_hash = ?`,
+                input.txHash,
             )
             return { allowed: true, gas: gasSpent, held: heldGas, failures }
         })
+    }
+
+    private readGasBooks(
+        sql: SqlStorage,
+        dayStart: number,
+    ): { gasSpent: number; heldGas: number; failures: number } {
+        const rows = sql
+            .exec<{ day_start: number; gas: number; held: number; failures: number }>(
+                `SELECT day_start, gas, held, failures FROM paid_upgrade_gas_budget WHERE id = 1`,
+            )
+            .toArray()
+        const row = rows[0]
+        if (!row || row.day_start !== dayStart) {
+            return { gasSpent: 0, heldGas: 0, failures: 0 }
+        }
+        return { gasSpent: row.gas, heldGas: row.held, failures: row.failures }
+    }
+
+    private writeGasBooks(
+        sql: SqlStorage,
+        dayStart: number,
+        gasSpent: number,
+        heldGas: number,
+        failures: number,
+    ): void {
+        sql.exec(
+            `INSERT INTO paid_upgrade_gas_budget (id, day_start, gas, held, failures)
+             VALUES (1, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                day_start = excluded.day_start,
+                gas = excluded.gas,
+                held = excluded.held,
+                failures = excluded.failures`,
+            dayStart,
+            gasSpent,
+            heldGas,
+            failures,
+        )
+    }
+
+    private pendingReceipt(
+        sql: SqlStorage,
+        txHash: string,
+    ): { status: string } | undefined {
+        return sql
+            .exec<{ status: string }>(
+                `SELECT status FROM paid_upgrade_pending_receipt WHERE tx_hash = ?`,
+                txHash,
+            )
+            .toArray()[0]
+    }
+
+    async alarm(): Promise<void> {
+        await this.reconcilePendingReceipts()
+    }
+
+    private async schedulePaidUpgradeReconcile(): Promise<void> {
+        const current = await this.ctx.storage.getAlarm()
+        if (current === null) {
+            await this.ctx.storage.setAlarm(Date.now() + 60_000)
+        }
+    }
+
+    /**
+     * Look up each pending broadcast. A receipt settles the hold to gasUsed.
+     * A transaction the node no longer has releases the hold. An RPC error
+     * leaves the hold in place.
+     */
+    private async reconcilePendingReceipts(): Promise<void> {
+        const sql = this.ensureUpgradeRateSchema()
+        const pending = sql
+            .exec<{ tx_hash: string; chain_id: number }>(
+                `SELECT tx_hash, chain_id FROM paid_upgrade_pending_receipt WHERE status = 'pending'`,
+            )
+            .toArray()
+        for (const row of pending) {
+            const found = await this.lookupPaidUpgradeReceipt(row.chain_id, row.tx_hash as Hex)
+            if (found === 'wait') continue
+            this.consumePaidUpgradeGas(
+                found.kind === 'settle'
+                    ? {
+                          action: 'reconcile-receipt',
+                          chainId: row.chain_id,
+                          txHash: row.tx_hash,
+                          found: true,
+                          gas: found.gasUsed.toString(),
+                          failure: found.failure,
+                      }
+                    : {
+                          action: 'reconcile-receipt',
+                          chainId: row.chain_id,
+                          txHash: row.tx_hash,
+                          found: false,
+                      },
+            )
+        }
+        const stillPending = sql
+            .exec<{ n: number }>(
+                `SELECT COUNT(*) AS n FROM paid_upgrade_pending_receipt WHERE status = 'pending'`,
+            )
+            .toArray()[0]
+        if ((stillPending?.n ?? 0) > 0) {
+            await this.ctx.storage.setAlarm(Date.now() + 60_000)
+        }
+    }
+
+    private async lookupPaidUpgradeReceipt(
+        chainId: number,
+        txHash: Hex,
+    ): Promise<'wait' | { kind: 'release' } | { kind: 'settle'; gasUsed: bigint; failure: boolean }> {
+        let rpcUrl: string
+        try {
+            rpcUrl = getChainRpcUrl(chainId, this.env)
+        } catch (error) {
+            logger.error({ error, chainId, txHash }, 'paid upgrade reconcile has no rpc')
+            return 'wait'
+        }
+        const publicClient = createPublicClient({ transport: http(rpcUrl) })
+        try {
+            const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
+            const outcome = paidUpgradeReceiptOutcome(receipt)
+            return { kind: 'settle', gasUsed: outcome.gasUsed, failure: outcome.failure }
+        } catch (error) {
+            if (!isTransactionMissing(error)) {
+                logger.error({ error, chainId, txHash }, 'paid upgrade reconcile receipt lookup failed')
+                return 'wait'
+            }
+        }
+        try {
+            await publicClient.getTransaction({ hash: txHash })
+            return 'wait'
+        } catch (error) {
+            if (isTransactionMissing(error)) return { kind: 'release' }
+            logger.error({ error, chainId, txHash }, 'paid upgrade reconcile tx lookup failed')
+            return 'wait'
+        }
     }
 
     private ensureUpgradeRateSchema(): SqlStorage {
@@ -381,6 +672,14 @@ export class SignerPoolDO extends DurableObject<Env> {
                     gas INTEGER NOT NULL,
                     held INTEGER NOT NULL,
                     failures INTEGER NOT NULL
+                )
+            `)
+            sql.exec(`
+                CREATE TABLE IF NOT EXISTS paid_upgrade_pending_receipt (
+                    tx_hash TEXT PRIMARY KEY,
+                    chain_id INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    enqueued_at INTEGER NOT NULL
                 )
             `)
             this.upgradeRateSchemaReady = true

@@ -2,6 +2,8 @@
  * Environment configuration and validation
  */
 
+import { getAddress, isAddress, zeroAddress } from 'viem'
+
 import type { Env, RelayerConfig } from '../types/env'
 import { hasDeployment } from '@nubl/contracts/deployments'
 import { readOidcConfig, isOidcEnabled } from '../auth/oidc-config'
@@ -85,11 +87,22 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
         missing.push('QUOTE_SIGNING_SECRET')
     }
 
+    if (!isLocalDevContext(env) && !isPaidFeeRecipient(env.FEE_RECIPIENT)) {
+        missing.push('FEE_RECIPIENT')
+    }
+
     if (parseErc8128Allowlist(env.ERC8128_ALLOWED_SIGNERS).invalid.length > 0) {
         missing.push('ERC8128_ALLOWED_SIGNERS')
     }
 
     return { valid: missing.length === 0, missing }
+}
+
+/** Stage and prod must name a non-zero fee recipient. Local may omit it. */
+function isPaidFeeRecipient(value: string | undefined): boolean {
+    const text = value?.trim()
+    if (!text || !isAddress(text, { strict: false })) return false
+    return getAddress(text) !== zeroAddress
 }
 
 /**

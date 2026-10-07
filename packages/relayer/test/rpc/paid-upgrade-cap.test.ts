@@ -20,7 +20,7 @@ describe('paid upgrade quote cap', () => {
 
     it('keeps the 5 USDC ceiling and reads configured limits', () => {
         expect(DEFAULT_PAID_UPGRADE_MAX_PAYMENT).toBe(5_000_000n)
-        expect(DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT).toBe(20)
+        expect(DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT).toBe(60)
         expect(DEFAULT_PAID_UPGRADE_DAILY_GAS_BUDGET).toBe(2_000_000n)
         expect(paidUpgradeGlobalLimit({ PAID_UPGRADE_GLOBAL_LIMIT: '7' })).toBe(7)
         expect(paidUpgradeDailyGasBudget({ PAID_UPGRADE_DAILY_GAS_BUDGET: '900000' })).toBe(900_000n)

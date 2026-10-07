@@ -80,7 +80,7 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 
 | Name                        | Default | Description                       |
 | --------------------------- | ------- | --------------------------------- |
-| `FEE_RECIPIENT`             | signer   | Address to receive fees                                              |
+| `FEE_RECIPIENT`             | signer locally; required on stage and prod | Address that receives USDC fees. Stage and prod refuse to start without a non-zero address, because paid-upgrade simulation and the broadcast must pay the same recipient. |
 | `INTENT_GAS_BUFFER`         | `50000`  | Fixed buffer added to simulation gas for combinedGas                 |
 | `PAYMENT_GAS_BUFFER`        | `70000`  | Additional combinedGas buffer when payment reimbursement is enabled  |
 | `ORCHESTRATOR_OVERHEAD`     | `110000` | Gas for orchestrator work outside the self-call                      |
