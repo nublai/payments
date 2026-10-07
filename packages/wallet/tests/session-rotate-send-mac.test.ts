@@ -12,7 +12,7 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { JsonRpcClientError, type Call } from '@nubl/relayer-client'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createSessionKeystore, ensureOwnerOnlyDirectory } from '../src/lib/keystore'
-import { executeSessionRotate } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -422,33 +422,30 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
         const { sessions, keystorePath } = await stageDir('abandon-')
         await writeRealSession(join(sessions, 'default.json'), 'default', oldKey)
         await writeRealSession(join(sessions, 'default-next.json'), 'default-next', newKey)
-        await writeFile(
-            join(sessions, '.rotation.json'),
-            `${JSON.stringify(
-                {
-                    oldSessionName: 'default',
-                    newSessionName: 'default-next',
-                    status: 'submitted',
-                    bundleId: 'bundle-reverted',
-                    chain: 'base',
-                    chainId: 8453,
-                    newKeyHash: computeSessionKeyHash(newAddress),
-                    narrow: false,
-                    fullAccess: false,
-                    account,
-                    oldKeyHash: computeSessionKeyHash(oldAddress),
-                    permissions: {
-                        kind: 'custom',
-                        target: usdc,
-                        selectors: [approveSelector],
-                        spendLimit: '1000000',
-                        spendPeriod: 'day',
-                    },
+        const marker = await sealRotationMarker(
+            {
+                oldSessionName: 'default',
+                newSessionName: 'default-next',
+                status: 'submitted',
+                bundleId: 'bundle-reverted',
+                chain: 'base',
+                chainId: 8453,
+                newKeyHash: computeSessionKeyHash(newAddress),
+                narrow: false,
+                fullAccess: false,
+                account,
+                oldKeyHash: computeSessionKeyHash(oldAddress),
+                permissions: {
+                    kind: 'custom',
+                    target: usdc,
+                    selectors: [approveSelector],
+                    spendLimit: '1000000',
+                    spendPeriod: 'day',
                 },
-                null,
-                2,
-            )}\n`,
+            },
+            password,
         )
+        await writeFile(join(sessions, '.rotation.json'), `${JSON.stringify(marker, null, 2)}\n`)
         const signed: string[] = []
         let markerPresentAtGetKeys = false
         const getKeys = mock(async () => {

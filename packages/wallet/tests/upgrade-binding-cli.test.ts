@@ -839,6 +839,20 @@ test('account delegate signs an honest upgrade payload', async () => {
     expect(result.stdout).toContain('delegated')
 }, 90_000)
 
+test('account create and delegate use the sponsored upgrade and never send accountUpgrade', async () => {
+    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
+    const runs = [await runCreate('honest-upgrade', keystore), await runDelegate('honest-upgrade')]
+    for (const { server, result } of runs) {
+        const output = `${result.stdout}\n${result.stderr}\n${server.methods.join(',')}`
+        expect(result.status, output).toBe(0)
+        expect(server.methods, output).toContain('wallet_prepareUpgradeAccount')
+        expect(server.methods, output).toContain('wallet_upgradeAccount')
+        expect(server.methods, output).not.toContain('wallet_prepareCalls')
+        expect(server.methods, output).not.toContain('wallet_sendPreparedCalls')
+        expect(server.calls.filter((call) => call.body.includes('accountUpgrade')), output).toEqual([])
+    }
+}, 180_000)
+
 async function runSend(mode: SendMode) {
     return locked(() =>
         withServer(mode, 8545, 31337, LOCAL_ORCH, LOCAL_PROXY, async (server, url) => {
