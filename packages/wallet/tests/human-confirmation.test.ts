@@ -169,6 +169,10 @@ test('permissionNeedsFullAccessConfirmation treats short periods and non-USDC to
     ).toBe(true)
 })
 
+test('an empty permission list is elevated', () => {
+    expect(storedPermissionsRequirePhrase([], usdc)).toBe(true)
+})
+
 test('permissionNeedsFullAccessConfirmation treats increaseAllowance on USDC as full access', () => {
     expect(
         permissionNeedsFullAccessConfirmation({

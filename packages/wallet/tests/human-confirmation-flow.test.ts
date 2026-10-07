@@ -4,7 +4,12 @@ import { createServer, type Server } from 'node:http'
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { Hex } from 'viem'
+import { encodeFunctionResult, toFunctionSelector, type Address, type Hex } from 'viem'
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import { executeSessionCreate } from '../src/lib/session-create'
+import { accountAbi } from '@nubl/contracts/abis'
+import { ANY_FUNCTION_SELECTOR, ANY_TARGET } from '@nubl/relayer-client'
+import { computeSessionKeyHash } from '../src/lib/session-common'
 import {
     createRootKeystore,
     createSessionKeystore,
@@ -926,28 +931,8 @@ test('MCP permissions_grant increaseAllowance on USDC requires confirmation befo
 })
 
 test('a second 10 USDC daily session_create requires confirmation and the first does not', async () => {
-    let existing: unknown[] = []
-    const server = createServer((req, res) => {
-        const chunks: Buffer[] = []
-        req.on('data', (chunk) => chunks.push(chunk))
-        req.on('end', () => {
-            const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { id: number }
-            res.setHeader('content-type', 'application/json')
-            res.end(
-                JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: body.id,
-                    result: { '0x7a69': existing },
-                }),
-            )
-        })
-    })
-    await new Promise<void>((resolvePromise) => {
-        server.listen(0, '127.0.0.1', () => resolvePromise())
-    })
-    const address = server.address()
-    if (!address || typeof address === 'string') throw new Error('relayer stub failed to bind')
-    const relayerUrl = `http://127.0.0.1:${address.port}`
+    let existing: ScriptedKey[] = []
+    const chainServer = await serveJson(8545, (message) => chainResponder(existing)(message))
     try {
         const first = await callMcpTool(
             'session_create',
@@ -956,27 +941,16 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
                 env: 'dev',
                 keystorePath,
             },
-            { TW_PASSWORD: 'wrong-password', HOME: home, RELAYER_URL_DEV: relayerUrl },
+            { TW_PASSWORD: 'wrong-password', HOME: home },
         )
         expect(first).not.toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(first).toContain('Unsupported state')
 
         existing = [
             {
-                hash: `0x${'ab'.repeat(32)}`,
-                expiry: '0x0',
-                type: 'secp256k1',
-                role: 'normal',
-                publicKey: `0x${'00'.repeat(32)}`,
-                permissions: [
-                    {
-                        type: 'spend',
-                        token: usdc,
-                        limit: '0x989680',
-                        spent: '0x0',
-                        period: 'day',
-                    },
-                ],
+                hash: `0x${'ab'.repeat(32)}` as Hex,
+                calls: [],
+                spends: [{ token: usdc as Address, period: 2, limit: 10_000_000n }],
             },
         ]
         const second = await callMcpTool(
@@ -986,13 +960,13 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
                 env: 'dev',
                 keystorePath,
             },
-            { TW_PASSWORD: 'wrong-password', HOME: home, RELAYER_URL_DEV: relayerUrl },
+            { TW_PASSWORD: 'wrong-password', HOME: home },
         )
         expect(second).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(second).toContain('CREATE FULL ACCESS SESSION')
         expect(second).not.toContain('Unsupported state')
     } finally {
-        await new Promise((resolvePromise) => server.close(() => resolvePromise(undefined)))
+        await chainServer.close()
     }
 })
 
@@ -1024,3 +998,466 @@ test('MCP session rotate --narrow and session revoke are refused without the phr
     expect(revoke).not.toContain('Unsupported state')
     expect(revoke).not.toContain(rootPrivateKey)
 })
+
+const sessionAddress = privateKeyToAccount(sessionPrivateKey).address
+const sessionKeyHash = computeSessionKeyHash(sessionAddress)
+const getKeysSelector = toFunctionSelector('getKeys()')
+const spendInfosSelector = toFunctionSelector('spendAndExecuteInfos(bytes32[])')
+
+type ScriptedKey = {
+    hash: Hex
+    calls: { target: Address; selector: Hex }[]
+    spends: { token: Address; period: number; limit: bigint }[]
+}
+
+function packCall(target: string, selector: string): Hex {
+    const packed = (BigInt(target) << 96n) | BigInt(selector)
+    return `0x${packed.toString(16).padStart(64, '0')}` as Hex
+}
+
+function encodeChainView(keys: ScriptedKey[]): { getKeys: Hex; spend: Hex } {
+    return {
+        getKeys: encodeFunctionResult({
+            abi: accountAbi,
+            functionName: 'getKeys',
+            result: [
+                keys.map(() => ({
+                    expiry: 0n,
+                    keyType: 0,
+                    isSuperAdmin: false,
+                    publicKey: '0x' as Hex,
+                })),
+                keys.map((key) => key.hash),
+            ],
+        }),
+        spend: encodeFunctionResult({
+            abi: accountAbi,
+            functionName: 'spendAndExecuteInfos',
+            result: [
+                keys.map((key) =>
+                    key.spends.map((spend) => ({
+                        token: spend.token,
+                        period: spend.period,
+                        limit: spend.limit,
+                        spent: 0n,
+                        lastUpdated: 0n,
+                        currentSpent: 0n,
+                        current: 0n,
+                    })),
+                ),
+                keys.map((key) => key.calls.map((call) => packCall(call.target, call.selector))),
+            ],
+        }),
+    }
+}
+
+const wildcardOnChain: ScriptedKey = {
+    hash: sessionKeyHash,
+    calls: [{ target: ANY_TARGET, selector: ANY_FUNCTION_SELECTOR }],
+    spends: [
+        {
+            token: '0x0000000000000000000000000000000000000000',
+            period: 6,
+            limit: 2n ** 256n - 1n,
+        },
+    ],
+}
+
+const narrowOnChain: ScriptedKey = {
+    hash: sessionKeyHash,
+    calls: [{ target: usdc as Address, selector: '0xa9059cbb' }],
+    spends: [{ token: usdc as Address, period: 2, limit: 10_000_000n }],
+}
+
+const narrowRelayerPermissions = [
+    { type: 'call', to: usdc, selector: '0xa9059cbb' },
+    {
+        type: 'spend',
+        token: usdc,
+        limit: '0x989680',
+        spent: '0x0',
+        period: 'day',
+    },
+]
+
+const wildcardRelayerPermissions = [
+    { type: 'call', to: ANY_TARGET, selector: ANY_FUNCTION_SELECTOR },
+]
+
+function relayerKeys(permissions: unknown[]): Record<string, unknown[]> {
+    return {
+        '0x7a69': [
+            {
+                hash: sessionKeyHash,
+                expiry: '0x0',
+                type: 'secp256k1',
+                role: 'normal',
+                publicKey: '0x',
+                permissions,
+            },
+        ],
+    }
+}
+
+function jsonRpcReply(body: string, respond: (message: { id?: unknown; method?: string; params?: unknown }) => unknown): unknown {
+    const parsed = JSON.parse(body) as
+        | { id?: unknown; method?: string; params?: unknown }
+        | { id?: unknown; method?: string; params?: unknown }[]
+    if (Array.isArray(parsed)) return parsed.map((message) => respond(message))
+    return respond(parsed)
+}
+
+async function serveJson(
+    port: number,
+    respond: (message: { id?: unknown; method?: string; params?: unknown }) => unknown,
+): Promise<{ url: string; close: () => Promise<void> }> {
+    const server = createServer((req, res) => {
+        const chunks: Buffer[] = []
+        req.on('data', (chunk) => chunks.push(chunk))
+        req.on('end', () => {
+            let payload: unknown
+            try {
+                payload = jsonRpcReply(Buffer.concat(chunks).toString('utf8'), respond)
+            } catch (error) {
+                payload = {
+                    jsonrpc: '2.0',
+                    id: null,
+                    error: {
+                        code: -32000,
+                        message: error instanceof Error ? error.message : String(error),
+                    },
+                }
+            }
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify(payload))
+        })
+    })
+    await new Promise<void>((resolvePromise, reject) => {
+        server.once('error', reject)
+        server.listen(port, '127.0.0.1', () => resolvePromise())
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') {
+        throw new Error('json-rpc stub failed to bind')
+    }
+    return {
+        url: `http://127.0.0.1:${address.port}`,
+        close: () =>
+            new Promise((resolvePromise) => {
+                server.close(() => resolvePromise())
+            }),
+    }
+}
+
+function chainResponder(keys: ScriptedKey[] | 'error') {
+    return (message: { id?: unknown; method?: string; params?: unknown }) => {
+        const id = message.id ?? null
+        if (message.method === 'eth_chainId') {
+            return { jsonrpc: '2.0', id, result: '0x7a69' }
+        }
+        if (message.method !== 'eth_call') {
+            return { jsonrpc: '2.0', id, result: '0x0' }
+        }
+        if (keys === 'error') {
+            return {
+                jsonrpc: '2.0',
+                id,
+                error: { code: -32003, message: 'permission lookup failed' },
+            }
+        }
+        const params = message.params as [{ data?: string }] | undefined
+        const data = (params?.[0]?.data ?? '').toLowerCase()
+        const view = encodeChainView(keys)
+        if (data.startsWith(getKeysSelector)) {
+            return { jsonrpc: '2.0', id, result: view.getKeys }
+        }
+        if (data.startsWith(spendInfosSelector)) {
+            return { jsonrpc: '2.0', id, result: view.spend }
+        }
+        return {
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32000, message: `unexpected eth_call ${data.slice(0, 10)}` },
+        }
+    }
+}
+
+function relayerResponder(result: unknown | 'error') {
+    return (message: { id?: unknown }) => {
+        if (result === 'error') {
+            return {
+                jsonrpc: '2.0',
+                id: message.id ?? null,
+                error: { code: -32003, message: 'Failed to read key permissions' },
+            }
+        }
+        return { jsonrpc: '2.0', id: message.id ?? null, result }
+    }
+}
+
+async function expectUnlockRequiresPhrase(
+    chain: ScriptedKey[] | 'error' | 'down',
+    relayer: unknown | 'error',
+) {
+    const chainServer = chain === 'down' ? undefined : await serveJson(8545, chainResponder(chain))
+    const relayerServer = await serveJson(0, relayerResponder(relayer))
+    const env = { TW_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
+    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-chain-'))
+    const socketPath = join(dir, 'session.sock')
+    const daemon = await startDaemon(socketPath)
+    try {
+        const unlock = await runCli(
+            [
+                'daemon',
+                'unlock',
+                'default',
+                '--env',
+                'dev',
+                '--keystore-path',
+                keystorePath,
+                '--json',
+            ],
+            { ...env, TW_AGENT_SOCK: socketPath },
+        )
+        expect(unlock.status).not.toBe(0)
+        expect(unlock.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(unlock.output).toContain('UNLOCK FULL ACCESS SESSION')
+        expect(unlock.output).not.toContain('Unsupported state')
+        expect(unlock.output).not.toContain(sessionPrivateKey)
+        const signed = await daemon.client.sign('default', orchestratorIntent)
+        expect(signed?.ok).toBe(false)
+        expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
+
+        const output = await callMcpTool(
+            'daemon_unlock',
+            { sessionName: 'default', env: 'dev', keystorePath },
+            { ...env, TW_AGENT_SOCK: socketPath },
+        )
+        expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(output).toContain('UNLOCK FULL ACCESS SESSION')
+        expect(output).toContain('"isError":true')
+        expect(output).not.toContain('Unsupported state')
+        expect(output).not.toContain(sessionPrivateKey)
+        const signedAgain = await daemon.client.sign('default', orchestratorIntent)
+        expect(signedAgain?.ok).toBe(false)
+    } finally {
+        await daemon.stop()
+        await chainServer?.close()
+        await relayerServer.close()
+    }
+}
+
+test('getKeys permissions [] for an on-chain wildcard requires the unlock phrase', async () => {
+    await expectUnlockRequiresPhrase([wildcardOnChain], relayerKeys([]))
+}, 60_000)
+
+test('a getKeys answer that lies with a narrow 10 USDC/day list still requires the phrase', async () => {
+    await expectUnlockRequiresPhrase([wildcardOnChain], relayerKeys(narrowRelayerPermissions))
+}, 60_000)
+
+test('a getKeys error requires the unlock phrase', async () => {
+    await expectUnlockRequiresPhrase([wildcardOnChain], 'error')
+}, 60_000)
+
+test('an unreachable chain RPC requires the unlock phrase even when getKeys is narrow', async () => {
+    await expectUnlockRequiresPhrase('down', relayerKeys(narrowRelayerPermissions))
+}, 60_000)
+
+test('an honest narrow key read from chain unlocks with the password only', async () => {
+    const chainServer = await serveJson(8545, chainResponder([narrowOnChain]))
+    const relayerServer = await serveJson(0, relayerResponder(relayerKeys(wildcardRelayerPermissions)))
+    const env = { TW_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
+    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-narrow-'))
+    const socketPath = join(dir, 'session.sock')
+    try {
+    const daemon = await startDaemon(socketPath)
+    try {
+        const unlock = await runCli(
+            [
+                'daemon',
+                'unlock',
+                'default',
+                '--env',
+                'dev',
+                '--keystore-path',
+                keystorePath,
+                '--json',
+            ],
+            { ...env, TW_AGENT_SOCK: socketPath },
+        )
+        expect(unlock.output).not.toContain('UNLOCK FULL ACCESS SESSION')
+        expect(unlock.output).not.toContain(sessionPrivateKey)
+        expect(unlock.status).toBe(0)
+        const listed = await daemon.client.list()
+        expect(listed?.ok).toBe(true)
+        if (listed?.ok) {
+            expect(listed.result.keys.map((key) => key.name)).toContain('default')
+        }
+        const signed = await daemon.client.sign('default', orchestratorIntent)
+        expect(signed?.ok).toBe(true)
+        expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
+    } finally {
+        await daemon.stop()
+    }
+
+    const mcpDir = mkdtempSync(join(tmpdir(), 'tw-h3-narrow-mcp-'))
+    const mcpSocket = join(mcpDir, 'session.sock')
+    const mcpDaemon = await startDaemon(mcpSocket)
+    try {
+        const output = await callMcpTool(
+            'daemon_unlock',
+            { sessionName: 'default', env: 'dev', keystorePath },
+            { ...env, TW_AGENT_SOCK: mcpSocket },
+        )
+        expect(output).not.toContain('UNLOCK FULL ACCESS SESSION')
+        expect(output).not.toContain(sessionPrivateKey)
+        expect(output).toContain('"status":"complete"')
+        expect(output).not.toContain('"isError":true')
+        const mcpSigned = await mcpDaemon.client.sign('default', orchestratorIntent)
+        expect(mcpSigned?.ok).toBe(true)
+    } finally {
+        await mcpDaemon.stop()
+    }
+    } finally {
+        await chainServer.close()
+        await relayerServer.close()
+    }
+}, 60_000)
+
+test('two session creates started together authorize at most one 10 USDC/day key without the phrase', async () => {
+    let daily = 0n
+    let authorizeCount = 0
+    const chainServer = await serveJson(8545, (message) =>
+        chainResponder(
+            daily === 0n
+                ? []
+                : [
+                      {
+                          hash: `0x${'cd'.repeat(32)}` as Hex,
+                          calls: [],
+                          spends: [{ token: usdc as Address, period: 2, limit: daily }],
+                      },
+                  ],
+        )(message),
+    )
+    const keystorePathForRace = join(mkdtempSync(join(tmpdir(), 'tw-h3-race-')), 'account.json')
+    const keyA = generatePrivateKey()
+    const keyB = generatePrivateKey()
+    const root = await createRootKeystore({
+        password: 'pw',
+        rootPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+        env: 'dev',
+        relayerUrl: 'http://127.0.0.1:8787',
+        rpcUrl: 'http://127.0.0.1:8545',
+        chainId: 31337,
+    })
+    const delegatedRoot = {
+        ...root,
+        checkpoint: 'delegated' as const,
+        addresses: { ...root.addresses, delegated: root.addresses.root },
+    }
+    await writeRootKeystoreFile(keystorePathForRace, delegatedRoot)
+    const seededSession = await createSessionKeystore({
+        password: 'pw',
+        sessionPrivateKey: keyA,
+        network: root.network,
+        delegated: root.addresses.root,
+        name: 'default',
+        checkpoint: 'authorized',
+    })
+    await writeSessionKeystoreFile(
+        resolveSessionKeystorePath(keystorePathForRace),
+        seededSession,
+    )
+    const account = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const hashA = computeSessionKeyHash(privateKeyToAccount(keyA).address)
+    const hashB = computeSessionKeyHash(privateKeyToAccount(keyB).address)
+    const bundle = {
+        root: {
+            sessionRef: { active: 'default', dir: 'sessions' },
+            addresses: {
+                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                delegated: account,
+            },
+        },
+    } as const
+
+    function makeSession(name: string, key: Hex) {
+        return {
+            version: 2 as const,
+            createdAt: new Date().toISOString(),
+            name,
+            checkpoint: 'initialized' as const,
+            network: {
+                env: 'dev' as const,
+                relayerUrl: 'http://127.0.0.1:8787',
+                rpcUrl: 'http://127.0.0.1:8545',
+                chainId: 31337,
+            },
+            kdf: {
+                name: 'argon2id' as const,
+                params: {
+                    memoryCost: 19456,
+                    timeCost: 2,
+                    parallelism: 1,
+                    hashLength: 32,
+                    salt: 'c2FsdA==',
+                },
+            },
+            crypto: { algorithm: 'aes-256-gcm' as const },
+            addresses: { session: privateKeyToAccount(key).address, delegated: account },
+            secrets: { sessionPrivateKey: { nonce: 'n', ciphertext: 'c', tag: 't' } },
+        }
+    }
+
+    const depsFor = (key: Hex) => ({
+        readKeystoreBundle: async () => bundle,
+        fileExists: async () => false,
+        generatePrivateKey: () => key,
+        createSessionKeystore: async (input: { name: string }) => makeSession(input.name, key),
+        writeSessionKeystoreFile: async () => {},
+        decryptRootKeystore: async () => ({ rootPrivateKey: `0x${'11'.repeat(32)}` as const }),
+        readNonce: async () => 1n,
+        executeSignedCalls: async () => {
+            authorizeCount += 1
+            daily = 10_000_000n
+            return {
+                id: `bundle-${authorizeCount}`,
+                finalStatus: {
+                    success: true,
+                    status: 'confirmed',
+                    statusCode: 200,
+                    receipt: { transactionHash: `0x${'11'.repeat(32)}` as const },
+                },
+            }
+        },
+        getKeys: async () => ({ '0x7a69': [{ hash: hashA }, { hash: hashB }] }),
+        sleep: async () => {},
+    })
+
+    try {
+        const results = await Promise.allSettled([
+            executeSessionCreate(
+                { env: 'dev', keystorePath: keystorePathForRace, sessionName: 'race-a', password: 'pw' },
+                depsFor(keyA),
+            ),
+            executeSessionCreate(
+                { env: 'dev', keystorePath: keystorePathForRace, sessionName: 'race-b', password: 'pw' },
+                depsFor(keyB),
+            ),
+        ])
+        const fulfilled = results.filter((result) => result.status === 'fulfilled')
+        const rejected = results.filter((result) => result.status === 'rejected')
+        expect(authorizeCount).toBeLessThanOrEqual(1)
+        expect(fulfilled).toHaveLength(1)
+        expect(rejected).toHaveLength(1)
+        expect(String((rejected[0] as PromiseRejectedResult).reason)).toContain(
+            'HUMAN_CONFIRMATION_REQUIRED',
+        )
+        expect(String((rejected[0] as PromiseRejectedResult).reason)).toContain(
+            'CREATE FULL ACCESS SESSION',
+        )
+    } finally {
+        await chainServer.close()
+    }
+}, 30_000)

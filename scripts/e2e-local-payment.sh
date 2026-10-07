@@ -119,6 +119,13 @@ RELAYER_PID="$(bash "$ROOT/packages/relayer/scripts/dev.sh" --background)"
 PIDS+=("$RELAYER_PID")
 echo "Relayer pid $RELAYER_PID"
 
+# H5 binds the EIP-712 verifying contract from this address. Exporting every
+# local key (above) also covers the narrowed session's escrow addresses.
+if [[ -z "${ORCHESTRATOR_31337:-}" ]]; then
+  echo "ORCHESTRATOR_31337 was not set from $LOCAL_ENV" >&2
+  exit 1
+fi
+
 echo "Building @nubl/relayer-client..."
 (cd "$ROOT/packages/relayer-client" && bun run build)
 
