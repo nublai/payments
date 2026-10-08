@@ -88,28 +88,35 @@ export class AccountPasskeyError extends Error {
 
 function requireHex(value: string, label: string, bytes?: number): Hex {
     const hex = value.toLowerCase()
+
     if (!isHex(hex) || hex.length < 4 || (hex.length - 2) % 2 !== 0) {
         throw new AccountPasskeyError('INVALID_ARGUMENT', `${label} must be hex`)
     }
+
     if (bytes !== undefined && (hex.length - 2) / 2 !== bytes) {
         throw new AccountPasskeyError('INVALID_ARGUMENT', `${label} must be ${bytes} bytes`)
     }
+
     return hex
 }
 
 function loadAccountCreationBytecode(): Hex {
     const here = dirname(fileURLToPath(import.meta.url))
     const artifactPath = resolve(here, '../../../contracts/out/Account.sol/Account.json')
+
     const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as {
         bytecode?: { object?: string }
     }
+
     const object = artifact.bytecode?.object
+
     if (!object) {
         throw new AccountPasskeyError(
             'CHAIN_FAILED',
             `Account creation bytecode missing at ${artifactPath}`,
         )
     }
+
     return (object.startsWith('0x') ? object : `0x${object}`) as Hex
 }
 
@@ -119,13 +126,16 @@ async function rpc(rpcUrl: string, method: string, params: unknown[]): Promise<u
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     })
+
     const body = (await response.json()) as { result?: unknown; error?: { message?: string } }
+
     if (!response.ok || body.error) {
         throw new AccountPasskeyError(
             'CHAIN_FAILED',
             body.error?.message ?? `${method} failed (${response.status})`,
         )
     }
+
     return body.result
 }
 
@@ -142,6 +152,7 @@ export async function executeAccountPasskey(
     const authenticatorData = requireHex(args.authenticatorData, 'authenticatorData')
     const clientDataJson = requireHex(args.clientDataJson, 'clientDataJson')
     const privateKey = requireHex(args.privateKey, 'privateKey', 32)
+
     if (keyTypeToEnum('p256') !== 2) {
         throw new AccountPasskeyError('CHAIN_FAILED', 'p256 key type enum drifted from 2')
     }
@@ -149,13 +160,16 @@ export async function executeAccountPasskey(
     const account = privateKeyToAccount(privateKey)
     const probe = createPublicClient({ transport: http(args.rpcUrl) })
     const chainId = await probe.getChainId()
+
     const chain = defineChain({
         id: chainId,
         name: 'anvil',
         nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
         rpcUrls: { default: { http: [args.rpcUrl] } },
     })
+
     const publicClient = createPublicClient({ chain, transport: http(args.rpcUrl) })
+
     const walletClient = createWalletClient({
         account,
         chain,
@@ -167,8 +181,10 @@ export async function executeAccountPasskey(
         bytecode: loadAccountCreationBytecode(),
         args: ['0x0000000000000000000000000000000000000001'],
     })
+
     const deployReceipt = await publicClient.waitForTransactionReceipt({ hash: deployHash })
     const implementation = deployReceipt.contractAddress
+
     if (!implementation) {
         throw new AccountPasskeyError('CHAIN_FAILED', 'Account deployment did not return an address')
     }
@@ -176,6 +192,7 @@ export async function executeAccountPasskey(
     const delegation = `0xef0100${implementation.slice(2).toLowerCase()}` as Hex
     await rpc(args.rpcUrl, 'anvil_setCode', [account.address, delegation])
     const code = await publicClient.getCode({ address: account.address })
+
     if (code?.toLowerCase() !== delegation) {
         throw new AccountPasskeyError(
             'CHAIN_FAILED',
@@ -184,6 +201,7 @@ export async function executeAccountPasskey(
     }
 
     const keyHash = computeKeyHash('p256', publicKey)
+
     const signature = encodeP256Signature({
         authenticatorData,
         clientDataJSON: clientDataJson,
@@ -206,6 +224,7 @@ export async function executeAccountPasskey(
             },
         ],
     })
+
     await publicClient.waitForTransactionReceipt({ hash: authorizeHash })
 
     const [isValid, got] = await publicClient.readContract({

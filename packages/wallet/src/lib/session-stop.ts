@@ -14,6 +14,7 @@ export type SessionStopResult = {
 
 async function waitForExit(pid: number, timeoutMs = 5_000): Promise<boolean> {
     const start = Date.now()
+
     while (Date.now() - start < timeoutMs) {
         try {
             process.kill(pid, 0)
@@ -22,6 +23,7 @@ async function waitForExit(pid: number, timeoutMs = 5_000): Promise<boolean> {
             return true
         }
     }
+
     return false
 }
 
@@ -46,6 +48,7 @@ function getDefaultDeps(): SessionStopDeps {
 async function safeUnlink(path: string, deps: SessionStopDeps): Promise<string | undefined> {
     try {
         await deps.unlink(path)
+
         return undefined
     } catch (error) {
         if (
@@ -56,8 +59,10 @@ async function safeUnlink(path: string, deps: SessionStopDeps): Promise<string |
         ) {
             return undefined
         }
+
         const message = error instanceof Error ? error.message : String(error)
         debugSessionStop('Failed to unlink stale file', { path, message })
+
         return `${path}: ${message}`
     }
 }
@@ -68,6 +73,7 @@ export async function executeSessionStop(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const paths = resolveSessionDaemonPaths()
     const pid = await deps.readPidFromFile(paths.pidPath)
+
     if (!pid) {
         return {
             type: 'session_stop',
@@ -81,6 +87,7 @@ export async function executeSessionStop(
     const ping = await client.ping()
 
     let processAlive = true
+
     try {
         deps.sendSignal(pid, 0)
     } catch {
@@ -91,6 +98,7 @@ export async function executeSessionStop(
         const cleanupErrors = (
             await Promise.all([safeUnlink(paths.pidPath, deps), safeUnlink(paths.socketPath, deps)])
         ).filter((value): value is string => value !== undefined)
+
         return {
             type: 'session_stop',
             status: 'complete',
@@ -103,6 +111,7 @@ export async function executeSessionStop(
 
     deps.sendSignal(pid, 'SIGTERM')
     const exited = await deps.waitForExit(pid)
+
     if (!exited) {
         return {
             type: 'session_stop',
@@ -116,10 +125,13 @@ export async function executeSessionStop(
 
     const cleanupErrors: string[] = []
     const pidUnlinkError = await safeUnlink(paths.pidPath, deps)
+
     if (pidUnlinkError) {
         cleanupErrors.push(pidUnlinkError)
     }
+
     const sockUnlinkError = await safeUnlink(paths.socketPath, deps)
+
     if (sockUnlinkError) {
         cleanupErrors.push(sockUnlinkError)
     }
@@ -138,6 +150,7 @@ function debugSessionStop(message: string, details?: unknown): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }
+
     const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
     console.error(`[tw daemon stop] ${message}${suffix}`)
 }

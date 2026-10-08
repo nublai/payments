@@ -69,6 +69,7 @@ export async function waitForBundle(
                     `Timeout waiting for bundle ${id} to reach final status. Current status: ${status.error ?? 'unknown'}`,
                 )
             }
+
             await new Promise((resolve) => setTimeout(resolve, intervalMs))
             continue
         }

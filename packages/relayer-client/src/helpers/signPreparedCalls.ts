@@ -53,6 +53,7 @@ function toSignatureHex(value: SignatureValue): Hex {
     if (typeof value === 'string') {
         return value
     }
+
     return serializeSignature(value)
 }
 
@@ -71,6 +72,7 @@ export async function signPreparedCalls(
 
     if (signer.type === 'typedData') {
         const rawSignature = toSignatureHex(await signer.signTypedData(bound.typedData))
+
         if (signer.signerKeyHash === undefined) {
             return {
                 signerType: signer.type,
@@ -91,13 +93,16 @@ export async function signPreparedCalls(
     }
 
     const signerAddress = signer.signerAddress ?? signer.accountAddress
+
     if (signerAddress === undefined) {
         throw new Error(
             'delegated signer requires signerAddress (or deprecated accountAddress) for ERC-1271 digest transformation',
         )
     }
+
     const digestToSign = computeErc1271Digest(bound.digest, signerAddress)
     const rawSignature = toSignatureHex(await signer.signDigest(digestToSign))
+
     return {
         signerType: signer.type,
         rawSignature,

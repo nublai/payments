@@ -15,15 +15,18 @@ import {
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const TEST_PRIVATE_KEY =
     '0x59c6995e998f97a5a0044966f0945388cf6f64f6b5f8a6d4f7e7a3fa8f8ff7f0' as const
+
 const MISMATCH_PRIVATE_KEY =
     '0x8b3a350cf5c34c9194caeec40f2ce7f2d875a63f4f4e7e9c95e5d72f9f6f6d88' as const
 
@@ -105,6 +108,7 @@ test('resolveSessionSigner returns direct signer when daemon unavailable', async
     delete process.env.TW_AGENT_SOCK
 
     const directSign = mock(async () => '0xabc' as const)
+
     const signer = await resolveSessionSigner({
         sessionName: 'default',
         sessionKeystore: makeSessionKeystore(privateKeyToAccount(TEST_PRIVATE_KEY).address),
@@ -135,6 +139,7 @@ test('resolveSessionSigner uses daemon signer when key is loaded', async () => {
         phraseConfirmed: true,
         env: 'prod',
     })
+
     expect(load?.ok).toBe(true)
 
     const signer = await resolveSessionSigner({
@@ -146,10 +151,12 @@ test('resolveSessionSigner uses daemon signer when key is loaded', async () => {
     })
 
     expect(signer.mode).toBe('daemon')
+
     const signature = await signer.signTypedData({
         privateKey: TEST_PRIVATE_KEY,
         typedData: makeTypedData(),
     })
+
     const direct = await account.signTypedData(makeTypedData())
     expect(signature).toBe(direct)
 
@@ -171,9 +178,11 @@ test('resolveSessionSigner falls back to direct signer when daemon key address m
         address: daemonAccount.address,
         durationSeconds: 10,
     })
+
     expect(load?.ok).toBe(true)
 
     const directSign = mock(async () => '0xabc' as const)
+
     const signer = await resolveSessionSigner({
         sessionName: 'default',
         sessionKeystore: makeSessionKeystore(directAccount.address),
@@ -207,6 +216,7 @@ test('resolveSessionSigner throws SESSION_EXPIRED and daemon errors from daemon 
         address: account.address,
         durationSeconds: 1,
     })
+
     expect(load?.ok).toBe(true)
 
     const signer = await resolveSessionSigner({
@@ -228,6 +238,7 @@ test('resolveSessionSigner throws SESSION_EXPIRED and daemon errors from daemon 
         address: account.address,
         durationSeconds: 10,
     })
+
     expect(loadAgain?.ok).toBe(true)
 
     const daemonSigner = await resolveSessionSigner({

@@ -35,7 +35,9 @@ import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
+
 const localEnvPath = resolve(__dirname, '../../contracts/deployments/envs/local/.env')
+
 config({ path: localEnvPath })
 
 import { beforeAll, afterAll } from 'vitest'
@@ -45,26 +47,34 @@ import { getTestContracts } from './helpers/deployments'
 
 // Default ports
 export const ANVIL_PORT = process.env.ANVIL_PORT ? parseInt(process.env.ANVIL_PORT) : 8545
+
 export const ANVIL_PORT_ARB = process.env.ANVIL_PORT_ARB
     ? parseInt(process.env.ANVIL_PORT_ARB)
     : 8546
+
 export const RELAYER_PORT = process.env.RELAYER_PORT ? parseInt(process.env.RELAYER_PORT) : 8787
 
 // Chain configuration for tests
 // Default to 31337 (local Anvil) if not specified
 export const TEST_CHAIN_ID = process.env.TEST_CHAIN_ID ? parseInt(process.env.TEST_CHAIN_ID) : 31337
+
 export const OUTPUT_CHAIN_ID = 41337 // Second Anvil for crosschain tests
 
 // RPC URLs - use env var if provided, otherwise default to local Anvil
 export const ANVIL_RPC_URL = process.env.RPC_URL || `http://127.0.0.1:${ANVIL_PORT}`
+
 export const ANVIL_RPC_URL_ARB = `http://127.0.0.1:${ANVIL_PORT_ARB}`
+
 export const RELAYER_URL = process.env.RELAYER_URL || `http://127.0.0.1:${RELAYER_PORT}`
+
 export const REMOTE_PRIVATE_KEY = process.env.REMOTE_PRIVATE_KEY as Hex | undefined
 
 // Check if we're running against Anvil (local or fork mode)
 // If RPC_URL is explicitly set to an external URL, we're in remote mode
 const isRemoteRpc = !!process.env.RPC_URL && !process.env.RPC_URL.includes('127.0.0.1')
+
 export const IS_LOCAL_MODE = TEST_CHAIN_ID === 31337 && !isRemoteRpc
+
 export const IS_FORK_MODE = TEST_CHAIN_ID === 8453 && !isRemoteRpc
 
 // Whether Anvil cheatcodes are available (local Anvil or Anvil forking a chain)
@@ -76,8 +86,11 @@ export const MOCK_RECIPIENT = '0x000000000000000000000000000000000000dEaD'
 // Deployment context based on chain
 function getDeploymentContext(chainId: number): string {
     if (chainId === 31337) return 'local'
+
     if (chainId === 84532) return 'stage' // Base Sepolia
+
     if (chainId === 8453) return 'prod' // Base mainnet
+
     return 'local'
 }
 
@@ -95,6 +108,7 @@ function getChainConfig(): Chain {
             },
         }
     }
+
     if (TEST_CHAIN_ID === 84532) {
         return {
             ...baseSepolia,
@@ -103,6 +117,7 @@ function getChainConfig(): Chain {
             },
         }
     }
+
     // Default: local Anvil or fork
     return {
         id: TEST_CHAIN_ID,
@@ -180,6 +195,7 @@ async function waitForRpc(maxWaitMs = 30_000): Promise<boolean> {
     while (Date.now() - start < maxWaitMs) {
         try {
             await client.getChainId()
+
             return true
         } catch {
             await new Promise((resolve) => setTimeout(resolve, 100))
@@ -196,6 +212,7 @@ async function waitForRelayer(maxWaitMs = 30_000): Promise<boolean> {
     while (Date.now() - start < maxWaitMs) {
         try {
             const response = await fetch(`${RELAYER_URL}/health`)
+
             if (response.ok) {
                 return true
             }
@@ -210,9 +227,13 @@ async function waitForRelayer(maxWaitMs = 30_000): Promise<boolean> {
 // Get mode description for logging
 function getModeDescription(): string {
     if (IS_LOCAL_MODE) return 'local'
+
     if (IS_FORK_MODE) return 'fork'
+
     if (TEST_CHAIN_ID === 84532) return 'Base Sepolia (remote)'
+
     if (TEST_CHAIN_ID === 8453) return 'Base mainnet (remote)'
+
     return `chain ${TEST_CHAIN_ID}`
 }
 
@@ -220,6 +241,7 @@ function getModeDescription(): string {
 beforeAll(async () => {
     // Check if RPC is accessible
     const rpcReady = await waitForRpc()
+
     if (!rpcReady) {
         if (IS_LOCAL_MODE) {
             console.warn('\n⚠️  Anvil not running. Start it with: ./scripts/local-dev.sh\n')
@@ -232,12 +254,14 @@ beforeAll(async () => {
 
     // Check if relayer is running
     const relayerReady = await waitForRelayer()
+
     if (!relayerReady) {
         if (IS_LOCAL_MODE) {
             console.warn('\n⚠️  Relayer not running. Start it with: ./scripts/local-dev.sh\n')
         } else {
             console.warn(`\n⚠️  Relayer not accessible at ${RELAYER_URL}\n`)
         }
+
         throw new Error('Relayer not running')
     }
 

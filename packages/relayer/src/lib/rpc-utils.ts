@@ -15,6 +15,7 @@ export function validateAddress(value: string, paramName: string): Address {
     if (!ADDRESS_REGEX.test(value)) {
         throw new RpcError(INVALID_PARAMS, `Invalid ${paramName}: must be a valid Ethereum address`)
     }
+
     return value as Address
 }
 
@@ -26,6 +27,7 @@ export function requireParam<T>(value: T | null | undefined, paramName: string):
     if (value === null || value === undefined) {
         throw new RpcError(INVALID_PARAMS, `Missing required parameter: ${paramName}`)
     }
+
     return value
 }
 
@@ -36,6 +38,7 @@ export function unwrapParams<T>(params: unknown): T | undefined {
     if (Array.isArray(params)) {
         return params[0] as T | undefined
     }
+
     return params as T | undefined
 }
 
@@ -45,8 +48,10 @@ export function unwrapParams<T>(params: unknown): T | undefined {
  */
 export function parseHexChainId(value: string, paramName: string = 'chainId'): number {
     const parsed = Number.parseInt(value, 16)
+
     if (!Number.isFinite(parsed)) {
         throw new RpcError(INVALID_PARAMS, `Invalid ${paramName}: ${value}`)
     }
+
     return parsed
 }

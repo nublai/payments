@@ -46,6 +46,7 @@ describe('auth engine', () => {
         })
 
         expect(result.ok).toBe(true)
+
         if (result.ok) {
             expect(result.provider).toBe('erc8128')
             expect(result.userId).toBe('0xabc')

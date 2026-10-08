@@ -126,17 +126,24 @@ const ENV_REQUIRED_MESSAGE =
 const envSchema = z
     .enum(['prod', 'stage', 'dev'], { error: ENV_REQUIRED_MESSAGE })
     .describe(ENV_REQUIRED_MESSAGE)
+
 const profileSchema = z.string().optional().describe('Profile for default keystore resolution')
+
 const keystorePathSchema = z.string().optional().describe('Explicit keystore path')
+
 const chainSchema = z.string().optional().describe('Target chain (base, polygon, anvil)')
+
 const passwordStdinSchema = z.boolean().optional().describe('Read password from stdin')
+
 const legacySchema = z.boolean().optional().describe('Use legacy USDC.e on polygon')
+
 const spendPeriodSchema = z
     .enum(['minute', 'hour', 'day', 'week', 'month', 'year', 'forever'])
     .optional()
     .describe(
         'Spend limit period (minute, hour, day, week, month, year, forever). minute and hour require the full-access phrase.',
     )
+
 const permissionTypeSchema = z.enum(['call', 'spend']).describe('Permission type: call or spend')
 
 const passwordEnv = z.object({
@@ -149,7 +156,9 @@ const passwordEnv = z.object({
 
 function readSingleValueFromStdin(label: string): string {
     const value = readFileSync(0, 'utf8').replace(/\r?\n$/, '')
+
     if (!value) throw new Error(`No ${label} provided on stdin`)
+
     return value
 }
 
@@ -168,12 +177,16 @@ function readLoginTokenAndPassword(
     passwordStdin: boolean,
 ): { tokenHex?: string; password?: string } {
     if (!tokenStdin) return {}
+
     if (!passwordStdin) return { tokenHex: readSingleValueFromStdin('token') }
     const lines = readStdinLines()
     const tokenHex = lines[0]?.trim()
     const password = lines[1]?.trim()
+
     if (!tokenHex) throw new Error('No token provided on stdin (expected first line)')
+
     if (!password) throw new Error('No password provided on stdin (expected second line)')
+
     return { tokenHex, password }
 }
 
@@ -183,6 +196,7 @@ function handlePromptCancellation<T>(promise: Promise<T>): Promise<T> {
             updateCliProcessExitCode(130)
             process.exit(130)
         }
+
         throw error
     })
 }
@@ -203,9 +217,11 @@ function passwordDeps(envPassword: string | undefined) {
 
 function formatQuoteAmount(amount?: RelayCurrencyAmount, fallback = 'unknown'): string {
     const value = amount?.amountFormatted
+
     if (value) {
         return value
     }
+
     return amount?.amount ?? fallback
 }
 
@@ -218,14 +234,17 @@ function formatQuoteSummary(quote: RelayQuoteResponse, kind: 'swap' | 'bridge'):
         `  Total fees: $${sumQuoteFeeUsd(quote)}`,
         `  Estimated time: ${quote.details?.timeEstimate ? `~${quote.details.timeEstimate}s` : 'unknown'}`,
     ]
+
     return `${lines.join('\n')}\n${formatRelayQuoteCalls(quote)}`
 }
 
 function writeRelayAudit(quote: RelayQuoteResponse): void {
     const review = formatRelayQuoteCalls(quote)
+
     if (review.length === 0) {
         return
     }
+
     process.stderr.write(review)
 }
 
@@ -237,19 +256,23 @@ async function withStderrSpinner<T>(
     const frames = ['|', '/', '-', '\\']
     const startedAt = Date.now()
     let frame = 0
+
     const timer = setInterval(() => {
         const elapsed = options?.showElapsed
             ? ` ${Math.floor((Date.now() - startedAt) / 1000)}s`
             : ''
+
         process.stderr.write(`\r${frames[frame % frames.length]} ${message}${elapsed}`)
         frame += 1
     }, 120)
+
     try {
         const result = await work()
         clearInterval(timer)
         process.stderr.write(
             `\r✓ ${message}${options?.showElapsed ? ` ${Math.floor((Date.now() - startedAt) / 1000)}s` : ''}\n`,
         )
+
         return result
     } catch (error) {
         clearInterval(timer)
@@ -277,6 +300,7 @@ async function confirmHuman(
         if (error instanceof HumanConfirmationError) {
             reportError({ code: error.code, message: error.message })
         }
+
         throw error
     }
 }
@@ -306,6 +330,7 @@ async function refuseUnboundedSessionForQuote(
         sessionName: options.session,
         sessionFile: options.sessionFile,
     })
+
     if (wildcard) {
         throw new AccountSwapError(
             'QUOTE_FAILED',
@@ -317,6 +342,7 @@ async function refuseUnboundedSessionForQuote(
 async function readPublicAccountAddresses(keystorePath: string): Promise<string[]> {
     try {
         const bundle = await readKeystoreBundle(keystorePath)
+
         return [bundle.root.addresses.delegated, bundle.root.addresses.root].filter(
             (value): value is string => typeof value === 'string' && value.length > 0,
         )
@@ -357,8 +383,10 @@ async function confirmElevatedPermission(
         spendLimitRaw: input.spendLimitRaw,
         parseHumanAmount: input.parseHumanAmount,
     })
+
     const chain = selectDefaultChain(input.env, input.chain)
     const usdcAddress = getUsdcTokenConfig(chain).address
+
     const accountAddresses = await readPublicAccountAddresses(
         resolveKeystorePath({
             env: input.env,
@@ -366,6 +394,7 @@ async function confirmElevatedPermission(
             keystorePath: input.keystorePath,
         }),
     )
+
     if (
         permissionNeedsFullAccessConfirmation({
             fullAccess: input.fullAccess,
@@ -380,9 +409,12 @@ async function confirmElevatedPermission(
         })
     ) {
         await confirmHuman(reportError, operation, phrase)
+
         return true
     }
+
     if (!input.stack) return false
+
     const proposed = proposedUsdcDaily({
         stack: input.stack,
         grantType: input.grantType,
@@ -392,7 +424,9 @@ async function confirmElevatedPermission(
         token: input.token,
         usdcAddress,
     })
+
     if (proposed === null) return false
+
     const existing = await readActiveUsdcDaily({
         env: input.env,
         chain: input.chain,
@@ -401,17 +435,22 @@ async function confirmElevatedPermission(
         excludeSessionName: input.stack === 'rotate' ? input.excludeSessionName : undefined,
         excludeKeyHash: input.stack === 'grant' ? input.excludeKeyHash : undefined,
     })
+
     if (existing === 'unreadable' || existing + proposed > DEFAULT_SESSION_SPEND_LIMIT) {
         await confirmHuman(reportError, operation, phrase)
+
         return true
     }
+
     return false
 }
 
 function fullKeyHash(value?: string): string | undefined {
     if (!value) return undefined
     const normalized = value.startsWith('0x') || value.startsWith('0X') ? value : `0x${value}`
+
     if (!/^0x[a-fA-F0-9]{64}$/.test(normalized)) return undefined
+
     return normalized
 }
 
@@ -425,6 +464,7 @@ function proposedUsdcDaily(input: {
     usdcAddress: string
 }): bigint | null {
     if (input.stack === 'grant' && input.grantType !== 'spend') return null
+
     if (input.token) {
         try {
             if (input.token.toLowerCase() !== input.usdcAddress.toLowerCase()) return null
@@ -432,13 +472,17 @@ function proposedUsdcDaily(input: {
             return null
         }
     }
+
     if (input.stack === 'grant') {
         if (input.spendLimit === undefined || !input.spendPeriod) return null
+
         return normalizedDailyUsdcUnits(input.spendLimit, input.spendPeriod)
     }
+
     if (!input.defaultUsdcSpend) return null
     const period = input.spendPeriod ?? 'day'
     const limit = input.spendLimit ?? DEFAULT_SESSION_SPEND_LIMIT
+
     return normalizedDailyUsdcUnits(limit, period)
 }
 
@@ -450,24 +494,30 @@ function readVersionSync(): string {
     try {
         const pkgPath = new URL('../package.json', import.meta.url)
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+
         return typeof pkg?.version === 'string' ? pkg.version : '0.0.0'
     } catch (error) {
         process.stderr.write(
             `Failed to read version from package.json: ${error instanceof Error ? error.message : String(error)}\n`,
         )
+
         return '0.0.0'
     }
 }
 
 function parseRawSpendLimit(value: string): bigint {
     const normalized = value.trim()
+
     if (!/^\d+$/.test(normalized)) {
         throw new Error('Spend limit raw must be a positive integer in base units.')
     }
+
     const amount = BigInt(normalized)
+
     if (amount <= 0n) {
         throw new Error('Spend limit raw must be greater than zero.')
     }
+
     return amount
 }
 
@@ -479,12 +529,15 @@ function resolveSpendLimitInput(input: {
     if (input.spendLimit && input.spendLimitRaw) {
         throw new Error('Use either --spend-limit or --spend-limit-raw, not both.')
     }
+
     if (input.spendLimitRaw) {
         return parseRawSpendLimit(input.spendLimitRaw)
     }
+
     if (input.spendLimit) {
         return input.parseHumanAmount(input.spendLimit)
     }
+
     return undefined
 }
 
@@ -675,10 +728,12 @@ account.command('status', {
             name: options.profile,
             keystorePath: options.keystorePath,
         })
+
         if (!result.readiness) {
             const failures = result.checks
                 .filter((c: { level: string }) => c.level === 'fail')
                 .map((c: { message: string }) => c.message)
+
             return error({
                 code: 'NOT_READY',
                 message: failures.join('; ') || 'Account is not ready',
@@ -692,6 +747,7 @@ account.command('status', {
                 },
             })
         }
+
         return result
     },
 })
@@ -727,11 +783,13 @@ account.command('create', {
             'Creating an account installs a full-access session',
             CONFIRM_FULL_ACCESS_PHRASE,
         )
+
         const keystorePath = resolveKeystorePath({
             env: options.env,
             keystorePath: options.keystorePath,
             name: options.profile,
         })
+
         await assertAccountCreateCanInitialize({ keystorePath, resume: options.resume ?? false })
 
         const password = await resolveAccountCreatePassword(
@@ -792,6 +850,7 @@ account.command('delegate', {
             'Delegating an account installs a full-access session',
             CONFIRM_FULL_ACCESS_PHRASE,
         )
+
         const password = await resolveAccountDelegatePassword(
             {
                 env: options.env,
@@ -860,6 +919,7 @@ tw.command('send', {
     ],
     async run({ args, options, env, error: reportError }) {
         await confirmHuman(reportError, 'Sending USDC', CONFIRM_SEND_PHRASE)
+
         return executeAccountSend({
             env: options.env,
             amount: args.amount,
@@ -990,14 +1050,17 @@ tw.command('swap', {
                     ),
                 confirmQuote: async (quote) => {
                     process.stderr.write(formatQuoteSummary(quote, 'swap'))
+
                     const confirmed = await confirm({
                         message: 'Proceed?',
                         initialValue: false,
                         output: process.stderr,
                     })
+
                     if (isCancel(confirmed)) {
                         throw new PromptCancelledError()
                     }
+
                     return confirmed
                 },
                 auditQuote: writeRelayAudit,
@@ -1126,14 +1189,17 @@ tw.command('bridge', {
                     ),
                 confirmQuote: async (quote) => {
                     process.stderr.write(formatQuoteSummary(quote, 'bridge'))
+
                     const confirmed = await confirm({
                         message: 'Proceed?',
                         initialValue: false,
                         output: process.stderr,
                     })
+
                     if (isCancel(confirmed)) {
                         throw new PromptCancelledError()
                     }
+
                     return confirmed
                 },
                 auditQuote: writeRelayAudit,
@@ -1186,6 +1252,7 @@ account.command('export', {
             ) {
                 reportError({ code: error.code, message: error.message })
             }
+
             throw error
         }
 
@@ -1235,7 +1302,9 @@ account.command('change-password', {
         const readPasswordLinesFromStdin = (): string[] => {
             const raw = readFileSync(0, 'utf8')
             const lines = raw.split('\n').map((l) => l.trim())
+
             if (!lines[0]) throw new Error('Expected at least one password line on stdin')
+
             return lines
         }
 
@@ -1324,7 +1393,9 @@ account.command('passkey', {
                 message: privateKeyMcpRefusal('account passkey', CONFIRM_PASSKEY_PHRASE),
             })
         }
+
         await confirmHuman(reportError, 'Authorizing a passkey', CONFIRM_PASSKEY_PHRASE)
+
         try {
             return await executeAccountPasskey({
                 rpcUrl: options.rpcUrl,
@@ -1341,7 +1412,9 @@ account.command('passkey', {
             if (err instanceof AccountPasskeyError) {
                 return reportError({ code: err.code, message: err.message })
             }
+
             const message = err instanceof Error ? err.message : String(err)
+
             return reportError({ code: 'PASSKEY_FAILED', message })
         }
     },
@@ -1457,8 +1530,10 @@ session.command('create', {
                     '--swap cannot be combined with --full-access, --activate, --target, --selector, --spend-limit, --spend-limit-raw, or --spend-period. The swap session stays inactive so the payment key remains the active session.',
             })
         }
+
         let phraseConfirmed = false
         let swapPhraseConfirmed = false
+
         if (options.swap) {
             await confirmHuman(
                 reportError,
@@ -1488,6 +1563,7 @@ session.command('create', {
                 },
             )
         }
+
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1529,6 +1605,7 @@ session.command('create', {
             if (error instanceof HumanConfirmationError) {
                 reportError({ code: error.code, message: error.message })
             }
+
             throw error
         }
     },
@@ -1566,6 +1643,7 @@ session.command('export', {
             PRIVATE_EXPORT_CONFIRMATION_PHRASE,
         )
         await assertSessionExportInputs({ output: options.output, overwrite: options.overwrite })
+
         const passwords = await resolveSessionExportPasswords(
             {
                 passwordStdin: options.passwordStdin ?? false,
@@ -1585,6 +1663,7 @@ session.command('export', {
                 isInteractive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
             },
         )
+
         return executeSessionExport({
             env: options.env,
             sessionName: args.sessionName,
@@ -1750,6 +1829,7 @@ session.command('rotate', {
                     '--narrow cannot be combined with --full-access, --target, --selector, or a custom spend.',
             })
         }
+
         if (
             options.abandon &&
             (options.resume ||
@@ -1768,7 +1848,9 @@ session.command('rotate', {
                     '--abandon only removes the rotation marker. Do not combine it with --resume or other rotate flags.',
             })
         }
+
         let phraseConfirmed = false
+
         if (options.abandon) {
             phraseConfirmed = false
         } else if (options.narrow) {
@@ -1780,6 +1862,7 @@ session.command('rotate', {
             phraseConfirmed = true
         } else {
             let excludeSessionName: string | undefined
+
             try {
                 const bundle = await readKeystoreBundle(
                     resolveKeystorePath({
@@ -1788,10 +1871,12 @@ session.command('rotate', {
                         keystorePath: options.keystorePath,
                     }),
                 )
+
                 excludeSessionName = bundle.root.sessionRef.active
             } catch {
                 excludeSessionName = undefined
             }
+
             phraseConfirmed = await confirmElevatedPermission(
                 reportError,
                 'Rotating to a full-access session',
@@ -1814,6 +1899,7 @@ session.command('rotate', {
                 },
             )
         }
+
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1897,6 +1983,7 @@ session.command('revoke', {
                 CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
             )
         }
+
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -1939,9 +2026,11 @@ daemon.command('start', {
         const result = await executeSessionStart({
             foreground: options.foreground,
         })
+
         if (!result.untilStopped) {
             return result
         }
+
         const { untilStopped: _u, ...toPrint } = result
         const useJson = process.argv.includes('--json')
         process.stdout.write(
@@ -1952,6 +2041,7 @@ daemon.command('start', {
                       .join('\n') + '\n',
         )
         await result.untilStopped
+
         return toPrint
     },
 })
@@ -2004,6 +2094,7 @@ daemon.command('unlock', {
             keystorePath: options.keystorePath,
             sessionName: args.sessionName,
         })
+
         if (requiresPhrase) {
             await confirmHuman(
                 reportError,
@@ -2011,6 +2102,7 @@ daemon.command('unlock', {
                 CONFIRM_UNLOCK_FULL_ACCESS_PHRASE,
             )
         }
+
         const password = await resolveSessionUnlockPassword(
             {
                 passwordStdin: options.passwordStdin ?? false,
@@ -2025,6 +2117,7 @@ daemon.command('unlock', {
                     ),
             },
         )
+
         return executeSessionUnlock({
             env: options.env,
             name: options.profile,
@@ -2254,6 +2347,7 @@ permissions.command('grant', {
                 parseHumanAmount: parseSpendLimitUnits,
             },
         )
+
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -2293,6 +2387,7 @@ permissions.command('grant', {
             if (error instanceof HumanConfirmationError) {
                 reportError({ code: error.code, message: error.message })
             }
+
             throw error
         }
     },
@@ -2331,40 +2426,55 @@ permissions.command('revoke', {
     async run({ args, options, env, error: reportError }) {
         const chain = selectDefaultChain(options.env, options.chain)
         const network = resolveNetworkConfig(options.env, chain)
+
         const keystorePath = resolveKeystorePath({
             env: options.env,
             name: options.profile,
             keystorePath: options.keystorePath,
         })
+
         let phraseConfirmed = false
+
         try {
             const bundle = await readKeystoreBundle(keystorePath)
+
             const accountAddress = getAddress(
                 bundle.root.addresses.delegated ?? bundle.root.addresses.root,
             )
+
             const { readSessionChainGuard } = await import('./lib/session-chain-permissions')
+
             const { computeSessionKeyHash, getChainKeys, listSessionNames, parseSessionName } =
                 await import('./lib/session-common')
+
             const { readSessionKeystoreFile, resolveSessionKeystorePath } = await import(
                 './lib/keystore'
             )
+
             const { createCliRelayerClient } = await import('./lib/relayer-client-utils')
             const client = createCliRelayerClient(network)
+
             const keysResponse = await client.getKeys({
                 address: accountAddress,
                 chainIds: [network.chainId],
             })
+
             const localNames = await listSessionNames(keystorePath, bundle.root.sessionRef.dir)
             const localKeys = []
+
             for (const rawName of localNames) {
                 const name = parseSessionName(rawName)
+
                 const session = await readSessionKeystoreFile(
                     resolveSessionKeystorePath(keystorePath, name, bundle.root.sessionRef.dir),
                 )
+
                 const address = getAddress(session.addresses.session)
                 localKeys.push({ name, address, hash: computeSessionKeyHash(address) })
             }
+
             const { resolveSelectedKey } = await import('./lib/permissions-common')
+
             const selected = resolveSelectedKey({
                 selector: {
                     positional: args.keyRef,
@@ -2374,6 +2484,7 @@ permissions.command('revoke', {
                 keys: getChainKeys(keysResponse, network.chainId),
                 localKeys,
             })
+
             if (options.rule || options.all) {
                 phraseConfirmed = await revokeLeavesElevated({
                     env: options.env,
@@ -2390,9 +2501,11 @@ permissions.command('revoke', {
             if (error instanceof HumanConfirmationError) {
                 reportError({ code: error.code, message: error.message })
             }
+
             // Key resolution failures are reported by executePermissionsRevoke.
             phraseConfirmed = false
         }
+
         if (phraseConfirmed) {
             await confirmHuman(
                 reportError,
@@ -2400,6 +2513,7 @@ permissions.command('revoke', {
                 CONFIRM_REVOKE_FULL_ACCESS_PHRASE,
             )
         }
+
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
@@ -2431,6 +2545,7 @@ permissions.command('revoke', {
             if (error instanceof HumanConfirmationError) {
                 reportError({ code: error.code, message: error.message })
             }
+
             throw error
         }
     },
@@ -2499,6 +2614,7 @@ escrow.command('create', {
     ],
     async run({ args, options, env, error: reportError }) {
         await confirmHuman(reportError, 'Creating an escrow locks USDC', CONFIRM_SEND_PHRASE)
+
         try {
             return await executeEscrowCreate({
                 env: options.env,
@@ -2539,6 +2655,7 @@ escrow.command('create', {
             if (err instanceof EscrowError) {
                 return reportError({ code: err.code, message: err.message })
             }
+
             throw err
         }
     },
@@ -2578,6 +2695,7 @@ escrow.command('status', {
             if (err instanceof EscrowError) {
                 return reportError({ code: err.code, message: err.message })
             }
+
             throw err
         }
     },
@@ -2649,7 +2767,9 @@ escrow.command('settle', {
                 message: privateKeyMcpRefusal('escrow settle', CONFIRM_ORACLE_SIGN_PHRASE),
             })
         }
+
         const oracleKey = options.oraclePrivateKey ?? env.TW_ORACLE_PRIVATE_KEY
+
         if (oracleKey && !options.signature) {
             await confirmHuman(
                 reportError,
@@ -2657,6 +2777,7 @@ escrow.command('settle', {
                 CONFIRM_ORACLE_SIGN_PHRASE,
             )
         }
+
         try {
             return await executeEscrowSettle({
                 env: options.env,
@@ -2697,6 +2818,7 @@ escrow.command('settle', {
             if (err instanceof EscrowError) {
                 return reportError({ code: err.code, message: err.message })
             }
+
             throw err
         }
     },
@@ -2736,6 +2858,7 @@ escrow.command('refund', {
     ],
     async run({ args, options, env, error: reportError }) {
         await confirmHuman(reportError, 'Refunding an escrow moves USDC', CONFIRM_SEND_PHRASE)
+
         try {
             return await executeEscrowRefund({
                 env: options.env,
@@ -2772,6 +2895,7 @@ escrow.command('refund', {
             if (err instanceof EscrowError) {
                 return reportError({ code: err.code, message: err.message })
             }
+
             throw err
         }
     },
@@ -2817,6 +2941,7 @@ tw.command('address', {
     ],
     async run({ options }) {
         const { executeAddress } = await import('./lib/address')
+
         return executeAddress({
             env: options.env,
             name: options.profile,
@@ -2853,6 +2978,7 @@ tw.command('login', {
     async run({ options, env, error: reportError }) {
         try {
             const profile = options.profile ?? 'default'
+
             const stdinInput = readLoginTokenAndPassword(
                 options.tokenStdin === true,
                 options.passwordStdin === true,
@@ -2862,18 +2988,23 @@ tw.command('login', {
                 stdinInput.tokenHex ??
                 (await (async () => {
                     const isInteractive = Boolean(process.stdin.isTTY && process.stdout.isTTY)
+
                     if (!isInteractive) {
                         throw new Error(
                             'Token required in non-interactive mode. Use --token-stdin to pipe the login token.',
                         )
                     }
+
                     const authUrl = getAuthUrl(options.env)
+
                     if (!authUrl) {
                         throw new Error(authUrlUnsetMessage(options.env))
                     }
+
                     process.stderr.write(
                         `Open this URL to authorize your session:\n  ${authUrl}\n`,
                     )
+
                     return handlePromptCancellation(readlineExistingPassword('Paste login token:'))
                 })())
 
@@ -2906,6 +3037,7 @@ tw.command('login', {
             if (err instanceof LoginError) {
                 return reportError({ code: err.code, message: err.message })
             }
+
             throw err
         }
     },
@@ -2933,6 +3065,7 @@ tw.command('logout', {
             if (err instanceof LoginError) {
                 return reportError({ code: err.code, message: err.message })
             }
+
             throw err
         }
     },
@@ -2940,9 +3073,13 @@ tw.command('logout', {
 
 // Mount command groups
 tw.command(account)
+
 tw.command(session)
+
 tw.command(daemon)
+
 tw.command(permissions)
+
 tw.command(escrow)
 
 async function main(): Promise<void> {

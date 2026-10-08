@@ -58,6 +58,7 @@ describe('wallet_getKeys', () => {
             signer: createRelayerTestAuthSigner(testChain.id),
         },
     })
+
     const contracts = TEST_CONTRACTS
 
     it('should return empty for non-delegated account', async () => {
@@ -72,6 +73,7 @@ describe('wallet_getKeys', () => {
         expect(result).toBeDefined()
         const chainEntries = Object.entries(result)
         expect(chainEntries.length).toBeGreaterThan(0)
+
         for (const [, keys] of chainEntries) {
             expect(keys).toEqual([])
         }

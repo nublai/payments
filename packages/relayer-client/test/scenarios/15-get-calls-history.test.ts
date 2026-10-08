@@ -28,18 +28,22 @@ describe('wallet_getCallsHistory', () => {
     async function delegateAndFund(privateKey: `0x${string}`) {
         const account = privateKeyToAccount(privateKey)
         await setBalance(account.address, parseEther('2'))
+
         const result = await client.upgradeAccount({
             accountAddress: account.address,
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         if (!result.success) throw new Error(result.error ?? 'upgradeAccount failed')
         await new Promise((resolve) => setTimeout(resolve, 2000))
+
         return account
     }
 
     async function submitBundle(privateKey: `0x${string}`) {
         const account = privateKeyToAccount(privateKey)
+
         const walletClient = createWalletClient({
             account,
             chain: testChain,
@@ -60,6 +64,7 @@ describe('wallet_getCallsHistory', () => {
 
         const sent = await client.sendPreparedCalls({ context: prepared.context, signature })
         await waitForBundle(client, { id: sent.id, timeoutMs: 30000 })
+
         return sent.id
     }
 
@@ -115,6 +120,7 @@ describe('wallet_getCallsHistory', () => {
             limit: 1,
             offset: 1,
         })
+
         expect(page2.success).toBe(true)
 
         if (!page2.success) throw new Error(page2.error)

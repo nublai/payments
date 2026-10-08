@@ -189,12 +189,14 @@ describe('2D Nonce Calculation', () => {
             const seqKey1Nonces = Array.from({ length: 10 }, (_, i) =>
                 calculateNonce(0n, BigInt(i)),
             )
+
             const seqKey2Nonces = Array.from({ length: 10 }, (_, i) =>
                 calculateNonce(1n, BigInt(i)),
             )
 
             // No overlap between seqKey 0 and seqKey 1 nonces
             const set1 = new Set(seqKey1Nonces.map((n) => n.toString()))
+
             for (const n of seqKey2Nonces) {
                 expect(set1.has(n.toString())).toBe(false)
             }
@@ -241,6 +243,7 @@ function simulateDriftDetection(
     if (localSeq < onChainSeq) {
         return { acquiredSeq: onChainSeq, synced: true }
     }
+
     return { acquiredSeq: localSeq, synced: false }
 }
 
@@ -255,6 +258,7 @@ function createSyncedAllocator(initialLocalSeq: bigint) {
         acquire(onChainSeq: bigint): { acquiredSeq: bigint; synced: boolean } {
             const { acquiredSeq, synced } = simulateDriftDetection(localSeq, onChainSeq)
             localSeq = acquiredSeq + 1n
+
             return { acquiredSeq, synced }
         },
         currentLocalSeq(): bigint {

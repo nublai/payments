@@ -10,6 +10,7 @@ export async function upgradeDelegatedAccount(params: {
     chainId: number
 }) {
     const { client, accountAddress, signerKey, delegation, chainId } = params
+
     const result = await client.upgradeAccount({
         accountAddress,
         signerKey,
@@ -27,5 +28,6 @@ export async function upgradeDelegatedAccount(params: {
 export function createEphemeralAccount() {
     const privateKey = generatePrivateKey()
     const account = privateKeyToAccount(privateKey)
+
     return { account, privateKey }
 }

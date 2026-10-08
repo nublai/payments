@@ -25,6 +25,7 @@ test('createEscrowPasswordResolver calls resolvePassword when password not provi
     const resolve = createEscrowPasswordResolver({
         resolvePassword: async () => 'from-resolver',
     })
+
     expect(await resolve()).toBe('from-resolver')
     expect(await resolve()).toBe('from-resolver')
 })
@@ -62,6 +63,7 @@ test('loadEscrowSessionAndSender falls back to login session profile when root k
             },
             bearerToken: '0x010203',
         })
+
         await writeSessionKeystoreFile(sessionPath, session)
 
         const loaded = await loadEscrowSessionAndSender(
@@ -97,6 +99,7 @@ test('loadEscrowSessionAndSender falls back to session-only profile when root ke
             delegated: '0x1111111111111111111111111111111111111111',
             name: 'default',
         })
+
         await writeSessionKeystoreFile(sessionPath, session)
 
         const loaded = await loadEscrowSessionAndSender(
@@ -118,6 +121,7 @@ test('executeEscrowRefund reports KEYSTORE_NOT_FOUND when neither root keystore 
     const dir = await mkdtemp(join(tmpdir(), 'relayer-cli-escrow-empty-profile-'))
     const rootPath = join(dir, 'default.keystore.json')
     const zeroAddress = '0x0000000000000000000000000000000000000000' as const
+
     const prepareCalls = mock(async () => {
         throw new Error('prepareCalls should not be called')
     })

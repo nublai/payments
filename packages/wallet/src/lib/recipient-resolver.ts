@@ -30,7 +30,9 @@ function getDefaultDeps(): ResolverDeps {
                 chain: mainnet,
                 transport: http('https://eth.llamarpc.com'),
             })
+
             const resolved = await client.getEnsAddress({ name: recipient })
+
             return resolved ? getAddress(resolved) : null
         },
     }
@@ -52,6 +54,7 @@ export async function resolveAddressOrEnsInput(
     }
 
     const maybeEns = normalized.toLowerCase()
+
     if (!maybeEns.endsWith('.eth')) {
         throw new RecipientResolutionError(
             'INVALID_RECIPIENT',
@@ -60,6 +63,7 @@ export async function resolveAddressOrEnsInput(
     }
 
     const resolved = await deps.resolveEnsAddress({ recipient: maybeEns as `${string}.eth`, chain })
+
     if (!resolved) {
         throw new RecipientResolutionError(
             'RECIPIENT_UNRESOLVED',

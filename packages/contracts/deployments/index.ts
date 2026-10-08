@@ -39,10 +39,12 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 function isDeployedAddress(value: string | undefined): value is Address {
   if (typeof value !== 'string') return false
   const normalized = value.trim().toLowerCase()
+
   // Reject only empty and zero sentinels. Callers such as the relayer
   // capabilities mock use non-address placeholders (for example "0xAccount"),
   // and Boolean(value) used to accept those.
   if (normalized.length === 0 || normalized === '0x' || normalized === '0x0') return false
+
   return normalized !== ZERO_ADDRESS
 }
 
@@ -78,13 +80,17 @@ export function getAddresses(
   chainId: number
 ): ContractAddresses | undefined {
   const deployment = getDeployment(context, chainId)
+
   if (!deployment) {
     return undefined
   }
+
   const addresses = deployment.addresses as Record<string, Address | undefined>
+
   if (!hasRequiredAddresses(addresses)) {
     return undefined
   }
+
   return {
     orchestrator: addresses.orchestrator,
     simpleFunder: addresses.simpleFunder,
@@ -105,6 +111,7 @@ export function getContexts(): string[] {
 // List chain IDs for a context
 export function getChainIds(context: string): number[] {
   const ctx = (deployments as unknown as Deployments)[context]
+
   return ctx ? Object.keys(ctx).map(Number) : []
 }
 
@@ -150,9 +157,11 @@ export function getAddressesFromEnvForChain(
     escrow: get(envKeys.escrow),
     multiSigSigner: get(envKeys.multiSigSigner),
   }
+
   if (!hasRequiredAddresses(addresses)) {
     return undefined
   }
+
   return addresses
 }
 
@@ -174,9 +183,11 @@ export function getAddressesFromEnv(opts?: EnvOpts): ContractAddresses | undefin
     escrow: get(envKeys.escrow),
     multiSigSigner: get(envKeys.multiSigSigner),
   }
+
   if (!hasRequiredAddresses(addresses)) {
     return undefined
   }
+
   return addresses
 }
 
@@ -188,12 +199,14 @@ export function getAddressesWithFallback(
 ): ContractAddresses | undefined {
   // Try JSON first. A zero address in the file is not a deployment.
   const fromJson = getAddresses(context, chainId)
+
   if (fromJson) return fromJson
 
   // Chain-suffixed env (ORCHESTRATOR_8453 and the other seven keys) applies
   // on every chain. Unsuffixed env stays local-only so a bare ORCHESTRATOR
   // does not make a published chain look deployed.
   const chainSpecific = getAddressesFromEnvForChain(chainId, opts)
+
   if (chainSpecific) return chainSpecific
 
   if (context.startsWith('local') || chainId === 31337 || chainId === 41337) {
@@ -213,5 +226,6 @@ export function getChainIdForDeployment(context: string): number {
     case 'prod':
       return 8453
   }
+
   throw new Error(`[getChainIdForDeployment] Invalid env: ${context}`)
 }

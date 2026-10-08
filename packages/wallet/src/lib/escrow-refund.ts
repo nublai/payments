@@ -59,10 +59,12 @@ export async function executeEscrowRefund(
     depsArg?: Partial<EscrowRefundDeps>,
 ): Promise<EscrowRefundResult> {
     const deps = { ...getDefaultEscrowRefundDeps(), ...depsArg }
+
     const { chain, network, contracts } = deps.resolveEscrowChainNetworkContracts(
         options.env,
         options.chain,
     )
+
     const keystorePath =
         options.sessionFile ??
         resolveKeystorePath({

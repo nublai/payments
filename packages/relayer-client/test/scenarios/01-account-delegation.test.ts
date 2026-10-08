@@ -85,6 +85,7 @@ describe('Account Delegation', () => {
             abi: accountAbi,
             functionName: 'keyCount',
         })
+
         // Initially no explicit keys - the EOA key is implicit
         expect(keyCount).toBe(0n)
 
@@ -94,6 +95,7 @@ describe('Account Delegation', () => {
             abi: accountAbi,
             functionName: 'label',
         })
+
         // Label starts empty
         expect(label).toBe('')
     })
@@ -140,6 +142,7 @@ describe('Account Delegation', () => {
             abi: accountAbi,
             functionName: 'keyCount',
         })
+
         // Initially no explicit keys - the EOA key is implicit
         expect(keyCount).toBe(0n)
 
@@ -149,6 +152,7 @@ describe('Account Delegation', () => {
             abi: accountAbi,
             functionName: 'label',
         })
+
         // Label starts empty
         expect(label).toBe('')
     })
@@ -209,6 +213,7 @@ describe('Account Delegation', () => {
                 abi: accountAbi,
                 functionName: 'keyCount',
             })
+
             expect(keyCount).toBe(1n)
 
             // 9. Verify the key details via getKeys()
@@ -217,6 +222,7 @@ describe('Account Delegation', () => {
                 abi: accountAbi,
                 functionName: 'getKeys',
             })
+
             const keys = keysResult[0]
             const keyHashes = keysResult[1]
 
@@ -266,6 +272,7 @@ describe('Account Delegation', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(submitResult.id).toBeDefined()
 
             // 11. Wait for confirmation
@@ -291,6 +298,7 @@ describe('Account Delegation', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(result1.success).toBe(true)
         expect(result1.txHash).toBeDefined()
 
@@ -378,6 +386,7 @@ describe('Account Delegation', () => {
             if (!result.success) {
                 console.error('upgradeAccount failed:', result.error)
             }
+
             expect(result.success).toBe(true)
 
             // Compute the keyHash for the session key
@@ -392,6 +401,7 @@ describe('Account Delegation', () => {
                 abi: accountAbi,
                 functionName: 'keyCount',
             })
+
             expect(keyCount).toBe(1n)
 
             // 7. Test that the session key CAN spend within the limit
@@ -420,12 +430,14 @@ describe('Account Delegation', () => {
                 primaryType: allowedPrepared.typedData.primaryType,
                 message: allowedPrepared.typedData.message,
             })
+
             const allowedSignature = wrapSignature(allowedRawSignature, sessionKeyHash)
 
             const allowedResult = await client.sendPreparedCalls({
                 context: allowedPrepared.context,
                 signature: allowedSignature,
             })
+
             expect(allowedResult.id).toBeDefined()
 
             // Wait for confirmation
@@ -452,6 +464,7 @@ describe('Account Delegation', () => {
                 primaryType: excessPrepared.typedData.primaryType,
                 message: excessPrepared.typedData.message,
             })
+
             const excessSignature = wrapSignature(excessRawSignature, sessionKeyHash)
 
             const excessResult = await client.sendPreparedCalls({
@@ -478,6 +491,7 @@ describe('Account Delegation', () => {
                 const balanceAfterExcess = await client.getBalance({
                     address: ownerAccount.address,
                 })
+
                 // Balance should be same as after first transfer (excess transfer was reverted)
                 expect(balanceAfterExcess).toBe(balanceAfter)
             }

@@ -58,6 +58,7 @@ function createLogger(name: string, baseContext: LogContext = {}): Logger {
 
         // Use console methods that map to Cloudflare's logging
         const output = JSON.stringify(logEntry)
+
         switch (level) {
             case 'debug':
                 console.debug(output)
@@ -102,6 +103,7 @@ export function errorDetails(error: unknown): LogContext {
             errorStack: error.stack,
         }
     }
+
     return { error: String(error) }
 }
 

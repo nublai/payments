@@ -53,6 +53,7 @@ export interface JsonRpcTransportOptions {
 
 function isLoopbackHost(hostname: string): boolean {
     const host = hostname.toLowerCase().replace(/\.$/, '')
+
     return host === 'localhost' || host === '127.0.0.1' || host === '::1'
 }
 
@@ -62,12 +63,15 @@ function isLoopbackHost(hostname: string): boolean {
  */
 export function assertRelayerUrl(relayerUrl: string, options?: { allowInsecureHttp?: boolean }): void {
     let url: URL
+
     try {
         url = new URL(relayerUrl)
     } catch {
         throw new Error(`Invalid relayer URL: ${relayerUrl}`)
     }
+
     if (url.protocol === 'https:') return
+
     if (url.protocol === 'http:' && (isLoopbackHost(url.hostname) || options?.allowInsecureHttp)) return
     throw new Error(
         `Relayer URL must use https when the host is not loopback outside local dev. Refusing ${relayerUrl}`,
@@ -118,6 +122,7 @@ export class JsonRpcClientError extends Error {
 async function postJson(relayerUrl: string, body: string, options?: JsonRpcTransportOptions) {
     const authToken = await resolveBearerToken(options)
     const headers = new Headers({ 'Content-Type': 'application/json' })
+
     if (authToken) {
         headers.set('Authorization', `Bearer ${authToken}`)
     }
@@ -130,11 +135,13 @@ async function postJson(relayerUrl: string, body: string, options?: JsonRpcTrans
     })
 
     const httpAuth = options?.httpAuth
+
     const response = httpAuth?.signer
         ? await fetch(await signRequest(request, httpAuth.signer, httpAuth.signOptions), {
               redirect: 'manual',
           })
         : await fetch(request, { redirect: 'manual' })
+
     // Workers' Response.type omits 'opaqueredirect'; browser and Node fetch can return it.
     const responseType: string = response.type
 
@@ -146,15 +153,18 @@ async function postJson(relayerUrl: string, body: string, options?: JsonRpcTrans
             `Refusing relayer redirect (${response.status || '3xx'}). The relayer URL must answer directly.`,
         )
     }
+
     return response
 }
 
 async function resolveBearerToken(options?: JsonRpcTransportOptions): Promise<string | null> {
     const provider = options?.httpAuth?.authTokenProvider
+
     if (provider) {
         try {
             const resolved = await provider()
             const trimmed = resolved?.trim()
+
             return trimmed && trimmed.length > 0 ? trimmed : null
         } catch (error) {
             throw new JsonRpcClientError(-32000, 'Failed to resolve auth token', {
@@ -165,6 +175,7 @@ async function resolveBearerToken(options?: JsonRpcTransportOptions): Promise<st
     }
 
     const token = options?.httpAuth?.authToken?.trim()
+
     return token && token.length > 0 ? token : null
 }
 
@@ -254,6 +265,7 @@ export function createJsonRpcTransport(
                         json.error.data,
                     )
                 }
+
                 throw new JsonRpcClientError(-32000, 'Invalid JSON-RPC batch response')
             }
 
@@ -270,6 +282,7 @@ export function createJsonRpcTransport(
 
             // Sort by id to maintain request order and extract results
             const sorted = data.sort((a, b) => a.id - b.id)
+
             return sorted.map((item) => item.result as T)
         },
     }

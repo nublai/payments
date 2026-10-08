@@ -84,6 +84,7 @@ test('getEnvRelayerUrl reads prod and stage from env and keeps the local dev def
     expect(getEnvRelayerUrl('stage')).toBe(process.env.RELAYER_URL_STAGE)
     const previous = process.env.RELAYER_URL_DEV
     delete process.env.RELAYER_URL_DEV
+
     try {
         expect(getEnvRelayerUrl('dev')).toBe('http://127.0.0.1:8787')
         process.env.RELAYER_URL_DEV = 'http://127.0.0.1:9797'
@@ -96,6 +97,7 @@ test('getEnvRelayerUrl reads prod and stage from env and keeps the local dev def
 
 test('getEnvRelayerUrl throws when prod or stage is unset', () => {
     const source = new URL('../src/lib/network-config.ts', import.meta.url).pathname
+
     const script = `
         const { getEnvRelayerUrl } = await import(${JSON.stringify(source)})
         for (const [env, key] of [['prod', 'RELAYER_URL_PROD'], ['stage', 'RELAYER_URL_STAGE']]) {
@@ -114,6 +116,7 @@ test('getEnvRelayerUrl throws when prod or stage is unset', () => {
         if (getEnvRelayerUrl('stage') !== 'https://relayer.example/stage') throw new Error('stage override')
         if (getEnvRelayerUrl('dev') !== 'http://127.0.0.1:8787') throw new Error('dev default')
     `
+
     const result = Bun.spawnSync({
         cmd: ['bun', '-e', script],
         env: {
@@ -125,6 +128,7 @@ test('getEnvRelayerUrl throws when prod or stage is unset', () => {
         stdout: 'pipe',
         stderr: 'pipe',
     })
+
     if (result.exitCode !== 0) {
         throw new Error(result.stderr.toString() || result.stdout.toString())
     }

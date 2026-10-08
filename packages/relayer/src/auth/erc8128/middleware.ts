@@ -80,6 +80,7 @@ export function erc8128AuthMiddleware(deps: MiddlewareDeps = {}): MiddlewareHand
         }
 
         const policy = getErc8128Policy(c.env)
+
         if (!policy.enabled) {
             return next()
         }
@@ -88,6 +89,7 @@ export function erc8128AuthMiddleware(deps: MiddlewareDeps = {}): MiddlewareHand
             .clone()
             .json()
             .catch(() => undefined)
+
         const { requiresAuth, id } = extractAuthRequirement(payload, policy.protectedMethods)
 
         if (!requiresAuth) {
@@ -99,6 +101,7 @@ export function erc8128AuthMiddleware(deps: MiddlewareDeps = {}): MiddlewareHand
         }
 
         let result
+
         try {
             result = await verify(
                 {

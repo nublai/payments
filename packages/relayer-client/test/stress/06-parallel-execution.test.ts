@@ -122,6 +122,7 @@ describe('Parallel Execution Stress Test', () => {
                 context: prepared.context,
                 signature,
             })
+
             const durationMs = performance.now() - startTime
 
             return {
@@ -133,6 +134,7 @@ describe('Parallel Execution Stress Test', () => {
             }
         } catch (error) {
             const durationMs = performance.now() - startTime
+
             return {
                 index,
                 success: false,
@@ -154,11 +156,13 @@ describe('Parallel Execution Stress Test', () => {
 
             // Create accounts in sequence (they share the relayer's nonce space for creation)
             const accounts: AccountSetup[] = []
+
             for (let i = 0; i < targetCount; i++) {
                 const account = await createTestAccount()
                 accounts.push(account)
                 process.stdout.write(`\r  Created ${i + 1}/${targetCount} accounts`)
             }
+
             console.log()
 
             // Execute intents in parallel - each account has its own nonce space
@@ -180,11 +184,14 @@ describe('Parallel Execution Stress Test', () => {
 
             if (failed.length > 0) {
                 const errorSummary = new Map<string, number>()
+
                 for (const r of failed) {
                     const error = r.error || 'Unknown'
                     errorSummary.set(error, (errorSummary.get(error) || 0) + 1)
                 }
+
                 console.log(`  Errors:`)
+
                 for (const [error, count] of errorSummary) {
                     console.log(`    [${count}x] ${error.slice(0, 60)}`)
                 }
@@ -238,6 +245,7 @@ describe('Parallel Execution Stress Test', () => {
 
             if (failed.length > 0) {
                 console.log(`  Failed intents:`)
+
                 for (const r of failed) {
                     console.log(`    [${r.index}] ${r.error}`)
                 }
@@ -291,6 +299,7 @@ describe('Parallel Execution Stress Test', () => {
 
             // Wait for bundle confirmations before next batch
             const successful = batchResults.filter((r) => r.success && r.bundleId)
+
             if (successful.length > 0) {
                 await Promise.all(
                     successful.map((r) =>
@@ -306,6 +315,7 @@ describe('Parallel Execution Stress Test', () => {
             intentIndex += currentBatchSize
             process.stdout.write(`\r  Progress: ${intentIndex}/${overCapacity}`)
         }
+
         console.log()
 
         const successful = allResults.filter((r) => r.success)

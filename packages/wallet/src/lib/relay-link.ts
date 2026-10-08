@@ -124,6 +124,7 @@ export function getRelayLinkBaseUrl(env: EnvName): string {
 export function getRelayIntentStatusUrl(requestId: string, env: EnvName): string {
     const url = new URL('/intents/status/v3', getRelayLinkBaseUrl(env))
     url.searchParams.set('requestId', requestId)
+
     return url.toString()
 }
 
@@ -131,11 +132,13 @@ export function sumQuoteFeeUsd(quote: RelayQuoteResponse): string {
     const values = Object.values(quote.fees ?? {})
         .map((fee) => Number(fee?.amountUsd ?? 0))
         .filter((value) => Number.isFinite(value))
+
     return values.reduce((total, value) => total + value, 0).toFixed(2)
 }
 
 async function parseRelayResponse(response: Response): Promise<unknown> {
     const text = await response.text()
+
     if (!text) {
         return {}
     }
@@ -154,6 +157,7 @@ function getErrorMessage(payload: unknown, fallback: string): string {
     if (isRecord(payload) && typeof payload.message === 'string' && payload.message) {
         return payload.message
     }
+
     return fallback
 }
 
@@ -171,7 +175,9 @@ async function postJson<TRequest, TResponse>(
         redirect: 'error',
         signal: createTimeoutSignal(),
     })
+
     const payload = await readRelayPayload(response)
+
     return payload as TResponse
 }
 
@@ -186,6 +192,7 @@ function assertNoRedirect(response: Response): void {
 async function readRelayPayload(response: Response): Promise<unknown> {
     assertNoRedirect(response)
     const payload = await parseRelayResponse(response)
+
     if (!response.ok) {
         throw new RelayLinkError(
             'API_ERROR',
@@ -196,6 +203,7 @@ async function readRelayPayload(response: Response): Promise<unknown> {
             },
         )
     }
+
     return payload
 }
 
@@ -205,13 +213,16 @@ async function getJson<TResponse>(
     deps: RelayLinkDeps,
 ): Promise<TResponse> {
     const url = new URL(`${deps.baseUrl}${path}`)
+
     for (const [key, value] of Object.entries(searchParams)) {
         url.searchParams.set(key, value)
     }
+
     const response = await deps.fetch(url.toString(), {
         redirect: 'error',
         signal: createTimeoutSignal(),
     })
+
     return (await readRelayPayload(response)) as TResponse
 }
 
@@ -219,12 +230,15 @@ function createTimeoutSignal(): AbortSignal | undefined {
     if (typeof AbortSignal === 'undefined') {
         return undefined
     }
+
     if (typeof AbortSignal.timeout === 'function') {
         return AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS)
     }
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS)
     controller.signal.addEventListener('abort', () => clearTimeout(timeoutId), { once: true })
+
     return controller.signal
 }
 
@@ -236,6 +250,7 @@ function normalizeStepItemStatus(value: unknown): RelayStepItem['status'] {
     if (value === 'complete' || value === 'incomplete') {
         return value
     }
+
     throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid step status.')
 }
 
@@ -243,9 +258,11 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     if (!isRecord(value)) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid step item.')
     }
+
     const data = isRecord(value.data) ? value.data : {}
     const check = isRecord(value.check) ? value.check : undefined
     const calldata = String(data.data ?? '0x')
+
     if (!isHexData(calldata)) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
@@ -254,6 +271,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     }
 
     const valueString = String(data.value ?? '0')
+
     if (!/^\d+$/.test(valueString)) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
@@ -262,6 +280,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     }
 
     const chainId = Number(data.chainId ?? 0)
+
     if (!Number.isInteger(chainId) || chainId <= 0) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
@@ -277,6 +296,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     }
 
     let to: Address
+
     try {
         to = getAddress(data.to)
     } catch (error) {
@@ -306,6 +326,7 @@ function normalizeStep(value: unknown): RelayStep {
     if (!isRecord(value) || !Array.isArray(value.items)) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid step.')
     }
+
     return {
         id: String(value.id ?? ''),
         action: typeof value.action === 'string' ? value.action : undefined,
@@ -336,6 +357,7 @@ function normalizeQuoteResponse(payload: unknown): RelayQuoteResponse {
 function normalizeProtocol(value: unknown): RelayQuoteResponse['protocol'] {
     if (!isRecord(value) || !isRecord(value.v2)) return undefined
     const orderData = value.v2.orderData
+
     return {
         v2: {
             orderId: typeof value.v2.orderId === 'string' ? value.v2.orderId : undefined,
@@ -374,6 +396,7 @@ function getIntervalForElapsed(
             return interval.everyMs
         }
     }
+
     return intervals[intervals.length - 1]?.everyMs ?? 1000
 }
 
@@ -383,9 +406,11 @@ export function slippagePercentToBps(percent: number): string {
     }
 
     const bps = Math.round(percent * 100)
+
     if (bps <= 0) {
         throw new Error('Slippage percentage is too small to represent in basis points.')
     }
+
     return String(bps)
 }
 
@@ -415,11 +440,15 @@ export function extractRequestId(quote: RelayQuoteResponse): string {
         if (step.requestId) {
             return step.requestId
         }
+
         for (const item of step.items) {
             const endpoint = item.check?.endpoint
+
             if (!endpoint) continue
+
             try {
                 const requestId = new URL(endpoint).searchParams.get('requestId')
+
                 if (requestId) {
                     return requestId
                 }
@@ -428,6 +457,7 @@ export function extractRequestId(quote: RelayQuoteResponse): string {
                     firstParseError = error
                     firstMalformedEndpoint = endpoint
                 }
+
                 continue
             }
         }
@@ -454,9 +484,11 @@ export async function getQuote(
     const deps = { ...getDefaultDeps(depsArg?.env), ...depsArg }
     const payload = await postJson<RelayQuoteRequest, unknown>('/quote/v2', request, deps)
     const quote = normalizeQuoteResponse(payload)
+
     if (quote.steps.length === 0) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an empty quote.')
     }
+
     return quote
 }
 
@@ -466,6 +498,7 @@ export async function getIntentStatus(
 ): Promise<RelayIntentStatus> {
     const deps = { ...getDefaultDeps(depsArg?.env), ...depsArg }
     const payload = await getJson<unknown>('/intents/status/v3', { requestId }, deps)
+
     return normalizeIntentStatus(payload)
 }
 
@@ -477,6 +510,7 @@ export async function pollIntentStatus(
     const deps = { ...getDefaultDeps(depsArg?.env), ...depsArg }
     const startedAt = Date.now()
     let latestStatus = await getIntentStatus(requestId, deps)
+
     if (isTerminalStatus(latestStatus.status)) {
         return latestStatus
     }
@@ -485,6 +519,7 @@ export async function pollIntentStatus(
         const elapsedMs = Date.now() - startedAt
         await deps.sleep(getIntervalForElapsed(elapsedMs, opts.intervals))
         latestStatus = await getIntentStatus(requestId, deps)
+
         if (isTerminalStatus(latestStatus.status)) {
             return latestStatus
         }

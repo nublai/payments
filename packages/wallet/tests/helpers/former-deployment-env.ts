@@ -66,13 +66,16 @@ const STAGE: Record<number, Record<Field, string>> = {
 
 function installChains(chains: Record<number, Record<Field, string>>): () => void {
     const previous = new Map<string, string | undefined>()
+
     for (const [chainId, addresses] of Object.entries(chains)) {
         for (const field of Object.keys(KEYS) as Field[]) {
             const key = `${KEYS[field]}_${chainId}`
+
             if (!previous.has(key)) previous.set(key, process.env[key])
             process.env[key] = addresses[field]
         }
     }
+
     return () => {
         for (const [key, value] of previous) {
             if (value === undefined) delete process.env[key]

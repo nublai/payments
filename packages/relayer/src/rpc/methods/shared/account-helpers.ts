@@ -25,8 +25,11 @@ import { isEip7702Delegated } from '../../../lib/viem-utils'
  * Multichain nonce prefix (0xc1d0) - signals EIP-712 signing without chain ID.
  */
 export const MULTICHAIN_NONCE_PREFIX = 0xc1d0n
+
 const DELEGATION_CONFIRM_MAX_ATTEMPTS = 4
+
 const DELEGATION_CONFIRM_INITIAL_DELAY_MS = 150
+
 const DELEGATION_CONFIRM_MAX_DELAY_MS = 1000
 
 /**
@@ -87,9 +90,11 @@ export async function waitForDelegationCode(
         }
 
         if (isEip7702Delegated(latestCode)) return latestCode
+
         if (isEip7702Delegated(blockCode)) return blockCode
 
         lastCode = latestCode ?? blockCode ?? lastCode
+
         if (attempt < maxAttempts) {
             await sleep(delayMs)
             delayMs = Math.min(delayMs * 2, maxDelayMs)
@@ -127,17 +132,21 @@ export function computeAuthorizationDigest(chainId: number, address: Address, no
  */
 function authorizeKeyType(type: AuthorizeKey['type']): number {
     if (type === 'secp256k1') return 0
+
     if (type === 'external') return 1
+
     return 2
 }
 
 export function computeKeyHash(key: AuthorizeKey): Hex {
     const keyType = authorizeKeyType(key.type)
     const publicKeyHash = keccak256(key.publicKey)
+
     const encoded = encodeAbiParameters(parseAbiParameters('uint8, bytes32'), [
         keyType,
         publicKeyHash,
     ])
+
     return keccak256(encoded)
 }
 
@@ -329,16 +338,20 @@ export async function authorizationSignerMatchesAccount(args: {
 }
 
 const MAX_UPGRADE_PRECALL_CALLS = 8
+
 const MAX_UPGRADE_PRECALL_CALLDATA_BYTES = 256
+
 /** Same nonce prepareUpgradeAccount puts on a key-initialization preCall. */
 export const UPGRADE_PRECALL_NONCE = (1n << 64n) | 0n
 
 const UPGRADE_PRECALL_SELECTORS = new Set(
     (['authorize', 'setCanExecute', 'setSpendLimit'] as const).map((name) => {
         const item = accountAbi.find((entry) => entry.type === 'function' && entry.name === name)
+
         if (!item) {
             throw new Error(`Account ABI is missing ${name}`)
         }
+
         return toFunctionSelector(item as AbiFunction).toLowerCase()
     }),
 )
@@ -368,20 +381,24 @@ export async function assertAllowedUpgradePreCall(args: {
     if (args.executionData === '0x') return undefined
 
     let calls: Array<{ to: Address; value: bigint; data: Hex }>
+
     try {
         const decoded = decodeAbiParameters(
             parseAbiParameters('(address to, uint256 value, bytes data)[]'),
             args.executionData,
         )[0]
+
         calls = decoded.map((call) => ({
             to: getAddress(call.to),
             value: call.value,
             data: call.data,
         }))
+
         const reencoded = encodeAbiParameters(
             parseAbiParameters('(address to, uint256 value, bytes data)[]'),
             [calls],
         )
+
         if (reencoded.toLowerCase() !== args.executionData.toLowerCase()) {
             throw new Error('execution data mismatch')
         }
@@ -392,17 +409,21 @@ export async function assertAllowedUpgradePreCall(args: {
     if (calls.length === 0 || calls.length > MAX_UPGRADE_PRECALL_CALLS) {
         throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
     }
+
     if (getAddress(args.eoa) !== getAddress(args.account)) {
         throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
     }
+
     if (args.nonce !== UPGRADE_PRECALL_NONCE.toString()) {
         throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
     }
 
     const account = getAddress(args.account)
+
     for (const call of calls) {
         const dataBytes = (call.data.length - 2) / 2
         const selector = call.data.slice(0, 10).toLowerCase()
+
         if (
             call.to !== account ||
             call.value !== 0n ||
@@ -415,6 +436,7 @@ export async function assertAllowedUpgradePreCall(args: {
     }
 
     let signatureMatches = false
+
     try {
         signatureMatches = await verifyTypedData({
             address: account,
@@ -432,6 +454,7 @@ export async function assertAllowedUpgradePreCall(args: {
     } catch {
         signatureMatches = false
     }
+
     if (!signatureMatches) {
         throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
     }
@@ -448,13 +471,16 @@ export function resolveChainId(env: Env, chainIdHex?: string): number {
     if (chainIdHex) {
         const chainId = parseHexChainId(chainIdHex, 'chainId')
         const supported = getChainIds(env)
+
         if (supported.length > 0 && !supported.includes(chainId)) {
             throw new RpcError(INVALID_PARAMS, `Unsupported chainId: ${chainId}`)
         }
+
         return chainId
     }
 
     const chainIds = getChainIds(env)
+
     if (chainIds.length === 1) {
         return chainIds[0]
     }

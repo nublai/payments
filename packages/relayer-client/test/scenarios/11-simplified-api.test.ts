@@ -50,6 +50,7 @@ describe('Simplified API', () => {
                 signerKey: privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(upgradeResult.success).toBe(true)
 
             // Verify upgrade was gasless
@@ -58,6 +59,7 @@ describe('Simplified API', () => {
 
             // 3. Prepare calls (new API)
             const transferAmount = parseEther('1')
+
             const prepared = await client.prepareCalls({
                 from: account.address,
                 calls: [{ target: recipient, value: transferAmount, data: '0x' }],
@@ -86,6 +88,7 @@ describe('Simplified API', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(sendResult.id).toBeDefined()
 
             // 6. Check status via getCallsStatus (new API)
@@ -131,6 +134,7 @@ describe('Simplified API', () => {
                 },
             ],
         })
+
         expect(upgradeResult.success).toBe(true)
 
         // Wait for tx to be mined
@@ -182,6 +186,7 @@ describe('Simplified API', () => {
                 },
             ],
         })
+
         expect(upgradeResult.success).toBe(true)
         await new Promise((resolve) => setTimeout(resolve, 2000))
 
@@ -243,10 +248,12 @@ describe('Simplified API', () => {
                     },
                 ],
             })
+
             expect(upgradeResult.success).toBe(true)
 
             // 3. Prepare calls
             const transferAmount = parseEther('1')
+
             const prepared = await client.prepareCalls({
                 from: ownerAccount.address,
                 calls: [{ target: recipient, value: transferAmount, data: '0x' }],
@@ -274,6 +281,7 @@ describe('Simplified API', () => {
                 context: prepared.context,
                 signature: wrappedSignature,
             })
+
             expect(sendResult.id).toBeDefined()
 
             // 7. Wait and verify

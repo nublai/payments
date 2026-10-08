@@ -48,10 +48,12 @@ export function resolveDaemonEntrypoint(input?: {
     const argvEntry = input?.argvEntry ?? process.argv[1]
 
     const candidates: string[] = []
+
     if (argvEntry) {
         const argvDir = dirname(resolve(argvEntry))
         candidates.push(resolve(argvDir, 'session-daemon.js'))
     }
+
     candidates.push(
         resolve(moduleDir, '../session-daemon.js'),
         resolve(moduleDir, '../session-daemon.ts'),
@@ -62,10 +64,12 @@ export function resolveDaemonEntrypoint(input?: {
         if (candidate.endsWith('.ts') && !isBun) {
             continue
         }
+
         if (exists(candidate)) {
             return candidate
         }
     }
+
     throw new Error(`Session daemon entrypoint not found. Checked: ${candidates.join(', ')}`)
 }
 
@@ -78,10 +82,12 @@ export async function executeSessionStart(
     const client = new SessionDaemonClient(paths.socketPath)
 
     const existingPid = await readPidFromFile(paths.pidPath)
+
     if (existingPid) {
         try {
             process.kill(existingPid, 0)
             const ping = await client.ping()
+
             if (ping?.ok) {
                 return {
                     type: 'session_start',
@@ -91,17 +97,20 @@ export async function executeSessionStart(
                     alreadyRunning: true,
                 }
             }
+
             debugSessionStart('Found stale pid with no healthy ping', { pid: existingPid })
         } catch (error) {
             if (!isErrnoCode(error, 'ESRCH')) {
                 throw error
             }
+
             debugSessionStart('Stale pid file; process no longer exists', { pid: existingPid })
         }
     }
 
     if (options?.foreground) {
         const daemon = await runEntry(true)
+
         return {
             type: 'session_start',
             status: 'complete',
@@ -145,6 +154,7 @@ export async function executeSessionStart(
     child.unref()
 
     const pid = await readPidFromFile(paths.pidPath)
+
     if (!pid) {
         throw new Error('Daemon started but pid file was not written')
     }
@@ -162,6 +172,7 @@ function debugSessionStart(message: string, details?: unknown): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }
+
     const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
     console.error(`[tw daemon start] ${message}${suffix}`)
 }

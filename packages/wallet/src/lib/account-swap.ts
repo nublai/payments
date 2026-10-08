@@ -124,7 +124,9 @@ import { resolveSessionSigner, SessionSignerDaemonError, SessionSignerExpiredErr
 import type { ResolvedSessionSigner } from './signer'
 
 const QUOTE_STALE_MS = 30_000
+
 const DEFAULT_SLIPPAGE_PERCENT = 0.5
+
 const MAX_CONFIRMATION_ATTEMPTS = 3
 
 type NetworkConfig = CliNetworkConfig
@@ -324,6 +326,7 @@ function assertSessionNetworkMatches(input: {
             `Session file env mismatch: expected ${input.expectedEnv}, got ${input.sessionEnv}.`,
         )
     }
+
     if (input.sessionChainId !== input.expectedChainId) {
         throw new AccountSwapError(
             'UNSUPPORTED_CHAIN',
@@ -337,12 +340,14 @@ function parseTokenAmount(
     value: string,
 ): { normalized: string; baseUnits: bigint } {
     const amount = value.trim()
+
     if (!/^\d+(\.\d+)?$/.test(amount)) {
         throw new AccountSwapError('INVALID_AMOUNT', 'Amount must be a positive decimal number.')
     }
 
     const decimals = getTokenDecimals(token)
     const fractional = amount.split('.')[1] ?? ''
+
     if (fractional.length > decimals) {
         throw new AccountSwapError(
             'INVALID_AMOUNT',
@@ -351,6 +356,7 @@ function parseTokenAmount(
     }
 
     let parsed: bigint
+
     try {
         parsed = parseUnits(amount, decimals)
     } catch (error) {
@@ -370,38 +376,47 @@ function parseRecipient(value: string | Address | undefined): Address | undefine
     if (!value) {
         return undefined
     }
+
     if (!isAddress(value)) {
         throw new AccountSwapError('UNKNOWN', `Recipient must be a valid address, got ${value}.`)
     }
+
     return getAddress(value)
 }
 
 function getEstimatedOutputAmount(quote: RelayQuoteResponse): string {
     const minimum = formatQuotedBuy(quote.details?.currencyOut)
+
     if (minimum.startsWith('minimum ')) {
         return minimum.slice('minimum '.length)
     }
+
     const raw = quote.details?.currencyOut?.amount
+
     if (raw) {
         return raw
     }
+
     return '0'
 }
 
 function quoteNeedsReconfirmation(previous: RelayQuoteResponse, next: RelayQuoteResponse): boolean {
     if (quoteExecutionFingerprint(previous) !== quoteExecutionFingerprint(next)) return true
+
     return hasMaterialQuoteDrift(previous, next)
 }
 
 function hasMaterialQuoteDrift(previous: RelayQuoteResponse, next: RelayQuoteResponse): boolean {
     const previousOut = Number(previous.details?.currencyOut?.amountUsd ?? NaN)
     const nextOut = Number(next.details?.currencyOut?.amountUsd ?? NaN)
+
     if (Number.isFinite(previousOut) && previousOut > 0 && Number.isFinite(nextOut)) {
         return Math.abs(nextOut - previousOut) / previousOut > 0.01
     }
 
     const previousRate = Number(previous.details?.rate ?? NaN)
     const nextRate = Number(next.details?.rate ?? NaN)
+
     if (Number.isFinite(previousRate) && previousRate > 0 && Number.isFinite(nextRate)) {
         return Math.abs(nextRate - previousRate) / previousRate > 0.01
     }
@@ -415,13 +430,16 @@ function getQuoteChainMismatch(
 ): number | undefined {
     for (const step of quote.steps) {
         if (step.kind !== 'transaction') continue
+
         for (const item of step.items) {
             if (item.status !== 'incomplete') continue
+
             if (item.data.chainId !== sourceChainId) {
                 return item.data.chainId
             }
         }
     }
+
     return undefined
 }
 
@@ -444,23 +462,32 @@ function quoteWatches(input: {
                   : 'other',
         },
     ]
+
     if (!input.originIsNative) {
         watches.push({ kind: 'erc20', token: getAddress(input.origin), role: 'origin' })
     }
+
     if (input.sameChain && !input.outputIsNative) {
         watches.push({ kind: 'erc20', token: getAddress(input.output), role: 'output' })
     }
+
     const usdc = getUsdcAddressByChainId(input.chainId)
+
     if (usdc) watches.push({ kind: 'erc20', token: usdc, role: 'other' })
     const legacyUsdc = getUsdcAddressByChainId(input.chainId, true)
+
     if (legacyUsdc && legacyUsdc.toLowerCase() !== usdc?.toLowerCase()) {
         watches.push({ kind: 'erc20', token: legacyUsdc, role: 'other' })
     }
+
     for (const token of input.extraTokens) {
         watches.push({ kind: 'erc20', token, role: 'other' })
     }
+
     const weth = WETH_BY_CHAIN[input.chainId]
+
     if (weth) watches.push({ kind: 'erc20', token: weth, role: 'other' })
+
     return watches
 }
 
@@ -476,6 +503,7 @@ async function assertNoStandingRightsForQuote(input: {
         network: input.network,
         owner: input.owner,
     })
+
     try {
         await assertNoStandingRights({
             chainId: input.chainId,
@@ -523,6 +551,7 @@ async function assertNoStandingRightsForQuote(input: {
         if (error instanceof StandingRightsRejected) {
             throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
         }
+
         if (error instanceof AccountSwapError) throw error
         throw new AccountSwapError('QUOTE_FAILED', 'Could not read standing rights. Refusing to sign.', {
             cause: error,
@@ -537,6 +566,7 @@ function quotedMinimumOutput(quote: RelayQuoteResponse): bigint {
         if (error instanceof RelayQuoteRejected) {
             throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
         }
+
         throw error
     }
 }
@@ -557,6 +587,7 @@ function validateQuoteForExecution(
     if (quote.steps.length === 0) {
         throw new AccountSwapError('QUOTE_FAILED', 'relay.link returned no executable steps.')
     }
+
     if (quote.steps.some((step) => step.kind === 'signature')) {
         throw new AccountSwapError(
             'QUOTE_FAILED',
@@ -565,6 +596,7 @@ function validateQuoteForExecution(
     }
 
     const mismatchedChainId = getQuoteChainMismatch(quote, sourceChainId)
+
     if (mismatchedChainId !== undefined) {
         const chainLabel = getChainNameByChainId(sourceChainId) ?? String(sourceChainId)
         throw new AccountSwapError(
@@ -588,6 +620,7 @@ function validateQuoteForExecution(
         if (error instanceof RelayQuoteRejected) {
             throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
         }
+
         throw error
     }
 }
@@ -596,14 +629,19 @@ function extractSimulationCause(value: unknown): string | undefined {
     if (!isRecord(value)) {
         return undefined
     }
+
     const cause = value.cause
+
     if (typeof cause !== 'string') {
         return undefined
     }
+
     const trimmed = cause.trim()
+
     if (trimmed.length === 0 || trimmed === 'Simulation failed') {
         return undefined
     }
+
     return trimmed
 }
 
@@ -611,7 +649,9 @@ function extractAuthCode(value: unknown): string | undefined {
     if (!isRecord(value)) {
         return undefined
     }
+
     const authCode = value.auth_code
+
     return typeof authCode === 'string' && authCode.length > 0 ? authCode : undefined
 }
 
@@ -625,6 +665,7 @@ function assertEthSpendPermission(input: {
     const sessionKey = getChainKeys(input.keys, input.chainId).find(
         (key) => key.hash.toLowerCase() === input.sessionKeyHash.toLowerCase(),
     )
+
     // A resting swap session has a minute limit of 0 on native. The quote
     // installer raises that minute slot to the input before signing. A
     // non-minute native period is still required to cover the amount, because
@@ -637,10 +678,12 @@ function assertEthSpendPermission(input: {
                 permission.token.toLowerCase() === ETH_ADDRESS.toLowerCase() &&
                 permission.period !== 'minute',
         )
+
         for (const permission of nonMinute) {
             if (permission.type !== 'spend') continue
             const limit = BigInt(permission.limit)
             const spent = BigInt(permission.spent)
+
             if (limit - spent < input.amount) {
                 throw new AccountSwapError(
                     'MISSING_NATIVE_SPEND_PERMISSION',
@@ -648,8 +691,10 @@ function assertEthSpendPermission(input: {
                 )
             }
         }
+
         return
     }
+
     const nativeSpend = sessionKey?.permissions.find(
         (permission) =>
             permission.type === 'spend' &&
@@ -665,6 +710,7 @@ function assertEthSpendPermission(input: {
 
     const limit = BigInt(nativeSpend.limit)
     const spent = BigInt(nativeSpend.spent)
+
     if (limit - spent < input.amount) {
         throw new AccountSwapError(
             'MISSING_NATIVE_SPEND_PERMISSION',
@@ -683,17 +729,21 @@ function getDefaultDeps(): AccountSwapDeps {
                 chain: getChain(network.chainId, network.rpcUrl),
                 transport: http(network.rpcUrl),
             })
+
             return readAccountNonce(client, account)
         },
         readTokenBalance: async ({ chain, token, account }) => {
             const config = getChainConfig(chain)
+
             const client = createPublicClient({
                 chain: config.viemChain,
                 transport: http(config.rpcUrl),
             })
+
             if (token === 'ETH') {
                 return client.getBalance({ address: account })
             }
+
             return client.readContract({
                 address: getTokenAddress(token, chain),
                 abi: erc20Abi,
@@ -705,10 +755,12 @@ function getDefaultDeps(): AccountSwapDeps {
         pollIntentStatus,
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return getKeysAction(client, { address: account, chainIds: [chainId] })
         },
         prepareCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.prepareCalls({
                 from: input.from,
                 chainId: input.network.chainId,
@@ -723,10 +775,12 @@ function getDefaultDeps(): AccountSwapDeps {
         },
         signTypedData: async (input) => {
             const signer = privateKeyToAccount(input.privateKey)
+
             return signer.signTypedData(input.typedData)
         },
         sendPreparedCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.sendPreparedCalls({
                 context: input.context,
                 signature: input.signature,
@@ -734,6 +788,7 @@ function getDefaultDeps(): AccountSwapDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return waitForBundleAction(client, { id: input.id, chainId: input.network.chainId })
         },
         executeSignedCalls,
@@ -747,6 +802,7 @@ function getDefaultDeps(): AccountSwapDeps {
                 chain: getChain(input.network.chainId, input.network.rpcUrl),
                 transport: http(input.network.rpcUrl),
             })
+
             return client.readContract({
                 address: input.token,
                 abi: erc20Abi,
@@ -770,18 +826,21 @@ function assertBoundedSession(
     const sessionKey = getChainKeys(keys, chainId).find(
         (key) => key.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
     )
+
     if (!sessionKey) {
         throw new AccountSwapError(
             'QUOTE_FAILED',
             'The session key is not on this account. Refusing to sign.',
         )
     }
+
     if (sessionKey.role === 'admin') {
         throw new AccountSwapError(
             'QUOTE_FAILED',
             'This session is a super-admin. The spend guard does not apply to it. Refusing to sign.',
         )
     }
+
     if (callsIncludeWildcard(sessionKey.permissions)) {
         throw new AccountSwapError(
             'QUOTE_FAILED',
@@ -802,12 +861,15 @@ export async function resolveAccountSwapPassword(
     if (deps.envPassword) {
         return deps.envPassword
     }
+
     if (args.passwordStdin) {
         return deps.readPasswordFromStdin()
     }
+
     if (deps.isInteractive) {
         return deps.promptForExistingPassword()
     }
+
     throw new AccountSwapError(
         'PASSWORD_REQUIRED',
         'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
@@ -837,18 +899,21 @@ async function resolveSessionContext(
 
     if (options.sessionFile) {
         const sessionKeystore = await deps.readSessionKeystoreFile(options.sessionFile)
+
         if (isAgentKeystore(sessionKeystore)) {
             throw new AccountSwapError(
                 'KEYSTORE_NOT_FOUND',
                 'Agent session keystores are not supported for swap. Use a relayer or login session.',
             )
         }
+
         assertSessionNetworkMatches({
             sessionEnv: sessionKeystore.network.env,
             sessionChainId: sessionKeystore.network.chainId,
             expectedEnv: options.env,
             expectedChainId: network.chainId,
         })
+
         return {
             sessionKeystore,
             sender: getAddress(sessionKeystore.addresses.delegated),
@@ -858,6 +923,7 @@ async function resolveSessionContext(
 
     if (selectedSessionName) {
         let bundle: Awaited<ReturnType<typeof deps.readKeystoreBundle>>
+
         try {
             bundle = await deps.readKeystoreBundle(keystorePath)
         } catch (error) {
@@ -873,19 +939,23 @@ async function resolveSessionContext(
             selectedSessionName,
             bundle.root.sessionRef.dir,
         )
+
         const sessionKeystore = await deps.readSessionKeystoreFile(selectedSessionPath)
+
         if (isAgentKeystore(sessionKeystore)) {
             throw new AccountSwapError(
                 'KEYSTORE_NOT_FOUND',
                 'Agent session keystores are not supported for swap. Use a relayer or login session.',
             )
         }
+
         assertSessionNetworkMatches({
             sessionEnv: sessionKeystore.network.env,
             sessionChainId: sessionKeystore.network.chainId,
             expectedEnv: options.env,
             expectedChainId: network.chainId,
         })
+
         return {
             sessionKeystore,
             sender: getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root),
@@ -895,12 +965,14 @@ async function resolveSessionContext(
 
     try {
         const bundle = await deps.readKeystoreBundle(keystorePath)
+
         if (isAgentKeystore(bundle.session)) {
             throw new AccountSwapError(
                 'KEYSTORE_NOT_FOUND',
                 'Agent session keystores are not supported for swap. Use a relayer or login session.',
             )
         }
+
         return {
             sessionKeystore: bundle.session,
             sender: getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root),
@@ -914,17 +986,20 @@ async function resolveSessionContext(
         ) {
             throw error
         }
+
         console.error(
             `[tw debug] Root keystore missing at ${keystorePath}; falling back to session profile.`,
         )
         const sessionProfilePath = join(dirname(keystorePath), 'session.json')
         const loadedSessionKeystore = await deps.readSessionKeystoreFile(sessionProfilePath)
+
         if (isAgentKeystore(loadedSessionKeystore)) {
             throw new AccountSwapError(
                 'KEYSTORE_NOT_FOUND',
                 `Session-only profile has unsupported kind "${loadedSessionKeystore.kind}". Only login or relayer session profiles are supported for swap.`,
             )
         }
+
         const sessionKeystore = loadedSessionKeystore
         assertSessionNetworkMatches({
             sessionEnv: sessionKeystore.network.env,
@@ -932,6 +1007,7 @@ async function resolveSessionContext(
             expectedEnv: options.env,
             expectedChainId: network.chainId,
         })
+
         return {
             sessionKeystore,
             sender: getAddress(sessionKeystore.addresses.delegated),
@@ -967,6 +1043,7 @@ async function maybeRefreshQuoteAfterConfirmation(input: {
         input.slippageBps,
         input.limits,
     )
+
     return {
         quote: refreshedQuote,
         needsReconfirmation: quoteNeedsReconfirmation(input.initialQuote, refreshedQuote),
@@ -994,14 +1071,18 @@ export async function executeAccountSwap(
     const deps = { ...getDefaultDeps(), ...depsArg }
     let keystorePath = options.sessionFile ?? options.keystorePath ?? '<default>'
     let cachedPassword = options.password
+
     const resolvePassword = async (): Promise<string> => {
         if (cachedPassword) {
             return cachedPassword
         }
+
         if (options.resolvePassword) {
             cachedPassword = await options.resolvePassword()
+
             return cachedPassword
         }
+
         throw new AccountSwapError(
             'PASSWORD_REQUIRED',
             'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
@@ -1017,29 +1098,35 @@ export async function executeAccountSwap(
                 name: options.name,
             })
         const sourceChain = normalizeChain(options.sourceChain, options.env)
+
         const destinationChain = normalizeChain(
             options.destinationChain ?? sourceChain,
             options.env,
         )
+
         const operation =
             options.operation ?? (sourceChain !== destinationChain ? 'bridge' : 'swap')
+
         const isBridge = operation === 'bridge'
         const network = resolveNetworkConfig(options.env, sourceChain)
 
         const fromToken = normalizeTokenSymbol(options.fromToken)
         const toToken = normalizeTokenSymbol(options.toToken)
+
         if (isBridge && sourceChain === destinationChain) {
             throw new AccountSwapError(
                 'SAME_CHAIN',
                 'Source and destination chain must be different.',
             )
         }
+
         if (!isBridge && fromToken === toToken) {
             throw new AccountSwapError(
                 'INVALID_TOKEN_PAIR',
                 `Cannot swap ${fromToken} to ${toToken}.`,
             )
         }
+
         if (isBridge && fromToken !== toToken) {
             throw new AccountSwapError(
                 'INVALID_TOKEN_PAIR',
@@ -1059,7 +1146,9 @@ export async function executeAccountSwap(
             network,
             deps,
         )
+
         const recipient = explicitRecipient ?? sender
+
         const resolvedSigner = await resolveSessionSigner({
             sessionName: sessionKeystore.name ?? options.sessionName ?? 'default',
             sessionKeystore,
@@ -1068,10 +1157,12 @@ export async function executeAccountSwap(
             resolvePassword,
             directSignTypedData: deps.signTypedData,
         })
+
         const signedNetwork = {
             ...effectiveNetwork,
             authSigner: resolvedSigner.authSigner,
         }
+
         const sessionPublicKey = encodeSecp256k1Key(sessionKeystore.addresses.session as Address)
         const sessionKeyHash = computeKeyHash('secp256k1', sessionPublicKey)
 
@@ -1080,18 +1171,22 @@ export async function executeAccountSwap(
             token: fromToken,
             account: sender,
         })
+
         if (balance < parsedAmount.baseUnits) {
             throw new AccountSwapError(
                 'SWAP_FAILED',
                 `Insufficient ${fromToken} balance: have ${formatUnits(balance, getTokenDecimals(fromToken))}, need ${parsedAmount.normalized}`,
             )
         }
+
         const keys = await deps.getKeys({
             network: signedNetwork,
             account: sender,
             chainId: effectiveNetwork.chainId,
         })
+
         assertBoundedSession(keys, effectiveNetwork.chainId, sessionKeyHash)
+
         if (fromToken === 'ETH') {
             assertEthSpendPermission({
                 keys,
@@ -1115,6 +1210,7 @@ export async function executeAccountSwap(
         }
 
         let quote = await deps.getQuote(quoteRequest, { env: options.env })
+
         const quoteLimits = {
             amount: parsedAmount.baseUnits,
             native: fromToken === 'ETH',
@@ -1122,7 +1218,9 @@ export async function executeAccountSwap(
             user: sender,
             recipient,
         }
+
         const slippageBps = Number(slippagePercentToBps(slippage))
+
         let review = validateQuoteForExecution(
             quote,
             quoteRequest.originChainId,
@@ -1130,12 +1228,15 @@ export async function executeAccountSwap(
             slippageBps,
             quoteLimits,
         )
+
         const swapChainLabel = getChainNameByChainId(quoteRequest.originChainId) ?? sourceChain
         let swapGrants: SwapCallGrant[] = []
+
         const bindSwapKey = (current: RelayQuoteResponse) => {
             const sessionKey = getChainKeys(keys, effectiveNetwork.chainId).find(
                 (key) => key.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
             )
+
             try {
                 swapGrants = planSwapSessionUse({
                     chainId: quoteRequest.originChainId,
@@ -1148,18 +1249,22 @@ export async function executeAccountSwap(
                 if (error instanceof SwapSessionRejected) {
                     throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
                 }
+
                 throw error
             }
         }
+
         bindSwapKey(quote)
         const sameChain = quoteRequest.originChainId === quoteRequest.destinationChainId
         const deployed = getAddressesWithFallback(options.env, quoteRequest.originChainId)
+
         if (!deployed?.orchestrator || !deployed.accountProxy) {
             throw new AccountSwapError(
                 'QUOTE_FAILED',
                 'This chain has no orchestrator to simulate the quote against. Refusing to sign.',
             )
         }
+
         const executionBase: Omit<RelayExecutionContext, 'nonce'> = {
             orchestrator: getAddress(deployed.orchestrator),
             delegation: getAddress(deployed.accountProxy),
@@ -1180,6 +1285,7 @@ export async function executeAccountSwap(
                 keyHash: sessionKeyHash,
                 inputToken: fromToken === 'ETH' ? undefined : quoteRequest.originCurrency,
             })
+
             const watches = quoteWatches({
                 origin: quoteRequest.originCurrency,
                 originIsNative: fromToken === 'ETH',
@@ -1189,6 +1295,7 @@ export async function executeAccountSwap(
                 chainId: quoteRequest.originChainId,
                 extraTokens: currentReview.tokens,
             })
+
             try {
                 const sourceCalls = callsOverride ?? stepsToRelayerCalls(current.steps)
                 await deps.simulateQuoteCalls({
@@ -1209,9 +1316,11 @@ export async function executeAccountSwap(
                 })
             } catch (error) {
                 if (error instanceof AccountSwapError) throw error
+
                 if (error instanceof RelayQuoteRejected || error instanceof RelaySimulationRejected) {
                     throw new AccountSwapError('QUOTE_FAILED', error.message, { cause: error })
                 }
+
                 throw new AccountSwapError(
                     'QUOTE_FAILED',
                     'relay.link quote could not be simulated. Refusing to sign.',
@@ -1226,10 +1335,12 @@ export async function executeAccountSwap(
             network: signedNetwork,
             account: sender,
         })
+
         for (let attempt = 1; attempt <= MAX_CONFIRMATION_ATTEMPTS; attempt += 1) {
             await simulateQuote(quote, review, simulationNonce)
             const confirmedAt = Date.now()
             const confirmed = await deps.confirmQuote(quote)
+
             if (!confirmed) {
                 throw new AccountSwapError('QUOTE_FAILED', 'Swap cancelled.')
             }
@@ -1243,10 +1354,13 @@ export async function executeAccountSwap(
                 slippageBps,
                 limits: quoteLimits,
             })
+
             quote = refresh.quote
+
             if (!refresh.needsReconfirmation) {
                 break
             }
+
             review = validateQuoteForExecution(
                 quote,
                 quoteRequest.originChainId,
@@ -1255,6 +1369,7 @@ export async function executeAccountSwap(
                 quoteLimits,
             )
             bindSwapKey(quote)
+
             if (attempt === MAX_CONFIRMATION_ATTEMPTS) {
                 throw new AccountSwapError(
                     'QUOTE_FAILED',
@@ -1265,24 +1380,29 @@ export async function executeAccountSwap(
 
         deps.auditQuote(quote)
         const calls = stepsToRelayerCalls(quote.steps)
+
         if (calls.length === 0) {
             throw new AccountSwapError('QUOTE_FAILED', 'relay.link returned no executable calls.')
         }
 
         const relayRequestId = isBridge ? extractRequestId(quote) : undefined
         const usdc = getUsdcAddressByChainId(quoteRequest.originChainId)
+
         if (!usdc) {
             throw new AccountSwapError(
                 'QUOTE_FAILED',
                 'This chain has no USDC address to bound the quote against. Refusing to sign.',
             )
         }
+
         const legacyUsdc = getUsdcAddressByChainId(quoteRequest.originChainId, true)
+
         const frozenTokens = [
             WETH_BY_CHAIN[quoteRequest.originChainId],
             legacyUsdc && legacyUsdc.toLowerCase() !== usdc.toLowerCase() ? legacyUsdc : undefined,
             ...review.tokens,
         ].filter((token): token is Address => Boolean(token))
+
         // The Orchestrator fee is charged against the same USDC minute slot as
         // the swap input, so that slot also has to fit the signed fee cap.
         const intentPayment = resolveIntentPayment(
@@ -1290,10 +1410,12 @@ export async function executeAccountSwap(
             signedNetwork.chainId,
             sender,
         )
+
         const usdcFeeCap =
             getAddress(intentPayment.paymentToken) === getAddress(usdc)
                 ? intentPayment.paymentMaxAmount
                 : 0n
+
         const bound: QuoteSpendBound = {
             keyHash: sessionKeyHash,
             account: sender,
@@ -1302,10 +1424,12 @@ export async function executeAccountSwap(
             usdcLimit: (fromToken === 'USDC' ? parsedAmount.baseUnits : 0n) + usdcFeeCap,
             frozenTokens,
         }
+
         return await deps.withAccountLock(keystorePath, async () => {
             await maybeRecoverPendingQuoteSpend(keystorePath, {
                 resolvePassword,
             })
+
             return withoutQuoteSpendRecovery(async () => {
         const releaseSpendLimit = await deps.installQuoteSpendLimit({
             bound,
@@ -1315,7 +1439,9 @@ export async function executeAccountSwap(
             sessionFile: options.sessionFile,
             callGrants: swapGrants,
         })
+
         let released = false
+
         const releaseOnce = async () => {
             if (released) return
             released = true
@@ -1374,21 +1500,26 @@ export async function executeAccountSwap(
         }
 
         let submission: Awaited<ReturnType<typeof deps.executeSignedCalls>>
+
         let signerMode: AccountSwapResult['signerMode'] =
             resolvedSigner.mode === 'daemon' ? 'daemon' : 'direct'
+
         try {
             submission = await runWithSigner(signedNetwork, resolvedSigner)
         } catch (error) {
             if (error instanceof SessionSignerExpiredError) {
                 throw new AccountSwapError('SESSION_EXPIRED', error.message, { cause: error })
             }
+
             if (!(error instanceof SessionSignerDaemonError) || resolvedSigner.mode !== 'daemon') {
                 throw error
             }
+
             const fallback = await deps.decryptSessionKeystore(
                 sessionKeystore,
                 await resolvePassword(),
             )
+
             const fallbackNetwork = {
                 ...signedNetwork,
                 authSigner: createEthHttpSigner(
@@ -1396,6 +1527,7 @@ export async function executeAccountSwap(
                     effectiveNetwork.chainId,
                 ),
             }
+
             signerMode = 'fallback_direct'
             debugSignerFallback('account_swap', {
                 reason: error.message,
@@ -1408,6 +1540,7 @@ export async function executeAccountSwap(
         }
 
         const finalStatus = submission.finalStatus
+
         if (!finalStatus.success) {
             throw new AccountSwapError(
                 'SWAP_FAILED',
@@ -1424,9 +1557,11 @@ export async function executeAccountSwap(
         const statusCode = finalStatus.statusCode
         const intentError = finalStatus.receipt?.intentError as Hex | undefined
         const intentErrorName = intentError ? decodeIntentError(intentError) : undefined
+
         if (statusCode !== undefined && ![200, 201].includes(statusCode)) {
             const code: AccountSwapErrorCode =
                 statusCode === 400 || statusCode === 500 ? 'INTENT_REVERTED' : 'SWAP_FAILED'
+
             throw new AccountSwapError(
                 code,
                 `Bundle ended in status ${statusCode} (${finalStatus.status ?? 'unknown'}).`,
@@ -1442,11 +1577,14 @@ export async function executeAccountSwap(
         }
 
         let destinationTxHash: Hex | undefined
+
         if (isBridge) {
             if (!relayRequestId) {
                 throw new AccountSwapError('SWAP_FAILED', 'Bridge quote missing request ID.')
             }
+
             let bridgeStatus: RelayIntentStatus
+
             try {
                 bridgeStatus = await deps.pollIntentStatus(
                     relayRequestId,
@@ -1468,8 +1606,10 @@ export async function executeAccountSwap(
                         { cause: error, details: error.details },
                     )
                 }
+
                 throw error
             }
+
             if (bridgeStatus.status !== 'success') {
                 throw new AccountSwapError(
                     'BRIDGE_FILL_FAILED',
@@ -1477,6 +1617,7 @@ export async function executeAccountSwap(
                     { details: bridgeStatus },
                 )
             }
+
             destinationTxHash = getDestinationTxHash(bridgeStatus)
         }
 
@@ -1523,6 +1664,7 @@ export async function executeAccountSwap(
         if (error instanceof PromptCancelledError) {
             throw error
         }
+
         throw toAccountSwapError(error, { keystorePath })
     }
 }
@@ -1531,6 +1673,7 @@ function debugSignerFallback(command: 'account_swap', details: unknown): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }
+
     console.error(`[tw ${command}] daemon signer fallback ${JSON.stringify(details)}`)
 }
 
@@ -1554,12 +1697,14 @@ function toAccountSwapError(error: unknown, context: { keystorePath: string }): 
                 details: error.details,
             })
         }
+
         if (error.code === 'MISSING_REQUEST_ID') {
             return new AccountSwapError('BRIDGE_QUOTE_INVALID', error.message, {
                 cause: error,
                 details: error.details,
             })
         }
+
         return new AccountSwapError('QUOTE_FAILED', `Failed to get swap quote: ${error.message}`, {
             cause: error,
             details: error.details,
@@ -1569,14 +1714,17 @@ function toAccountSwapError(error: unknown, context: { keystorePath: string }): 
     if (error instanceof JsonRpcClientError) {
         if (error.code === -32004) {
             const cause = extractSimulationCause(error.data)
+
             return new AccountSwapError(
                 'SIMULATION_FAILED',
                 cause ? `Simulation failed: ${cause}` : error.message,
                 { cause: error, details: error.data },
             )
         }
+
         if (error.code === -32001) {
             const authCode = extractAuthCode(error.data)
+
             return new AccountSwapError(
                 'UNKNOWN',
                 authCode ? `Unauthorized (${authCode})` : error.message,
@@ -1591,18 +1739,23 @@ function toAccountSwapError(error: unknown, context: { keystorePath: string }): 
     if (message.includes('Unsupported chain')) {
         return new AccountSwapError('UNSUPPORTED_CHAIN', message, { cause: error })
     }
+
     if (message.includes('Unsupported token')) {
         return new AccountSwapError('UNSUPPORTED_TOKEN', message, { cause: error })
     }
+
     if (isInvalidAmountMessage(message)) {
         return new AccountSwapError('INVALID_AMOUNT', message, { cause: error })
     }
+
     if (messageLower.includes('simulation failed')) {
         return new AccountSwapError('SIMULATION_FAILED', message, { cause: error })
     }
+
     if (messageLower.includes('timeout waiting for bundle')) {
         return new AccountSwapError('BUNDLE_TIMEOUT', message, { cause: error })
     }
+
     if (
         (error instanceof Error && error.name === 'AbortError') ||
         messageLower.includes('fetch failed') ||
@@ -1615,6 +1768,7 @@ function toAccountSwapError(error: unknown, context: { keystorePath: string }): 
             { cause: error },
         )
     }
+
     if (message.includes('ENOENT') || message.toLowerCase().includes('no such file')) {
         return new AccountSwapError(
             'KEYSTORE_NOT_FOUND',
@@ -1622,6 +1776,7 @@ function toAccountSwapError(error: unknown, context: { keystorePath: string }): 
             { cause: error },
         )
     }
+
     if (
         message.includes('No password provided on stdin') ||
         message.includes('Password required') ||

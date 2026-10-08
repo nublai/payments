@@ -57,6 +57,7 @@ function decodePackedCanExecute(packed: Hex): { target: Address; selector: Hex }
     const value = BigInt(packed)
     const target = `0x${(value >> 96n).toString(16).padStart(40, '0')}` as Address
     const selector = `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex
+
     return { target, selector }
 }
 
@@ -95,6 +96,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
     const address = validateAddress(requireParam(typedParams?.address, 'address'), 'address')
 
     let chainIdsToCheck: number[] = []
+
     if (typedParams?.chainIds && typedParams.chainIds.length > 0) {
         chainIdsToCheck = typedParams.chainIds.map((value) => parseHexChainId(value, 'chainId'))
     } else {
@@ -111,6 +113,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
 
         // Check if account is delegated (has code)
         let code: Hex | undefined
+
         try {
             code = await publicClient.getCode({ address })
         } catch (error) {
@@ -125,6 +128,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
                     `Account ${address} is not delegated to an Account. Use wallet_prepareUpgradeAccount and wallet_upgradeAccount to upgrade first.`,
                 )
             }
+
             results[hexChainId] = []
             continue
         }
@@ -139,16 +143,19 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
                 abi: accountAbi,
                 functionName: 'getKeys',
             })
+
             keys = result[0] as readonly ContractKey[]
             keyHashes = result[1] as readonly Hex[]
         } catch (error) {
             logger.error({ error, address, chainId }, 'Failed to read account keys')
+
             if (strictSingleChain) {
                 throw new RpcError(
                     ACCOUNT_NOT_DELEGATED,
                     `Account ${address} is not delegated to an Account. Use wallet_prepareUpgradeAccount and wallet_upgradeAccount to upgrade first.`,
                 )
             }
+
             results[hexChainId] = []
             continue
         }
@@ -170,6 +177,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
                 functionName: 'spendAndExecuteInfos',
                 args: [keyHashes as readonly `0x${string}`[]],
             })
+
             spends = result[0] as readonly (readonly ContractSpendInfo[])[]
             executes = result[1] as readonly (readonly Hex[])[]
         } catch (error) {

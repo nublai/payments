@@ -10,5 +10,6 @@ export function setRpcCaller(request: Request, caller: RpcCaller): void {
 
 export function getRpcCaller(request: Request | undefined): RpcCaller | undefined {
     if (!request) return undefined
+
     return callers.get(request)
 }

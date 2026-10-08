@@ -56,11 +56,14 @@ describe('wallet_ready', () => {
             ok: true,
             json: () => Promise.resolve({ signerCount: 1 }),
         })
+
         const baseCtx = createMockCtx()
+
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({ jsonrpc: '2.0', id: 1, result: '0x2105' }),
         } as Response)
+
         const ctx = createMockCtx({
             env: {
                 ...(baseCtx.env as Record<string, unknown>),
@@ -72,6 +75,7 @@ describe('wallet_ready', () => {
                 },
             },
         })
+
         const result = await handleReady(undefined, ctx)
 
         expect(result).toBe(true)

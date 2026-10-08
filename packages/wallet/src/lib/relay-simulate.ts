@@ -32,9 +32,11 @@ import { wrapSignature } from '@nubl/relayer-client'
 const TRANSFER_TOPIC = keccak256(toHex('Transfer(address,address,uint256)'))
 
 const SIM_GAS = 12_000_000n
+
 const COMBINED_GAS = 5_000_000n
 
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11' as Address
+
 const BALANCE_OF = '0x70a08231'
 
 export class RelaySimulationRejected extends Error {
@@ -117,18 +119,23 @@ function decodeWord(data: unknown): bigint {
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     const body = data.slice(2)
+
     if (body.length === 0) return 0n
+
     if (body.length > 64) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     return BigInt(data)
 }
 
 async function defaultRequest(rpcUrl: string, method: string, params: unknown[]): Promise<unknown> {
     let response: Response
+
     try {
         response = await fetch(rpcUrl, {
             method: 'POST',
@@ -141,21 +148,26 @@ async function defaultRequest(rpcUrl: string, method: string, params: unknown[])
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     if (!response.ok) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     const payload = (await response.json()) as { result?: unknown; error?: { code?: number; message?: string } }
+
     if (payload.error) {
         const code = payload.error.code
         const message = payload.error.message ?? 'rpc error'
         const wrapped = new Error(`${code ?? ''} ${message}`)
+
         if (code === -32601) throw wrapped
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     return payload.result
 }
 
@@ -164,12 +176,15 @@ function dedupedWatches(watches: SimulatedWatch[]): SimulatedWatch[] {
     const ordered: SimulatedWatch[] = []
     const rank = { origin: 0, output: 1, other: 2 }
     const sorted = [...watches].sort((a, b) => rank[a.role] - rank[b.role])
+
     for (const watch of sorted) {
         const key = watch.kind === 'native' ? 'native' : watch.token.toLowerCase()
+
         if (seen.has(key)) continue
         seen.add(key)
         ordered.push(watch)
     }
+
     return ordered
 }
 
@@ -183,55 +198,69 @@ export function assertBalanceDeltas(input: {
 }): void {
     let sawOrigin = false
     let sawOutput = false
+
     for (const watch of dedupedWatches(input.watches)) {
         const before =
             watch.kind === 'native'
                 ? input.before.native
                 : input.before.tokens.get(watch.token.toLowerCase())
+
         const after =
             watch.kind === 'native'
                 ? input.after.native
                 : input.after.tokens.get(watch.token.toLowerCase())
+
         if (before === undefined || after === undefined) {
             throw new RelaySimulationRejected(
                 'relay.link quote could not be simulated. Refusing to sign.',
             )
         }
+
         const label = watch.kind === 'native' ? 'ETH' : watch.token
+
         if (watch.role === 'origin') {
             sawOrigin = true
+
             if (before - after > input.cap) {
                 throw new RelaySimulationRejected(
                     `relay.link quote would spend ${before - after} of ${label}, above the quoted input of ${input.cap}.`,
                 )
             }
+
             continue
         }
+
         if (watch.role === 'output' && input.sameChain) {
             sawOutput = true
+
             if (input.minimumOutput === undefined || input.minimumOutput <= 0n) {
                 throw new RelaySimulationRejected(
                     'relay.link quote did not include an output minimum. Refusing to sign.',
                 )
             }
+
             if (after < before + input.minimumOutput) {
                 throw new RelaySimulationRejected(
                     `relay.link quote would deliver ${after - before} of ${label}, below the quoted minimum of ${input.minimumOutput}.`,
                 )
             }
+
             continue
         }
+
         if (after < before) {
             throw new RelaySimulationRejected(
                 `relay.link quote would lower ${label} by ${before - after}, which this quote did not ask to spend.`,
             )
         }
     }
+
     if (!sawOrigin) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     if (input.sameChain && !sawOutput) {
         throw new RelaySimulationRejected(
             'relay.link quote did not include an output minimum. Refusing to sign.',
@@ -243,6 +272,7 @@ type RpcCall = { from: Address; to: Address; data: Hex; value: string; gas?: str
 
 function probeCalls(user: Address, watches: SimulatedWatch[]): RpcCall[] {
     const probes: RpcCall[] = []
+
     for (const watch of watches) {
         if (watch.kind === 'native') {
             probes.push({
@@ -253,6 +283,7 @@ function probeCalls(user: Address, watches: SimulatedWatch[]): RpcCall[] {
             })
             continue
         }
+
         probes.push({
             from: user,
             to: getAddress(watch.token),
@@ -260,6 +291,7 @@ function probeCalls(user: Address, watches: SimulatedWatch[]): RpcCall[] {
             value: '0x0',
         })
     }
+
     return probes
 }
 
@@ -267,14 +299,17 @@ function readBook(watches: SimulatedWatch[], words: bigint[]): BalanceBook {
     const book: BalanceBook = { native: 0n, tokens: new Map() }
     watches.forEach((watch, index) => {
         const word = words[index]
+
         if (word === undefined) {
             throw new RelaySimulationRejected(
                 'relay.link quote could not be simulated. Refusing to sign.',
             )
         }
+
         if (watch.kind === 'native') book.native = word
         else book.tokens.set(watch.token.toLowerCase(), word)
     })
+
     return book
 }
 
@@ -284,18 +319,22 @@ async function readBefore(
     request: (method: string, params: unknown[]) => Promise<unknown>,
 ): Promise<BalanceBook> {
     const words: bigint[] = []
+
     for (const watch of watches) {
         if (watch.kind === 'native') {
             const result = await request('eth_getBalance', [input.user, 'latest'])
             words.push(decodeWord(result))
             continue
         }
+
         const result = await request('eth_call', [
             { to: watch.token, data: balanceOfData(watch.token, input.user) },
             'latest',
         ])
+
         words.push(decodeWord(result))
     }
+
     return readBook(watches, words)
 }
 
@@ -310,27 +349,34 @@ function parseSimulateResult(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     const calls = (result[0] as { calls?: unknown }).calls
+
     if (!Array.isArray(calls) || calls.length < userCallCount) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     for (const call of calls) {
         const row = call as { status?: string | number; error?: unknown }
         const status = row?.status
         const ok = status === '0x1' || status === '0x01' || status === '1' || status === 1
+
         if (!ok || row.error) {
             throw new RelaySimulationRejected(
                 'relay.link quote simulation reverted. Refusing to sign.',
             )
         }
     }
+
     const first = calls[0] as { logs?: unknown }
     const logs = Array.isArray(first.logs) ? (first.logs as SimLog[]) : undefined
+
     return {
         words: calls.slice(userCallCount).map((call) => {
             const row = call as { returnData?: string }
+
             return decodeWord(row.returnData)
         }),
         logs,
@@ -341,13 +387,18 @@ function outputLogSum(logs: SimLog[] | undefined, token: Address, user: Address)
     if (!logs) return undefined
     const userTopic = `0x${padAddress(user)}`
     let sum = 0n
+
     for (const log of logs) {
         if (!log?.address || !isAddress(log.address)) continue
+
         if (getAddress(log.address).toLowerCase() !== token.toLowerCase()) continue
+
         if (log.topics?.[0]?.toLowerCase() !== TRANSFER_TOPIC) continue
+
         if (log.topics[2]?.toLowerCase() !== userTopic) continue
         sum += decodeWord(log.data)
     }
+
     return sum
 }
 
@@ -359,8 +410,10 @@ export async function readRelayerSignerOrigin(input: {
     const request =
         input.request ??
         ((method: string, params: unknown[]) => defaultRequest(input.relayerUrl, method, params))
+
     const hexChain = `0x${input.chainId.toString(16)}`
     let result: unknown
+
     try {
         result = await request('wallet_getCapabilities', [{ chains: [hexChain] }])
     } catch {
@@ -368,22 +421,30 @@ export async function readRelayerSignerOrigin(input: {
             'The relayer did not expose a signer address. Refusing to sign.',
         )
     }
+
     const table = result && typeof result === 'object' ? (result as Record<string, unknown>) : {}
+
     const chain =
         table[hexChain] ??
         table[hexChain.toLowerCase()] ??
         Object.entries(table).find(([key]) => Number.parseInt(key, 16) === input.chainId)?.[1]
+
     const pool =
         chain && typeof chain === 'object' ? (chain as { pool?: { signers?: unknown } }).pool : undefined
+
     const signers = Array.isArray(pool?.signers) ? pool.signers : []
+
     for (const signer of signers) {
         if (!signer || typeof signer !== 'object') continue
         const row = signer as { address?: unknown; paused?: unknown }
+
         if (row.paused === true) continue
+
         if (typeof row.address === 'string' && isAddress(row.address)) {
             return getAddress(row.address)
         }
     }
+
     throw new RelaySimulationRejected(
         'The relayer did not expose a signer address. Refusing to sign.',
     )
@@ -399,19 +460,24 @@ function assertOutputLogs(input: {
     for (const watch of dedupedWatches(input.watches)) {
         if (watch.kind !== 'erc20' || watch.role !== 'output') continue
         const logSum = outputLogSum(input.logs, watch.token, input.user)
+
         if (logSum === undefined) {
             throw new RelaySimulationRejected(
                 'relay.link quote simulation did not return output logs. Refusing to sign.',
             )
         }
+
         const before = input.before.tokens.get(watch.token.toLowerCase())
         const after = input.after.tokens.get(watch.token.toLowerCase())
+
         if (before === undefined || after === undefined) {
             throw new RelaySimulationRejected(
                 'relay.link quote could not be simulated. Refusing to sign.',
             )
         }
+
         const diff = after - before
+
         if (logSum !== diff) {
             throw new RelaySimulationRejected(
                 `relay.link quote output logs and balance differ for ${watch.token}: logs ${logSum}, balance ${diff}. Refusing to sign.`,
@@ -467,9 +533,11 @@ function encodeOrchestratorCall(input: SimulateRelayQuoteInput): Hex {
             data: call.data,
         })),
     ])
+
     // 65-byte placeholder. simulateExecute forces validity and still reads keyHash.
     const inner = `0x${'11'.repeat(64)}1b` as Hex
     const signature = wrapSignature(inner, input.execution.keyHash, false)
+
     const encodedIntent = encodeAbiParameters([intentTuple], [
         {
             eoa: input.user,
@@ -494,6 +562,7 @@ function encodeOrchestratorCall(input: SimulateRelayQuoteInput): Hex {
             supportedAccountImplementation: zeroAddress,
         },
     ])
+
     return encodeFunctionData({
         abi: [
             {
@@ -523,13 +592,17 @@ async function simulateOnce(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     const origin = getAddress(input.execution.origin)
+
     if (origin.toLowerCase() === input.user.toLowerCase()) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     const probes = probeCalls(input.user, watches)
+
     const orchestratorCall: RpcCall = {
         from: origin,
         to: getAddress(input.execution.orchestrator),
@@ -537,7 +610,9 @@ async function simulateOnce(
         value: '0x0',
         gas: `0x${SIM_GAS.toString(16)}`,
     }
+
     const userCode = delegationCode(getAddress(input.execution.delegation))
+
     const result = await request('eth_simulateV1', [
         {
             blockStateCalls: [
@@ -553,12 +628,15 @@ async function simulateOnce(
         },
         'latest',
     ])
+
     const parsed = parseSimulateResult(result, 1)
+
     if (parsed.words.length !== watches.length) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     return { book: readBook(watches, parsed.words), logs: parsed.logs }
 }
 
@@ -568,19 +646,24 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     if (input.sameChain && (input.minimumOutput === undefined || input.minimumOutput <= 0n)) {
         throw new RelaySimulationRejected(
             'relay.link quote did not include an output minimum. Refusing to sign.',
         )
     }
+
     const watches = dedupedWatches(input.watches)
+
     if (!watches.some((watch) => watch.role === 'origin')) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     const request = input.request ?? ((method: string, params: unknown[]) => defaultRequest(input.rpcUrl, method, params))
     let origin: Address
+
     if (input.execution.origin) {
         origin = getAddress(input.execution.origin)
     } else if (!input.relayerUrl) {
@@ -593,11 +676,14 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
             chainId: input.chainId,
         })
     }
+
     const simulating: SimulateRelayQuoteInput = {
         ...input,
         execution: { ...input.execution, origin },
     }
+
     let before: BalanceBook
+
     try {
         before = await readBefore(simulating, watches, request)
     } catch (error) {
@@ -606,8 +692,10 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     let after: BalanceBook
     let logs: SimLog[] | undefined
+
     try {
         const simulated = await simulateOnce(simulating, watches, request)
         after = simulated.book
@@ -618,6 +706,7 @@ export async function simulateRelayQuote(input: SimulateRelayQuoteInput): Promis
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
+
     assertBalanceDeltas({
         watches,
         before,

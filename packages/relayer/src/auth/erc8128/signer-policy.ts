@@ -19,17 +19,22 @@ export interface AllowlistParse {
 export function parseErc8128Allowlist(value: string | undefined): AllowlistParse {
     const addresses = new Set<string>()
     const invalid: string[] = []
+
     if (!value) return { addresses, invalid }
 
     for (const part of value.split(',')) {
         const trimmed = part.trim()
+
         if (!trimmed) continue
+
         if (!isAddress(trimmed)) {
             invalid.push(trimmed)
             continue
         }
+
         addresses.add(trimmed.toLowerCase())
     }
+
     return { addresses, invalid }
 }
 
@@ -61,13 +66,17 @@ export function parseChainId(value: unknown): number | undefined {
     if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
         return value
     }
+
     if (typeof value !== 'string') return undefined
     const trimmed = value.trim()
     const hex = /^0x[0-9a-fA-F]+$/.test(trimmed)
     const dec = /^[0-9]+$/.test(trimmed)
+
     if (!hex && !dec) return undefined
     const parsed = Number.parseInt(trimmed, hex ? 16 : 10)
+
     if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined
+
     return parsed
 }
 
@@ -77,6 +86,7 @@ export function decideErc8128Signer(args: {
     binding: Erc8128Binding
 }): SignerDecision {
     const parsed = parseErc8128Allowlist(args.env.ERC8128_ALLOWED_SIGNERS)
+
     if (parsed.invalid.length > 0) {
         return {
             ok: false,
@@ -84,11 +94,13 @@ export function decideErc8128Signer(args: {
             message: 'ERC8128_ALLOWED_SIGNERS contains an invalid address',
         }
     }
+
     if (!isAddress(args.signer)) {
         return { ok: false, tryOnChain: false, message: 'ERC-8128 signer is not an address' }
     }
 
     const signer = args.signer.toLowerCase()
+
     if (parsed.addresses.has(signer)) {
         return { ok: true }
     }
@@ -107,6 +119,7 @@ export function decideErc8128Signer(args: {
     }
 
     const accounts = args.binding.accounts
+
     if (!accounts || accounts.length === 0) {
         return {
             ok: false,
@@ -137,12 +150,15 @@ export async function authorizeErc8128Signer(args: {
     isAccountKey: (account: Address, chainId: number, signer: Address) => Promise<boolean>
 }): Promise<{ ok: true } | { ok: false; message: string }> {
     const decision = decideErc8128Signer(args)
+
     if (decision.ok || !decision.tryOnChain) return decision
 
     const accounts = args.binding.accounts ?? []
     const signer = args.signer.toLowerCase()
+
     for (const account of accounts) {
         if (account.eoa?.toLowerCase() === signer) continue
+
         if (!account.eoa || account.chainId === undefined) {
             return {
                 ok: false,
@@ -150,7 +166,9 @@ export async function authorizeErc8128Signer(args: {
                     'ERC-8128 signer is not allowlisted and is not an on-chain key of the intent account',
             }
         }
+
         const onChain = await args.isAccountKey(account.eoa, account.chainId, args.signer)
+
         if (!onChain) {
             return {
                 ok: false,
@@ -159,37 +177,46 @@ export async function authorizeErc8128Signer(args: {
             }
         }
     }
+
     return { ok: true }
 }
 
 function asAddress(value: unknown): Address | undefined {
     if (typeof value === 'string' && isAddress(value)) return value
+
     return undefined
 }
 
 function accountsFromSend(params: Record<string, unknown> | undefined): BoundAccount[] | null {
     const context = params?.context
+
     if (!context || typeof context !== 'object') return null
     const quote = (context as { quote?: { quotes?: unknown } }).quote
+
     if (!quote || !Array.isArray(quote.quotes) || quote.quotes.length === 0) return null
 
     const accounts: BoundAccount[] = []
+
     for (const item of quote.quotes) {
         if (!item || typeof item !== 'object') return null
         const record = item as { chainId?: unknown; intent?: { eoa?: unknown } }
         const eoa = asAddress(record.intent?.eoa)
+
         // Ignore quote.authSigner. It is client-controlled until the HMAC, and even then
         // it is only a hint. Authorization uses the EOA or an on-chain key.
         if (!eoa) return null
         accounts.push({ eoa, chainId: parseChainId(record.chainId) })
     }
+
     return accounts
 }
 
 function accountsFromPrepare(params: Record<string, unknown> | undefined): BoundAccount[] | null {
     const eoa = asAddress(params?.from)
+
     // Ignore session_key. Decoding it only echoes an address the client chose.
     if (!eoa) return null
+
     return [{ eoa, chainId: parseChainId(params?.chain_id) }]
 }
 
@@ -198,10 +225,13 @@ function accountsFromUpgrade(
     params: Record<string, unknown> | undefined,
 ): BoundAccount[] | null {
     const source = method === 'wallet_upgradeAccount' ? params?.context : params
+
     if (!source || typeof source !== 'object') return null
     const record = source as { address?: unknown; chainId?: unknown }
     const eoa = asAddress(record.address)
+
     if (!eoa) return null
+
     return [{ eoa, chainId: parseChainId(record.chainId) }]
 }
 
@@ -221,19 +251,24 @@ export function bindingFromRpcBody(
     for (const item of items) {
         if (!item || typeof item !== 'object') continue
         const record = item as { method?: unknown; params?: unknown }
+
         if (typeof record.method !== 'string') continue
+
         if (protectedMethods.has(record.method) && !BOUND_METHODS.has(record.method)) {
             otherProtectedMethods.push(record.method)
         }
+
         if (!BOUND_METHODS.has(record.method)) continue
         sawBindable = true
         const params = unwrapParams<Record<string, unknown>>(record.params)
+
         const extracted =
             record.method === 'wallet_prepareCalls'
                 ? accountsFromPrepare(params)
                 : record.method === 'wallet_sendPreparedCalls'
                   ? accountsFromSend(params)
                   : accountsFromUpgrade(record.method, params)
+
         if (!extracted) return { accounts: [], otherProtectedMethods }
         accounts.push(...extracted)
     }

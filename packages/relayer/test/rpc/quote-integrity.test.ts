@@ -19,8 +19,11 @@ import type { SendPreparedCallsParams } from '../../src/rpc/schema/sendPreparedC
 import { convertToFeeToken } from '../../src/services/fees'
 
 const PAYER = '0x4444444444444444444444444444444444444444' as Address
+
 const EOA = '0x1111111111111111111111111111111111111111' as Address
+
 const ORCHESTRATOR = '0x3456789012345678901234567890123456789012' as Address
+
 const FEE_TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 
 function makeQuote(overrides?: {
@@ -79,6 +82,7 @@ describe('quote payment integrity', () => {
     it('rejects an unsigned zero-fee quote outside local', async () => {
         vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
         const ttl = Math.floor(Date.now() / 1000) + 60
+
         const quote = makeQuote({
             paymentAmount: '0',
             paymentMaxAmount: '1000000',
@@ -92,6 +96,7 @@ describe('quote payment integrity', () => {
 
     it('collects the recomputed fee instead of a client paymentAmount of 0', () => {
         const ttl = Math.floor(Date.now() / 1000) + 60
+
         const quote = makeQuote({
             paymentAmount: '0',
             paymentMaxAmount: '1000000',
@@ -109,6 +114,7 @@ describe('quote payment integrity', () => {
     it('rejects a zero client payment when the recomputed fee exceeds the max', async () => {
         vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
         const ttl = Math.floor(Date.now() / 1000) + 60
+
         const quote = makeQuote({
             paymentAmount: '0',
             paymentMaxAmount: '1',
@@ -129,6 +135,7 @@ describe('quote payment integrity', () => {
         const ttl = Math.floor(Date.now() / 1000) + 60
         const nativeRate = 3000n * 10n ** 18n
         const expected = convertToFeeToken(21_000n * 1_000_000_000n, nativeRate, 6)
+
         const quote = makeQuote({
             paymentAmount: '0',
             paymentMaxAmount: (expected + 1n).toString(),
@@ -148,6 +155,7 @@ describe('quote payment integrity', () => {
     it('rejects a fee-token quote that omits nativeRate', async () => {
         vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
         const ttl = Math.floor(Date.now() / 1000) + 60
+
         const quote = makeQuote({
             paymentAmount: '0',
             paymentToken: FEE_TOKEN,
@@ -166,11 +174,13 @@ describe('quote payment integrity', () => {
         vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
         const ttl = Math.floor(Date.now() / 1000) + 60
         const secret = 'test-quote-signing-secret'
+
         const quote = makeQuote({
             paymentAmount: '0',
             txGas: 1000,
             maxFeePerGas: 100,
         })
+
         const signed = makeSigned(quote, ttl, '0x')
         signed.signature = await signQuotes(signed, secret)
 
@@ -178,6 +188,7 @@ describe('quote payment integrity', () => {
             CONTEXT: 'prod',
             QUOTE_SIGNING_SECRET: secret,
         })
+
         const intent = buildIntentFromParams(makeParams(quote, ttl, signed.signature))
 
         expect(result).toBeNull()
@@ -205,12 +216,14 @@ describe('quote payment integrity', () => {
         vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
         const ttl = Math.floor(Date.now() / 1000) + 60
         const secret = 'test-quote-signing-secret'
+
         const quote = makeQuote({
             paymentAmount: '0',
             paymentMaxAmount: '1000000',
             txGas: 21_000,
             maxFeePerGas: 0,
         })
+
         const signed = makeSigned(quote, ttl, '0x')
         signed.signature = await signQuotes(signed, secret)
 

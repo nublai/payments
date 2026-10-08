@@ -14,11 +14,17 @@ import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-comm
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
+
 const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+
 const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+
 const oldAddress = privateKeyToAccount(oldSessionKey).address
+
 const newAddress = privateKeyToAccount(newSessionKey).address
+
 const rootPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const txHash = '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca' as Hex
 
 const oldSession = {
@@ -59,10 +65,12 @@ async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     // Published JSON is zero. This file's stage/Base rotations still need the
     // former stage addresses, and only for the test that calls withStage.
     const restoreStage = installFormerStageDeployments()
+
     try {
         return await fn()
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -73,6 +81,7 @@ async function stageDir(): Promise<{ keystorePath: string; sessions: string }> {
     const sessions = join(root, 'sessions')
     await mkdir(sessions)
     await writeFile(join(sessions, 'default.json'), '{}\n')
+
     return { keystorePath: join(root, 'alice.json'), sessions }
 }
 
@@ -102,7 +111,9 @@ function rotateDeps(keystorePath: string, overrides: Record<string, unknown> = {
         decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
         decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
             const session = getAddress(keystore.addresses.session as Address)
+
             if (session === newAddress) return { sessionPrivateKey: newSessionKey }
+
             return { sessionPrivateKey: oldSessionKey }
         }),
         readNonce: mock(async () => 1n),
@@ -117,15 +128,18 @@ function rotateDeps(keystorePath: string, overrides: Record<string, unknown> = {
                     checkers: [],
                 }
             }
+
             return { anyCalls: [], checkers: [] }
         }),
         executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
             const decoded = params.calls.map((call) =>
                 decodeFunctionData({ abi: accountAbi, data: call.data }),
             )
+
             if (decoded.some((entry) => entry.functionName === 'authorize')) {
                 return confirmedBundle('bundle-selected')
             }
+
             throw new Error('polygon cleanup failed')
         }),
         waitForBundle: mock(async () => confirmedBundle('bundle-selected').finalStatus),
@@ -167,9 +181,11 @@ test('rotation marker written by the real writer is read back and is not a sessi
         expect(names).toEqual(['default'])
 
         const onDisk = await readdir(sessions)
+
         const markers = onDisk.filter(
             (name) => name.startsWith('.rotation') && name.endsWith('.json'),
         )
+
         expect(markers).toHaveLength(1)
     })
 })
@@ -189,6 +205,7 @@ test('rotation marker written by the real writer is resumed instead of a noop', 
             },
             rotateDeps(keystorePath) as never,
         )
+
         await expect(result).rejects.toMatchObject({ code: 'ROTATION_PARTIAL' })
         await expect(result).rejects.not.toMatchObject({
             bundle: { id: 'noop' },
@@ -217,6 +234,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 ),
             } as never,
         )
+
         expect(listed.status).toBe('complete')
         expect(listed.sessions.map((session) => session.name).sort()).toEqual(['default', 'other'])
 
@@ -228,6 +246,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 getKeys: mock(async () => ({})),
             } as never,
         )
+
         expect(permissions.status).toBe('complete')
         expect(permissions.keys).toEqual([])
 
@@ -250,9 +269,11 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 writeRootKeystoreFile: mock(async () => {}),
             } as never,
         )
+
         expect(revoked.status).toBe('complete')
 
         const bundle = rootBundle()
+
         const updated = await executeAccountUpdatePassword(
             {
                 env: 'stage',
@@ -284,6 +305,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 writeSessionKeystoreFile: mock(async () => {}),
             } as never,
         )
+
         expect(updated.status).toBe('complete')
         expect(updated.updatedSessions).toEqual(['default', 'other'])
         expect(updated.updatedSessions).not.toContain('.rotation')
@@ -327,6 +349,7 @@ test('rotation marker plus any other marker is ambiguous and does not sign', asy
                     executeSignedCalls: mock(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
+
                             return confirmedBundle('bundle-evil')
                         },
                     ),
@@ -376,6 +399,7 @@ test('rotation marker with fullAccess requires the human phrase on a plain resum
                     executeSignedCalls: mock(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
+
                             return confirmedBundle('bundle-evil')
                         },
                     ),
@@ -412,12 +436,15 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
         )
 
         const signed: Hex[] = []
+
         const signTypedData = mock(async () => {
             throw new Error('signTypedData should not run')
         })
+
         const sendPreparedCalls = mock(async () => {
             throw new Error('sendPreparedCalls should not run')
         })
+
         await expect(
             executeSessionRotate(
                 {
@@ -433,6 +460,7 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
                     executeSignedCalls: mock(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
+
                             return confirmedBundle('bundle-evil')
                         },
                     ),
@@ -480,6 +508,7 @@ test('rotation marker newKeyHash must be 0x and 64 hex characters', async () => 
                     executeSignedCalls: mock(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
+
                             return confirmedBundle('bundle-bad')
                         },
                     ),
@@ -495,6 +524,7 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
         const { keystorePath, sessions } = await stageDir()
         const unlinked: string[] = []
         let caught: unknown
+
         try {
             await executeSessionRotate(
                 {
@@ -529,14 +559,18 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
         expect((caught as Error).message).toMatch(/--resume/)
 
         const onDisk = await readdir(sessions)
+
         const markers = onDisk.filter(
             (name) => name.startsWith('.rotation') && name.endsWith('.json'),
         )
+
         expect(markers).toHaveLength(1)
+
         const raw = JSON.parse(await readFile(join(sessions, markers[0]!), 'utf8')) as {
             status?: string
             bundleId?: string
         }
+
         expect(raw.status).toBe('submitted')
         expect(raw.bundleId).toBe('bundle-timeout')
         expect(unlinked.some((path) => path.endsWith('default-next.json'))).toBe(false)
@@ -570,13 +604,17 @@ test('rotation without --resume refuses an existing marker and does not authoriz
         const before = JSON.parse(
             await readFile(join(sessions, '.rotation.json'), 'utf8'),
         ) as { newSessionName?: string; bundleId?: string }
+
         const signed: Hex[] = []
+
         const signTypedData = mock(async () => {
             throw new Error('signTypedData should not run')
         })
+
         const sendPreparedCalls = mock(async () => {
             throw new Error('sendPreparedCalls should not run')
         })
+
         await expect(
             executeSessionRotate(
                 {
@@ -594,6 +632,7 @@ test('rotation without --resume refuses an existing marker and does not authoriz
                     executeSignedCalls: mock(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
+
                             return confirmedBundle('bundle-second')
                         },
                     ),
@@ -603,10 +642,12 @@ test('rotation without --resume refuses an existing marker and does not authoriz
         expect(signed).toEqual([])
         expect(signTypedData).not.toHaveBeenCalled()
         expect(sendPreparedCalls).not.toHaveBeenCalled()
+
         const after = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
             newSessionName?: string
             bundleId?: string
         }
+
         expect(after.newSessionName).toBe(before.newSessionName)
         expect(after.bundleId).toBe(before.bundleId)
     })
@@ -645,12 +686,15 @@ test('resume after the pointer moved finishes cleanup and signs nothing', async 
         const signTypedData = mock(async () => {
             throw new Error('signTypedData should not run')
         })
+
         const sendPreparedCalls = mock(async () => {
             throw new Error('sendPreparedCalls should not run')
         })
+
         const executeSigned = mock(async () => {
             throw new Error('executeSignedCalls should not run')
         })
+
         const result = await executeSessionRotate(
             {
                 env: 'stage',
@@ -663,6 +707,7 @@ test('resume after the pointer moved finishes cleanup and signs nothing', async 
                 readKeystoreBundle: mock(async () => {
                     const bundle = rootBundle()
                     bundle.root.sessionRef.active = 'default-next'
+
                     return bundle
                 }),
                 readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),

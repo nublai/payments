@@ -41,6 +41,7 @@ describe('WalletClient Integration (Privy-style)', () => {
     /** Helper to create a wallet client from a private key */
     function createTestWalletClient(privateKey: `0x${string}`) {
         const account = privateKeyToAccount(privateKey)
+
         return createWalletClient({
             account,
             chain: testChain,
@@ -51,13 +52,17 @@ describe('WalletClient Integration (Privy-style)', () => {
     /** Wait for EIP-7702 delegation code to appear on an account */
     async function waitForDelegation(address: Address, timeoutMs = 10000) {
         const start = Date.now()
+
         while (Date.now() - start < timeoutMs) {
             const code = await client.getCode({ address })
+
             if (code && code !== '0x' && code.startsWith('0xef0100')) {
                 return // Delegation code is present
             }
+
             await new Promise((r) => setTimeout(r, 100))
         }
+
         throw new Error(`Timeout waiting for delegation code on ${address}`)
     }
 
@@ -106,6 +111,7 @@ describe('WalletClient Integration (Privy-style)', () => {
                 walletClient,
                 delegation: contracts.accountProxy,
             })
+
             expect(createResult.success).toBe(true)
             await waitForDelegation(account.address)
 
@@ -137,6 +143,7 @@ describe('WalletClient Integration (Privy-style)', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(result.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: result.id })
@@ -168,6 +175,7 @@ describe('WalletClient Integration (Privy-style)', () => {
                 walletClient,
                 delegation: contracts.accountProxy,
             })
+
             expect(createResult.success).toBe(true)
             await waitForDelegation(account.address)
 
@@ -177,6 +185,7 @@ describe('WalletClient Integration (Privy-style)', () => {
 
             // #when - transfer USDC via intent
             const transferAmount = 10_000000n // 10 USDC
+
             const transferData = encodeFunctionData({
                 abi: erc20Abi,
                 functionName: 'transfer',
@@ -205,6 +214,7 @@ describe('WalletClient Integration (Privy-style)', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(result.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: result.id })
@@ -250,6 +260,7 @@ describe('WalletClient Integration (Privy-style)', () => {
                     walletClient: userWallet,
                     delegation: contracts.accountProxy,
                 })
+
                 expect(userCreateResult.success).toBe(true)
 
                 const sponsorCreateResult = await client.upgradeAccount({
@@ -257,6 +268,7 @@ describe('WalletClient Integration (Privy-style)', () => {
                     walletClient: sponsorWallet,
                     delegation: contracts.accountProxy,
                 })
+
                 expect(sponsorCreateResult.success).toBe(true)
 
                 // Wait for both delegations to be mined
@@ -311,6 +323,7 @@ describe('WalletClient Integration (Privy-style)', () => {
                     signature: userSignature,
                     paymentSignature: sponsorSignature,
                 })
+
                 expect(result.id).toBeDefined()
 
                 const status = await waitForBundle(client, { id: result.id })

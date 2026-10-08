@@ -30,6 +30,7 @@ import {
 } from './network-config'
 
 const DEFAULT_DURATION_SECONDS = 60 * 60
+
 const MAX_DURATION_SECONDS = 24 * 60 * 60
 
 export class SessionUnlockError extends Error {
@@ -93,20 +94,25 @@ export async function sessionIsSwapOnChain(input: {
     sessionAddress: Address
 }): Promise<boolean> {
     const keyHash = computeSessionKeyHash(input.sessionAddress).toLowerCase()
+
     for (const chainName of chainsForEnv(input.env)) {
         const chain = getChainConfig(chainName)
+
         try {
             const keys = await readAccountKeysFromChain({
                 rpcUrl: rpcUrlForChain(chainName),
                 chainId: chain.chainId,
                 account: input.account,
             })
+
             const key = keys.find((entry) => entry.hash.toLowerCase() === keyHash)
+
             if (key && isSwapSessionKey(key.permissions, chain.chainId)) return true
         } catch {
             continue
         }
     }
+
     return false
 }
 
@@ -122,12 +128,15 @@ export async function resolveSessionUnlockPassword(
     if (deps.envPassword) {
         return deps.envPassword
     }
+
     if (args.passwordStdin) {
         return deps.readPasswordFromStdin()
     }
+
     if (deps.isInteractive) {
         return deps.promptForExistingPassword()
     }
+
     throw new SessionUnlockError(
         'PASSWORD_REQUIRED',
         'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
@@ -136,12 +145,14 @@ export async function resolveSessionUnlockPassword(
 
 function parseDurationSeconds(duration?: string, force?: boolean): number {
     const resolved = duration ? parseDuration(duration) : DEFAULT_DURATION_SECONDS
+
     if (resolved > MAX_DURATION_SECONDS && !force) {
         throw new SessionUnlockError(
             'INVALID_DURATION',
             'Maximum duration is 24h. Re-run with --force to override.',
         )
     }
+
     return resolved
 }
 
@@ -163,19 +174,24 @@ export async function executeSessionUnlock(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const sessionName = parseSessionName(options.sessionName)
     const durationSeconds = parseDurationSeconds(options.duration, options.force)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
         keystorePath: options.keystorePath,
     })
+
     let sessionKeystore: AnySessionKeystore
+
     try {
         const bundle = await deps.readKeystoreBundle(keystorePath)
+
         const sessionPath = resolveSessionKeystorePath(
             keystorePath,
             sessionName,
             bundle.root.sessionRef.dir,
         )
+
         sessionKeystore = await deps.readSessionKeystoreFile(sessionPath)
     } catch (error) {
         if (
@@ -188,12 +204,14 @@ export async function executeSessionUnlock(
 
         const sessionProfilePath = join(dirname(keystorePath), 'session.json')
         sessionKeystore = await deps.readSessionKeystoreFile(sessionProfilePath)
+
         if (sessionKeystore.kind !== undefined && !isLoginKeystore(sessionKeystore)) {
             throw new SessionUnlockError(
                 'INVALID_SESSION_KIND',
                 `Session-only profile at ${sessionProfilePath} has unsupported kind "${sessionKeystore.kind}".`,
             )
         }
+
         if (sessionKeystore.name !== sessionName) {
             throw new SessionUnlockError(
                 'SESSION_UNLOCK_FAILED',
@@ -211,6 +229,7 @@ export async function executeSessionUnlock(
 
     if (!options.humanConfirmed) {
         const delegated = sessionKeystore.addresses.delegated
+
         const elevated = delegated
             ? await deps.sessionRequiresPhrase({
                   env: options.env,
@@ -218,6 +237,7 @@ export async function executeSessionUnlock(
                   sessionAddress: getAddress(sessionKeystore.addresses.session),
               })
             : true
+
         if (elevated) {
             throw new SessionUnlockError(
                 'SESSION_UNLOCK_FAILED',
@@ -228,12 +248,14 @@ export async function executeSessionUnlock(
 
     const decrypted = await deps.decryptSessionKeystore(sessionKeystore, options.password)
     let encryptionDeviceHex: `0x${string}` | undefined
+
     if (options.device && isAgentKeystore(sessionKeystore)) {
         const exportedDevice = await deps.decryptAgentDevice(sessionKeystore, options.password)
         encryptionDeviceHex = `0x${Buffer.from(toBinary(ExportedDeviceSchema, exportedDevice)).toString('hex')}`
     }
 
     const client = deps.createDaemonClient()
+
     const response = await client.loadKey({
         name: sessionName,
         privateKey: decrypted.sessionPrivateKey,

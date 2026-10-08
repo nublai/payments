@@ -117,6 +117,7 @@ test('getChainKeys finds keys by hex chain id', () => {
     const keys: GetKeysResponse = {
         '0x2105': [{ hash: '0xaa', type: 'secp256k1' } as any],
     }
+
     expect(getChainKeys(keys, 8453)).toHaveLength(1)
 })
 
@@ -124,6 +125,7 @@ test('getChainKeys falls back to iterating entries', () => {
     const keys: GetKeysResponse = {
         '0x7a69': [{ hash: '0xbb' } as any],
     }
+
     expect(getChainKeys(keys, 31337)).toHaveLength(1)
 })
 
@@ -131,6 +133,7 @@ test('getChainKeys returns empty for unknown chain', () => {
     const keys: GetKeysResponse = {
         '0x2105': [{ hash: '0xaa' } as any],
     }
+
     expect(getChainKeys(keys, 999)).toEqual([])
 })
 
@@ -183,12 +186,14 @@ test('buildPermissionDefaults restricted uses USDC defaults', () => {
 test('buildPermissionDefaults uses custom target and selectors', () => {
     const target = '0x3333333333333333333333333333333333333333' as const
     const selectors = ['0xa9059cbb' as const]
+
     const result = buildPermissionDefaults({
         fullAccess: false,
         chain: 'base',
         target,
         selectors,
     })
+
     expect(result.target).toBe(target)
     expect(result.selectors).toEqual(selectors)
 })
@@ -200,6 +205,7 @@ test('buildPermissionDefaults uses custom spend limit and period', () => {
         spendLimit: 50_000_000n,
         spendPeriod: 'week',
     })
+
     expect(result.spendLimit).toBe(50_000_000n)
     expect(result.spendPeriod).toBe('week')
 })

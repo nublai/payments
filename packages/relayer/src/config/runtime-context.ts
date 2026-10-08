@@ -5,6 +5,7 @@
  */
 export function isLocalDevContext(env: { CONTEXT?: string } | null | undefined): boolean {
     const context = env?.CONTEXT?.trim().toLowerCase()
+
     return context === 'local'
 }
 
@@ -12,5 +13,6 @@ export function quoteSigningSecret(
     env: { QUOTE_SIGNING_SECRET?: string } | null | undefined,
 ): string | undefined {
     const secret = env?.QUOTE_SIGNING_SECRET?.trim()
+
     return secret ? secret : undefined
 }

@@ -16,16 +16,25 @@ import { hashAuthorization, hashTypedData } from 'viem/utils'
 import { INTENT_TYPES } from '@nubl/relayer-client'
 
 const walletDir = resolve(import.meta.dir, '..')
+
 const PASSWORD = 'test-password'
+
 const LOCAL_PROXY = '0x1111111111111111111111111111111111111111' as Address
+
 const LOCAL_ORCH = '0x2222222222222222222222222222222222222222' as Address
+
 const ATTACKER = getAddress('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF')
+
 const RECIPIENT = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
+
 const TX_HASH = `0x${'ab'.repeat(32)}`
+
 const SEND_NONCE = 4n
 
 type UpgradeMode = 'honest-upgrade' | 'bad-capabilities' | 'bad-chain' | 'bad-nonce' | 'bad-call'
+
 type SendMode = 'honest-send' | 'expiry-zero' | 'huge-gas'
+
 type Mode = UpgradeMode | SendMode
 
 type Recorded = { method: string; body: string }
@@ -55,6 +64,7 @@ function capabilities(chainId: number, delegation: Address, orchestrator: Addres
 
 function firstParam(params: unknown): Record<string, unknown> {
     const value = Array.isArray(params) ? params[0] : params
+
     return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
 
@@ -70,21 +80,25 @@ async function honestUpgradePayload(input: {
     const accountAddress = getAddress(input.address)
     const delegation = getAddress(input.delegation)
     const orchestrator = getAddress(input.orchestrator)
+
     const { calls, executionData } = mod.buildUpgradeExecution(
         input.authorizeKeys as never,
         accountAddress,
     )
+
     const authDigest = hashAuthorization({
         chainId: input.chainId,
         contractAddress: delegation,
         nonce: input.txNonce,
     })
+
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: input.chainId,
         verifyingContract: orchestrator,
     }
+
     const execDigest = hashTypedData({
         domain,
         types: mod.SIGNED_CALL_TYPES,
@@ -96,6 +110,7 @@ async function honestUpgradePayload(input: {
             nonce: mod.UPGRADE_PRECALL_NONCE,
         },
     })
+
     return {
         chainId: `0x${input.chainId.toString(16)}`,
         digests: { auth: authDigest, exec: execDigest },
@@ -144,6 +159,7 @@ function evilAuthPayload(input: {
         contractAddress: getAddress(input.contract),
         nonce: input.nonce,
     })
+
     return {
         chainId: `0x${input.chainId.toString(16)}`,
         digests: { auth: authDigest, exec: `0x${'00'.repeat(32)}` },
@@ -199,22 +215,27 @@ function attackerCallPayload(input: {
 }) {
     const accountAddress = getAddress(input.address)
     const calls = [{ to: ATTACKER, value: 0n, data: '0xdeadbeef' as Hex }]
+
     const executionData = encodeAbiParameters(
         parseAbiParameters('(address to, uint256 value, bytes data)[]'),
         [calls],
     )
+
     const authDigest = hashAuthorization({
         chainId: input.chainId,
         contractAddress: getAddress(input.delegation),
         nonce: input.txNonce,
     })
+
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: input.chainId,
         verifyingContract: getAddress(input.orchestrator),
     }
+
     const nonce = 1n << 64n
+
     const execDigest = hashTypedData({
         domain,
         types: {
@@ -238,6 +259,7 @@ function attackerCallPayload(input: {
             nonce,
         },
     })
+
     return {
         digests: { auth: authDigest, exec: execDigest },
         typedData: {
@@ -299,6 +321,7 @@ function sendPayload(input: {
         value: BigInt(call.value ?? '0'),
         data: (call.data ?? '0x') as Hex,
     }))
+
     const message = {
         multichain: false,
         eoa: getAddress(input.from),
@@ -313,23 +336,27 @@ function sendPayload(input: {
         settler: zeroAddress,
         expiry: BigInt(input.expiry),
     }
+
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: input.chainId,
         verifyingContract: getAddress(input.orchestrator),
     }
+
     const digest = hashTypedData({
         domain,
         types: INTENT_TYPES,
         primaryType: 'Intent',
         message,
     })
+
     const wireCalls = messageCalls.map((call) => ({
         to: call.to,
         value: call.value.toString(),
         data: call.data,
     }))
+
     return {
         digest,
         typedData: {
@@ -413,16 +440,20 @@ class MockRelayer {
     async start(port: number): Promise<number> {
         this.server = createServer(async (req, res) => {
             const chunks: Buffer[] = []
+
             for await (const chunk of req) chunks.push(chunk as Buffer)
             const raw = Buffer.concat(chunks).toString('utf8')
             let body: { id?: number; method?: string; params?: unknown }
+
             try {
                 body = JSON.parse(raw || '{}') as typeof body
             } catch {
                 body = {}
             }
+
             const method = body.method ?? ''
             this.calls.push({ method, body: raw })
+
             try {
                 const result = await this.reply(method, body.params)
                 res.writeHead(200, { 'content-type': 'application/json' })
@@ -444,7 +475,9 @@ class MockRelayer {
             this.server?.listen(port, '127.0.0.1', () => resolveListen())
         })
         const address = this.server.address()
+
         if (!address || typeof address === 'string') throw new Error('mock relayer has no port')
+
         return address.port
     }
 
@@ -452,35 +485,50 @@ class MockRelayer {
         return new Promise((resolveStop) => {
             if (!this.server) {
                 resolveStop()
+
                 return
             }
+
             this.server.close(() => resolveStop())
         })
     }
 
     private async reply(method: string, params: unknown): Promise<unknown> {
         if (method === 'eth_chainId') return `0x${this.chainId.toString(16)}`
+
         if (method === 'eth_getCode') return '0x'
+
         if (method === 'eth_getTransactionCount') return '0x5'
+
         if (method === 'eth_call') return `0x${SEND_NONCE.toString(16).padStart(64, '0')}`
+
         if (method === 'eth_estimateGas') return '0x10000'
+
         if (method === 'eth_blockNumber') return '0x1'
+
         if (method === 'eth_getBalance') return '0x0'
+
         if (method === 'net_version') return String(this.chainId)
+
         if (method === 'wallet_getCapabilities') {
             const delegation = this.mode === 'bad-capabilities' ? ATTACKER : this.delegation
+
             return capabilities(this.chainId, delegation, this.orchestrator)
         }
+
         if (method === 'wallet_prepareUpgradeAccount') {
             const payload = firstParam(params)
             const address = getAddress(String(payload.address))
             const delegation = getAddress(String(payload.delegation ?? this.delegation))
+
             const keys =
                 (payload.capabilities as { authorizeKeys?: unknown[] } | undefined)?.authorizeKeys ??
                 []
+
             if (this.mode === 'bad-chain') {
                 return evilAuthPayload({ chainId: 1, contract: ATTACKER, nonce: 5, address })
             }
+
             if (this.mode === 'bad-nonce') {
                 return evilAuthPayload({
                     chainId: this.chainId,
@@ -489,6 +537,7 @@ class MockRelayer {
                     address,
                 })
             }
+
             if (this.mode === 'bad-call') {
                 return attackerCallPayload({
                     address,
@@ -498,6 +547,7 @@ class MockRelayer {
                     txNonce: 5,
                 })
             }
+
             return honestUpgradePayload({
                 address,
                 delegation,
@@ -507,19 +557,26 @@ class MockRelayer {
                 authorizeKeys: keys,
             })
         }
+
         if (method === 'wallet_upgradeAccount') {
             return { txHash: TX_HASH }
         }
+
         if (method === 'wallet_prepareCalls') {
             const payload = firstParam(params)
+
             const meta =
                 (payload.capabilities as { meta?: Record<string, string> } | undefined)?.meta ?? {}
+
             const calls = Array.isArray(payload.calls)
                 ? (payload.calls as Array<{ to?: string; data?: string; value?: string }>)
                 : []
+
             const expiry = this.mode === 'expiry-zero' ? '0' : (meta.expiry ?? '1900000000')
+
             const combinedGas =
                 this.mode === 'huge-gas' ? (2n ** 96n - 1n).toString() : '50000'
+
             return sendPayload({
                 from: getAddress(String(payload.from)),
                 calls,
@@ -533,7 +590,9 @@ class MockRelayer {
                 paymentMaxAmount: meta.fee_max_amount ?? '0',
             })
         }
+
         if (method === 'wallet_sendPreparedCalls') return { id: 'bundle-1' }
+
         if (method === 'wallet_getCallsStatus') {
             return {
                 id: 'bundle-1',
@@ -548,6 +607,7 @@ class MockRelayer {
                 ],
             }
         }
+
         return '0x0'
     }
 }
@@ -583,12 +643,15 @@ function runCli(
             },
             stdio: ['ignore', 'pipe', 'pipe'],
         })
+
         let stdout = ''
         let stderr = ''
+
         const timer = setTimeout(() => {
             child.kill('SIGTERM')
             reject(new Error(`tw timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`))
         }, timeoutMs)
+
         child.stdout.setEncoding('utf8')
         child.stderr.setEncoding('utf8')
         child.stdout.on('data', (chunk) => {
@@ -615,6 +678,7 @@ async function withServer<T>(
     const server = new MockRelayer(mode, chainId, orchestrator, delegation)
     const actual = await server.start(port)
     const url = `http://127.0.0.1:${actual}`
+
     try {
         return await fn(server, url)
     } finally {
@@ -623,12 +687,14 @@ async function withServer<T>(
 }
 
 let gate: Promise<unknown> = Promise.resolve()
+
 function locked<T>(fn: () => Promise<T>): Promise<T> {
     const run = gate.then(fn, fn)
     gate = run.then(
         () => undefined,
         () => undefined,
     )
+
     return run
 }
 
@@ -657,6 +723,7 @@ beforeAll(async () => {
             90_000,
             'CREATE FULL ACCESS SESSION',
         )
+
         if (result.status !== 0) {
             throw new Error(
                 `honest account create failed (${result.status})\n${result.stdout}\n${result.stderr}`,
@@ -670,6 +737,7 @@ afterAll(() => {})
 function profileCopy(): string {
     const dir = mkdtempSync(join(tmpdir(), 'tw-h5-copy-'))
     cpSync(sharedDir, dir, { recursive: true })
+
     return join(dir, 'account.json')
 }
 
@@ -708,6 +776,7 @@ async function runCreate(mode: UpgradeMode, keystore: string) {
             90_000,
             'CREATE FULL ACCESS SESSION',
         )
+
         return { server, result }
     })
 }
@@ -732,6 +801,7 @@ async function runDelegate(mode: UpgradeMode) {
                 90_000,
                 'CREATE FULL ACCESS SESSION',
             )
+
             return { server, result }
         }),
     )
@@ -745,6 +815,7 @@ function assertNoSubmit(server: MockRelayer, result: { status: number; stdout: s
 
 test('account create on prod refuses because contracts are not deployed', async () => {
     const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-prod-')), 'account.json')
+
     const result = await runCli(
         [
             'account',
@@ -764,6 +835,7 @@ test('account create on prod refuses because contracts are not deployed', async 
         30_000,
         'CREATE FULL ACCESS SESSION',
     )
+
     expect(result.status).not.toBe(0)
     expect(`${result.stdout}\n${result.stderr}`).toMatch(/not deployed/)
 }, 30_000)
@@ -842,6 +914,7 @@ test('account delegate signs an honest upgrade payload', async () => {
 test('account create and delegate use the sponsored upgrade and never send accountUpgrade', async () => {
     const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
     const runs = [await runCreate('honest-upgrade', keystore), await runDelegate('honest-upgrade')]
+
     for (const { server, result } of runs) {
         const output = `${result.stdout}\n${result.stderr}\n${server.methods.join(',')}`
         expect(result.status, output).toBe(0)
@@ -874,6 +947,7 @@ async function runSend(mode: SendMode) {
                 90_000,
                 'SEND USDC',
             )
+
             return { server, result }
         }),
     )
@@ -928,6 +1002,7 @@ test('MCP send is refused before the relayer is contacted', async () => {
                     },
                     stdio: ['pipe', 'pipe', 'pipe'],
                 }) as ChildProcessWithoutNullStreams
+
                 let stdout = ''
                 let stderr = ''
                 child.stdout.setEncoding('utf8')
@@ -938,16 +1013,19 @@ test('MCP send is refused before the relayer is contacted', async () => {
                 child.stderr.on('data', (chunk) => {
                     stderr += chunk
                 })
+
                 const replied = new Promise<void>((resolvePromise, reject) => {
                     const timer = setTimeout(() => {
                         reject(new Error(`MCP send timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`))
                     }, 60_000)
+
                     child.stdout.on('data', () => {
                         if (!stdout.includes('"id":3') && !stdout.includes('"id": 3')) return
                         clearTimeout(timer)
                         resolvePromise()
                     })
                 })
+
                 child.stdin.write(
                     frame({
                         jsonrpc: '2.0',
@@ -978,11 +1056,13 @@ test('MCP send is refused before the relayer is contacted', async () => {
                         },
                     }),
                 )
+
                 try {
                     await replied
                 } finally {
                     child.kill('SIGTERM')
                 }
+
                 const output = `${stdout}\n${stderr}\n${server.methods.join(',')}`
                 expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
                 expect(server.methods, output).toEqual([])

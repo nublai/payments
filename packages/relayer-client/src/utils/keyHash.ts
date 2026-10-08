@@ -19,7 +19,9 @@ export type KeyType = 'secp256k1' | 'external' | 'p256'
  */
 export function keyTypeToEnum(keyType: KeyType): 0 | 1 | 2 {
     if (keyType === 'secp256k1') return 0
+
     if (keyType === 'external') return 1
+
     return 2
 }
 
@@ -46,10 +48,12 @@ export function keyTypeToEnum(keyType: KeyType): 0 | 1 | 2 {
 export function computeKeyHash(keyType: KeyType, publicKey: Hex): Hex {
     const keyTypeNum = keyTypeToEnum(keyType)
     const publicKeyHash = keccak256(publicKey)
+
     const encoded = encodeAbiParameters(parseAbiParameters('uint8, bytes32'), [
         keyTypeNum,
         publicKeyHash,
     ])
+
     return keccak256(encoded)
 }
 
@@ -74,9 +78,11 @@ export function encodeSecp256k1Key(address: Address): Hex {
 
 function requireCoordinate(value: Hex, label: string): Hex {
     const hex = value.toLowerCase()
+
     if (!/^0x[0-9a-f]{64}$/.test(hex)) {
         throw new Error(`${label} must be a 32-byte hex coordinate`)
     }
+
     return hex as Hex
 }
 

@@ -53,11 +53,13 @@ describe.skipIf(!hasRequiredEnv)('Remote Smoke: Delegation', () => {
                 nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
             },
         } as const
+
         const chainMeta = chainMetaById[TEST_CHAIN_ID as keyof typeof chainMetaById]
         expect(chainMeta).toBeDefined()
 
         const privateKey = generatePrivateKey()
         const account = privateKeyToAccount(privateKey)
+
         const authSigner: EthHttpSigner = {
             chainId: TEST_CHAIN_ID,
             address: account.address,
@@ -94,6 +96,7 @@ describe.skipIf(!hasRequiredEnv)('Remote Smoke: Delegation', () => {
         })
 
         expect(result.success).toBe(true)
+
         if (result.txHash) {
             expect(result.txHash.startsWith('0x')).toBe(true)
         }
@@ -126,6 +129,7 @@ describe.skipIf(!hasRequiredEnv)('Remote Smoke: Delegation', () => {
             context: prepared.context,
             signature,
         })
+
         expect(sent.id).toBeDefined()
 
         const status = await waitForBundle(client, { id: sent.id, timeoutMs: 60_000 })

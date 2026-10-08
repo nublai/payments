@@ -153,6 +153,7 @@ describe('encodeIntent', () => {
                 },
             ],
         })
+
         const encoded = encodeIntent(intent)
 
         expect(encoded).toMatch(/^0x/)
@@ -235,12 +236,14 @@ describe('batch intent grouping', () => {
      */
     function groupIntentsByEoa(intents: IntentStruct[]): Map<Address, IntentStruct[]> {
         const groups = new Map<Address, IntentStruct[]>()
+
         for (const intent of intents) {
             const eoa = intent.eoa as Address
             const existing = groups.get(eoa) ?? []
             existing.push(intent)
             groups.set(eoa, existing)
         }
+
         return groups
     }
 
@@ -306,6 +309,7 @@ describe('batch result mapping', () => {
 
     it('maps single batch tx to multiple intent results', () => {
         const intentIds = ['intent-1', 'intent-2', 'intent-3']
+
         const batchResult = {
             txHash: '0xabc123' as Hex,
             success: true,
@@ -321,6 +325,7 @@ describe('batch result mapping', () => {
 
     it('maps failed batch to all failed intents', () => {
         const intentIds = ['intent-1', 'intent-2']
+
         const batchResult = {
             txHash: '0x0' as Hex,
             success: false,
@@ -336,6 +341,7 @@ describe('batch result mapping', () => {
             txHash: '0x123' as Hex,
             success: true,
         })
+
         expect(results).toHaveLength(1)
     })
 
@@ -352,6 +358,7 @@ describe('batch detection in JSON-RPC requests', () => {
      */
     function canOptimizeBatch(requests: Array<{ method: string; params?: unknown }>): boolean {
         if (requests.length <= 1) return false
+
         return requests.every((r) => r.method === 'wallet_sendPreparedCalls')
     }
 

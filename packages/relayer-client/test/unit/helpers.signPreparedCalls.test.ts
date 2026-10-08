@@ -9,9 +9,13 @@ import { computeErc1271Digest } from '../../src/utils/erc1271.js'
 import { wrapSignature } from '../../src/utils/signature.js'
 
 const RAW_SIGNATURE = `0x${'11'.repeat(65)}` as Hex
+
 const KEY_HASH = `0x${'22'.repeat(32)}` as Hex
+
 const TARGET_ACCOUNT = '0x1234567890123456789012345678901234567890' as Address
+
 const DELEGATED_SIGNER = '0x9876543210987654321098765432109876543210' as Address
+
 const ORCHESTRATOR = '0x1111111111111111111111111111111111111111' as Address
 
 function makePrepared(eoa: Address = TARGET_ACCOUNT): PrepareCallsResponse {
@@ -29,18 +33,21 @@ function makePrepared(eoa: Address = TARGET_ACCOUNT): PrepareCallsResponse {
         settler: zeroAddress,
         expiry: 1_700_000_120n,
     }
+
     const domain = {
         name: 'Orchestrator' as const,
         version: '0.5.5' as const,
         chainId: 8453,
         verifyingContract: ORCHESTRATOR,
     }
+
     const digest = hashTypedData({
         domain,
         types: INTENT_TYPES,
         primaryType: 'Intent',
         message,
     })
+
     return {
         context: {
             quote: {

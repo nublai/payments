@@ -32,6 +32,7 @@ function checkAttemptIdempotency(
     if (!existing) {
         // New attempt - create pending record
         existingAttempts.set(escrowId, { escrowId, bundleId, status: 'pending' })
+
         return { isNew: true }
     }
 
@@ -50,6 +51,7 @@ function completeAttempt(
     txHash: string,
 ): void {
     const existing = existingAttempts.get(escrowId)
+
     if (existing) {
         existing.txHash = txHash
         existing.status = 'sent'
@@ -156,10 +158,12 @@ describe('BundleStatusDO', () => {
 
         function claimReadyRefunds(currentTime: number): PendingRefund[] {
             const ready = getReadyRefunds(currentTime)
+
             // Atomic: select and delete
             for (const r of ready) {
                 pendingRefunds.delete(r.bundleId)
             }
+
             return ready
         }
 
@@ -170,6 +174,7 @@ describe('BundleStatusDO', () => {
         it('schedules refund for future timestamp', () => {
             // #given
             const now = Math.floor(Date.now() / 1000)
+
             const refund: PendingRefund = {
                 bundleId: 'bundle-1',
                 refundTimestamp: now + 3600, // 1 hour from now
@@ -270,9 +275,11 @@ describe('BundleStatusDO', () => {
 
         function isBundleFinished(bundleId: string): { finished: boolean; status?: string } {
             const bundle = finishedBundles.get(bundleId)
+
             if (!bundle) {
                 return { finished: false }
             }
+
             return { finished: true, status: bundle.status }
         }
 
@@ -331,6 +338,7 @@ describe('BundleStatusDO', () => {
 
         function getBundleIdByTxId(txId: string): { bundleId: string | null } {
             const bundleId = bundleTransactions.get(txId)
+
             return { bundleId: bundleId ?? null }
         }
 
@@ -399,6 +407,7 @@ describe('BundleStatusDO', () => {
             if (job.attempt >= MAX_CONFIRM_ATTEMPTS) {
                 return { shouldRetry: false, nextAttempt: job.attempt }
             }
+
             return { shouldRetry: true, nextAttempt: job.attempt + 1 }
         }
 

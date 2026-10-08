@@ -5,6 +5,7 @@ test('withKeystoreLock preserves the action error when release also fails', asyn
     const release = mock(async () => {
         throw new Error('release failed')
     })
+
     const lock = mock(async () => release)
 
     await expect(
@@ -25,6 +26,7 @@ test('withKeystoreLock surfaces the release error when action succeeds', async (
     const release = mock(async () => {
         throw new Error('release failed')
     })
+
     const lock = mock(async () => release)
 
     await expect(

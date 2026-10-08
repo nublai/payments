@@ -198,6 +198,7 @@ export function contractErrorToRpcError(errorData: Hex): RpcError {
 
     if (decoded) {
         const code = mapErrorNameToCode(decoded.errorName)
+
         return new RpcError(code, decoded.errorName, {
             args: decoded.args,
             data: errorData,

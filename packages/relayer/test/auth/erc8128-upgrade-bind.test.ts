@@ -28,6 +28,7 @@ vi.mock('../../src/lib/multi-chain-client', async () => {
     const actual = await vi.importActual<typeof import('../../src/lib/multi-chain-client')>(
         '../../src/lib/multi-chain-client',
     )
+
     return {
         ...actual,
         getChainClient: () => ({
@@ -39,8 +40,11 @@ vi.mock('../../src/lib/multi-chain-client', async () => {
 })
 
 const CHAIN_ID = 8453
+
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
+
 const METHODS = ['wallet_prepareUpgradeAccount', 'wallet_upgradeAccount'] as const
+
 type UpgradeMethod = (typeof METHODS)[number]
 
 /** Stage/prod shape: Privy on, ERC-8128 on, signer not allowlisted. */
@@ -64,6 +68,7 @@ function prodEnv(overrides: Partial<Env> = {}): Env {
 
 function upgradeParams(method: UpgradeMethod, address: Address, chainId: unknown) {
     const chain = chainId === undefined ? {} : { chainId }
+
     return method === 'wallet_prepareUpgradeAccount'
         ? [{ address, delegation: ACCOUNT_PROXY, ...chain }]
         : [{ context: { address, ...chain }, signatures: {} }]
@@ -78,6 +83,7 @@ async function cliRequest(
     const chainId = target && 'chainId' in target ? target.chainId : `0x${CHAIN_ID.toString(16)}`
     const params = upgradeParams(method, target?.address ?? account.address, chainId)
     const created = Math.floor(Date.now() / 1000) - 1
+
     return signRequest(
         new Request('https://relayer.example.com/', {
             method: 'POST',
@@ -115,9 +121,11 @@ async function throughWorker(request: Request, env: Env) {
     app.use('*', authMiddleware({ providers: [...identityAuthProviders(), createErc8128Provider()] }))
     app.post('/', (c) => {
         reached = true
+
         return c.json({ jsonrpc: '2.0', id: 1, result: 'handler reached' })
     })
     const response = await app.fetch(request, env)
+
     return { reached, body: (await response.json()) as Record<string, unknown> }
 }
 
@@ -146,6 +154,7 @@ describe('ERC-8128 binds the account on sponsored upgrade methods', () => {
 
     it('accepts the own key when AUTH_PROTECTED_METHODS lists the upgrade methods', async () => {
         const env = prodEnv({ AUTH_PROTECTED_METHODS: `wallet_sendPreparedCalls,${METHODS.join(',')}` })
+
         for (const method of METHODS) {
             const key = generatePrivateKey()
             const result = await erc8128Verify(await cliRequest(key, method), env)
@@ -155,12 +164,14 @@ describe('ERC-8128 binds the account on sponsored upgrade methods', () => {
 
     it('refuses the same fresh key for a different address, on any chain id', async () => {
         const other = privateKeyToAccount(generatePrivateKey()).address
+
         const cases: Array<{ label: string; chainId: unknown }> = [
             { label: 'same chain', chainId: `0x${CHAIN_ID.toString(16)}` },
             { label: 'numeric chain', chainId: CHAIN_ID },
             { label: 'mismatched chain', chainId: '0x14a34' },
             { label: 'no chain id', chainId: undefined },
         ]
+
         for (const method of METHODS) {
             for (const { label, chainId } of cases) {
                 readContract.mockClear()

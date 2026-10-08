@@ -58,6 +58,7 @@ import { RecipientResolutionError, resolveAddressOrEnsInput } from './recipient-
 import { parseSessionName } from './session-common'
 import { resolveSessionSigner, SessionSignerDaemonError, SessionSignerExpiredError } from './signer'
 import type { ResolvedSessionSigner } from './signer'
+
 type AccountSendErrorCode =
     | 'PASSWORD_REQUIRED'
     | 'INVALID_NAME'
@@ -204,6 +205,7 @@ function assertSessionNetworkMatches(input: {
             `Session file env mismatch: expected ${input.expectedEnv}, got ${input.sessionEnv}.`,
         )
     }
+
     if (input.sessionChainId !== input.expectedChainId) {
         throw new AccountSendError(
             'UNSUPPORTED_CHAIN',
@@ -214,10 +216,13 @@ function assertSessionNetworkMatches(input: {
 
 function parseUsdcAmount(value: string): { normalized: string; baseUnits: bigint } {
     const amount = value.trim()
+
     if (!/^\d+(\.\d+)?$/.test(amount)) {
         throw new AccountSendError('INVALID_AMOUNT', 'Amount must be a positive decimal number.')
     }
+
     const fractional = amount.split('.')[1] ?? ''
+
     if (fractional.length > 6) {
         throw new AccountSendError(
             'INVALID_AMOUNT',
@@ -226,6 +231,7 @@ function parseUsdcAmount(value: string): { normalized: string; baseUnits: bigint
     }
 
     let parsed: bigint
+
     try {
         parsed = parseUnits(amount, 6)
     } catch (error) {
@@ -251,6 +257,7 @@ async function resolveRecipient(
 ): Promise<Address> {
     try {
         const resolution = await deps.resolveAddressOrEnsInput(recipient, chain)
+
         return resolution.address
     } catch (error) {
         if (
@@ -267,6 +274,7 @@ async function resolveRecipient(
                 },
             )
         }
+
         throw error
     }
 }
@@ -283,10 +291,12 @@ function getDefaultDeps(): AccountSendDeps {
                 chain: getChain(network.chainId, network.rpcUrl),
                 transport: http(network.rpcUrl),
             })
+
             return readAccountNonce(client, account)
         },
         prepareCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.prepareCalls({
                 from: input.from,
                 chainId: input.network.chainId,
@@ -301,10 +311,12 @@ function getDefaultDeps(): AccountSendDeps {
         },
         signTypedData: async (input) => {
             const signer = privateKeyToAccount(input.privateKey)
+
             return signer.signTypedData(input.typedData)
         },
         sendPreparedCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.sendPreparedCalls({
                 context: input.context,
                 signature: input.signature,
@@ -312,6 +324,7 @@ function getDefaultDeps(): AccountSendDeps {
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return waitForBundleAction(client, { id: input.id, chainId: input.network.chainId })
         },
         executeSignedCalls,
@@ -353,6 +366,7 @@ export async function executeAccountSend(
     const chain = options.chain ? normalizeChain(options.chain) : selectDefaultChain(options.env)
     const network = resolveNetworkConfig(options.env, chain)
     const token = getUsdcTokenConfig(chain, { legacy: options.legacy })
+
     const keystorePath =
         options.sessionFile ??
         resolveKeystorePath({
@@ -362,14 +376,18 @@ export async function executeAccountSend(
         })
 
     let cachedPassword = options.password
+
     const resolvePassword = async (): Promise<string> => {
         if (cachedPassword) {
             return cachedPassword
         }
+
         if (options.resolvePassword) {
             cachedPassword = await options.resolvePassword()
+
             return cachedPassword
         }
+
         throw new AccountSendError(
             'PASSWORD_REQUIRED',
             'Password required. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
@@ -383,12 +401,14 @@ export async function executeAccountSend(
                 'Usage requires <amount> and <recipient>. Run tw send --help.',
             )
         }
+
         if (options.sessionFile && options.sessionName) {
             throw new AccountSendError(
                 'INVALID_ARGUMENT',
                 '--session and --session-file are mutually exclusive.',
             )
         }
+
         const selectedSessionName = options.sessionName
             ? parseSessionName(options.sessionName)
             : undefined
@@ -397,14 +417,17 @@ export async function executeAccountSend(
         let sessionKeystore: RelayerSessionKeystoreV2 | LoginSessionKeystoreV2
         let sender: Address
         let effectiveNetwork = network
+
         if (options.sessionFile) {
             const loadedSessionKeystore = await deps.readSessionKeystoreFile(options.sessionFile)
+
             if (isAgentKeystore(loadedSessionKeystore)) {
                 throw new AccountSendError(
                     'INVALID_ARGUMENT',
                     'Agent session keystores are not supported for send. Use a relayer or login session.',
                 )
             }
+
             sessionKeystore = loadedSessionKeystore
             assertSessionNetworkMatches({
                 sessionEnv: sessionKeystore.network.env,
@@ -416,6 +439,7 @@ export async function executeAccountSend(
             sender = getAddress(sessionKeystore.addresses.delegated)
         } else if (selectedSessionName) {
             let bundle: Awaited<ReturnType<typeof deps.readKeystoreBundle>>
+
             try {
                 bundle = await deps.readKeystoreBundle(keystorePath)
             } catch (error) {
@@ -431,15 +455,18 @@ export async function executeAccountSend(
                 selectedSessionName,
                 bundle.root.sessionRef.dir,
             )
+
             try {
                 const loadedSessionKeystore =
                     await deps.readSessionKeystoreFile(selectedSessionPath)
+
                 if (isAgentKeystore(loadedSessionKeystore)) {
                     throw new AccountSendError(
                         'INVALID_ARGUMENT',
                         'Agent session keystores are not supported for send. Use a relayer or login session.',
                     )
                 }
+
                 sessionKeystore = loadedSessionKeystore
             } catch (error) {
                 if (error instanceof AccountSendError) throw error
@@ -450,16 +477,19 @@ export async function executeAccountSend(
                     { cause: error },
                 )
             }
+
             sender = getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root)
         } else {
             try {
                 const bundle = await deps.readKeystoreBundle(keystorePath)
+
                 if (isAgentKeystore(bundle.session)) {
                     throw new AccountSendError(
                         'INVALID_ARGUMENT',
                         'Agent session keystores are not supported for send. Use a relayer or login session.',
                     )
                 }
+
                 sessionKeystore = bundle.session
                 sender = getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root)
             } catch (error) {
@@ -470,16 +500,20 @@ export async function executeAccountSend(
                 ) {
                     throw error
                 }
+
                 const sessionProfilePath = join(dirname(keystorePath), 'session.json')
+
                 try {
                     const loadedSessionKeystore =
                         await deps.readSessionKeystoreFile(sessionProfilePath)
+
                     if (isAgentKeystore(loadedSessionKeystore)) {
                         throw new AccountSendError(
                             'INVALID_ARGUMENT',
                             'Agent session keystores are not supported for send. Use a relayer or login session.',
                         )
                     }
+
                     sessionKeystore = loadedSessionKeystore
                     assertSessionNetworkMatches({
                         sessionEnv: sessionKeystore.network.env,
@@ -493,11 +527,14 @@ export async function executeAccountSend(
                     if (isMissingFileError(fallbackError)) {
                         throw error
                     }
+
                     throw fallbackError
                 }
             }
         }
+
         const recipient = await resolveRecipient(options.recipient, chain, deps)
+
         const resolvedSigner = await resolveSessionSigner({
             sessionName: sessionKeystore.name ?? selectedSessionName ?? 'default',
             sessionKeystore,
@@ -511,6 +548,7 @@ export async function executeAccountSend(
             ...effectiveNetwork,
             authSigner: resolvedSigner.authSigner,
         }
+
         const calls: Call[] = [
             {
                 target: token.address,
@@ -522,6 +560,7 @@ export async function executeAccountSend(
                 }),
             },
         ]
+
         const nonce = await deps.readNonce({
             network: signedNetwork,
             account: sender,
@@ -572,21 +611,26 @@ export async function executeAccountSend(
         }
 
         let submission: Awaited<ReturnType<typeof deps.executeSignedCalls>>
+
         let signerMode: AccountSendResult['signerMode'] =
             resolvedSigner.mode === 'daemon' ? 'daemon' : 'direct'
+
         try {
             submission = await runWithSigner(signedNetwork, resolvedSigner)
         } catch (error) {
             if (error instanceof SessionSignerExpiredError) {
                 throw new AccountSendError('SESSION_EXPIRED', error.message, { cause: error })
             }
+
             if (!(error instanceof SessionSignerDaemonError) || resolvedSigner.mode !== 'daemon') {
                 throw error
             }
+
             const fallback = await deps.decryptSessionKeystore(
                 sessionKeystore,
                 await resolvePassword(),
             )
+
             const fallbackNetwork = {
                 ...signedNetwork,
                 authSigner: createEthHttpSigner(
@@ -594,6 +638,7 @@ export async function executeAccountSend(
                     effectiveNetwork.chainId,
                 ),
             }
+
             signerMode = 'fallback_direct'
             debugSignerFallback('account_send', {
                 reason: error.message,
@@ -604,6 +649,7 @@ export async function executeAccountSend(
                 signerPrivateKey: fallback.sessionPrivateKey,
             })
         }
+
         const finalStatus = submission.finalStatus
 
         if (!finalStatus.success) {
@@ -622,9 +668,11 @@ export async function executeAccountSend(
         const statusCode = finalStatus.statusCode ?? 0
         const intentError = finalStatus.receipt?.intentError as Hex | undefined
         const intentErrorName = intentError ? decodeIntentError(intentError) : undefined
+
         if (![200, 201].includes(statusCode)) {
             const code: AccountSendErrorCode =
                 statusCode === 400 || statusCode === 500 ? 'INTENT_REVERTED' : 'SEND_FAILED'
+
             throw new AccountSendError(
                 code,
                 `Bundle ended in status ${statusCode} (${finalStatus.status ?? 'unknown'}).`,
@@ -674,6 +722,7 @@ function debugSignerFallback(command: 'account_send', details: unknown): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }
+
     console.error(`[tw ${command}] daemon signer fallback ${JSON.stringify(details)}`)
 }
 

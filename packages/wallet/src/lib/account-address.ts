@@ -62,8 +62,10 @@ export async function executeAccountAddress(
             keystorePath: options.keystorePath,
             name: options.name,
         })
+
         try {
             const bundle = await deps.readKeystoreBundle(keystorePath)
+
             return {
                 type: 'account_address',
                 status: 'complete',
@@ -80,11 +82,13 @@ export async function executeAccountAddress(
             }
 
             const sessionProfilePath = join(dirname(keystorePath), 'session.json')
+
             const session =
                 error instanceof SessionOnlyProfileError || error instanceof LoginProfileError
                     ? (error.sessionKeystore ??
                       (await deps.readSessionKeystoreFile(error.sessionPath ?? sessionProfilePath)))
                     : await deps.readSessionKeystoreFile(sessionProfilePath)
+
             return {
                 type: 'account_address',
                 status: 'complete',
@@ -123,5 +127,6 @@ function toAccountAddressError(
     }
 
     const message = error instanceof Error ? error.message : String(error)
+
     return new AccountAddressError('UNKNOWN', message, { cause: error })
 }

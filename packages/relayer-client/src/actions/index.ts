@@ -7,6 +7,7 @@
 
 // Health & Capabilities
 export { checkHealth } from './checkHealth'
+
 export { getCapabilities } from './getCapabilities'
 
 // Calls lifecycle
@@ -16,12 +17,15 @@ export {
     type PrepareCallsResponse,
     type PrepareCallsContext,
 } from './prepareCalls'
+
 export {
     sendPreparedCalls,
     type SendPreparedCallsParams,
     type SendPreparedCallsResponse,
 } from './sendPreparedCalls'
+
 export { getCallsStatus, type GetCallsStatusParams } from './getCallsStatus'
+
 export {
     getCallsHistory,
     type GetCallsHistoryParams,

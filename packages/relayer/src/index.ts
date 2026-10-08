@@ -22,12 +22,18 @@ import { getRpcCaller } from './auth/caller'
 import { authMiddleware } from './auth/middleware'
 import { identityAuthProviders } from './auth/identity-registry'
 import { createErc8128Provider } from './auth/providers/erc8128'
+
 // Re-export Durable Objects for Cloudflare
 export { SignerDO } from './durable-objects/signer.do'
+
 export { SignerPoolDO } from './durable-objects/signer-pool.do'
+
 export { BundleStatusDO } from './durable-objects/bundle-status.do'
+
 export { IntentNonceDO } from './durable-objects/intent-nonce.do'
+
 export { HttpAuthNonceDO } from './durable-objects/http-auth-nonce.do'
+
 export { WalletBindingDO } from './durable-objects/wallet-binding.do'
 
 const MAX_MONITOR_ATTEMPTS = 30
@@ -51,6 +57,7 @@ app.use('*', async (c, next) => {
 
     // Restrictive mode: parse comma-separated origins
     const origins = allowedOrigins.split(',').map((o) => o.trim())
+
     return cors({ origin: origins })(c, next)
 })
 
@@ -61,8 +68,10 @@ app.use('*', async (c, next) => {
     }
 
     const envCheck = validateEnv(c.env)
+
     if (!envCheck.valid) {
         logger.error({ missing: envCheck.missing }, 'missing required environment variables')
+
         return c.json(
             {
                 success: false,
@@ -74,8 +83,10 @@ app.use('*', async (c, next) => {
 
     // Validate pool configuration
     const poolCheck = validatePoolConfig(c.env)
+
     if (!poolCheck.valid) {
         logger.error({ errors: poolCheck.errors }, 'invalid pool configuration')
+
         return c.json(
             {
                 success: false,
@@ -108,6 +119,7 @@ app.post('/', async (c) => {
     try {
         const body = await c.req.json()
         const methods = createMethods(c.env)
+
         const ctx: RpcContext = {
             env: c.env,
             request: c.req.raw,
@@ -130,6 +142,7 @@ app.post('/', async (c) => {
     } catch (error) {
         // JSON parse error
         logger.error(errorDetails(error as Error), 'JSON-RPC parse error')
+
         return c.json(
             {
                 jsonrpc: '2.0',
@@ -160,6 +173,7 @@ app.get('/health', async (c) => {
 
 app.onError((err, c) => {
     logger.error(errorDetails(err), 'unhandled worker error')
+
     return c.json({ success: false, error: err.message || 'Internal server error' }, 500)
 })
 
@@ -180,6 +194,7 @@ async function handleQueue(batch: MessageBatch<QueueJob>, env: Env): Promise<voi
 
         try {
             const jobType = resolveQueueJobType(job)
+
             switch (jobType) {
                 case 'monitor':
                     await handleMonitorJob(msg as Message<MonitorJob>, env)
@@ -200,7 +215,9 @@ async function handleQueue(batch: MessageBatch<QueueJob>, env: Env): Promise<voi
 
 function resolveQueueJobType(job: unknown): 'monitor' | 'unknown' {
     if (!job || typeof job !== 'object') return 'unknown'
+
     if (!('type' in job)) return 'monitor'
+
     return job.type === 'monitor' ? 'monitor' : 'unknown'
 }
 
@@ -220,11 +237,13 @@ async function notifySignerFinalization(
     try {
         const signerId = env.SIGNER.idFromName(signerName)
         const signer = env.SIGNER.get(signerId)
+
         const response = await signer.fetch(`http://do/finalized?signerName=${signerName}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ txId, txHash, status }),
         })
+
         return response.ok
     } catch {
         return false
@@ -238,11 +257,13 @@ async function finalizeMonitorAsFailed(
 ): Promise<boolean> {
     const { txId, txHash, signerName } = msg.body
     const finalized = await notifySignerFinalization(env, signerName, txId, txHash, 'failed')
+
     if (finalized) {
         logger.error(
             { txId, txHash, signerName, attempts: getMonitorAttempt(msg), reason },
             'monitor job finalized as failed',
         )
+
         return true
     }
 
@@ -250,6 +271,7 @@ async function finalizeMonitorAsFailed(
         { txId, txHash, signerName, attempts: getMonitorAttempt(msg), reason },
         'failed to finalize monitor job as failed',
     )
+
     return false
 }
 
@@ -260,12 +282,14 @@ async function handleMonitorJob(msg: Message<MonitorJob>, env: Env): Promise<voi
     const { txId, txHash, signerName } = msg.body
     const attempt = getMonitorAttempt(msg)
     const fallbackChainIds = getChainIds(env)
+
     const chainId =
         msg.body.chainId ?? (fallbackChainIds.length === 1 ? fallbackChainIds[0] : undefined)
 
     if (!chainId) {
         logger.error({ txId, txHash, signerName }, 'monitor job missing chainId')
         msg.ack()
+
         return
     }
 
@@ -277,12 +301,14 @@ async function handleMonitorJob(msg: Message<MonitorJob>, env: Env): Promise<voi
 
         const finalStatus = receipt.status === '0x1' ? 'confirmed' : 'failed'
         const finalized = await notifySignerFinalization(env, signerName, txId, txHash, finalStatus)
+
         if (!finalized) {
             msg.retry({ delaySeconds: 30 })
             logger.error(
                 { txId, txHash, signerName, attempt },
                 'failed to notify signer finalization, retrying',
             )
+
             return
         }
 
@@ -295,11 +321,13 @@ async function handleMonitorJob(msg: Message<MonitorJob>, env: Env): Promise<voi
                 env,
                 'monitor retries exhausted without receipt',
             )
+
             if (finalized) {
                 msg.ack()
             } else {
                 msg.retry({ delaySeconds: 30 })
             }
+
             return
         }
 
@@ -326,20 +354,25 @@ async function logBundleGasTelemetry(
         const bundleLookupResponse = await bundleStatus.fetch(
             `http://do/get_bundle_id_by_tx?txId=${encodeURIComponent(txId)}`,
         )
+
         if (!bundleLookupResponse.ok) return
         const bundleLookup = (await bundleLookupResponse.json()) as { bundleId: string | null }
+
         if (!bundleLookup.bundleId) return
 
         const telemetryResponse = await bundleStatus.fetch(
             `http://do/get_bundle_telemetry?bundleId=${encodeURIComponent(bundleLookup.bundleId)}`,
         )
+
         if (!telemetryResponse.ok) return
+
         const telemetry = (await telemetryResponse.json()) as {
             simulationGas?: string
             combinedGas?: string
             txGas?: string
             paymentEnabled?: boolean
         } | null
+
         if (!telemetry) return
 
         const actualGasUsed = BigInt(actualGasUsedHex)
@@ -414,6 +447,7 @@ async function getTransactionReceipt(
             logs?: unknown[]
         } | null
     }
+
     return data.result
 }
 
@@ -426,6 +460,7 @@ async function getTransactionReceipt(
  */
 function getSignerPool(env: Env, chainId: number): DurableObjectStub {
     const poolId = env.SIGNER_POOL.idFromName(`pool-${chainId}`)
+
     return env.SIGNER_POOL.get(poolId)
 }
 
@@ -436,9 +471,11 @@ async function handleScheduled(_event: ScheduledEvent, env: Env): Promise<void> 
     logger.info('Running scheduled maintenance')
 
     const chainIds = getChainIds(env)
+
     for (const chainId of chainIds) {
         // Run signer pool maintenance
         const pool = getSignerPool(env, chainId)
+
         const response = await pool.fetch(`http://do/maintenance?poolName=pool-${chainId}`, {
             method: 'POST',
         })

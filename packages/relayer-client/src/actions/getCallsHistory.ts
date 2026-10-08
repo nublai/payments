@@ -52,10 +52,13 @@ export async function getCallsHistory(
         const transport = createRelayerTransport(client)
 
         const rpcParams: Record<string, unknown> = { address: params.address }
+
         if (params.chainIds && params.chainIds.length > 0) {
             rpcParams.chainIds = params.chainIds.map((id) => `0x${id.toString(16)}`)
         }
+
         if (params.limit !== undefined) rpcParams.limit = params.limit
+
         if (params.offset !== undefined) rpcParams.offset = params.offset
 
         const result = await transport.request<RpcGetCallsHistoryResult>(

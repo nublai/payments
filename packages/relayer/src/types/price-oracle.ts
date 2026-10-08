@@ -22,9 +22,13 @@ export const DEFAULT_ASSET_MAPPING: AssetMapping = {
 }
 
 export const DEFAULT_RATE_TTL_MS = 300_000
+
 export const DEFAULT_FETCH_INTERVAL_MS = 60_000
+
 export const DEFAULT_PROVIDER_ID = 'coingecko'
+
 export const DEFAULT_COINGECKO_URL = 'https://pro-api.coingecko.com/api/v3/simple/price'
+
 export const DEFAULT_ETH_USD_FALLBACK = '3000'
 
 export const DEFAULT_FALLBACK_USD_PRICES: Record<AssetUid, string> = {

@@ -10,6 +10,7 @@ import {
 } from '../src/lib/quote-key-expiry'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
+
 const PUBLIC_KEY = '0x1234' as Hex
 
 test('a never-expiring swap key is bounded to two intent TTLs for a quote', () => {
@@ -35,11 +36,13 @@ test('a sooner key expiry is not extended by a quote', () => {
 
 test('quote expiry is an authorize of the same key', () => {
     const expiry = 1_700_007_200n
+
     const call = authorizeKeyExpiryCall({
         account: ACCOUNT,
         key: { expiry: 0n, keyType: 0, isSuperAdmin: false, publicKey: PUBLIC_KEY },
         expiry,
     })
+
     expect(call.target).toBe(ACCOUNT)
     expect(call.value).toBe(0n)
     const decoded = decodeFunctionData({ abi: accountAbi, data: call.data })
@@ -69,6 +72,7 @@ test('a revoked swap key is not recreated when the quote expiry is restored', ()
         }),
     ).toEqual([])
     const installedExpiry = 1_700_007_200n
+
     const installed = {
         expiry: installedExpiry,
         keyType: 0,
@@ -77,6 +81,7 @@ test('a revoked swap key is not recreated when the quote expiry is restored', ()
         permissions: [],
         limits: [],
     }
+
     const calls = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
@@ -84,6 +89,7 @@ test('a revoked swap key is not recreated when the quote expiry is restored', ()
         installed,
         live: installed,
     })
+
     expect(calls).toHaveLength(1)
     const decoded = decodeFunctionData({ abi: accountAbi, data: calls[0]!.data })
     expect(decoded.functionName).toBe('authorize')

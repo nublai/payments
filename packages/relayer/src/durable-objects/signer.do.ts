@@ -67,14 +67,23 @@ import {
 
 // Default configuration
 const DEFAULT_MAX_PENDING = 16
+
 const BALANCE_CHECK_INTERVAL_MS = 300_000 // 5 minutes
+
 const STALE_TX_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
+
 const DEFAULT_INTENT_EXPIRY_BUFFER_SECONDS = 30
+
 const DUPLICATE_TX_WAIT_MS = 2_000
+
 const DUPLICATE_TX_WAIT_POLL_MS = 100
+
 const DEFAULT_REPLACEMENT_BUMP_BPS = 1250
+
 const DEFAULT_REPLACEMENT_TRIGGER_WEI = 0n
+
 const DEFAULT_REPLACEMENT_MAX_ATTEMPTS = 3
+
 const DEFAULT_REPLACEMENT_BACKOFF_MS = 30_000
 
 interface PreparedBroadcastTransaction {
@@ -121,12 +130,14 @@ export function isIntentExpired(
     const expiry = typeof expiryTimestamp === 'string' ? BigInt(expiryTimestamp) : expiryTimestamp
     const currentTime = BigInt(Math.floor(Date.now() / 1000))
     const buffer = BigInt(bufferSeconds)
+
     return currentTime + buffer >= expiry
 }
 
 export function isFillTransactionUnsupportedError(message: string): boolean {
     const lower = message.toLowerCase()
     const mentionsMethod = lower.includes('eth_filltransaction')
+
     if (!mentionsMethod) return false
 
     return (
@@ -190,6 +201,7 @@ export class SignerDO extends DurableObject<Env> {
 
         // Extract signer name from query param (fallback for local dev where ctx.id.name is undefined)
         const signerNameParam = url.searchParams.get('signerName')
+
         if (signerNameParam) {
             this.signerNameOverride = signerNameParam
         }
@@ -198,6 +210,7 @@ export class SignerDO extends DurableObject<Env> {
             switch (url.pathname) {
                 case '/capacity': {
                     const capacity = await this.getCapacity()
+
                     return Response.json(capacity)
                 }
 
@@ -205,8 +218,10 @@ export class SignerDO extends DurableObject<Env> {
                     if (request.method !== 'POST') {
                         return new Response('Method not allowed', { status: 405 })
                     }
+
                     const tx = (await request.json()) as RelayTransaction
                     const result = await this.sendTransaction(tx)
+
                     return Response.json(result)
                 }
 
@@ -214,12 +229,15 @@ export class SignerDO extends DurableObject<Env> {
                     if (request.method !== 'POST') {
                         return new Response('Method not allowed', { status: 405 })
                     }
+
                     const { txId, status, txHash } = (await request.json()) as {
                         txId: string
                         status: 'confirmed' | 'failed'
                         txHash?: string
                     }
+
                     await this.handleFinalized(txId, status, txHash)
+
                     return Response.json({ ok: true })
                 }
 
@@ -227,20 +245,25 @@ export class SignerDO extends DurableObject<Env> {
                     if (request.method !== 'POST') {
                         return new Response('Method not allowed', { status: 405 })
                     }
+
                     const result = await this.handleMaintenance()
+
                     return Response.json(result)
                 }
 
                 case '/paid-upgrade-tx': {
                     const nonce = Number(url.searchParams.get('nonce'))
+
                     if (!Number.isInteger(nonce) || nonce < 0) {
                         return Response.json({ error: 'nonce is required' }, { status: 400 })
                     }
+
                     return Response.json(this.paidUpgradeBroadcast(nonce))
                 }
 
                 case '/status': {
                     const status = await this.getStatus()
+
                     return Response.json(status)
                 }
 
@@ -248,14 +271,19 @@ export class SignerDO extends DurableObject<Env> {
                     if (request.method !== 'GET') {
                         return new Response('Method not allowed', { status: 405 })
                     }
+
                     const txId = url.searchParams.get('txId')
+
                     if (!txId) {
                         return Response.json({ error: 'Missing txId parameter' }, { status: 400 })
                     }
+
                     const result = await this.getTxStatus(txId)
+
                     if (!result) {
                         return Response.json({ error: 'Transaction not found' }, { status: 404 })
                     }
+
                     return Response.json(result)
                 }
 
@@ -265,11 +293,13 @@ export class SignerDO extends DurableObject<Env> {
         } catch (error) {
             const message = getErrorMessage(error)
             const code = error instanceof SignerDOError ? error.code : undefined
+
             // A plain error has no before-send flag. Keep the slot and do not
             // hand the broadcast to another signer. False is only a known
             // pre-send SignerDOError that already carries false.
             const broadcastAttempted =
                 error instanceof SignerDOError ? error.broadcastAttempted : true
+
             return Response.json({ error: message, code, broadcastAttempted }, {
                 status: 500,
             })
@@ -292,6 +322,7 @@ export class SignerDO extends DurableObject<Env> {
         const versionRows = this.sql
             .exec('SELECT version FROM schema_version WHERE id = 1')
             .toArray()
+
         const currentVersion = (versionRows[0]?.version as number) ?? 0
 
         // Migration 1: Initial schema
@@ -357,11 +388,13 @@ export class SignerDO extends DurableObject<Env> {
     private async ensureInitialized(): Promise<void> {
         // Use toArray() instead of one() because the row may not exist yet
         const rows = this.sql.exec('SELECT initialized FROM signer_state WHERE id = 1').toArray()
+
         if (rows.length > 0 && rows[0].initialized) return
 
         // Extract derivation index from DO name (e.g., "signer-31337-0" -> 0)
         // Use getSignerName() to support local dev where ctx.id.name is undefined
         const name = this.getSignerName()
+
         if (!name) {
             throw new SignerDOError(
                 'SignerDO must be created with idFromName() and include signerName query param for local dev',
@@ -370,6 +403,7 @@ export class SignerDO extends DurableObject<Env> {
         }
 
         const parts = name.split('-')
+
         if (parts.length !== 3 || parts[0] !== 'signer') {
             throw new SignerDOError(
                 `Invalid DO name format: ${name}. Expected: signer-{chainId}-{index}`,
@@ -424,6 +458,7 @@ export class SignerDO extends DurableObject<Env> {
         // Use viem's bytesToHex instead of Node.js Buffer (not available in Workers)
         const privateKey = bytesToHex(derived.privateKey)
         const account = privateKeyToAccount(privateKey)
+
         return { address: account.address, privateKey }
     }
 
@@ -487,7 +522,9 @@ export class SignerDO extends DurableObject<Env> {
             'already known',
             'NONCE_EXPIRED',
         ]
+
         const lowerMessage = message.toLowerCase()
+
         return noncePhrases.some((phrase) => lowerMessage.includes(phrase.toLowerCase()))
     }
 
@@ -499,6 +536,7 @@ export class SignerDO extends DurableObject<Env> {
         const stateRows = this.sql
             .exec('SELECT address, nonce, chain_id FROM signer_state WHERE id = 1')
             .toArray()
+
         if (stateRows.length === 0) {
             throw new SignerDOError('Signer not initialized', 'NOT_INITIALIZED')
         }
@@ -512,6 +550,7 @@ export class SignerDO extends DurableObject<Env> {
                 const freshRows = this.sql
                     .exec('SELECT nonce FROM signer_state WHERE id = 1')
                     .toArray()
+
                 if (freshRows.length === 0) {
                     return { error: 'Signer not initialized' }
                 }
@@ -548,6 +587,7 @@ export class SignerDO extends DurableObject<Env> {
         const stateRows = this.sql
             .exec('SELECT address, chain_id FROM signer_state WHERE id = 1')
             .toArray()
+
         if (stateRows.length === 0) {
             throw new SignerDOError('Signer not initialized', 'NOT_INITIALIZED')
         }
@@ -558,6 +598,7 @@ export class SignerDO extends DurableObject<Env> {
 
         const syncedNonce = this.ctx.storage.transactionSync(() => {
             const txId = txIdToDelete
+
             if (txId !== undefined) {
                 this.sql.exec('DELETE FROM pending_transactions WHERE id = ?', txId)
             }
@@ -567,16 +608,19 @@ export class SignerDO extends DurableObject<Env> {
                     "SELECT MAX(nonce) as max_nonce FROM pending_transactions WHERE status IN ('pending', 'replacing')",
                 )
                 .toArray()
+
             const pendingMax = pendingMaxRows[0]?.max_nonce as number | null | undefined
             const nextNonce = Math.max(onChainNonce, (pendingMax ?? -1) + 1)
 
             this.sql.exec('UPDATE signer_state SET nonce = ? WHERE id = 1', nextNonce)
+
             return nextNonce
         }) as number
 
         console.log(
             `[SignerDO] Synced nonce from chain: ${syncedNonce} for ${address} (chain pending: ${onChainNonce})`,
         )
+
         return syncedNonce
     }
 
@@ -585,6 +629,7 @@ export class SignerDO extends DurableObject<Env> {
      */
     private async fetchOnChainNonce(address: string, _chainId: number): Promise<number> {
         const rpcUrl = getChainRpcUrl(_chainId, this.env)
+
         const response = await fetch(rpcUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -597,6 +642,7 @@ export class SignerDO extends DurableObject<Env> {
         })
 
         const data = (await response.json()) as { result: string; error?: unknown }
+
         if (data.error) {
             throw new SignerDOError(
                 `Failed to fetch nonce: ${JSON.stringify(data.error)}`,
@@ -628,6 +674,7 @@ export class SignerDO extends DurableObject<Env> {
      */
     private async fetchBalance(address: string, chainId: number): Promise<bigint> {
         const rpcUrl = getChainRpcUrl(chainId, this.env)
+
         const response = await fetch(rpcUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -640,8 +687,10 @@ export class SignerDO extends DurableObject<Env> {
         })
 
         const data = (await response.json()) as { result: string; error?: unknown }
+
         if (data.error) {
             console.error('Failed to fetch balance:', data.error)
+
             return 0n
         }
 
@@ -662,6 +711,7 @@ export class SignerDO extends DurableObject<Env> {
         logs?: unknown[]
     } | null> {
         const rpcUrl = getChainRpcUrl(chainId, this.env)
+
         const response = await fetch(rpcUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -682,6 +732,7 @@ export class SignerDO extends DurableObject<Env> {
                 logs?: unknown[]
             } | null
         }
+
         return data.result
     }
 
@@ -724,6 +775,7 @@ export class SignerDO extends DurableObject<Env> {
         // With Anvil, transactions confirm immediately, so this check is critical
         try {
             const receipt = await this.getTransactionReceipt(txHash, chainId)
+
             if (receipt) {
                 // Transaction is confirmed - update status in database if it's still pending
                 if (status === 'pending' || status === 'replacing') {
@@ -784,6 +836,7 @@ export class SignerDO extends DurableObject<Env> {
             this.env as unknown as Record<string, string | undefined>,
             chainId,
         )
+
         if (!contracts.simpleFunder) {
             return { success: false, reason: 'SimpleFunder not configured' }
         }
@@ -794,6 +847,7 @@ export class SignerDO extends DurableObject<Env> {
         // TARGET_SIGNER_BALANCE is in ETH (e.g. "0.01"), parse to wei
         const targetBalance = parseEther(this.env.TARGET_SIGNER_BALANCE ?? '0.01')
         const refillAmount = targetBalance - currentBalance
+
         if (refillAmount <= 0n) {
             return { success: false, reason: 'Balance already at target' }
         }
@@ -807,6 +861,7 @@ export class SignerDO extends DurableObject<Env> {
 
         let gasEstimate: bigint
         let gasPrice: bigint
+
         try {
             ;[gasEstimate, gasPrice] = await Promise.all([
                 publicClient.estimateGas({
@@ -818,10 +873,12 @@ export class SignerDO extends DurableObject<Env> {
             ])
         } catch (error) {
             const msg = getErrorMessage(error)
+
             return { success: false, reason: `Estimate failed: ${msg}` }
         }
 
         const txCost = gasEstimate * gasPrice
+
         if (currentBalance < txCost) {
             return { success: false, reason: 'Cannot afford pullGas tx' }
         }
@@ -836,9 +893,11 @@ export class SignerDO extends DurableObject<Env> {
                 account,
                 chain: { id: chainId } as Chain,
             })
+
             return { success: true, txHash, amount: refillAmount }
         } catch (error) {
             const msg = getErrorMessage(error)
+
             return { success: false, reason: `pullGas failed: ${msg}` }
         }
     }
@@ -899,6 +958,7 @@ export class SignerDO extends DurableObject<Env> {
             this.env.MAX_PENDING_PER_SIGNER ?? String(DEFAULT_MAX_PENDING),
             10,
         )
+
         const capacity = isPaused ? 0 : Math.max(0, maxPending - pendingCount)
 
         return {
@@ -916,6 +976,7 @@ export class SignerDO extends DurableObject<Env> {
      */
     async sendTransaction(tx: RelayTransaction): Promise<SendResult> {
         const broadcast = { attempted: false }
+
         try {
             return await this.performSend(tx, broadcast)
         } catch (error) {
@@ -941,6 +1002,7 @@ export class SignerDO extends DurableObject<Env> {
         let result:
             | { nonce: number; address: string; chainId: number }
             | { error: string; code?: SignerErrorCode }
+
         try {
             result = this.ctx.storage.transactionSync(() => {
                 // Check if paused
@@ -1009,9 +1071,11 @@ export class SignerDO extends DurableObject<Env> {
                 | { error: string; code?: SignerErrorCode }
         } catch (error) {
             const message = getErrorMessage(error)
+
             if (isPendingTransactionIdUniqueConstraintError(message)) {
                 return await this.resolveDuplicateTransactionId(tx.id)
             }
+
             throw error
         }
 
@@ -1022,6 +1086,7 @@ export class SignerDO extends DurableObject<Env> {
 
         // Type assertion after error check - result is now the success case
         const successResult = result as { nonce: number; address: string; chainId: number }
+
         const { txParams, initialFeeParams } = await withCleanupOnError(
             async () => {
                 const preparedTxParams = await this.buildTxParams(
@@ -1029,9 +1094,11 @@ export class SignerDO extends DurableObject<Env> {
                     successResult.chainId,
                     successResult.address as Address,
                 )
+
                 const recommendedFeeParams = await this.getRecommendedFeeParams(
                     successResult.chainId,
                 )
+
                 return {
                     txParams: preparedTxParams,
                     initialFeeParams: recommendedFeeParams,
@@ -1046,6 +1113,7 @@ export class SignerDO extends DurableObject<Env> {
         let txHash: Hex
         let usedFeeParams = initialFeeParams
         let usedNonce = successResult.nonce
+
         try {
             txHash = await this.signAndBroadcastPrepared(
                 txParams,
@@ -1073,6 +1141,7 @@ export class SignerDO extends DurableObject<Env> {
                             'UPDATE signer_state SET nonce = nonce + 1 WHERE id = 1 RETURNING nonce - 1 as acquired_nonce',
                         )
                         .toArray()
+
                     const acquiredNonce = updatedRows[0].acquired_nonce as number
 
                     // Re-insert pending transaction with new nonce
@@ -1136,12 +1205,14 @@ export class SignerDO extends DurableObject<Env> {
 
         // Enqueue for monitoring
         const signerName = this.getSignerName()
+
         if (!signerName) {
             throw new SignerDOError(
                 'SignerDO must be created with idFromName() and include signerName query param for local dev',
                 'NOT_INITIALIZED',
             )
         }
+
         await this.enqueueMonitorJob(tx.id, txHash, signerName, successResult.chainId)
 
         return {
@@ -1154,6 +1225,7 @@ export class SignerDO extends DurableObject<Env> {
 
     private async resolveDuplicateTransactionId(txId: string): Promise<SendResult> {
         const signerName = this.getSignerName()
+
         if (!signerName) {
             throw new SignerDOError(
                 'SignerDO must be created with idFromName() and include signerName query param for local dev',
@@ -1181,6 +1253,7 @@ export class SignerDO extends DurableObject<Env> {
         }
 
         let txHash = initialRow.tx_hash as string
+
         if (!txHash) {
             txHash = await this.waitForTxHash(txId)
         }
@@ -1204,6 +1277,7 @@ export class SignerDO extends DurableObject<Env> {
                 txId,
             )
             .toArray()[0]
+
         const recoveredRow = finalRow ?? initialRow
         const recoveredTxHash = (recoveredRow.tx_hash as string) || txHash
 
@@ -1217,16 +1291,21 @@ export class SignerDO extends DurableObject<Env> {
 
     private async waitForTxHash(txId: string): Promise<string> {
         const deadline = Date.now() + DUPLICATE_TX_WAIT_MS
+
         while (Date.now() < deadline) {
             const row = this.sql
                 .exec('SELECT tx_hash FROM pending_transactions WHERE id = ?', txId)
                 .toArray()[0]
+
             const txHash = (row?.tx_hash as string | undefined) ?? ''
+
             if (txHash) {
                 return txHash
             }
+
             await new Promise((resolve) => setTimeout(resolve, DUPLICATE_TX_WAIT_POLL_MS))
         }
+
         return ''
     }
 
@@ -1253,11 +1332,15 @@ export class SignerDO extends DurableObject<Env> {
                 nonce,
             )
             .toArray()
+
         const row = rows[0]
+
         if (!row) return null
+
         const state = this.sql
             .exec('SELECT address FROM signer_state WHERE id = 1')
             .toArray()[0]
+
         return {
             txHash: (row.tx_hash as string) ?? '',
             nonce: row.nonce as number,
@@ -1279,7 +1362,9 @@ export class SignerDO extends DurableObject<Env> {
         nonce: number
     }): Promise<void> {
         const signerName = this.getSignerName()
+
         if (!signerName) return
+
         try {
             const poolId = this.env.SIGNER_POOL.idFromName(`pool-${input.chainId}`)
             const pool = this.env.SIGNER_POOL.get(poolId)
@@ -1320,9 +1405,11 @@ export class SignerDO extends DurableObject<Env> {
                 attempt: 0,
             } satisfies MonitorJob)
             this.sql.exec('UPDATE pending_transactions SET queued = 1 WHERE id = ?', txId)
+
             return true
         } catch {
             this.sql.exec('UPDATE pending_transactions SET queued = 0 WHERE id = ?', txId)
+
             return false
         }
     }
@@ -1330,7 +1417,9 @@ export class SignerDO extends DurableObject<Env> {
     private parseOptionalBigInt(value: string | undefined): bigint | undefined {
         if (!value) return undefined
         const trimmed = value.trim()
+
         if (!trimmed) return undefined
+
         return BigInt(trimmed)
     }
 
@@ -1338,6 +1427,7 @@ export class SignerDO extends DurableObject<Env> {
         authorizationList: SignedAuthorization[] | undefined,
     ): string | null {
         if (!authorizationList || authorizationList.length === 0) return null
+
         return JSON.stringify(authorizationList, (_key, value) =>
             typeof value === 'bigint' ? value.toString() : value,
         )
@@ -1348,16 +1438,21 @@ export class SignerDO extends DurableObject<Env> {
     ): SignedAuthorization[] | undefined {
         if (!value) return undefined
         const parsed = JSON.parse(value) as Array<Record<string, unknown>>
+
         return parsed.map((item) => {
             const copy = { ...item }
+
             if (typeof copy.chainId === 'string') copy.chainId = BigInt(copy.chainId)
+
             if (typeof copy.nonce === 'string') copy.nonce = BigInt(copy.nonce)
+
             return copy as unknown as SignedAuthorization
         })
     }
 
     private getRecommendedFeeParams(chainId: number): Promise<FeeParams> {
         const { publicClient } = this.ensureClients(chainId)
+
         return publicClient.estimateFeesPerGas({
             type: 'eip1559',
             chain: publicClient.chain,
@@ -1437,6 +1532,7 @@ export class SignerDO extends DurableObject<Env> {
                         String(DEFAULT_INTENT_EXPIRY_BUFFER_SECONDS),
                     10,
                 )
+
                 if (isIntentExpired(tx.intent.expiry, bufferSeconds)) {
                     throw new SignerDOError(
                         `Intent expired. Expiry: ${tx.intent.expiry}, Current: ${Math.floor(Date.now() / 1000)}`,
@@ -1448,7 +1544,9 @@ export class SignerDO extends DurableObject<Env> {
                     ...tx.intent,
                     paymentRecipient: getPaymentRecipient(this.env.FEE_RECIPIENT, signerAddress),
                 }
+
                 const encodedIntent = this.encodeIntentToBytes(intentWithRecipient)
+
                 return {
                     to: contracts.orchestrator,
                     data: encodeFunctionData({
@@ -1469,6 +1567,7 @@ export class SignerDO extends DurableObject<Env> {
                         String(DEFAULT_INTENT_EXPIRY_BUFFER_SECONDS),
                     10,
                 )
+
                 for (const intent of tx.intents) {
                     if (isIntentExpired(intent.expiry, batchBufferSeconds)) {
                         throw new SignerDOError(
@@ -1482,9 +1581,11 @@ export class SignerDO extends DurableObject<Env> {
                     ...intent,
                     paymentRecipient: getPaymentRecipient(this.env.FEE_RECIPIENT, signerAddress),
                 }))
+
                 const encodedIntents = intentsWithRecipient.map((intent) =>
                     this.encodeIntentToBytes(intent),
                 )
+
                 return {
                     to: contracts.orchestrator,
                     data: encodeFunctionData({
@@ -1510,6 +1611,7 @@ export class SignerDO extends DurableObject<Env> {
         const broadcastParams = capped.txParams
         const broadcastFees = capped.feeParams
         const { publicClient, walletClient, account } = this.ensureClients(chainId)
+
         try {
             return await this.sendWithPrimaryPath(
                 broadcastParams,
@@ -1521,6 +1623,7 @@ export class SignerDO extends DurableObject<Env> {
             )
         } catch (error) {
             const primaryMessage = getErrorMessage(error)
+
             if (!isFillTransactionUnsupportedError(primaryMessage)) {
                 throw new SignerDOError(
                     `Failed to broadcast transaction: ${primaryMessage}`,
@@ -1543,7 +1646,9 @@ export class SignerDO extends DurableObject<Env> {
                     walletClient,
                     account,
                 )
+
                 console.info('[SignerDO] broadcast fallback success', { chainId, txHash })
+
                 return txHash
             } catch (fallbackError) {
                 const fallbackMessage = getErrorMessage(fallbackError)
@@ -1583,6 +1688,7 @@ export class SignerDO extends DurableObject<Env> {
 
         const { publicClient, account } = this.ensureClients(chainId)
         let gas: bigint
+
         try {
             gas = await publicClient.estimateGas({
                 account: account.address,
@@ -1608,11 +1714,13 @@ export class SignerDO extends DurableObject<Env> {
                     feeParams,
                 }
             }
+
             const capped = assertAccountUpgradeGas({
                 gas,
                 maxFeePerGas: feeParams.maxFeePerGas,
                 maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
             })
+
             return {
                 txParams: { ...txParams, gas: capped.gas },
                 feeParams: {
@@ -1673,7 +1781,9 @@ export class SignerDO extends DurableObject<Env> {
             gas,
             feeParams,
         })
+
         const serializedTransaction = await walletClient.signTransaction(request)
+
         if (!serializedTransaction) {
             throw new SignerDOError(
                 'Fallback signing returned empty serialized transaction',
@@ -1703,12 +1813,15 @@ export class SignerDO extends DurableObject<Env> {
             const rows = this.sql
                 .exec('SELECT tx_hash FROM pending_transactions WHERE id = ?', txId)
                 .toArray()
+
             if (rows.length === 0) return
             const activeTxHash = (rows[0].tx_hash as string) ?? ''
+
             if (!shouldApplyFinalization({ activeTxHash, eventTxHash: txHash, status })) {
                 return
             }
         }
+
         this.sql.exec('UPDATE pending_transactions SET status = ? WHERE id = ?', status, txId)
     }
 
@@ -1757,6 +1870,7 @@ export class SignerDO extends DurableObject<Env> {
                         'abandoned',
                         txId,
                     )
+
                     return 'abandoned' as const
                 }
 
@@ -1774,15 +1888,18 @@ export class SignerDO extends DurableObject<Env> {
                         'pending',
                         txId,
                     )
+
                     return 'skipped' as const
                 }
 
                 const currentMaxFee = this.parseOptionalBigInt(
                     claimed.max_fee_per_gas as string | undefined,
                 )
+
                 const currentMaxPriority = this.parseOptionalBigInt(
                     claimed.max_priority_fee_per_gas as string | undefined,
                 )
+
                 const txTo = (claimed.tx_to as string | undefined) ?? ''
                 const txData = (claimed.tx_data as string | undefined) ?? ''
                 const txValue = this.parseOptionalBigInt(claimed.tx_value as string | undefined)
@@ -1799,10 +1916,12 @@ export class SignerDO extends DurableObject<Env> {
                         'stuck',
                         txId,
                     )
+
                     return 'skipped' as const
                 }
 
                 const requiredFees = await this.getRecommendedFeeParams(chainId)
+
                 const triggerReplacement = shouldTriggerReplacementByFee({
                     requiredMaxFeePerGas: requiredFees.maxFeePerGas,
                     currentMaxFeePerGas: currentMaxFee,
@@ -1824,6 +1943,7 @@ export class SignerDO extends DurableObject<Env> {
                         nowMs,
                         txId,
                     )
+
                     return 'skipped' as const
                 }
 
@@ -1837,6 +1957,7 @@ export class SignerDO extends DurableObject<Env> {
                 })
 
                 const nextAttempts = attempts + 1
+
                 if (!nextFeeParams) {
                     this.sql.exec(
                         `
@@ -1850,10 +1971,12 @@ export class SignerDO extends DurableObject<Env> {
                         nowMs,
                         txId,
                     )
+
                     return 'abandoned' as const
                 }
 
                 const paidUpgrade = Number(claimed.paid_upgrade) === 1
+
                 const txParams: PreparedBroadcastTransaction = {
                     to: txTo as Address,
                     data: txData as Hex,
@@ -1867,6 +1990,7 @@ export class SignerDO extends DurableObject<Env> {
                 try {
                     const nonce = claimed.nonce as number
                     const priorHash = (claimed.tx_hash as string | undefined) ?? ''
+
                     const replacementHash = await this.signAndBroadcastPrepared(
                         txParams,
                         nonce,
@@ -1896,6 +2020,7 @@ export class SignerDO extends DurableObject<Env> {
                         txId,
                     )
                     await this.enqueueMonitorJob(txId, replacementHash, signerName, chainId)
+
                     if (paidUpgrade && priorHash) {
                         await this.trackPaidUpgradeReplacement({
                             chainId,
@@ -1904,6 +2029,7 @@ export class SignerDO extends DurableObject<Env> {
                             nonce,
                         })
                     }
+
                     return 'replaced' as const
                 } catch {
                     const terminal = nextAttempts >= config.maxAttempts
@@ -1920,6 +2046,7 @@ export class SignerDO extends DurableObject<Env> {
                         nowMs,
                         txId,
                     )
+
                     return terminal ? ('abandoned' as const) : ('skipped' as const)
                 }
             },
@@ -1953,6 +2080,7 @@ export class SignerDO extends DurableObject<Env> {
 
         // Clean up stale pending transactions
         const staleThreshold = Date.now() - STALE_TX_THRESHOLD_MS
+
         const stale = this.sql
             .exec(
                 `
@@ -1969,6 +2097,7 @@ export class SignerDO extends DurableObject<Env> {
 
         for (const tx of stale) {
             const receipt = await this.getTransactionReceipt(tx.tx_hash as string, chainId)
+
             if (receipt) {
                 const newStatus = receipt.status === '0x1' ? 'confirmed' : 'failed'
                 this.sql.exec(
@@ -1976,10 +2105,12 @@ export class SignerDO extends DurableObject<Env> {
                     newStatus,
                     tx.id,
                 )
+
                 if (newStatus === 'confirmed') confirmed++
                 else failed++
             } else {
                 const signerName = this.getSignerName()
+
                 if (!signerName) {
                     this.sql.exec(
                         "UPDATE pending_transactions SET status = 'stuck' WHERE id = ?",
@@ -1994,6 +2125,7 @@ export class SignerDO extends DurableObject<Env> {
                     chainId,
                     signerName,
                 )
+
                 if (replacementResult === 'abandoned') {
                     failed++
                 } else if (replacementResult === 'skipped') {
@@ -2004,6 +2136,7 @@ export class SignerDO extends DurableObject<Env> {
 
         let requeued = 0
         const signerName = this.getSignerName()
+
         if (signerName) {
             const orphaned = this.sql
                 .exec(
@@ -2021,6 +2154,7 @@ export class SignerDO extends DurableObject<Env> {
                     signerName,
                     chainId,
                 )
+
                 if (queued) {
                     requeued++
                 }
@@ -2092,12 +2226,14 @@ export class SignerDO extends DurableObject<Env> {
         await this.ensureInitialized()
 
         const stateRows = this.sql.exec('SELECT * FROM signer_state WHERE id = 1').toArray()
+
         const pendingCount =
             (this.sql
                 .exec(
                     "SELECT COUNT(*) as c FROM pending_transactions WHERE status IN ('pending', 'replacing')",
                 )
                 .toArray()[0]?.c as number) ?? 0
+
         const recentTransactions = this.sql
             .exec('SELECT * FROM pending_transactions ORDER BY sent_at DESC LIMIT 10')
             .toArray()
@@ -2128,7 +2264,9 @@ class SignerDOError extends Error {
 function tagBroadcastAttempt(error: unknown, attempted: boolean): SignerDOError {
     if (error instanceof SignerDOError) {
         error.broadcastAttempted = attempted
+
         return error
     }
+
     return new SignerDOError(getErrorMessage(error), 'BROADCAST_FAILED', attempted)
 }

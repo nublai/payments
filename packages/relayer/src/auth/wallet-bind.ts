@@ -9,8 +9,11 @@ import {
 } from 'viem'
 
 export const WALLET_BIND_DOMAIN_NAME = 'Nubl Relayer'
+
 export const WALLET_BIND_DOMAIN_VERSION = '1'
+
 export const WALLET_BIND_PRIMARY_TYPE = 'WalletBind' as const
+
 export const BIND_NONCE_TTL_SECONDS = 10 * 60
 
 export const WALLET_BIND_TYPES = {
@@ -38,6 +41,7 @@ export interface WalletBindFields {
 
 export function walletBindEnvironment(env: { CONTEXT?: string }): string | undefined {
     const context = env.CONTEXT?.trim().toLowerCase()
+
     return context ? context : undefined
 }
 
@@ -79,7 +83,9 @@ export function walletBindTypedData(fields: WalletBindFields) {
 
 export function parseWalletBindScheme(value: unknown): WalletBindScheme | undefined {
     if (value === undefined || value === 'eip712') return 'eip712'
+
     if (value === 'eip191') return 'eip191'
+
     return undefined
 }
 
@@ -90,6 +96,7 @@ export async function verifyWalletBindSignature(input: {
 }): Promise<boolean> {
     const account = getAddress(input.fields.account)
     const fields = { ...input.fields, account }
+
     try {
         if (input.scheme === 'eip191') {
             return await verifyMessage({
@@ -98,6 +105,7 @@ export async function verifyWalletBindSignature(input: {
                 signature: input.signature,
             })
         }
+
         return await verifyTypedData({
             address: account,
             domain: walletBindDomain(fields.chainId, fields.environment),

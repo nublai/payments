@@ -14,11 +14,13 @@ function consumeNonce(
     const normalizedTtlSeconds = Math.max(0, Math.floor(ttlSeconds))
     const expiresAtUnixSeconds = nowUnixSeconds + normalizedTtlSeconds
     const existing = rows.get(replayKey)
+
     if (existing && existing.expiresAtUnixSeconds >= nowUnixSeconds) {
         return { accepted: false, expiresAtUnixSeconds }
     }
 
     rows.set(replayKey, { replayKey, expiresAtUnixSeconds })
+
     return { accepted: true, expiresAtUnixSeconds }
 }
 
@@ -36,6 +38,7 @@ function scheduleCleanupAlarmAtMs(
     nowUnixMilliseconds: number,
 ): number {
     const nextCleanupAtMs = expiresAtUnixSeconds * 1000
+
     if (
         currentAlarmAtMs === null ||
         currentAlarmAtMs < nowUnixMilliseconds ||
@@ -43,6 +46,7 @@ function scheduleCleanupAlarmAtMs(
     ) {
         return Math.max(nowUnixMilliseconds, nextCleanupAtMs)
     }
+
     return currentAlarmAtMs
 }
 

@@ -77,9 +77,11 @@ export async function getKeys(
     params: GetKeysParams,
 ): Promise<GetKeysResponse> {
     const transport = createRelayerTransport(client)
+
     const rpcParams: Record<string, unknown> = {
         address: params.address,
     }
+
     if (params.chainIds && params.chainIds.length > 0) {
         rpcParams.chainIds = params.chainIds.map((id) => `0x${id.toString(16)}`)
     }

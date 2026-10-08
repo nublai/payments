@@ -12,26 +12,40 @@ import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const EOA = '0x1111111111111111111111111111111111111111' as Address
+
 const TARGET = '0x2222222222222222222222222222222222222222' as Address
+
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+
 const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+
 const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+
 const ARBITRUM_USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+
 const BASE_SEPOLIA_USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+
 const SIG =
     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as Hex
+
 const CALLS: Call[] = [{ target: TARGET, value: 0n, data: '0x1234' }]
+
 const NOW = 1_700_000_000n
+
 const EXPIRY = NOW + 60n
+
 const GAS_CEILING = 1_000_000n
+
 const PAID_FEE_CAP = 5_000_000n
 
 type PrepareInput = {
@@ -59,11 +73,13 @@ function preparedQuote(
     const payer = input.payer ?? zeroAddress
     const paymentToken = input.paymentToken ?? zeroAddress
     const expiry = input.expiry ?? EXPIRY
+
     const messageCalls = input.calls.map((call) => ({
         to: call.target,
         value: call.value,
         data: call.data ?? '0x',
     }))
+
     const message = {
         multichain: false,
         eoa: input.from,
@@ -78,12 +94,14 @@ function preparedQuote(
         settler: zeroAddress,
         expiry,
     }
+
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId,
         verifyingContract: orchestrator,
     }
+
     const quoteWithoutPayment: Omit<Quote, 'paymentAmount'> = {
         chainId: `0x${chainId.toString(16)}`,
         orchestrator,
@@ -146,6 +164,7 @@ function signingHarness(
     const signTypedData = mock(async (_input: SignTypedDataInput) => SIG)
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
     const prepareCalls = mock(async (input: PrepareInput) => prepare(input))
+
     return {
         signTypedData,
         sendPreparedCalls,
@@ -182,6 +201,7 @@ function signedCap(signTypedData: ReturnType<typeof mock>): bigint {
     const typed = signTypedData.mock.calls[0]?.[0]?.typedData as {
         message: { paymentMaxAmount: bigint }
     }
+
     return typed.message.paymentMaxAmount
 }
 
@@ -189,6 +209,7 @@ test('off-local quote of 0 is refused and does not sign the 5 USDC ceiling', asy
     const { deps, signTypedData, sendPreparedCalls } = signingHarness((input) =>
         preparedQuote(input, '0', 8453),
     )
+
     await expect(executeSignedCalls(deps, prodParams)).rejects.toThrow(
         /off-local quote payment is zero/,
     )
@@ -216,6 +237,7 @@ test('quote of 1 signs paymentMaxAmount 1001 and discloses that cap', async () =
     const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
         preparedQuote(input, '1', 8453),
     )
+
     const result = await executeSignedCalls(deps, prodParams)
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(prepareCalls.mock.calls[1]?.[0]?.paymentMaxAmount).toBe(1001n)
@@ -232,6 +254,7 @@ test('an honest quote signs the quote plus 5 percent', async () => {
     const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
         preparedQuote(input, '250000', 8453),
     )
+
     const result = await executeSignedCalls(deps, prodParams)
     expect(prepareCalls.mock.calls[1]?.[0]?.paymentMaxAmount).toBe(262500n)
     expect(signedCap(signTypedData)).toBe(262500n)
@@ -255,6 +278,7 @@ test('a quote of 5 USDC is refused because the margin exceeds the ceiling', asyn
     const { deps, signTypedData } = signingHarness((input) =>
         preparedQuote(input, PAID_FEE_CAP.toString(), 8453),
     )
+
     await expect(executeSignedCalls(deps, prodParams)).rejects.toThrow(/payment amount exceeds fee cap/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
@@ -263,16 +287,20 @@ test('a relayer typed-data cap other than quote plus margin is refused', async (
     const { deps, signTypedData } = signingHarness((input) =>
         preparedQuote(input, '1', 8453, PAID_FEE_CAP),
     )
+
     await expect(executeSignedCalls(deps, prodParams)).rejects.toThrow(/fee cap does not match/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
 
 test('a second prepare that raises the quote is refused', async () => {
     let calls = 0
+
     const { deps, signTypedData } = signingHarness((input) => {
         calls += 1
+
         return preparedQuote(input, calls === 1 ? '1' : '250000', 8453)
     })
+
     await expect(executeSignedCalls(deps, prodParams)).rejects.toThrow(/fee cap does not match the quote/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
@@ -281,6 +309,7 @@ test('an over-ceiling caller cap is clamped to 5 USDC', async () => {
     const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
         preparedQuote(input, '1', 8453),
     )
+
     await executeSignedCalls(deps, {
         ...prodParams,
         paymentMaxAmount: 100_000_000n,
@@ -289,9 +318,11 @@ test('an over-ceiling caller cap is clamped to 5 USDC', async () => {
     })
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
+
     const signed = signTypedData.mock.calls[0]?.[0]?.typedData as {
         message: { payer: Address; paymentToken: Address }
     }
+
     expect(signed.message.payer).toBe(EOA)
     expect(signed.message.paymentToken).toBe(BASE_USDC)
 })
@@ -328,6 +359,7 @@ test('a caller cap without payer or token is refused', async () => {
 })
 
 const USDC_E = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as Address
+
 const WBTC = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' as Address
 
 test('an explicit zero payer and token is refused off local', async () => {
@@ -389,6 +421,7 @@ test('polygon native USDC is the only fee token accepted on polygon', async () =
     const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
         preparedQuote(input, '1', 137),
     )
+
     await executeSignedCalls(deps, {
         ...prodParams,
         chainId: 137,
@@ -430,11 +463,13 @@ test('omitting the cap while passing payer and token still signs the quote plus 
     const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
         preparedQuote(input, '1', 8453),
     )
+
     const result = await executeSignedCalls(deps, {
         ...prodParams,
         payer: EOA,
         paymentToken: BASE_USDC,
     })
+
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
     expect(result.feeCap).toEqual({
@@ -447,15 +482,19 @@ test('omitting the cap while passing payer and token still signs the quote plus 
 
 test('a local zero quote signs cap 0 with a zero payer and says so', async () => {
     const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '0', 31337))
+
     const result = await executeSignedCalls(deps, {
         ...prodParams,
         chainId: 31337,
         env: 'dev',
     })
+
     expect(signedCap(signTypedData)).toBe(0n)
+
     const signed = signTypedData.mock.calls[0]?.[0]?.typedData as {
         message: { payer: Address; paymentToken: Address }
     }
+
     expect(signed.message.payer).toBe(zeroAddress)
     expect(signed.message.paymentToken).toBe(zeroAddress)
     expect(result.feeCap).toEqual({
@@ -470,6 +509,7 @@ test('dev on a non-local chain clamps an explicit cap to 5 USDC', async () => {
     const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
         preparedQuote(input, '10000000', 8453),
     )
+
     await expect(
         executeSignedCalls(deps, {
             ...prodParams,
@@ -514,6 +554,7 @@ test('dev on Base signs an in-policy quote under an explicit cap at no more than
     const { deps, signTypedData, prepareCalls } = signingHarness((input) =>
         preparedQuote(input, '1', 8453),
     )
+
     await executeSignedCalls(deps, {
         ...prodParams,
         chainId: 8453,
@@ -574,6 +615,7 @@ test('dev on a non-local chain refuses a zero payer and token', async () => {
 
 test('prod send returns the fee cap for human and json output', async () => {
     const signTypedData = mock(async () => SIG)
+
     const result = await executeAccountSend(
         {
             env: 'prod',
@@ -635,6 +677,7 @@ test('prod send returns the fee cap for human and json output', async () => {
             })) as never,
         } as never,
     )
+
     expect(result.feeCap).toEqual({
         token: POLYGON_USDC,
         symbol: 'USDC',
@@ -647,6 +690,7 @@ test('prod send returns the fee cap for human and json output', async () => {
 test('dev cleartext is refused for a published orchestrator and allowed for local', () => {
     const previous = process.env.RELAYER_URL_DEV
     process.env.RELAYER_URL_DEV = 'http://relayer.example'
+
     try {
         expect(() => getEnvRelayerUrl('dev', 84532)).toThrow(/https/)
         expect(() => getEnvRelayerUrl('dev', 8453)).toThrow(/https/)
@@ -677,6 +721,7 @@ function listen(handler: (body: string) => string): Promise<{ server: Server; ur
             res.end(handler(body))
         })
     })
+
     return new Promise((resolve) => {
         server.listen(0, '127.0.0.1', () => {
             const port = (server.address() as { port: number }).port
@@ -689,6 +734,7 @@ function rpcResult(body: string, gas: bigint): string {
     const parsed = JSON.parse(body) as { id?: number; method?: string }
     const method = parsed.method
     const result = method === 'eth_chainId' ? '0x2105' : `0x${gas.toString(16)}`
+
     return JSON.stringify({ jsonrpc: '2.0', id: parsed.id ?? 1, result })
 }
 
@@ -696,6 +742,7 @@ test('a colluding RPC cannot raise the gas ceiling above twice the local formula
     const calls = [{ target: TARGET, value: 0n, data: '0x' as Hex }]
     const local = localCombinedGasCeiling(calls)
     const { server, url } = await listen((body) => rpcResult(body, 100_000_000n))
+
     try {
         const ceiling = await estimateCombinedGasCeiling({
             rpcUrl: url,
@@ -703,6 +750,7 @@ test('a colluding RPC cannot raise the gas ceiling above twice the local formula
             from: EOA,
             calls,
         })
+
         expect(ceiling).toBe(local * 2n)
         expect(ceiling).toBeLessThan(800_500_000n)
     } finally {
@@ -716,6 +764,7 @@ test('an RPC estimate within twice the local formula is kept', async () => {
     const estimated = 200_000n
     const fromRpc = estimated * 8n + 500_000n
     const { server, url } = await listen((body) => rpcResult(body, estimated))
+
     try {
         const ceiling = await estimateCombinedGasCeiling({
             rpcUrl: url,
@@ -723,6 +772,7 @@ test('an RPC estimate within twice the local formula is kept', async () => {
             from: EOA,
             calls,
         })
+
         expect(fromRpc > local && fromRpc < local * 2n).toBe(true)
         expect(ceiling).toBe(fromRpc)
     } finally {

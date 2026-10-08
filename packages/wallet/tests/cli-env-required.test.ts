@@ -5,11 +5,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const walletDir = resolve(import.meta.dir, '..')
+
 const missingEnvMessage =
     'Missing --env. Pass `--env prod`, `--env stage`, or `--env dev`.'
 
 function runCli(args: string[]) {
     const home = mkdtempSync(join(tmpdir(), 'tw-env-required-'))
+
     return spawnSync('bun', ['./src/cli.ts', ...args], {
         cwd: walletDir,
         encoding: 'utf8',

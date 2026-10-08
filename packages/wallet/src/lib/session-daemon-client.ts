@@ -12,6 +12,7 @@ import {
 } from './session-daemon-protocol'
 
 const CONNECT_TIMEOUT_MS = 1_500
+
 const REQUEST_TIMEOUT_MS = 10_000
 
 export type SessionDaemonRpcError = {
@@ -66,17 +67,21 @@ export class SessionDaemonClient {
             method: 'ping',
             params: {},
         })
+
         if (!response || !response.ok) {
             return response
         }
+
         if (
             !isRecord(response.result) ||
             response.result.ok !== true ||
             typeof response.result.startedAt !== 'number'
         ) {
             this.logRequestFailure('ping', 'Invalid result payload', response.result)
+
             return null
         }
+
         return { ok: true, result: response.result as { ok: true; startedAt: number } }
     }
 
@@ -91,17 +96,21 @@ export class SessionDaemonClient {
             method: 'list',
             params: {},
         })
+
         if (!response || !response.ok) {
             return response
         }
+
         if (
             !isRecord(response.result) ||
             typeof response.result.startedAt !== 'number' ||
             !Array.isArray(response.result.keys)
         ) {
             this.logRequestFailure('list', 'Invalid result payload', response.result)
+
             return null
         }
+
         for (const entry of response.result.keys) {
             if (
                 !isRecord(entry) ||
@@ -110,9 +119,11 @@ export class SessionDaemonClient {
                 typeof entry.expiresAt !== 'number'
             ) {
                 this.logRequestFailure('list', 'Invalid key payload', entry)
+
                 return null
             }
         }
+
         return {
             ok: true,
             result: {
@@ -136,13 +147,17 @@ export class SessionDaemonClient {
             method: 'sign',
             params: { sessionName, typedData },
         })
+
         if (!response || !response.ok) {
             return response
         }
+
         if (!isRecord(response.result) || typeof response.result.signature !== 'string') {
             this.logRequestFailure('sign', 'Invalid result payload', response.result)
+
             return null
         }
+
         return { ok: true, result: response.result.signature as Hex }
     }
 
@@ -152,13 +167,17 @@ export class SessionDaemonClient {
             method: 'signMessage',
             params: { sessionName, message },
         })
+
         if (!response || !response.ok) {
             return response
         }
+
         if (!isRecord(response.result) || typeof response.result.signature !== 'string') {
             this.logRequestFailure('signMessage', 'Invalid result payload', response.result)
+
             return null
         }
+
         return { ok: true, result: response.result.signature as Hex }
     }
 
@@ -188,9 +207,11 @@ export class SessionDaemonClient {
                 env: input.env,
             },
         })
+
         if (!response || !response.ok) {
             return response
         }
+
         if (
             !isRecord(response.result) ||
             typeof response.result.name !== 'string' ||
@@ -198,8 +219,10 @@ export class SessionDaemonClient {
             typeof response.result.expiresAt !== 'number'
         ) {
             this.logRequestFailure('loadKey', 'Invalid result payload', response.result)
+
             return null
         }
+
         return {
             ok: true,
             result: {
@@ -218,9 +241,11 @@ export class SessionDaemonClient {
             method: 'getSessionSecrets',
             params: { sessionName },
         })
+
         if (!response || !response.ok) {
             return response
         }
+
         if (
             !isRecord(response.result) ||
             typeof response.result.name !== 'string' ||
@@ -231,6 +256,7 @@ export class SessionDaemonClient {
                 typeof response.result.encryptionDevice !== 'string')
         ) {
             this.logRequestFailure('getSessionSecrets', 'Invalid result payload', response.result)
+
             return {
                 ok: false,
                 error: {
@@ -239,6 +265,7 @@ export class SessionDaemonClient {
                 },
             }
         }
+
         return {
             ok: true,
             result: {
@@ -257,13 +284,17 @@ export class SessionDaemonClient {
             method: 'remove',
             params: { sessionName },
         })
+
         if (!response || !response.ok) {
             return response
         }
+
         if (!isRecord(response.result) || response.result.ok !== true) {
             this.logRequestFailure('remove', 'Invalid result payload', response.result)
+
             return null
         }
+
         return { ok: true, result: { ok: true } }
     }
 
@@ -273,10 +304,12 @@ export class SessionDaemonClient {
 
         return new Promise((resolve) => {
             let settled = false
+
             const done = (value: SessionDaemonRpcResponse<T>) => {
                 if (settled) {
                     return
                 }
+
                 settled = true
                 clearTimeout(connectTimer)
                 clearTimeout(requestTimer)
@@ -290,7 +323,9 @@ export class SessionDaemonClient {
                 })
                 done(null)
             }, CONNECT_TIMEOUT_MS)
+
             let requestTimer: ReturnType<typeof setTimeout> | undefined
+
             const armRequestTimer = () => {
                 requestTimer = setTimeout(() => {
                     this.logRequestFailure(request.method, 'Request timeout', {
@@ -310,20 +345,24 @@ export class SessionDaemonClient {
             socket.on('data', (chunk) => {
                 buffer += chunk.toString('utf8')
                 const newlineIdx = buffer.indexOf('\n')
+
                 if (newlineIdx === -1) {
                     return
                 }
 
                 const line = buffer.slice(0, newlineIdx)
                 buffer = buffer.slice(newlineIdx + 1)
+
                 try {
                     const response = parseDaemonResponse(line)
+
                     if (response.id !== request.id) {
                         this.logRequestFailure(request.method, 'Response id mismatch', {
                             expected: request.id,
                             received: response.id,
                         })
                         done(null)
+
                         return
                     }
 
@@ -332,6 +371,7 @@ export class SessionDaemonClient {
                             ok: false,
                             error: response.error,
                         })
+
                         return
                     }
 
@@ -347,6 +387,7 @@ export class SessionDaemonClient {
             socket.connect(this.socketPath, () => {
                 clearTimeout(connectTimer)
                 armRequestTimer()
+
                 try {
                     const payload = `${serializeDaemonRequest(request)}\n`
                     socket.write(payload)
@@ -364,8 +405,10 @@ export class SessionDaemonClient {
     private logRequestFailure(method: string, reason: string, details?: unknown): void {
         if (this.onRequestFailure) {
             this.onRequestFailure(method, reason, details)
+
             return
         }
+
         const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
         console.error(`[tw daemon client] ${method}: ${reason}${suffix}`)
     }

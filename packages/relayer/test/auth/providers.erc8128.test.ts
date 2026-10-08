@@ -39,6 +39,7 @@ describe('erc8128 auth provider', () => {
         })
 
         const provider = createErc8128Provider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', { method: 'POST', body: '{}' }),
             { env, nowSeconds: 1_700_000_000 },
@@ -58,6 +59,7 @@ describe('erc8128 auth provider', () => {
         })
 
         const provider = createErc8128Provider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', { method: 'POST', body: '{}' }),
             { env, nowSeconds: 1_700_000_000 },
@@ -74,6 +76,7 @@ describe('erc8128 auth provider', () => {
         verifyMock.mockRejectedValueOnce(new Error('rpc down'))
 
         const provider = createErc8128Provider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', { method: 'POST', body: '{}' }),
             { env, nowSeconds: 1_700_000_000 },

@@ -26,9 +26,11 @@ export function currentAuthIdentity(): AuthIdentity | undefined {
  */
 export function authIdentityOwnsAccount(account: Address): boolean {
     const identity = authIdentityStorage.getStore()
+
     if (!identity) return false
 
     const target = getAddress(account)
+
     if (identity.boundAccounts?.some((candidate) => getAddress(candidate) === target)) {
         return true
     }
@@ -36,6 +38,7 @@ export function authIdentityOwnsAccount(account: Address): boolean {
     // ERC-8128's user id is the signing address. An OIDC sub is not ownership,
     // even when a self-hosted issuer puts an address in `sub`.
     if (identity.provider === 'oidc') return false
+
     return isAddress(identity.userId) && getAddress(identity.userId) === target
 }
 
@@ -45,16 +48,21 @@ export function authIdentityOwnsAccount(account: Address): boolean {
  */
 export function rateLimitIdentityKey(identity: AuthIdentity): string {
     const userId = identity.userId.toLowerCase()
+
     if (identity.provider === 'privy') return `privy:${userId}`
+
     if (identity.provider === 'oidc') {
         return `oidc:${(identity.issuer ?? '').toLowerCase()}:${userId}`
     }
+
     return userId
 }
 
 /** Budget key. One authenticated caller cannot spend another caller's quota. */
 export function upgradeRateIdentity(account: Address): string {
     const identity = authIdentityStorage.getStore()
+
     if (identity?.userId) return rateLimitIdentityKey(identity)
+
     return getAddress(account).toLowerCase()
 }

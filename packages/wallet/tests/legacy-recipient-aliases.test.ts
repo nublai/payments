@@ -12,6 +12,7 @@ async function withLegacyContactsFile<T>(contents: unknown, run: () => Promise<T
         previousContents = await readFile(contactsPath, 'utf8').catch(() => null)
         await mkdir(join(homedir(), '.config', 'agentic-payments', 'tw'), { recursive: true })
         await writeFile(contactsPath, `${JSON.stringify(contents)}\n`, 'utf8')
+
         return await run()
     } finally {
         if (previousContents === null) {

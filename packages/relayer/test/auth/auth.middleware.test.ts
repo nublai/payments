@@ -32,6 +32,7 @@ function createApp(providers: AuthProvider[]) {
     const app = new Hono<{ Bindings: Env }>()
     app.use('*', authMiddleware({ providers }))
     app.post('/', (c) => c.json({ ok: true }))
+
     return app
 }
 
@@ -221,6 +222,7 @@ describe('auth middleware', () => {
         )
         app.post('/', async (c) => {
             const body = await c.req.json()
+
             return c.json({ ok: true, method: body.method })
         })
 
@@ -290,6 +292,7 @@ describe('auth middleware', () => {
             code: 'INVALID_TOKEN' as const,
             message: 'x',
         }))
+
         const app = new Hono<{ Bindings: Env }>()
         app.use('*', authMiddleware({ providers: [makeProvider('privy', verify)] }))
         app.get('/health', (c) => c.json({ status: 'ok' }))

@@ -83,9 +83,11 @@ function makeSessionKeystore(
 test('executeAccountExport returns metadata by default without decrypting', async () => {
     const root = makeRootKeystore()
     const session = makeSessionKeystore()
+
     const decrypt = mock(async () => {
         throw new Error('should not decrypt in metadata mode')
     })
+
     const result = await executeAccountExport(
         {
             env: 'prod',
@@ -115,8 +117,10 @@ test('executeAccountExport returns metadata by default without decrypting', asyn
 test('executeAccountExport includes secrets when --show-private is enabled', async () => {
     const root = makeRootKeystore()
     const session = makeSessionKeystore()
+
     const rootPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
     const sessionPrivateKey =
         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex
 
@@ -183,6 +187,7 @@ test('assertCanExportPrivateKeys rejects non-interactive export even when a pass
     const prompt = mock(async () => {
         throw new Error('should not ask for typed confirmation')
     })
+
     await expect(
         assertCanExportPrivateKeys({
             showPrivate: true,

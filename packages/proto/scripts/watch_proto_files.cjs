@@ -1,10 +1,15 @@
 const fs = require("fs");
+
 const { exec } = require("child_process");
+
 const debounce = require("lodash.debounce");
+
 const path = require("path");
 
 const currentDirectory = process.cwd();
+
 const schemaDirectory = path.join(currentDirectory, "schema");
+
 const buildCommand = "bun run build";
 
 const handleFileChange = debounce((eventType, filename) => {
@@ -17,6 +22,7 @@ const handleFileChange = debounce((eventType, filename) => {
     } else if (stdout) {
       console.log(`Stdout: ${stdout}`);
     }
+
     console.log("Done.");
   });
 }, 1000);
@@ -31,6 +37,7 @@ function watchProtoDir(dir) {
 }
 
 watchProtoDir(currentDirectory);
+
 watchProtoDir(schemaDirectory);
 
 console.log(`Watching ${currentDirectory} and ${schemaDirectory} for changes...`);

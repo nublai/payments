@@ -5,7 +5,9 @@ import { authorizeRequest } from '../../src/auth/engine'
 import { authIdentityOwnsAccount, runWithAuthIdentity } from '../../src/auth/identity'
 
 const privyClientMock = vi.hoisted(() => vi.fn())
+
 const verifyAuthTokenMock = vi.hoisted(() => vi.fn())
+
 const getUserByWalletAddressMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@privy-io/server-auth', () => ({
@@ -46,6 +48,7 @@ describe('privy auth provider', () => {
 
     it('returns INVALID_TOKEN when Authorization header is missing', async () => {
         const provider = createPrivyProvider()
+
         const result = await provider.verify(new Request('https://relayer.example.com/'), {
             env: makeEnv(),
             nowSeconds: 1_700_000_000,
@@ -60,6 +63,7 @@ describe('privy auth provider', () => {
 
     it('returns INVALID_TOKEN for bad Authorization scheme', async () => {
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 headers: { Authorization: 'Basic abc' },
@@ -79,6 +83,7 @@ describe('privy auth provider', () => {
 
     it('returns INVALID_TOKEN for empty bearer token', async () => {
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 headers: { Authorization: 'Bearer   ' },
@@ -103,6 +108,7 @@ describe('privy auth provider', () => {
         })
 
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 headers: { Authorization: 'Bearer token_1' },
@@ -124,6 +130,7 @@ describe('privy auth provider', () => {
         verifyAuthTokenMock.mockRejectedValueOnce(new Error('jwt expired'))
 
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 headers: { Authorization: 'Bearer token_1' },
@@ -145,6 +152,7 @@ describe('privy auth provider', () => {
         verifyAuthTokenMock.mockRejectedValueOnce(new Error('fetch failed'))
 
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 headers: { Authorization: 'Bearer token_1' },
@@ -166,6 +174,7 @@ describe('privy auth provider', () => {
         verifyAuthTokenMock.mockRejectedValueOnce(new Error('invalid signature'))
 
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 headers: { Authorization: 'Bearer token_1' },
@@ -190,6 +199,7 @@ describe('privy auth provider', () => {
         })
 
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 headers: { Authorization: 'Bearer token_1' },
@@ -247,6 +257,7 @@ describe('privy auth provider', () => {
         getUserByWalletAddressMock.mockResolvedValueOnce(null)
 
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 method: 'POST',
@@ -293,6 +304,7 @@ describe('privy auth provider', () => {
         })
 
         const provider = createPrivyProvider()
+
         const result = await provider.verify(
             new Request('https://relayer.example.com/', {
                 method: 'POST',
@@ -339,6 +351,7 @@ describe('privy auth provider', () => {
         })
 
         const provider = createPrivyProvider()
+
         const result = await authorizeRequest({
             request: upgradeRequest('0x70997970C51812dc3A010C7d01b50e0d17dc79C8'),
             env: makeEnv(),
@@ -372,8 +385,10 @@ describe('privy auth provider', () => {
         })
 
         expect(result.ok).toBe(true)
+
         if (!result.ok) return
         expect(result.boundAccounts).toEqual([account])
+
         const owns = runWithAuthIdentity(
             {
                 provider: result.provider ?? 'privy',
@@ -382,6 +397,7 @@ describe('privy auth provider', () => {
             },
             () => authIdentityOwnsAccount(account),
         )
+
         expect(owns).toBe(true)
     })
 

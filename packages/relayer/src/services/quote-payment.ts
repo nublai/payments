@@ -22,21 +22,28 @@ function coerceNonNegative(value: number | string | bigint | undefined, label: s
         if (value < 0n) {
             throw new RpcError(INVALID_PARAMS, `Invalid ${label}`)
         }
+
         return value
     }
+
     if (typeof value === 'number') {
         if (!Number.isSafeInteger(value) || value < 0) {
             throw new RpcError(INVALID_PARAMS, `Invalid ${label}`)
         }
+
         return BigInt(value)
     }
+
     if (typeof value === 'string' && /^(0x[0-9a-fA-F]+|[0-9]+)$/.test(value)) {
         const parsed = BigInt(value)
+
         if (parsed < 0n) {
             throw new RpcError(INVALID_PARAMS, `Invalid ${label}`)
         }
+
         return parsed
     }
+
     throw new RpcError(INVALID_PARAMS, `Invalid ${label}`)
 }
 
@@ -50,6 +57,7 @@ export function recomputeQuotePaymentAmount(parts: QuotePaymentParts): bigint {
         coerceNonNegative(parts.maxFeePerGas, 'maxFeePerGas')
 
     const token = parts.paymentToken
+
     if (!token || token.toLowerCase() === zeroAddress.toLowerCase()) {
         return nativeAmount
     }
@@ -59,6 +67,7 @@ export function recomputeQuotePaymentAmount(parts: QuotePaymentParts): bigint {
     }
 
     const decimals = parts.paymentTokenDecimals
+
     if (
         typeof decimals !== 'number' ||
         !Number.isInteger(decimals) ||

@@ -34,6 +34,7 @@ export function getContractAddresses(
 ): ContractAddresses {
     const context = env.CONTEXT ?? 'prod'
     const fromJson = getAddresses(context, chainId)
+
     if (fromJson) {
         return fromJson
     }
@@ -41,6 +42,7 @@ export function getContractAddresses(
     const fromChainEnv = getAddressesFromEnvForChain(chainId, {
         env: env as Record<string, string | undefined>,
     })
+
     if (fromChainEnv) {
         return fromChainEnv
     }
@@ -48,6 +50,7 @@ export function getContractAddresses(
     const fromEnv = getAddressesFromEnv({
         env: env as Record<string, string | undefined>,
     })
+
     if (fromEnv) {
         return fromEnv
     }

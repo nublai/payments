@@ -3,6 +3,7 @@ import type { Address, Hex } from 'viem'
 import { waitForDelegationCode } from '../../src/rpc/methods/upgradeAccount'
 
 const testAddress = '0xFF159018e548D710397f885a2c19bC58a2D499Da' as Address
+
 const delegatedCode = '0xef0100ee06c19146427bdd5abb702579f3b0568b24bf6f' as Hex
 
 describe('waitForDelegationCode', () => {
@@ -13,6 +14,7 @@ describe('waitForDelegationCode', () => {
 
     it('returns immediately when latest code is delegated', async () => {
         const getCode = vi.fn().mockResolvedValue(delegatedCode)
+
         const code = await waitForDelegationCode({ getCode }, testAddress, undefined, {
             maxAttempts: 3,
             initialDelayMs: 1,
@@ -41,6 +43,7 @@ describe('waitForDelegationCode', () => {
             if (args.blockNumber !== undefined) {
                 return delegatedCode
             }
+
             return '0x'
         })
 

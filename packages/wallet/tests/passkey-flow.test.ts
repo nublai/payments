@@ -19,14 +19,19 @@ import {
 } from '@nubl/relayer-client'
 
 const PORT = 18545
+
 const RPC_URL = `http://127.0.0.1:${PORT}`
+
 const walletDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function resolveAnvilBin(): string {
     const fromEnv = process.env.ANVIL?.trim()
+
     if (fromEnv) return fromEnv
     const found = Bun.which('anvil')
+
     if (!found) throw new Error('anvil not found on PATH; set ANVIL to the anvil binary')
+
     return found
 }
 
@@ -42,6 +47,7 @@ function bytesToHex(bytes: Buffer): Hex {
 
 function pad32(bytes: Buffer): Buffer {
     if (bytes.length > 32) throw new Error(`coordinate is ${bytes.length} bytes`)
+
     return Buffer.concat([Buffer.alloc(32 - bytes.length), bytes])
 }
 
@@ -50,14 +56,17 @@ function authenticatorData(flags: number): Buffer {
     data.write('rpIdHash-example', 0, 'ascii')
     data[32] = flags
     data.writeUInt32BE(1, 33)
+
     return data
 }
 
 function clientDataJSON(digest: Hex): Buffer {
     const challenge = hexToBytes(digest).toString('base64url')
+
     if (challenge.length !== 43) {
         throw new Error(`expected 43-char base64url challenge, got ${challenge.length}`)
     }
+
     return Buffer.from(
         `{"type":"webauthn.get","challenge":"${challenge}","origin":"https://example.com"}`,
     )
@@ -65,15 +74,19 @@ function clientDataJSON(digest: Hex): Buffer {
 
 function parseDerSignature(der: Buffer): { r: bigint; s: bigint } {
     let i = 0
+
     if (der[i++] !== 0x30) throw new Error('bad DER signature')
     i += 1
+
     if (der[i++] !== 0x02) throw new Error('bad DER r')
     const rLength = der[i++] ?? 0
     const r = BigInt(`0x${der.subarray(i, i + rLength).toString('hex')}`)
     i += rLength
+
     if (der[i++] !== 0x02) throw new Error('bad DER s')
     const sLength = der[i++] ?? 0
     const s = BigInt(`0x${der.subarray(i, i + sLength).toString('hex')}`)
+
     return { r, s }
 }
 
@@ -87,15 +100,18 @@ function signWebAuthn(
     const signer = createSign('SHA256')
     signer.update(preimage)
     signer.end()
+
     return parseDerSignature(signer.sign(privateKey))
 }
 
 function generateP256(): { privateKey: KeyObject; publicKey: Hex } {
     const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
     const jwk = publicKey.export({ format: 'jwk' })
+
     if (!jwk.x || !jwk.y) throw new Error('P-256 JWK is missing x/y')
     const x = bytesToHex(pad32(Buffer.from(jwk.x, 'base64url')))
     const y = bytesToHex(pad32(Buffer.from(jwk.y, 'base64url')))
+
     return { privateKey, publicKey: encodeP256PublicKey(x, y) }
 }
 
@@ -105,10 +121,13 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     })
+
     const body = (await response.json()) as { result?: unknown; error?: { message?: string } }
+
     if (!response.ok || body.error) {
         throw new Error(body.error?.message ?? `${method} failed`)
     }
+
     return body.result
 }
 
@@ -116,11 +135,13 @@ async function waitForRpc(): Promise<void> {
     for (let attempt = 0; attempt < 50; attempt++) {
         try {
             await rpc('eth_chainId', [])
+
             return
         } catch {
             await new Promise((resolve) => setTimeout(resolve, 100))
         }
     }
+
     throw new Error('anvil did not start')
 }
 
@@ -146,12 +167,15 @@ function runTw(args: string[], timeoutMs = 90_000): Promise<{ code: number; stdo
                 stdio: ['ignore', 'pipe', 'pipe'],
             },
         )
+
         let stdout = ''
         let stderr = ''
+
         const timer = setTimeout(() => {
             child.kill('SIGTERM')
             reject(new Error(`wallet CLI timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`))
         }, timeoutMs)
+
         child.stdout.setEncoding('utf8')
         child.stderr.setEncoding('utf8')
         child.stdout.on('data', (chunk) => {
@@ -180,9 +204,11 @@ function parseCliJson(stdout: string): {
 } {
     const start = stdout.indexOf('{')
     const end = stdout.lastIndexOf('}')
+
     if (start < 0 || end < start) {
         throw new Error(`CLI did not print JSON:\n${stdout}`)
     }
+
     return JSON.parse(stdout.slice(start, end + 1))
 }
 
@@ -201,6 +227,7 @@ beforeAll(async () => {
     anvil.once('error', (error) => {
         startupError = error
     })
+
     try {
         await waitForRpc()
     } catch (error) {
@@ -224,6 +251,7 @@ test('p256 key hash uses Account key type 2 and x||y', () => {
     const expected = keccak256(
         encodeAbiParameters(parseAbiParameters('uint8, bytes32'), [2, keccak256(publicKey)]),
     )
+
     expect(computeKeyHash('p256', publicKey)).toBe(expected)
     expect(computeKeyHash('external', publicKey)).not.toBe(expected)
     expect(
@@ -266,6 +294,7 @@ test('account passkey stays on the MCP tool list with send, swap, bridge, and pe
         'permissions_revoke',
         'permissions_show',
     ]
+
     const listed = new Promise<string>((resolvePromise, reject) => {
         const timer = setTimeout(() => {
             if (child.pid) {
@@ -275,8 +304,10 @@ test('account passkey stays on the MCP tool list with send, swap, bridge, and pe
                     child.kill('SIGTERM')
                 }
             }
+
             reject(new Error(`MCP tools/list timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`))
         }, 20_000)
+
         child.stdout.on('data', () => {
             if (!requiredTools.every((name) => stdout.includes(`"${name}"`))) return
             clearTimeout(timer)
@@ -301,6 +332,7 @@ test('account passkey stays on the MCP tool list with send, swap, bridge, and pe
 
     try {
         const body = await listed
+
         for (const name of requiredTools) {
             expect(body).toContain(`"${name}"`)
         }
@@ -325,6 +357,7 @@ async function verifyThroughCli(input: {
 }): Promise<{ code: number; stdout: string; stderr: string; json?: ReturnType<typeof parseCliJson> }> {
     const ownerKey = generatePrivateKey()
     await rpc('anvil_setBalance', [privateKeyToAccount(ownerKey).address, '0x3635C9ADC5DEA00000'])
+
     const result = await runTw([
         '--json',
         'account',
@@ -346,9 +379,11 @@ async function verifyThroughCli(input: {
         '--s',
         input.s.toString(),
     ])
+
     if (result.code === 0) {
         return { ...result, json: parseCliJson(result.stdout) }
     }
+
     return result
 }
 
@@ -363,9 +398,11 @@ test('wallet CLI authorizes a real P-256 passkey and the Account accepts it on 0
 
     const result = await verifyThroughCli({ digest, authData, clientData, r, s, publicKey })
     expect(result.stderr + result.stdout).not.toContain('PASSKEY_FAILED')
+
     if (!result.json) {
         throw new Error(`passkey CLI failed (${result.code})\n${result.stdout}\n${result.stderr}`)
     }
+
     expect(result.json.type).toBe('account_passkey')
     expect(result.json.valid).toBe(true)
     expect(result.json.keyHash).toBe(computeKeyHash('p256', publicKey))
@@ -387,9 +424,11 @@ test('wallet CLI rejects a passkey whose challenge is not the digest', async () 
         s,
         publicKey,
     })
+
     if (!result.json) {
         throw new Error(`passkey CLI failed (${result.code})\n${result.stdout}\n${result.stderr}`)
     }
+
     expect(result.json.valid).toBe(false)
     expect(result.json.keyHash).toBe(computeKeyHash('p256', publicKey))
 }, 90_000)

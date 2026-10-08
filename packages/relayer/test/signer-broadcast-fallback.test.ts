@@ -44,6 +44,7 @@ describe('signer broadcast fallback helpers', () => {
             const account = privateKeyToAccount(
                 '0x59c6995e998f97a5a0044966f0945383f8dcf63d8d8f3d6cce5f83b65e93a8f6',
             )
+
             const authorizationList: SignedAuthorization[] = [
                 {
                     chainId: 137,
@@ -90,14 +91,17 @@ describe('signer broadcast fallback helpers', () => {
             const account = privateKeyToAccount(
                 '0x59c6995e998f97a5a0044966f0945383f8dcf63d8d8f3d6cce5f83b65e93a8f6',
             )
+
             const sendTransaction = vi
                 .fn()
                 .mockRejectedValue(
                     new Error('eth_fillTransaction is not available on the MATIC_MAINNET'),
                 )
+
             const estimateGas = vi.fn().mockResolvedValue(21000n)
             const signTransaction = vi.fn().mockResolvedValue('0xdeadbeef')
             const sendRawTransaction = vi.fn().mockResolvedValue('0xabc123')
+
             const ensureClients = vi.fn().mockReturnValue({
                 publicClient: { estimateGas, sendRawTransaction },
                 walletClient: { sendTransaction, signTransaction },
@@ -107,6 +111,7 @@ describe('signer broadcast fallback helpers', () => {
             const signer = Object.create(SignerDO.prototype) as {
                 ensureClients: typeof ensureClients
             }
+
             signer.ensureClients = ensureClients
 
             const signAndBroadcastPrepared = Reflect.get(
@@ -150,10 +155,12 @@ describe('signer broadcast fallback helpers', () => {
             const account = privateKeyToAccount(
                 '0x59c6995e998f97a5a0044966f0945383f8dcf63d8d8f3d6cce5f83b65e93a8f6',
             )
+
             const sendTransaction = vi.fn().mockRejectedValue(new Error('nonce too low'))
             const estimateGas = vi.fn()
             const signTransaction = vi.fn()
             const sendRawTransaction = vi.fn()
+
             const ensureClients = vi.fn().mockReturnValue({
                 publicClient: { estimateGas, sendRawTransaction },
                 walletClient: { sendTransaction, signTransaction },
@@ -163,6 +170,7 @@ describe('signer broadcast fallback helpers', () => {
             const signer = Object.create(SignerDO.prototype) as {
                 ensureClients: typeof ensureClients
             }
+
             signer.ensureClients = ensureClients
 
             const signAndBroadcastPrepared = Reflect.get(

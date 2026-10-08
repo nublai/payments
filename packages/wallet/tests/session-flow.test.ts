@@ -59,6 +59,7 @@ function makeRoot(activeSession: string): RelayerRootKeystoreV2 {
 
 function makeSession(name: string, kind: 'session' | 'agent' = 'session'): AnySessionKeystore {
     const sessionPrivateKey = generatePrivateKey()
+
     const base = {
         version: 2 as const,
         createdAt: new Date().toISOString(),
@@ -126,6 +127,7 @@ function makeBundle(activeSession: string, activeKeystore?: AnySessionKeystore):
 test('executeSessionList returns local sessions with active marker and kind', async () => {
     const workerOne = makeSession('worker-1')
     const bot = makeSession('bot', 'agent')
+
     const sessionsByPath = new Map<string, AnySessionKeystore>([
         ['/tmp/sessions/worker-1.json', workerOne],
         ['/tmp/sessions/bot.json', bot],
@@ -141,9 +143,11 @@ test('executeSessionList returns local sessions with active marker and kind', as
             listSessionNames: mock(async () => ['worker-1', 'bot']),
             readSessionKeystoreFile: mock(async (path: string) => {
                 const session = sessionsByPath.get(path)
+
                 if (!session) {
                     throw new Error(`Missing fixture for ${path}`)
                 }
+
                 return session
             }),
         },

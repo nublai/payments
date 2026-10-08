@@ -60,6 +60,7 @@ export type EscrowSettleResult = {
 
 /** ECDSA signature length: 0x + 130 hex chars (65 bytes r,s,v). */
 const SETTLEMENT_SIGNATURE_LENGTH = 132
+
 /** Private key length: 0x + 64 hex chars (32 bytes). */
 const PRIVATE_KEY_HEX_LENGTH = 66
 
@@ -73,10 +74,12 @@ export async function executeEscrowSettle(
     depsArg?: Partial<EscrowSettleDeps>,
 ): Promise<EscrowSettleResult> {
     const deps = { ...getDefaultEscrowSettleDeps(), ...depsArg }
+
     const { chain, network, contracts } = deps.resolveEscrowChainNetworkContracts(
         options.env,
         options.chain,
     )
+
     const keystorePath =
         options.sessionFile ??
         resolveKeystorePath({
@@ -96,6 +99,7 @@ export async function executeEscrowSettle(
         const oracle = getAddress(options.oracle)
 
         let settlementSignature: Hex
+
         if (options.signature) {
             if (
                 !isHex(options.signature) ||
@@ -106,6 +110,7 @@ export async function executeEscrowSettle(
                     'Signature must be a 65-byte hex string (0x + 130 hex chars).',
                 )
             }
+
             settlementSignature = options.signature as Hex
         } else if (options.oraclePrivateKey) {
             if (
@@ -117,13 +122,16 @@ export async function executeEscrowSettle(
                     'Oracle private key must be a 32-byte hex string (0x + 64 hex chars).',
                 )
             }
+
             const derivedOracle = privateKeyToAccount(options.oraclePrivateKey as Hex).address
+
             if (derivedOracle !== oracle) {
                 throw new EscrowError(
                     'INVALID_ARGUMENT',
                     `Oracle private key does not match --oracle. Expected ${oracle}, derived ${derivedOracle}.`,
                 )
             }
+
             settlementSignature = await signSettlement({
                 settlementId,
                 oracleAddress: oracle,

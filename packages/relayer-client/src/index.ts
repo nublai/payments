@@ -168,6 +168,7 @@ export type {
 } from './types'
 
 export type { HttpAuthOptions } from './httpAuth'
+
 export type { EthHttpSigner } from '@slicekit/erc8128'
 
 // EIP-712 type definitions (for advanced use cases)

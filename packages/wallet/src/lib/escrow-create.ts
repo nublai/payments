@@ -67,28 +67,35 @@ function parseDeadline(value: string): bigint {
     const trimmed = value.trim()
     // Support relative durations: 1h, 2d, 30m, 1w (no 0m/0h/0d/0w — would be already past)
     const match = trimmed.match(/^(\d+)(m|h|d|w)$/)
+
     if (match) {
         const durationCount = parseInt(match[1]!, 10)
+
         if (durationCount < 1) {
             throw new EscrowError(
                 'INVALID_ARGUMENT',
                 `Invalid deadline: "${value}". Relative duration must be at least 1 (e.g. 1m, 1h, 1d, 1w).`,
             )
         }
+
         const unit = match[2] as 'm' | 'h' | 'd' | 'w'
+
         const seconds: Record<'m' | 'h' | 'd' | 'w', number> = {
             m: 60,
             h: 3600,
             d: 86400,
             w: 604800,
         }
+
         const offset = durationCount * seconds[unit]
+
         return BigInt(Math.floor(Date.now() / 1000) + offset)
     }
 
     // Support absolute unix timestamp
     if (/^\d+$/.test(trimmed)) {
         const ts = Number.parseInt(trimmed, 10)
+
         if (ts > 1_000_000_000) {
             return BigInt(ts)
         }
@@ -102,25 +109,32 @@ function parseDeadline(value: string): bigint {
 
 function parseUsdcAmount(value: string): { normalized: string; baseUnits: bigint } {
     const amount = value.trim()
+
     if (!/^\d+(\.\d+)?$/.test(amount)) {
         throw new EscrowError('INVALID_AMOUNT', 'Amount must be a positive decimal number.')
     }
+
     const fractional = amount.split('.')[1] ?? ''
+
     if (fractional.length > 6) {
         throw new EscrowError(
             'INVALID_AMOUNT',
             'Amount supports at most 6 decimal places for USDC.',
         )
     }
+
     let parsed: bigint
+
     try {
         parsed = parseUnits(amount, 6)
     } catch (error) {
         throw new EscrowError('INVALID_AMOUNT', 'Amount is invalid or too large.', { cause: error })
     }
+
     if (parsed <= 0n) {
         throw new EscrowError('INVALID_AMOUNT', 'Amount must be greater than zero.')
     }
+
     return { normalized: amount, baseUnits: parsed }
 }
 
@@ -134,10 +148,12 @@ export async function executeEscrowCreate(
     depsArg?: Partial<EscrowCreateDeps>,
 ): Promise<EscrowCreateResult> {
     const deps = { ...getDefaultEscrowCreateDeps(), ...depsArg }
+
     const { chain, network, contracts } = deps.resolveEscrowChainNetworkContracts(
         options.env,
         options.chain,
     )
+
     const keystorePath =
         options.sessionFile ??
         resolveKeystorePath({
@@ -159,6 +175,7 @@ export async function executeEscrowCreate(
 
         const orderId = padHex(`0x${Date.now().toString(16)}`, { size: 32, dir: 'right' }) as Hex
         let salt: Hex | undefined
+
         if (options.salt) {
             if (!isHex(options.salt) || options.salt.length > 26) {
                 throw new EscrowError(
@@ -166,6 +183,7 @@ export async function executeEscrowCreate(
                     'Salt must be a hex string (up to 12 bytes, 0x + 24 chars).',
                 )
             }
+
             salt = padHex(options.salt as Hex, { size: 12, dir: 'right' }) as Hex
         }
 

@@ -15,10 +15,15 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
+
 const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+
 const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+
 const oldAddress = privateKeyToAccount(oldSessionKey).address
+
 const newAddress = privateKeyToAccount(newSessionKey).address
+
 const rootPrivateKey =
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
 
@@ -35,10 +40,12 @@ const anvilDeployEnv = {
 
 function useAnvilDeployments(): () => void {
     const previous: Record<string, string | undefined> = {}
+
     for (const [key, value] of Object.entries(anvilDeployEnv)) {
         previous[key] = process.env[key]
         process.env[key] = value
     }
+
     return () => {
         for (const [key, value] of Object.entries(previous)) {
             if (value === undefined) delete process.env[key]
@@ -50,16 +57,20 @@ function useAnvilDeployments(): () => void {
 test('executeSessionRotate --narrow revokes the old key and installs the narrow default', async () => {
     const restore = useAnvilDeployments()
     const captured: Hex[] = []
+
     const oldSession = {
         addresses: { session: oldAddress, delegated: account },
         name: 'default',
     }
+
     const newSession = {
         addresses: { session: newAddress, delegated: account },
         name: 'default-next',
         checkpoint: 'pending_rotation',
     }
+
     let reads = 0
+
     try {
         const result = await executeSessionRotate(
             {
@@ -81,6 +92,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 })),
                 readSessionKeystoreFile: mock(async () => {
                     reads += 1
+
                     return reads === 1 ? oldSession : newSession
                 }),
                 readRotationIntent: mock(async () => null),
@@ -99,7 +111,9 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
                 decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
                     const session = getAddress(keystore.addresses.session as Address)
+
                     if (session === newAddress) return { sessionPrivateKey: newSessionKey }
+
                     return { sessionPrivateKey: oldSessionKey }
                 }),
                 readNonce: mock(async () => 1n),
@@ -110,6 +124,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 })),
                 executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
+
                     return {
                         id: 'bundle-narrow',
                         finalStatus: {
@@ -145,18 +160,21 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
         const decoded = captured.map((data) =>
             decodeFunctionData({ abi: accountAbi, data }),
         )
+
         const revoked = decoded.find((entry) => entry.functionName === 'revoke')
         expect(revoked?.args[0]).toBe(computeSessionKeyHash(oldAddress))
 
         const expected = getDefaultSessionPermissions(31337, { env: 'dev' }).filter(
             (permission) => permission.type === 'call',
         )
+
         const installed = decoded
             .filter((entry) => entry.functionName === 'setCanExecute')
             .map((entry) => ({
                 to: String(entry.args[1]).toLowerCase(),
                 selector: String(entry.args[2]).toLowerCase(),
             }))
+
         expect(installed).toEqual(
             expected.map((permission) => ({
                 to: permission.to.toLowerCase(),
@@ -183,12 +201,15 @@ function rotateDeps(overrides: Record<string, unknown>) {
         addresses: { session: oldAddress, delegated: account },
         name: 'default',
     }
+
     const newSession = {
         addresses: { session: newAddress, delegated: account },
         name: 'default-next',
         checkpoint: 'pending_rotation',
     }
+
     let reads = 0
+
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => ({
@@ -200,6 +221,7 @@ function rotateDeps(overrides: Record<string, unknown>) {
         })),
         readSessionKeystoreFile: mock(async () => {
             reads += 1
+
             return reads === 1 ? oldSession : newSession
         }),
         readRotationIntent: mock(async () => null),
@@ -216,7 +238,9 @@ function rotateDeps(overrides: Record<string, unknown>) {
         decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
         decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
             const session = getAddress(keystore.addresses.session as Address)
+
             if (session === newAddress) return { sessionPrivateKey: newSessionKey }
+
             return { sessionPrivateKey: oldSessionKey }
         }),
         readNonce: mock(async () => 1n),
@@ -256,6 +280,7 @@ function rotateDeps(overrides: Record<string, unknown>) {
 test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers', async () => {
     const restore = useAnvilDeployments()
     const captured: Hex[] = []
+
     try {
         await executeSessionRotate(
             {
@@ -291,6 +316,7 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                 })),
                 executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
+
                     return {
                         id: 'bundle-clear',
                         finalStatus: {
@@ -307,12 +333,14 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
             }) as never,
         )
         const decoded = captured.map((data) => decodeFunctionData({ abi: accountAbi, data }))
+
         const cleared = decoded.find(
             (entry) =>
                 entry.functionName === 'setCanExecute' &&
                 String(entry.args[0]).toLowerCase() === ANY_KEYHASH.toLowerCase() &&
                 entry.args[3] === false,
         )
+
         expect(cleared?.args[2]).toBe('0x39509351')
         const checkers = decoded.filter((entry) => entry.functionName === 'setCallChecker')
         expect(checkers.length).toBeGreaterThanOrEqual(2)
@@ -329,6 +357,7 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
     process.env.RELAYER_URL_PROD = 'http://127.0.0.1:9'
     let locked = false
     let signed = false
+
     try {
         await expect(
             executeSessionRotate(
@@ -342,6 +371,7 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
                 rotateDeps({
                     withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => {
                         locked = true
+
                         try {
                             return await fn()
                         } finally {
@@ -350,6 +380,7 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
                     },
                     readActiveUsdcDaily: mock(async () => {
                         expect(locked).toBe(true)
+
                         return 10_000_000n
                     }),
                     executeSignedCalls: mock(async () => {
@@ -367,14 +398,18 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
 })
 
 const POLYGON_CHAIN_ID = 137
+
 const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' as Address
+
 const PLANTED_TARGET = '0x4444444444444444444444444444444444444444' as Address
+
 const PLANTED_SELECTOR = '0x39509351' as Hex
 
 test('extra-chain cleanup resolves the fee policy for that chain', async () => {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     const restoreStage = installFormerStageDeployments()
+
     const prepares: {
         chainId: number
         payer?: Address
@@ -382,6 +417,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
         paymentMaxAmount?: bigint
         calls: { data: Hex }[]
     }[] = []
+
     try {
         const result = await executeSessionRotate(
             {
@@ -398,6 +434,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                 })),
                 readGuardCleanup: mock(async (input: { chainId: number }) => {
                     if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
+
                     return {
                         anyCalls: [{ target: PLANTED_TARGET, selector: PLANTED_SELECTOR }],
                         checkers: [],
@@ -421,6 +458,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                         paymentMaxAmount: input.paymentMaxAmount,
                         calls: input.calls,
                     })
+
                     return matchingPreparedCalls({
                         from: input.from,
                         calls: input.calls,
@@ -453,10 +491,12 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
         expect(polygon[0]?.paymentToken).toBe(POLYGON_USDC)
         expect(polygon[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
         expect(polygon[1]?.paymentMaxAmount).toBe(signedPaymentMaxForQuote(1n))
+
         const decoded = decodeFunctionData({
             abi: accountAbi,
             data: polygon[0]!.calls[0]!.data,
         })
+
         expect(decoded.functionName).toBe('setCanExecute')
         expect(decoded.args[0]).toBe(ANY_KEYHASH)
         expect(String(decoded.args[1]).toLowerCase()).toBe(PLANTED_TARGET.toLowerCase())
@@ -464,6 +504,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
         expect(decoded.args[3]).toBe(false)
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -474,16 +515,20 @@ function partialRotateHarness(mode: 'status' | 'throw') {
     let savedIntent: Record<string, unknown> | null = null
     let polygonSucceeds = false
     let readOld = true
+
     const oldSession = {
         addresses: { session: oldAddress, delegated: account },
         name: 'default',
     }
+
     const newSession = {
         addresses: { session: newAddress, delegated: account },
         name: 'default-next',
         checkpoint: 'pending_rotation',
     }
+
     const prepares: { chainId: number }[] = []
+
     const deps = rotateDeps({
         getKeys: mock(async () => ({
             '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
@@ -491,13 +536,16 @@ function partialRotateHarness(mode: 'status' | 'throw') {
         readRotationIntent: mock(async () => savedIntent),
         writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
             savedIntent = { ...value, fileName: fileName ?? 'rotation.json' }
+
             return savedIntent
         }),
         readSessionKeystoreFile: mock(async () => {
             if (readOld) {
                 readOld = false
+
                 return oldSession
             }
+
             return newSession
         }),
         unlink: mock(async (path: string) => {
@@ -505,6 +553,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
         }),
         readGuardCleanup: mock(async (input: { chainId: number }) => {
             if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
+
             return {
                 anyCalls: [{ target: PLANTED_TARGET, selector: PLANTED_SELECTOR }],
                 checkers: [],
@@ -522,6 +571,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
             paymentMaxAmount?: bigint
         }) => {
             prepares.push({ chainId: input.network.chainId })
+
             return matchingPreparedCalls({
                 from: input.from,
                 calls: input.calls,
@@ -538,6 +588,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
         waitForBundle: mock(async (input: { network: { chainId: number } }) => {
             if (input.network.chainId === POLYGON_CHAIN_ID && !polygonSucceeds) {
                 if (mode === 'throw') throw new Error('extra chain rpc down')
+
                 return {
                     success: false,
                     statusCode: 500,
@@ -545,6 +596,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
                     error: 'polygon cleanup reverted',
                 }
             }
+
             return {
                 success: true,
                 statusCode: 200,
@@ -556,6 +608,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
             }
         }),
     })
+
     const options = {
         env: 'stage' as const,
         chain: 'base' as const,
@@ -564,6 +617,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
         narrow: true,
         newName: 'default-next',
     }
+
     return {
         deps,
         options,
@@ -583,6 +637,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
+
     try {
         await expect(
             executeSessionRotate(harness.options, harness.deps as never),
@@ -594,6 +649,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
         expect(harness.unlinked.some((path) => path.endsWith('default.json'))).toBe(false)
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -604,6 +660,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('throw')
+
     try {
         await expect(
             executeSessionRotate(harness.options, harness.deps as never),
@@ -614,6 +671,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -624,6 +682,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     const restoreStage = installFormerStageDeployments()
     const harness = partialRotateHarness('status')
+
     try {
         await expect(
             executeSessionRotate(harness.options, harness.deps as never),
@@ -632,10 +691,12 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
         const polygonBefore = harness.prepares.filter((prepare) => prepare.chainId === POLYGON_CHAIN_ID).length
         harness.allowPolygon()
         harness.resetRead()
+
         const result = await executeSessionRotate(
             { ...harness.options, resume: true },
             harness.deps as never,
         )
+
         expect(result.status).toBe('complete')
         expect(harness.prepares.filter((prepare) => prepare.chainId === POLYGON_CHAIN_ID).length).toBeGreaterThan(
             polygonBefore,
@@ -643,6 +704,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -654,8 +716,10 @@ function stageEnv<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     const restoreStage = installFormerStageDeployments()
+
     return fn().finally(() => {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     })
@@ -665,6 +729,7 @@ test('resume after a successful rotation does not start another rotation', async
     await stageEnv(async () => {
         let intent: Record<string, unknown> | null = null
         const signed: string[] = []
+
         const deps = rotateDeps({
             getKeys: mock(async () => ({
                 '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
@@ -672,6 +737,7 @@ test('resume after a successful rotation does not start another rotation', async
             readRotationIntent: mock(async () => intent),
             writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
                 intent = { ...value, fileName: fileName ?? '.rotation.json' }
+
                 return intent
             }),
             deleteRotationIntent: mock(async () => {
@@ -679,6 +745,7 @@ test('resume after a successful rotation does not start another rotation', async
             }),
             executeSignedCalls: mock(async () => {
                 signed.push('authorize')
+
                 return {
                     id: 'bundle-once',
                     finalStatus: {
@@ -693,6 +760,7 @@ test('resume after a successful rotation does not start another rotation', async
                 }
             }),
         })
+
         const first = await executeSessionRotate(
             {
                 env: 'stage',
@@ -704,8 +772,10 @@ test('resume after a successful rotation does not start another rotation', async
             },
             deps as never,
         )
+
         expect(first.status).toBe('complete')
         expect(signed).toEqual(['authorize'])
+
         const again = await executeSessionRotate(
             {
                 env: 'stage',
@@ -716,6 +786,7 @@ test('resume after a successful rotation does not start another rotation', async
             },
             deps as never,
         )
+
         expect(again.resumed).toBe(true)
         expect(again.newSessionName).toBe(again.oldSessionName)
         expect(signed).toEqual(['authorize'])
@@ -726,6 +797,7 @@ test('a tampered pending marker is not authorized', async () => {
     await stageEnv(async () => {
         const signed: Hex[] = []
         let reads = 0
+
         const deps = rotateDeps({
             readRotationIntent: mock(async () => ({
                 oldSessionName: 'default',
@@ -743,12 +815,14 @@ test('a tampered pending marker is not authorized', async () => {
             })),
             readSessionKeystoreFile: mock(async () => {
                 reads += 1
+
                 if (reads === 1) {
                     return {
                         addresses: { session: oldAddress, delegated: account },
                         name: 'default',
                     }
                 }
+
                 return {
                     addresses: { session: attacker, delegated: account },
                     name: 'attacker',
@@ -759,12 +833,14 @@ test('a tampered pending marker is not authorized', async () => {
             })),
             executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                 for (const call of params.calls) signed.push(call.data)
+
                 return {
                     id: 'bundle-tamper',
                     finalStatus: { success: true, statusCode: 200, status: 'confirmed' },
                 }
             }),
         })
+
         await expect(
             executeSessionRotate(
                 {
@@ -786,6 +862,7 @@ test('two rotation markers are refused instead of using the lexicographic last',
         const rootDir = await mkdtemp(join(tmpdir(), 'rotation-markers-'))
         const sessions = join(rootDir, 'sessions')
         await mkdir(sessions)
+
         const marker = {
             oldSessionName: 'default',
             newSessionName: 'default-next',
@@ -795,6 +872,7 @@ test('two rotation markers are refused instead of using the lexicographic last',
             narrow: true,
             fullAccess: false,
         }
+
         await writeFile(
             join(sessions, '.rotation-2000.json'),
             `${JSON.stringify({ ...marker, status: 'submitted', bundleId: 'legit' })}\n`,
@@ -809,6 +887,7 @@ test('two rotation markers are refused instead of using the lexicographic last',
             })}\n`,
         )
         const signed: string[] = []
+
         const { readRotationIntent: _ignored, ...deps } = rotateDeps({
             readKeystoreBundle: mock(async () => ({
                 root: {
@@ -818,12 +897,14 @@ test('two rotation markers are refused instead of using the lexicographic last',
             })),
             executeSignedCalls: mock(async () => {
                 signed.push('signed')
+
                 return {
                     id: 'bundle-lex',
                     finalStatus: { success: true, statusCode: 200, status: 'confirmed' },
                 }
             }),
         })
+
         void _ignored
         await expect(
             executeSessionRotate(
@@ -844,6 +925,7 @@ test('two rotation markers are refused instead of using the lexicographic last',
 test('resume --chain refuses a marker for a different chain', async () => {
     await stageEnv(async () => {
         const signed: string[] = []
+
         const deps = rotateDeps({
             readRotationIntent: mock(async () => ({
                 oldSessionName: 'default',
@@ -872,12 +954,14 @@ test('resume --chain refuses a marker for a different chain', async () => {
             })),
             executeSignedCalls: mock(async () => {
                 signed.push('signed')
+
                 return {
                     id: 'bundle-wrong-chain',
                     finalStatus: { success: true, statusCode: 200, status: 'confirmed' },
                 }
             }),
         })
+
         await expect(
             executeSessionRotate(
                 {
@@ -900,6 +984,7 @@ test('resume --chain refuses a marker for a different chain', async () => {
 test('a submitted resume re-reads the daily USDC total under the lock', async () => {
     await stageEnv(async () => {
         const daily = mock(async () => 0n)
+
         const deps = rotateDeps({
             getKeys: mock(async () => ({
                 '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
@@ -936,6 +1021,7 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
             })),
             readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
         })
+
         const result = await executeSessionRotate(
             {
                 env: 'stage',
@@ -947,6 +1033,7 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
             },
             deps as never,
         )
+
         expect(result.status).toBe('complete')
         expect(daily).toHaveBeenCalled()
     })

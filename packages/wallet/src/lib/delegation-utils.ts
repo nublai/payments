@@ -18,6 +18,7 @@ export async function readAccountCode(input: {
         chain: getChain(input.network.chainId, input.network.rpcUrl),
         transport: http(input.network.rpcUrl),
     })
+
     return client.getCode({ address: input.address })
 }
 
@@ -29,19 +30,24 @@ export async function delegateAccountWithAuthorizeKeys(input: {
 }): Promise<{ accountAddress: Address; txHash?: Hex }> {
     const { privateKeyToAccount } = await import('viem/accounts')
     const account = privateKeyToAccount(input.rootPrivateKey)
+
     const signedNetwork = {
         ...input.network,
         authSigner: createEthHttpSigner(input.rootPrivateKey, input.network.chainId),
     }
+
     const relayerClient = createCliRelayerClient(signedNetwork)
 
     const delegation = resolveAccountProxyAddress(input.network.env, input.network.chainId)
     const orchestrator = resolveOrchestratorAddress(input.network.env, input.network.chainId)
     const capabilities = await relayerClient.getCapabilities({ chainIds: [input.network.chainId] })
+
     if (capabilities.success === false) {
         throw new Error(capabilities.error ?? 'Relayer capabilities request failed')
     }
+
     const advertised = capabilities.contracts?.accountProxy
+
     if (!advertised || getAddress(advertised) !== delegation) {
         throw new Error(
             'Relayer capabilities delegation does not match the local account proxy',
