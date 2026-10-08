@@ -1,12 +1,4 @@
-import { RpcError } from '../../src/rpc/errors'
 import type { JsonRpcResponse } from '../../src/rpc/types'
-
-/** Narrow a validate/send error-branch result after the test already asserted RpcError. */
-export function requireRpcError(error: Error): RpcError {
-    if (error instanceof RpcError) return error
-
-    throw new Error('expected RpcError on this error-branch test')
-}
 
 /** Narrow a dispatcher batch after the test already asserted an array response. */
 export function requireJsonRpcBatch(

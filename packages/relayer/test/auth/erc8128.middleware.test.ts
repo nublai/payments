@@ -5,6 +5,7 @@ import type {Env} from '../../src/types/env'
 import { erc8128AuthMiddleware, extractAuthRequirement } from '../../src/auth/erc8128/middleware'
 import type { Erc8128VerifyFailureCode } from '../../src/auth/erc8128/verify'
 import { unusedBinding, testEnv } from '../helpers/env'
+import { addr } from '../helpers/hex'
 
 function createEnv(overrides: Partial<Env> = {}): Env {
     return testEnv({
@@ -23,7 +24,7 @@ function createApp(verifyResult: { ok: boolean; code?: Erc8128VerifyFailureCode 
                     raw: 'erc8128:8453:0x1111111111111111111111111111111111111111',
                     namespace: 'erc8128' as const,
                     chainId: 8453,
-                    address: '0x1111111111111111111111111111111111111111' },
+                    address: addr('0x1111111111111111111111111111111111111111') },
                 signerType: 'EOA' as const,
                 nonceKey: 'k' }
         }
@@ -55,7 +56,7 @@ function createAppWithBodyParsing(verifyResult: { ok: boolean; code?: Erc8128Ver
                     raw: 'erc8128:8453:0x1111111111111111111111111111111111111111',
                     namespace: 'erc8128' as const,
                     chainId: 8453,
-                    address: '0x1111111111111111111111111111111111111111' },
+                    address: addr('0x1111111111111111111111111111111111111111') },
                 signerType: 'EOA' as const,
                 nonceKey: 'k' }
         }

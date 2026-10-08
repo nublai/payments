@@ -1,4 +1,5 @@
 import type { Env } from '../../src/types/env'
+import { widen } from './widen'
 
 /** Empty Durable Object / Queue binding. Unit tests that build Env never call these. */
 export function unusedBinding<T>(): T {
@@ -28,10 +29,28 @@ export function workerEnv(env: CloudflareTestBindings): Env {
     return env as Env
 }
 
+/** Methods these tests actually call on a Durable Object namespace or Queue. */
+export type TestBindingStub = {
+    idFromName?: (name: string) => string
+    get?: (id: string) => {
+        fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+        consumeNonce?: (replayKey: string, ttlSeconds: number) => Promise<boolean>
+        getBundlesByEoa?: (
+            eoa: string,
+            limit: number,
+            offset: number,
+        ) => Promise<{
+            items: Array<{ bundleId: string; chainId: number; createdAt: number }>
+            total: number
+        }>
+    }
+    send?: () => void | Promise<void>
+}
+
 /** Namespace or queue stub that only implements the methods a test calls. */
-export function stubNamespace<T>(stub: Partial<T>): T {
+export function stubNamespace<T>(stub: TestBindingStub): T {
     // SAFETY: these tests only call the methods they install on this stub.
-    return stub as T
+    return widen<T, TestBindingStub>(stub) as T
 }
 
 export type TestQueueMessage = {
@@ -45,6 +64,7 @@ export type TestQueueMessage = {
 export function queueBatch(messages: TestQueueMessage[]): MessageBatch<import('../../src/types/pool').QueueJob> {
     const batch = {
         queue: 'monitor',
+        metadata: { messageCount: messages.length },
         messages: messages.map((message, index) => ({
             id: `test-message-${index}`,
             timestamp: new Date(0),
@@ -58,5 +78,7 @@ export function queueBatch(messages: TestQueueMessage[]): MessageBatch<import('.
     }
 
     // SAFETY: handleQueue only reads messages[].body/attempts/ack/retry; retired fulfillment bodies are not MonitorJob.
-    return batch as MessageBatch<import('../../src/types/pool').QueueJob>
+    return widen<MessageBatch<import('../../src/types/pool').QueueJob>, typeof batch>(
+        batch,
+    ) as MessageBatch<import('../../src/types/pool').QueueJob>
 }

@@ -7,7 +7,7 @@ import { handleHealth, handleLive, handleReady } from '../../src/rpc/methods/hea
 import type { RpcContext } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
 import { installDeployment } from '../deployment-fixture'
-import { stubNamespace, testEnv } from '../helpers/env'
+import { stubNamespace, testEnv, type TestBindingStub } from '../helpers/env'
 import { jsonResponse } from '../helpers/rpc'
 
 // Installed into the prod/8453 deployments JSON below, and kept in env.
@@ -31,7 +31,7 @@ function defaultSignerPool() {
     }
 }
 
-function healthEnv(signerPool?: Partial<Env['SIGNER_POOL']>) {
+function healthEnv(signerPool?: TestBindingStub) {
     return {
         ...testEnv({
             RPC_URL: 'https://example.com/rpc',

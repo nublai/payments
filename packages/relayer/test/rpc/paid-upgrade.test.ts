@@ -47,7 +47,7 @@ import {
     peekRateLimit,
     releaseRateLimit,
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
-import { emptyHex, repeatedHex, wordHex } from '../helpers/hex'
+import { emptyHex, hex, repeatedHex, wordHex } from '../helpers/hex'
 import { testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
 import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
@@ -56,11 +56,11 @@ const CHAIN_ID = 8453
 
 const SECRET = 'paid-upgrade-test-secret'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
+const ACCOUNT_PROXY: Address = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
+const ORCHESTRATOR: Address = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
@@ -69,12 +69,12 @@ const OTHER_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e141207b4c24b44
 const NATIVE_RATE = (3000n * 10n ** 18n).toString()
 
 const rpc = {
-    code: '0x',
-    nonce: '0x0',
+    code: hex('0x'),
+    nonce: hex('0x0'),
     balance: 20_000_000n,
     executeResult: repeatedHex('00', 32),
-    receiptErr: '0x00000000',
-    receiptGas: '0x44444',
+    receiptErr: hex('0x00000000'),
+    receiptGas: hex('0x44444'),
     rateThrow: false,
     gasThrow: false,
     failBroadcast: false,

@@ -130,8 +130,8 @@ describe('oidc rereview follow-ups', () => {
             OIDC_CLIENT_ID: 'client_123',
         })
 
-        const stranger = '0x1111111111111111111111111111111111111111'
-        const owner = '0x2222222222222222222222222222222222222222'
+        const stranger: Address = '0x1111111111111111111111111111111111111111'
+        const owner: Address = '0x2222222222222222222222222222222222222222'
 
         const binding = {
             accounts: [{ eoa: owner, chainId: 84532 }],

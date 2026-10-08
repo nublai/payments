@@ -314,7 +314,7 @@ describe('batch result mapping', () => {
         const intentIds = ['intent-1', 'intent-2', 'intent-3']
 
         const batchResult = {
-            txHash: '0xabc123',
+            txHash: hex('0xabc123'),
             success: true,
         }
 
@@ -330,7 +330,7 @@ describe('batch result mapping', () => {
         const intentIds = ['intent-1', 'intent-2']
 
         const batchResult = {
-            txHash: '0x0',
+            txHash: hex('0x0'),
             success: false,
         }
 
@@ -341,7 +341,7 @@ describe('batch result mapping', () => {
 
     it('handles single intent', () => {
         const results = mapBatchResultToIntents(['intent-1'], {
-            txHash: '0x123',
+            txHash: hex('0x123'),
             success: true,
         })
 

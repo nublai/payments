@@ -52,21 +52,25 @@ type UpgradeMethod = (typeof METHODS)[number]
 
 /** Stage/prod shape: Privy on, ERC-8128 on, signer not allowlisted. */
 function prodEnv(overrides: Partial<Env> = {}): Env {
-    return testEnv({
-        CHAIN_IDS: String(CHAIN_ID),
-        RPC_8453: 'http://127.0.0.1:1',
-        CONTEXT: 'prod',
-        NODE_ENV: 'production',
-        PRIVY_ENABLED: 'true',
-        PRIVY_APP_ID: 'app-id',
-        PRIVY_APP_SECRET: 'app-secret',
-        ERC8128_ENABLED: 'true',
-        HTTP_AUTH_NONCE_MANAGER: stubNamespace<Env['HTTP_AUTH_NONCE_MANAGER']>({
-            idFromName: () => 'nonce',
-            get: () => ({ consumeNonce: async () => true }),
+    const env = {
+        ...testEnv({
+            CHAIN_IDS: String(CHAIN_ID),
+            RPC_8453: 'http://127.0.0.1:1',
+            CONTEXT: 'prod',
+            PRIVY_ENABLED: 'true',
+            PRIVY_APP_ID: 'app-id',
+            PRIVY_APP_SECRET: 'app-secret',
+            ERC8128_ENABLED: 'true',
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace<Env['HTTP_AUTH_NONCE_MANAGER']>({
+                idFromName: () => 'nonce',
+                get: () => ({ consumeNonce: async () => true }),
+            }),
+            ...overrides,
         }),
-        ...overrides,
-    })
+        NODE_ENV: 'production',
+    }
+
+    return env
 }
 
 function upgradeParams(method: UpgradeMethod, address: Address, chainId: unknown) {

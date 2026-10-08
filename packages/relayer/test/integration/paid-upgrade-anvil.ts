@@ -66,6 +66,7 @@ import {
     ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
     ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS,
 } from '../../src/rpc/methods/shared/upgrade-gas'
+import type { Env } from '../../src/types/env'
 import { testEnv } from '../helpers/env'
 import { parseAddr, parseHex } from '../helpers/hex'
 import { parseJson } from '../helpers/rpc'
@@ -200,7 +201,8 @@ async function main(): Promise<void> {
         const accountProxy = readAddress('accountProxy')
         const orchestrator = readAddress('orchestrator')
 
-        const env = testEnv({
+        const env = {
+            ...testEnv({
             RPC_URL,
             RPC_31337: RPC_URL,
             CHAIN_IDS: String(CHAIN_ID),
@@ -210,15 +212,7 @@ async function main(): Promise<void> {
             RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: 'paid-upgrade-anvil',
             COINGECKO_API_URL: 'http://127.0.0.1:1',
-            ORCHESTRATOR_31337: orchestrator,
-            SIMPLE_FUNDER_31337: readAddress('simpleFunder'),
-            SIMULATOR_31337: readAddress('simulator'),
-            ACCOUNT_31337: readAddress('account'),
-            ACCOUNT_PROXY_31337: accountProxy,
-            SIMPLE_SETTLER_31337: readAddress('simpleSettler'),
-            ESCROW_31337: readAddress('escrow'),
-            MULTI_SIG_SIGNER_31337: readAddress('multiSigSigner'),
-            INTENT_NONCE_MANAGER: namespaceStub({
+            INTENT_NONCE_MANAGER: namespaceStub<Env['INTENT_NONCE_MANAGER']>({
                 idFromName: () => 'nonce',
                 get: () => ({
                     fetch: async () => {
@@ -226,7 +220,7 @@ async function main(): Promise<void> {
                     },
                 }),
             }),
-            SIGNER_POOL: namespaceStub({
+            SIGNER_POOL: namespaceStub<Env['SIGNER_POOL']>({
                 idFromName: () => 'pool',
                 get: () => ({
                     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -312,7 +306,16 @@ async function main(): Promise<void> {
                     },
                 }),
             }),
-        })
+        }),
+            ORCHESTRATOR_31337: orchestrator,
+            SIMPLE_FUNDER_31337: readAddress('simpleFunder'),
+            SIMULATOR_31337: readAddress('simulator'),
+            ACCOUNT_31337: readAddress('account'),
+            ACCOUNT_PROXY_31337: accountProxy,
+            SIMPLE_SETTLER_31337: readAddress('simpleSettler'),
+            ESCROW_31337: readAddress('escrow'),
+            MULTI_SIG_SIGNER_31337: readAddress('multiSigSigner'),
+        }
 
         const ctx: RpcContext = { env }
         const config = getChainConfig(env, CHAIN_ID)
