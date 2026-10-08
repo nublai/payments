@@ -1,14 +1,15 @@
 import { env } from 'cloudflare:test'
 import { exportJWK, exportSPKI, generateKeyPair, SignJWT, type JWK } from 'jose'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { getAddress, type Address } from 'viem'
+import { getAddress } from 'viem'
 
 import { authorizeRequest } from '../../src/auth/engine'
 import { identityAuthProviders } from '../../src/auth/identity-registry'
 import { createOidcIdentityProvider } from '../../src/auth/providers/oidc'
 import { walletBindingStub } from '../../src/auth/wallet-binding-client'
 import { isIdentityProviderUnavailable } from '../../src/auth/types'
-import type { Env } from '../../src/types/env'
+import type {Env} from '../../src/types/env'
+import { workerEnv } from '../helpers/env'
 
 const privyClientMock = vi.hoisted(() => vi.fn())
 
@@ -17,9 +18,7 @@ const verifyAuthTokenMock = vi.hoisted(() => vi.fn())
 vi.mock('@privy-io/server-auth', () => ({
     PrivyClient: privyClientMock.mockImplementation(() => ({
         verifyAuthToken: verifyAuthTokenMock,
-        getUserByWalletAddress: vi.fn(),
-    })),
-}))
+        getUserByWalletAddress: vi.fn() })) }))
 
 const OIDC_SKEW = 60
 
@@ -61,7 +60,7 @@ beforeAll(async () => {
 })
 
 function oidcEnv(jwksUrl: string, overrides: Partial<Env> = {}): Env {
-    const base = env as unknown as Env
+    const base = workerEnv(env)
 
     return {
         ...base,
@@ -73,8 +72,7 @@ function oidcEnv(jwksUrl: string, overrides: Partial<Env> = {}): Env {
         OIDC_JWKS_URL: jwksUrl,
         OIDC_CLIENT_ID: CLIENT_ID,
         WALLET_BINDING: base.WALLET_BINDING,
-        ...overrides,
-    }
+        ...overrides }
 }
 
 async function signToken(input: {
@@ -126,8 +124,7 @@ async function withJwks<T>(
 
             return new Response(JSON.stringify(jwks), {
                 status: 200,
-                headers: { 'content-type': 'application/json' },
-            })
+                headers: { 'content-type': 'application/json' } })
         }
 
         return previous(input, init)
@@ -178,30 +175,25 @@ describe('oidc identity provider', () => {
             provider: 'oidc',
             userId: 'oidc-user',
             issuer: ISSUER,
-            boundAccounts: [],
-        })
+            boundAccounts: [] })
         expect(verifyAuthTokenMock).not.toHaveBeenCalled()
 
         const privy = await authorizeRequest({
             request: new Request('https://relayer.local/', {
-                headers: { Authorization: 'Bearer privy-token' },
-            }),
+                headers: { Authorization: 'Bearer privy-token' } }),
             env: workerEnv,
             nowSeconds: NOW,
-            providers: identityAuthProviders(),
-        })
+            providers: identityAuthProviders() })
 
         expect(privy).toMatchObject({ ok: true, provider: 'privy', userId: 'did:privy:abc' })
 
         const routed = await withJwks(url, { keys: [publicJwk] }, () =>
             authorizeRequest({
                 request: new Request('https://relayer.local/', {
-                    headers: { Authorization: `Bearer ${token}` },
-                }),
+                    headers: { Authorization: `Bearer ${token}` } }),
                 env: workerEnv,
                 nowSeconds: NOW,
-                providers: identityAuthProviders(),
-            }),
+                providers: identityAuthProviders() }),
         )
 
         expect(routed).toMatchObject({ ok: true, provider: 'oidc', userId: 'oidc-user' })
@@ -215,12 +207,10 @@ describe('oidc identity provider', () => {
         const result = await withJwks(url, { keys: [publicJwk] }, () =>
             authorizeRequest({
                 request: new Request('https://relayer.local/', {
-                    headers: { Authorization: `Bearer ${token}` },
-                }),
+                    headers: { Authorization: `Bearer ${token}` } }),
                 env: workerEnv,
                 nowSeconds: NOW,
-                providers: identityAuthProviders(),
-            }),
+                providers: identityAuthProviders() }),
         )
 
         expect(result).toMatchObject({ ok: true, provider: 'oidc', userId: 'only-oidc' })
@@ -237,8 +227,7 @@ describe('oidc identity provider', () => {
             kid: 'test-es256',
             alg: 'ES256',
             audience: CLIENT_ID,
-            subject: 'es-user',
-        })
+            subject: 'es-user' })
 
         const provider = createOidcIdentityProvider()
         const workerEnv = oidcEnv(url)
@@ -253,8 +242,7 @@ describe('oidc identity provider', () => {
 
                 return new Response(JSON.stringify({ keys: [esPublicJwk] }), {
                     status: 200,
-                    headers: { 'content-type': 'application/json' },
-                })
+                    headers: { 'content-type': 'application/json' } })
             }
 
             return previous(input, init)
@@ -281,38 +269,31 @@ describe('oidc identity provider', () => {
         const expired = await signToken({
             audience: CLIENT_ID,
             subject: 'expired-user',
-            exp: NOW - OIDC_SKEW - 30,
-        })
+            exp: NOW - OIDC_SKEW - 30 })
 
         const withinSkew = await signToken({
             audience: CLIENT_ID,
             subject: 'skew-user',
-            exp: NOW - 30,
-        })
+            exp: NOW - 30 })
 
         const clientIdOnly = await signToken({ clientId: CLIENT_ID, subject: 'client-user' })
 
         await withJwks(url, { keys: [publicJwk] }, async () => {
             expect(await provider.verify(wrongIss, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: false,
-                code: 'INVALID_TOKEN',
-            })
+                code: 'INVALID_TOKEN' })
             expect(await provider.verify(wrongAud, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: false,
-                code: 'INVALID_TOKEN',
-            })
+                code: 'INVALID_TOKEN' })
             expect(await provider.verify(expired, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: false,
-                code: 'EXPIRED_TOKEN',
-            })
+                code: 'EXPIRED_TOKEN' })
             expect(await provider.verify(withinSkew, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: true,
-                userId: 'skew-user',
-            })
+                userId: 'skew-user' })
             expect(await provider.verify(clientIdOnly, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: true,
-                userId: 'client-user',
-            })
+                userId: 'client-user' })
         })
     })
 
@@ -326,8 +307,7 @@ describe('oidc identity provider', () => {
             privateKey: other.privateKey,
             kid: 'not-in-set',
             audience: CLIENT_ID,
-            subject: 'unknown-kid',
-        })
+            subject: 'unknown-kid' })
 
         const spki = await exportSPKI(publicKey)
 
@@ -335,8 +315,7 @@ describe('oidc identity provider', () => {
             alg: 'HS256',
             audience: CLIENT_ID,
             subject: 'confused',
-            secret: new TextEncoder().encode(spki),
-        })
+            secret: new TextEncoder().encode(spki) })
 
         const none = noneToken({
             iss: ISSUER,
@@ -344,22 +323,18 @@ describe('oidc identity provider', () => {
             aud: CLIENT_ID,
             exp: NOW + 600,
             nbf: NOW - 10,
-            iat: NOW,
-        })
+            iat: NOW })
 
         await withJwks(url, { keys: [publicJwk] }, async () => {
             expect(await provider.verify(unknown, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: false,
-                code: 'INVALID_TOKEN',
-            })
+                code: 'INVALID_TOKEN' })
             expect(await provider.verify(confused, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: false,
-                code: 'INVALID_TOKEN',
-            })
+                code: 'INVALID_TOKEN' })
             expect(await provider.verify(none, { env: workerEnv, nowSeconds: NOW })).toMatchObject({
                 ok: false,
-                code: 'INVALID_TOKEN',
-            })
+                code: 'INVALID_TOKEN' })
         })
     })
 
@@ -390,46 +365,40 @@ describe('oidc identity provider', () => {
             () =>
                 authorizeRequest({
                     request: new Request('https://relayer.local/', {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
+                        headers: { Authorization: `Bearer ${token}` } }),
                     env: oidcEnv(url),
                     nowSeconds: NOW,
-                    providers: identityAuthProviders(),
-                }),
+                    providers: identityAuthProviders() }),
             { fail: true },
         )
 
         expect(throughEngine).toMatchObject({
             ok: false,
             code: 'IDP_UNAVAILABLE',
-            message: 'OIDC JWKS unavailable',
-        })
+            message: 'OIDC JWKS unavailable' })
 
         verifyAuthTokenMock.mockReset()
         verifyAuthTokenMock.mockRejectedValueOnce(new Error('fetch failed'))
 
         const privyDown = await authorizeRequest({
             request: new Request('https://relayer.local/', {
-                headers: { Authorization: 'Bearer privy-token' },
-            }),
+                headers: { Authorization: 'Bearer privy-token' } }),
             env: oidcEnv(url),
             nowSeconds: NOW,
-            providers: identityAuthProviders(),
-        })
+            providers: identityAuthProviders() })
 
         expect(privyDown).toMatchObject({
             ok: false,
             code: 'PRIVY_API_UNAVAILABLE',
-            message: 'Privy API unavailable',
-        })
+            message: 'Privy API unavailable' })
     })
 
     it('fills bound accounts from the table and refuses a conflicting wallets claim', async () => {
         const url = 'https://issuer.example/jwks/wallets'
         const workerEnv = oidcEnv(url, { OIDC_WALLETS_CLAIM_ENABLED: 'true' })
         const store = walletBindingStub(workerEnv)
-        const taken = '0x2000000000000000000000000000000000000001' as Address
-        const free = '0x2000000000000000000000000000000000000002' as Address
+        const taken = '0x2000000000000000000000000000000000000001'
+        const free = '0x2000000000000000000000000000000000000002'
 
         const issued = await store.issueNonce({
             issuer: ISSUER,
@@ -437,8 +406,7 @@ describe('oidc identity provider', () => {
             address: taken,
             chainId: 31337,
             nowSeconds: NOW,
-            ttlSeconds: 600,
-        })
+            ttlSeconds: 600 })
 
         expect(issued.ok).toBe(true)
 
@@ -451,8 +419,7 @@ describe('oidc identity provider', () => {
                 address: taken,
                 chainId: 31337,
                 expiry: issued.expiresAt,
-                nowSeconds: NOW,
-            }),
+                nowSeconds: NOW }),
         ).toEqual({ ok: true })
 
         const provider = createOidcIdentityProvider()
@@ -461,34 +428,29 @@ describe('oidc identity provider', () => {
         const claimToken = await signToken({
             audience: CLIENT_ID,
             subject: 'table-owner',
-            wallets: [taken],
-        })
+            wallets: [taken] })
 
         const conflict = await signToken({
             audience: CLIENT_ID,
             subject: 'table-other',
-            wallets: [taken, free],
-        })
+            wallets: [taken, free] })
 
         const claimOnly = await signToken({
             audience: CLIENT_ID,
             subject: 'table-claim',
-            wallets: [free],
-        })
+            wallets: [free] })
 
         await withJwks(url, { keys: [publicJwk] }, async () => {
             const fromTable = await provider.verify(ownerToken, { env: workerEnv, nowSeconds: NOW })
             expect(fromTable).toMatchObject({
                 ok: true,
-                boundAccounts: [getAddress(taken)],
-            })
+                boundAccounts: [getAddress(taken)] })
             const fromBoth = await provider.verify(claimToken, { env: workerEnv, nowSeconds: NOW })
             expect(fromBoth).toMatchObject({ ok: true, boundAccounts: [getAddress(taken)] })
             const refused = await provider.verify(conflict, { env: workerEnv, nowSeconds: NOW })
             expect(refused).toMatchObject({
                 ok: false,
-                code: 'NO_LINKED_WALLET',
-            })
+                code: 'NO_LINKED_WALLET' })
             const claimed = await provider.verify(claimOnly, { env: workerEnv, nowSeconds: NOW })
             expect(claimed).toMatchObject({ ok: true, boundAccounts: [getAddress(free)] })
         })

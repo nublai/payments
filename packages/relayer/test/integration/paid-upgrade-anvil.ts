@@ -37,7 +37,6 @@ import { accountAbi, orchestratorAbi } from '@nubl/contracts/abis'
 import { handlePrepareCalls } from '../../src/rpc/methods/prepareCalls'
 import { handleSendPreparedCalls } from '../../src/rpc/methods/sendPreparedCalls'
 import type { RpcContext } from '../../src/rpc/types'
-import type { Env } from '../../src/types/env'
 import type { ExecuteIntentTransaction } from '../../src/types/pool'
 import { RelayerService } from '../../src/services/relayer'
 import { logger } from '../../src/lib/logger'
@@ -67,6 +66,10 @@ import {
     ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
     ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS,
 } from '../../src/rpc/methods/shared/upgrade-gas'
+import { testEnv } from '../helpers/env'
+import { parseAddr, parseHex } from '../helpers/hex'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, namespaceStub } from '../helpers/stubs'
 
 const PORT = 18547
 
@@ -75,12 +78,12 @@ const CHAIN_ID = 31337
 const RPC_URL = `http://127.0.0.1:${PORT}`
 
 const DEPLOYER_KEY =
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
 const RELAYER_KEY =
-    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -107,10 +110,10 @@ function sleep(ms: number): Promise<void> {
 
 function readAddress(name: string): Address {
     const file = path.join(deploymentDir, `${name}.json`)
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as { address?: string }
+    const parsed = parseJson<{ address?: string }>(readFileSync(file, 'utf8'))
     assert(parsed.address, `missing address in ${file}`)
 
-    return parsed.address as Address
+    return parseAddr(parsed.address)
 }
 
 async function waitForChain(publicClient: PublicClient): Promise<void> {
@@ -197,7 +200,7 @@ async function main(): Promise<void> {
         const accountProxy = readAddress('accountProxy')
         const orchestrator = readAddress('orchestrator')
 
-        const env = {
+        const env = testEnv({
             RPC_URL,
             RPC_31337: RPC_URL,
             CHAIN_IDS: String(CHAIN_ID),
@@ -215,15 +218,15 @@ async function main(): Promise<void> {
             SIMPLE_SETTLER_31337: readAddress('simpleSettler'),
             ESCROW_31337: readAddress('escrow'),
             MULTI_SIG_SIGNER_31337: readAddress('multiSigSigner'),
-            INTENT_NONCE_MANAGER: {
+            INTENT_NONCE_MANAGER: namespaceStub({
                 idFromName: () => 'nonce',
                 get: () => ({
                     fetch: async () => {
                         throw new Error('nonce manager should not be called')
                     },
                 }),
-            },
-            SIGNER_POOL: {
+            }),
+            SIGNER_POOL: namespaceStub({
                 idFromName: () => 'pool',
                 get: () => ({
                     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -234,7 +237,7 @@ async function main(): Promise<void> {
                                   ? input.url
                                   : String(input)
 
-                        const body = JSON.parse(String(init?.body ?? '{}')) as {
+                        const body = parseJson<{
                             action?: string
                             chainId?: number
                             account?: string
@@ -244,7 +247,7 @@ async function main(): Promise<void> {
                             gas?: string
                             hold?: string
                             failure?: boolean
-                        }
+                        }>(String(init?.body ?? '{}'))
 
                         if (url.includes('upgrade-rate-limit')) {
                             if (
@@ -286,6 +289,7 @@ async function main(): Promise<void> {
                         }
 
                         try {
+                            // SAFETY: this stub only broadcasts after type === 'execute-intent'.
                             const hash = await broadcastPaidUpgrade(
                                 publicClient,
                                 body as ExecuteIntentTransaction,
@@ -307,8 +311,8 @@ async function main(): Promise<void> {
                         }
                     },
                 }),
-            },
-        } as unknown as Env
+            }),
+        })
 
         const ctx: RpcContext = { env }
         const config = getChainConfig(env, CHAIN_ID)
@@ -536,7 +540,7 @@ async function main(): Promise<void> {
             args: [keyHash],
         })
 
-        const storedKey = stored as { publicKey: Hex }
+        const storedKey: { publicKey: Hex } = stored
         assert(
             storedKey.publicKey.toLowerCase() === sessionKey.publicKey.toLowerCase(),
             'session key was not authorized',
@@ -585,7 +589,7 @@ async function main(): Promise<void> {
             }),
         })
 
-        const fundedBody = (await funded.json()) as { error?: { message?: string } }
+        const fundedBody: { error?: { message?: string } } = await funded.json()
         assert(!fundedBody.error, `anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
         const griefBalance = await publicClient.getBalance({ address: griefOwner.address })
         assert(
@@ -868,7 +872,7 @@ async function main(): Promise<void> {
             }),
         })
 
-        const helperFundedBody = (await helperFunded.json()) as { error?: { message?: string } }
+        const helperFundedBody: { error?: { message?: string } } = await helperFunded.json()
         assert(!helperFundedBody.error, 'helper anvil_setBalance failed')
 
         const bombUsdcBefore = await publicClient.readContract({
@@ -965,12 +969,8 @@ async function main(): Promise<void> {
     }
 }
 
-function json(body: unknown, ok = true): Response {
-    return {
-        ok,
-        status: ok ? 200 : 500,
-        json: async () => body,
-    } as Response
+function json<T>(body: T, ok = true): Response {
+    return jsonStub(body, ok)
 }
 
 function splitSignature(signature: Hex): { r: Hex; s: Hex; yParity: number } {
@@ -978,8 +978,8 @@ function splitSignature(signature: Hex): { r: Hex; s: Hex; yParity: number } {
     const v = Number.parseInt(raw.slice(128, 130), 16)
 
     return {
-        r: `0x${raw.slice(0, 64)}` as Hex,
-        s: `0x${raw.slice(64, 128)}` as Hex,
+        r: parseHex(`0x${raw.slice(0, 64)}`),
+        s: parseHex(`0x${raw.slice(64, 128)}`),
         yParity: v >= 27 ? v - 27 : v,
     }
 }
@@ -1037,7 +1037,9 @@ function intentError(receipt: TransactionReceipt): Hex | undefined {
 
             if (decoded.eventName !== 'IntentExecuted') continue
 
-            return (decoded.args as { err?: Hex }).err
+            const args: { err?: Hex } = decoded.args
+
+            return args.err
         } catch {
             continue
         }
@@ -1047,10 +1049,10 @@ function intentError(receipt: TransactionReceipt): Hex | undefined {
 }
 
 const BURNER_BYTECODE =
-    '0x6080604052348015600e575f5ffd5b5060dc80601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106026575f3560e01c806342966c6814602a575b5f5ffd5b603960353660046090565b604b565b60405190815260200160405180910390f35b5f5f5b82811015608a57604080516020810183905290810183905260600160408051601f1981840301815291905280516020909101209150600101604e565b50919050565b5f60208284031215609f575f5ffd5b503591905056fea2646970667358221220d689a7628662cc20b0c58cb6cdd976cdd2833b83857cfb1efcee9c35cf7adeff64736f6c634300081c0033' as Hex
+    '0x6080604052348015600e575f5ffd5b5060dc80601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106026575f3560e01c806342966c6814602a575b5f5ffd5b603960353660046090565b604b565b60405190815260200160405180910390f35b5f5f5b82811015608a57604080516020810183905290810183905260600160408051601f1981840301815291905280516020909101209150600101604e565b50919050565b5f60208284031215609f575f5ffd5b503591905056fea2646970667358221220d689a7628662cc20b0c58cb6cdd976cdd2833b83857cfb1efcee9c35cf7adeff64736f6c634300081c0033'
 
 const GAS_BOMB_BYTECODE =
-    '0x6080604052348015600e575f5ffd5b50604580601a5f395ff3fe60806040525b6113885a1160055700fea26469706673582212209c62d81a64e8ae9e7363a468b7838b1978378a04080cd49131c4b68d3a139f1d64736f6c634300081c0033' as Hex
+    '0x6080604052348015600e575f5ffd5b50604580601a5f395ff3fe60806040525b6113885a1160055700fea26469706673582212209c62d81a64e8ae9e7363a468b7838b1978378a04080cd49131c4b68d3a139f1d64736f6c634300081c0033'
 
 async function deployBytecode(
     wallet: WalletClient<Transport, typeof chain, Account>,
@@ -1080,7 +1082,7 @@ async function fundAndApprove(
         }),
     })
 
-    const fundedBody = (await funded.json()) as { error?: { message?: string } }
+    const fundedBody: { error?: { message?: string } } = await funded.json()
     assert(!fundedBody.error, `anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
 
     const mintHash = await wallet.writeContract({

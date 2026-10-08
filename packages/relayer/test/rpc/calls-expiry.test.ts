@@ -147,9 +147,12 @@ describe('wallet_sendPreparedCalls expiry validation', () => {
             await handleSendPreparedCalls(params, ctx)
         } catch (error) {
             expect(error).toBeInstanceOf(RpcError)
+
+            if (!(error instanceof RpcError)) throw error
+
             // The error comes through as SERVICE_UNAVAILABLE from the pool
             // The underlying cause message contains "Intent expired"
-            expect((error as RpcError).message).toContain('Intent expired')
+            expect(error.message).toContain('Intent expired')
         }
     })
 

@@ -9,6 +9,8 @@ import type { Hex } from 'viem'
 
 import { SignerDO } from '../../src/durable-objects/signer.do'
 import type { Env } from '../../src/types/env'
+import { stubNamespace, testEnv } from '../helpers/env'
+import { repeatedHex } from '../helpers/hex'
 
 const ACCOUNT = privateKeyToAccount(
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
@@ -63,6 +65,39 @@ function pendingRow(): PendingRow {
     }
 }
 
+type PaidUpgradeSigner = {
+    sql: { exec: (query: string, ...args: unknown[]) => { toArray: () => PendingRow[] } }
+    env: Env
+    ctx: { id: { name: string } }
+    ensureClients: (chainId: number) => {
+        publicClient: {
+            estimateGas: () => Promise<bigint>
+            estimateFeesPerGas: () => Promise<{
+                maxFeePerGas: bigint
+                maxPriorityFeePerGas: bigint
+            }>
+        }
+        walletClient: {
+            sendTransaction: (tx: { gas?: bigint }) => Promise<Hex>
+        }
+        account: typeof ACCOUNT
+    }
+    tryReplaceStaleTransaction: (
+        txId: string,
+        chainId: number,
+        signerName: string,
+    ) => Promise<'replaced' | 'skipped' | 'abandoned'>
+    applyCreateAccountCaps: (
+        txParams: { paidUpgrade?: boolean; gas?: bigint },
+        nonce: number,
+        chainId: number,
+        feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
+    ) => Promise<{
+        txParams: { paidUpgrade?: boolean; gas?: bigint }
+        feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }
+    }>
+}
+
 describe('paid upgrade stale replacement', () => {
     afterEach(() => {
         vi.restoreAllMocks()
@@ -74,38 +109,7 @@ describe('paid upgrade stale replacement', () => {
         const seen: Array<{ paidUpgrade?: boolean; gas?: bigint }> = []
         let estimate = 456_207n
 
-        const signer = Object.create(SignerDO.prototype) as {
-            sql: { exec: (query: string, ...args: unknown[]) => { toArray: () => PendingRow[] } }
-            env: Env
-            ctx: { id: { name: string } }
-            ensureClients: (chainId: number) => {
-                publicClient: {
-                    estimateGas: () => Promise<bigint>
-                    estimateFeesPerGas: () => Promise<{
-                        maxFeePerGas: bigint
-                        maxPriorityFeePerGas: bigint
-                    }>
-                }
-                walletClient: {
-                    sendTransaction: (tx: { gas?: bigint }) => Promise<Hex>
-                }
-                account: typeof ACCOUNT
-            }
-            tryReplaceStaleTransaction: (
-                txId: string,
-                chainId: number,
-                signerName: string,
-            ) => Promise<'replaced' | 'skipped' | 'abandoned'>
-            applyCreateAccountCaps: (
-                txParams: { paidUpgrade?: boolean; gas?: bigint },
-                nonce: number,
-                chainId: number,
-                feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
-            ) => Promise<{
-                txParams: { paidUpgrade?: boolean; gas?: bigint }
-                feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }
-            }>
-        }
+        const signer: PaidUpgradeSigner = Object.create(SignerDO.prototype)
 
         signer.sql = {
             exec: (query: string, ...args: unknown[]) => {
@@ -148,15 +152,15 @@ describe('paid upgrade stale replacement', () => {
                 return { toArray: () => [] }
             },
         }
-        signer.env = {
-            MONITOR_QUEUE: { send: async () => {} },
-            SIGNER_POOL: {
+        signer.env = testEnv({
+            MONITOR_QUEUE: stubNamespace<Env['MONITOR_QUEUE']>({ send: async () => {} }),
+            SIGNER_POOL: stubNamespace<Env['SIGNER_POOL']>({
                 idFromName: () => 'pool-8453',
                 get: () => ({
                     fetch: async () => new Response(JSON.stringify({ allowed: true })),
                 }),
-            },
-        } as unknown as Env
+            }),
+        })
         signer.ctx = { id: { name: 'signer-8453-0' } }
         signer.ensureClients = () => ({
             publicClient: {
@@ -170,7 +174,7 @@ describe('paid upgrade stale replacement', () => {
                 sendTransaction: async (tx: { gas?: bigint }) => {
                     sent.push(tx)
 
-                    return `0x${'bb'.repeat(32)}` as Hex
+                    return repeatedHex('bb', 32)
                 },
             },
             account: ACCOUNT,

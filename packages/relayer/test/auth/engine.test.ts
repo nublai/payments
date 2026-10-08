@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { authorizeRequest, type AuthProvider } from '../../src/auth/engine'
 import type { AuthFailureCode } from '../../src/auth/types'
-import type { Env } from '../../src/types/env'
+import { testEnv } from '../helpers/env'
 
 function createProvider(args: {
     name: string
@@ -29,7 +29,7 @@ describe('auth engine', () => {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'wallet_sendPreparedCalls' }),
     })
 
-    const env = {} as Env
+    const env = testEnv()
 
     it('authorizes when any enabled provider succeeds', async () => {
         const result = await authorizeRequest({

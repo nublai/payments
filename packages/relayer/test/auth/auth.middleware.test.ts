@@ -1,31 +1,25 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
-import type { Address } from 'viem'
 
-import type { Env } from '../../src/types/env'
+import type {Env} from '../../src/types/env'
 import { authMiddleware } from '../../src/auth/middleware'
 import { upgradeRateIdentity } from '../../src/auth/identity'
-import type { AuthProvider } from '../../src/auth/types'
+import type {AuthProvider} from '../../src/auth/types'
+import { testEnv } from '../helpers/env'
 
 function createEnv(overrides: Partial<Env> = {}): Env {
-    return {
-        SIGNER: {} as Env['SIGNER'],
-        SIGNER_POOL: {} as Env['SIGNER_POOL'],
-        INTENT_NONCE_MANAGER: {} as Env['INTENT_NONCE_MANAGER'],
-        MONITOR_QUEUE: {} as Env['MONITOR_QUEUE'],
-        RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
+    return testEnv({
         CHAIN_IDS: '8453',
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls,wallet_prepareCalls',
         ...overrides,
-    }
+    })
 }
 
 function makeProvider(name: string, verifyFn: AuthProvider['verify']): AuthProvider {
     return {
         name,
         enabled: () => true,
-        verify: verifyFn,
-    }
+        verify: verifyFn }
 }
 
 function createApp(providers: AuthProvider[]) {
@@ -51,9 +45,7 @@ describe('auth middleware', () => {
                     jsonrpc: '2.0',
                     id: 1,
                     method: 'wallet_health',
-                    params: [],
-                }),
-            },
+                    params: [] }) },
             createEnv(),
         )
 
@@ -67,8 +59,7 @@ describe('auth middleware', () => {
             makeProvider('erc8128', async () => ({
                 ok: false,
                 code: 'BAD_SIGNATURE',
-                message: 'x',
-            })),
+                message: 'x' })),
         ])
 
         const response = await app.request(
@@ -80,9 +71,7 @@ describe('auth middleware', () => {
                     jsonrpc: '2.0',
                     id: 1,
                     method: 'wallet_sendPreparedCalls',
-                    params: [],
-                }),
-            },
+                    params: [] }) },
             createEnv(),
         )
 
@@ -105,9 +94,7 @@ describe('auth middleware', () => {
                     jsonrpc: '2.0',
                     id: 'abc',
                     method: 'wallet_sendPreparedCalls',
-                    params: [],
-                }),
-            },
+                    params: [] }) },
             createEnv(),
         )
 
@@ -120,13 +107,11 @@ describe('auth middleware', () => {
             makeProvider('privy', async () => ({
                 ok: false,
                 code: 'INVALID_TOKEN',
-                message: 'invalid',
-            })),
+                message: 'invalid' })),
             makeProvider('erc8128', async () => ({
                 ok: false,
                 code: 'BAD_SIGNATURE',
-                message: 'bad sig',
-            })),
+                message: 'bad sig' })),
         ])
 
         const response = await app.request(
@@ -138,9 +123,7 @@ describe('auth middleware', () => {
                     jsonrpc: '2.0',
                     id: 7,
                     method: 'wallet_sendPreparedCalls',
-                    params: [],
-                }),
-            },
+                    params: [] }) },
             createEnv(),
         )
 
@@ -152,10 +135,7 @@ describe('auth middleware', () => {
                 code: -32001,
                 message: 'Unauthorized',
                 data: {
-                    auth_code: 'INVALID_TOKEN',
-                },
-            },
-        })
+                    auth_code: 'INVALID_TOKEN' } } })
     })
 
     it('returns unauthorized with id:null for mixed batch when auth fails', async () => {
@@ -163,8 +143,7 @@ describe('auth middleware', () => {
             makeProvider('privy', async () => ({
                 ok: false,
                 code: 'INVALID_TOKEN',
-                message: 'invalid',
-            })),
+                message: 'invalid' })),
         ])
 
         const response = await app.request(
@@ -175,8 +154,7 @@ describe('auth middleware', () => {
                 body: JSON.stringify([
                     { jsonrpc: '2.0', id: 1, method: 'wallet_health', params: [] },
                     { jsonrpc: '2.0', id: 2, method: 'wallet_sendPreparedCalls', params: [] },
-                ]),
-            },
+                ]) },
             createEnv(),
         )
 
@@ -188,10 +166,7 @@ describe('auth middleware', () => {
                 code: -32001,
                 message: 'Unauthorized',
                 data: {
-                    auth_code: 'INVALID_TOKEN',
-                },
-            },
-        })
+                    auth_code: 'INVALID_TOKEN' } } })
     })
 
     it('passes mixed batch with valid privy', async () => {
@@ -205,8 +180,7 @@ describe('auth middleware', () => {
                 body: JSON.stringify([
                     { jsonrpc: '2.0', id: 1, method: 'wallet_health', params: [] },
                     { jsonrpc: '2.0', id: 2, method: 'wallet_sendPreparedCalls', params: [] },
-                ]),
-            },
+                ]) },
             createEnv(),
         )
 
@@ -235,9 +209,7 @@ describe('auth middleware', () => {
                     jsonrpc: '2.0',
                     id: 1,
                     method: 'wallet_sendPreparedCalls',
-                    params: [],
-                }),
-            },
+                    params: [] }) },
             createEnv(),
         )
 
@@ -253,8 +225,7 @@ describe('auth middleware', () => {
             makeProvider('erc8128', async () => ({
                 ok: false,
                 code: 'BAD_SIGNATURE',
-                message: 'bad sig',
-            })),
+                message: 'bad sig' })),
         ])
 
         const response = await app.request(
@@ -266,9 +237,7 @@ describe('auth middleware', () => {
                     jsonrpc: '2.0',
                     id: 3,
                     method: 'wallet_sendPreparedCalls',
-                    params: [],
-                }),
-            },
+                    params: [] }) },
             createEnv(),
         )
 
@@ -280,18 +249,14 @@ describe('auth middleware', () => {
                 code: -32001,
                 message: 'Unauthorized',
                 data: {
-                    auth_code: 'PRIVY_API_UNAVAILABLE',
-                },
-            },
-        })
+                    auth_code: 'PRIVY_API_UNAVAILABLE' } } })
     })
 
     it('bypasses auth for non-POST and non-root requests', async () => {
         const verify = vi.fn(async () => ({
             ok: false as const,
             code: 'INVALID_TOKEN' as const,
-            message: 'x',
-        }))
+            message: 'x' }))
 
         const app = new Hono<{ Bindings: Env }>()
         app.use('*', authMiddleware({ providers: [makeProvider('privy', verify)] }))
@@ -309,7 +274,7 @@ describe('auth middleware', () => {
     })
 
     it('namespaces an OIDC caller on the rate-limit key', async () => {
-        const account = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
+        const account = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
         const app = new Hono<{ Bindings: Env }>()
         app.use(
             '*',
@@ -318,10 +283,8 @@ describe('auth middleware', () => {
                     makeProvider('oidc', async () => ({
                         ok: true,
                         userId: 'User_1',
-                        issuer: 'https://Issuer.Example',
-                    })),
-                ],
-            }),
+                        issuer: 'https://Issuer.Example' })),
+                ] }),
         )
         app.post('/', (c) => c.json({ key: upgradeRateIdentity(account) }))
 
@@ -334,9 +297,7 @@ describe('auth middleware', () => {
                     jsonrpc: '2.0',
                     id: 1,
                     method: 'wallet_sendPreparedCalls',
-                    params: [],
-                }),
-            },
+                    params: [] }) },
             createEnv(),
         )
 

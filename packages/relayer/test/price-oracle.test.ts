@@ -126,10 +126,7 @@ describe('price oracle', () => {
     })
 
     it('uses fallback ETH/USD price when fetch yields no price', async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: async () => ({}),
-        }) as unknown as typeof fetch
+        globalThis.fetch = async () => new Response('{}', { headers: { 'Content-Type': 'application/json' } })
 
         const price = await getEthUsdPrice({
             providerId: 'coingecko',
@@ -143,10 +140,7 @@ describe('price oracle', () => {
     })
 
     it('uses default fallback USD price for pol when provider has no price', async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: async () => ({}),
-        }) as unknown as typeof fetch
+        globalThis.fetch = async () => new Response('{}', { headers: { 'Content-Type': 'application/json' } })
 
         const price = await getUsdPrice('pol')
 

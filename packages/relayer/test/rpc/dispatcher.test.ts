@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { dispatch } from '../../src/rpc/dispatcher'
 import type { MethodRegistry, RpcContext } from '../../src/rpc/types'
+import { requireJsonRpcBatch } from '../helpers/rpc'
 import {
     PARSE_ERROR,
     INVALID_REQUEST,
@@ -56,9 +57,13 @@ describe('JSON-RPC Dispatcher', () => {
         it('should return result on success', async () => {
             const methods: MethodRegistry = {
                 test_add: async (params: unknown) => {
-                    const [a, b] = params as [number, number]
+                    if (!Array.isArray(params) || params.length !== 2) {
+                        throw new Error('expected two numeric params')
+                    }
 
-                    return a + b
+                    const [a, b] = params
+
+                    return Number(a) + Number(b)
                 },
             }
 
@@ -103,7 +108,7 @@ describe('JSON-RPC Dispatcher', () => {
             const methods: MethodRegistry = {}
 
             // Simulate invalid JSON by passing a string that's not valid JSON-RPC
-            const response = await dispatch('not json' as unknown, methods, mockCtx)
+            const response = await dispatch('not json', methods, mockCtx)
 
             expect(response).toEqual({
                 jsonrpc: '2.0',
@@ -299,10 +304,7 @@ describe('JSON-RPC Dispatcher', () => {
                 { jsonrpc: '2.0' as const, id: 3, method: 'test_echo', params: ['third'] },
             ]
 
-            const response = (await dispatch(requests, methods, mockCtx)) as Array<{
-                id: number
-                result: unknown
-            }>
+            const response = requireJsonRpcBatch(await dispatch(requests, methods, mockCtx))
 
             expect(response[0].id).toBe(1)
             expect(response[0].result).toEqual(['first'])
@@ -326,11 +328,7 @@ describe('JSON-RPC Dispatcher', () => {
                 { jsonrpc: '2.0' as const, id: 3, method: 'unknown' },
             ]
 
-            const response = (await dispatch(requests, methods, mockCtx)) as Array<{
-                id: number
-                result?: unknown
-                error?: { code: number }
-            }>
+            const response = requireJsonRpcBatch(await dispatch(requests, methods, mockCtx))
 
             expect(response[0].result).toEqual(['ok'])
             expect(response[1].error?.code).toBe(-32000)
@@ -410,9 +408,7 @@ describe('JSON-RPC Dispatcher', () => {
                 { jsonrpc: '2.0' as const, id: 2, method: 'test_echo', params: ['also-with-id'] },
             ]
 
-            const response = (await dispatch(requests, methods, mockCtx)) as Array<{
-                id: number | null
-            }>
+            const response = requireJsonRpcBatch(await dispatch(requests, methods, mockCtx))
 
             // Should only return 2 responses (not the notification)
             expect(response).toHaveLength(2)

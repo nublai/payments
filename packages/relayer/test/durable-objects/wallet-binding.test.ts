@@ -2,14 +2,14 @@ import { env, runInDurableObject } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 
 import { walletBindingStub } from '../../src/auth/wallet-binding-client'
-import type { Env } from '../../src/types/env'
+import { workerEnv } from '../helpers/env'
 
 const ISSUER = 'https://binding.example'
 
 const NOW = 1_700_000_000
 
 function stub() {
-    return walletBindingStub(env as unknown as Env)
+    return walletBindingStub(workerEnv(env))
 }
 
 describe('WalletBindingDO', () => {

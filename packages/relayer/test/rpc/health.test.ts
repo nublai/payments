@@ -5,7 +5,10 @@
 import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest'
 import { handleHealth, handleLive, handleReady } from '../../src/rpc/methods/health'
 import type { RpcContext } from '../../src/rpc/types'
+import type { Env } from '../../src/types/env'
 import { installDeployment } from '../deployment-fixture'
+import { stubNamespace, testEnv } from '../helpers/env'
+import { jsonResponse } from '../helpers/rpc'
 
 // Installed into the prod/8453 deployments JSON below, and kept in env.
 const ADDRESSES_8453 = {
@@ -19,22 +22,28 @@ const ADDRESSES_8453 = {
     MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
 }
 
-// Mock RPC context
-const createMockCtx = (overrides: Partial<RpcContext> = {}): RpcContext => ({
-    env: {
-        RPC_URL: 'https://example.com/rpc',
-        CHAIN_IDS: '8453',
+function defaultSignerPool() {
+    return {
+        idFromName: vi.fn().mockReturnValue('pool-id'),
+        get: vi.fn().mockReturnValue({
+            fetch: vi.fn().mockResolvedValue(jsonResponse({ signerCount: 1 })),
+        }),
+    }
+}
+
+function healthEnv(signerPool?: Partial<Env['SIGNER_POOL']>) {
+    return {
+        ...testEnv({
+            RPC_URL: 'https://example.com/rpc',
+            CHAIN_IDS: '8453',
+            SIGNER_POOL: stubNamespace<Env['SIGNER_POOL']>(signerPool ?? defaultSignerPool()),
+        }),
         ...ADDRESSES_8453,
-        SIGNER_POOL: {
-            idFromName: vi.fn().mockReturnValue('pool-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: vi.fn().mockResolvedValue({
-                    ok: true,
-                    json: () => Promise.resolve({ signerCount: 1 }),
-                }),
-            }),
-        },
-    },
+    }
+}
+
+const createMockCtx = (overrides: Partial<RpcContext> = {}): RpcContext => ({
+    env: healthEnv(),
     ...overrides,
 })
 
@@ -66,28 +75,19 @@ describe('wallet_live', () => {
 
 describe('wallet_ready', () => {
     it('should return true when dependencies are ready', async () => {
-        const poolFetchMock = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ signerCount: 1 }),
-        })
+        const poolFetchMock = vi.fn().mockResolvedValue(jsonResponse({ signerCount: 1 }))
 
-        const baseCtx = createMockCtx()
-
-        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ jsonrpc: '2.0', id: 1, result: '0x2105' }),
-        } as Response)
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            jsonResponse({ jsonrpc: '2.0', id: 1, result: '0x2105' }),
+        )
 
         const ctx = createMockCtx({
-            env: {
-                ...(baseCtx.env as Record<string, unknown>),
-                SIGNER_POOL: {
-                    idFromName: vi.fn().mockReturnValue('pool-id'),
-                    get: vi.fn().mockReturnValue({
-                        fetch: poolFetchMock,
-                    }),
-                },
-            },
+            env: healthEnv({
+                idFromName: vi.fn().mockReturnValue('pool-id'),
+                get: vi.fn().mockReturnValue({
+                    fetch: poolFetchMock,
+                }),
+            }),
         })
 
         const result = await handleReady(undefined, ctx)

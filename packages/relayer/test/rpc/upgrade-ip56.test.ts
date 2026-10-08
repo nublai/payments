@@ -21,10 +21,13 @@ import {
     upgradeClientIp,
     upgradeRateBuckets,
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
+import { testEnv } from '../helpers/env'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 
 const CHAIN_ID = 8453
 
-const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
 const NOW = 1_700_000_400
 
@@ -77,9 +80,11 @@ function providerForRequest(): AuthProvider {
         name: 'test',
         enabled: () => true,
         verify: async (request) => {
-            const body = (await request.json()) as {
+            type UpgradeAuthBody = {
                 params?: Array<{ context?: { address?: string } }>
             }
+
+            const body = parseJson<UpgradeAuthBody>(await request.text())
 
             const userId = body.params?.[0]?.context?.address
 
@@ -95,7 +100,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
 
         if (bodyText) {
             try {
-                parsed = JSON.parse(bodyText) as RateBody
+                parsed = parseJson<RateBody>(bodyText)
             } catch {
                 parsed = {}
             }
@@ -104,10 +109,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
         if (parsed.type === 'create-account') {
             capture.push(parsed)
 
-            return {
-                ok: false,
-                json: async () => ({ error: 'execution reverted' }),
-            } as unknown as Response
+            return jsonStub({ error: 'execution reverted' }, false)
         }
 
         const buckets = upgradeRateBuckets({
@@ -125,28 +127,16 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
                 typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW,
             )
 
-            return {
-                ok: true,
-                json: async () => ({ allowed: true }),
-            } as unknown as Response
+            return jsonStub({ allowed: true })
         }
 
         const allowed = consumeRateLimit(store, buckets, NOW).allowed
 
-        return {
-            ok: true,
-            json: async () => ({ allowed, reservedAt: NOW }),
-        } as unknown as Response
+        return jsonStub({ allowed, reservedAt: NOW })
     }
 
-    return {
-        SIGNER: {} as Env['SIGNER'],
-        SIGNER_POOL: {
-            idFromName: () => 'pool-id',
-            get: () => ({ fetch }),
-        } as unknown as Env['SIGNER_POOL'],
-        INTENT_NONCE_MANAGER: {} as Env['INTENT_NONCE_MANAGER'],
-        MONITOR_QUEUE: {} as Env['MONITOR_QUEUE'],
+    return testEnv({
+        SIGNER_POOL: signerPoolWithFetch(fetch),
         RELAYER_MNEMONIC: MNEMONIC,
         CHAIN_IDS: String(CHAIN_ID),
         RPC_URL: 'http://127.0.0.1:18545',
@@ -155,7 +145,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
-    } as Env
+    })
 }
 
 function createApp() {
@@ -262,7 +252,9 @@ describe('upgrade IPv6 /56 buckets', () => {
             env,
         )
 
-        const overflow = (await overflowResponse.json()) as { error?: { code?: number } }
+        type RpcErrorBody = { error?: { code?: number } }
+
+        const overflow = parseJson<RpcErrorBody>(await overflowResponse.text())
 
         const otherAccount = accountAt(21)
 
@@ -287,7 +279,7 @@ describe('upgrade IPv6 /56 buckets', () => {
             env,
         )
 
-        const other = (await otherResponse.json()) as { error?: { code?: number } }
+        const other = parseJson<RpcErrorBody>(await otherResponse.text())
 
         expect({
             broadcastsBeforeOverflow: beforeOverflow,

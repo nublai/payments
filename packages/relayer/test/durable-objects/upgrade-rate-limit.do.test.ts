@@ -1,6 +1,12 @@
 import { env } from 'cloudflare:test'
 import { describe, expect, it, vi } from 'vitest'
 
+import { parseJson } from '../helpers/rpc'
+
+type ReserveResult = { allowed?: boolean; reservedAt?: number }
+
+type GasBooks = { gas: number; held: number }
+
 describe('SignerPoolDO upgrade rate limit', () => {
     it('allows five upgrades for one account and rejects the next', async () => {
         const poolName = 'pool-8453-c1-rate'
@@ -57,7 +63,7 @@ describe('SignerPoolDO upgrade rate limit', () => {
                 body: JSON.stringify(body),
             })
 
-            const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
+            const result = parseJson<ReserveResult>(await response.text())
             expect(result.allowed).toBe(true)
             reservedAt = result.reservedAt ?? reservedAt
         }
@@ -173,7 +179,7 @@ describe('SignerPoolDO upgrade rate limit', () => {
                 gas: '1500000',
             })
 
-            books = (await settled.json()) as { gas: number; held: number }
+            books = parseJson<GasBooks>(await settled.text())
             expect(books.gas + books.held).toBeLessThanOrEqual(budget)
             expect(books.gas).not.toBe(2_100_000)
         }

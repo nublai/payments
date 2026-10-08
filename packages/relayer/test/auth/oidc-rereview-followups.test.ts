@@ -11,13 +11,14 @@ import { isLocalDevContext } from '../../src/config/runtime-context'
 import { handleIssueBindNonce } from '../../src/rpc/methods/issueBindNonce'
 import { INVALID_PARAMS } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
+import { testEnv, workerEnv } from '../helpers/env'
 
 const ISSUER = 'https://rereview.example'
 
 const NOW = 1_800_000_000
 
 function baseEnv(overrides: Partial<Env> = {}): Env {
-    const worker = env as unknown as Env
+    const worker = workerEnv(env)
 
     return {
         ...worker,
@@ -122,29 +123,28 @@ describe('oidc rereview follow-ups', () => {
     })
 
     it('keeps http JWKS, optional quote HMAC, and open ERC-8128 on local only', () => {
-        const httpJwks = {
+        const httpJwks = testEnv({
             OIDC_ENABLED: 'true',
             OIDC_ISSUER: 'https://issuer.example',
             OIDC_JWKS_URL: 'http://issuer.example/jwks',
             OIDC_CLIENT_ID: 'client_123',
-        } as Env
+        })
 
-        const stranger = '0x1111111111111111111111111111111111111111' as Address
-        const owner = '0x2222222222222222222222222222222222222222' as Address
+        const stranger = '0x1111111111111111111111111111111111111111'
+        const owner = '0x2222222222222222222222222222222222222222'
 
         const binding = {
             accounts: [{ eoa: owner, chainId: 84532 }],
             otherProtectedMethods: [],
         }
 
-        const devEnv = {
+        const devEnv = testEnv({
             RPC_URL: 'http://127.0.0.1:8545',
             CHAIN_IDS: '84532',
-            RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
             CONTEXT: 'dev',
             QUOTE_SIGNING_SECRET: '',
             PRIVY_ENABLED: 'false',
-        } as Env
+        })
 
         expect({
             devHttp: readOidcConfig({ ...httpJwks, CONTEXT: 'dev' }).ok,

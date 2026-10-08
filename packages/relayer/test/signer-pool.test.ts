@@ -52,8 +52,8 @@ function selectCandidates(capacities: IndexedCapacityInfo[]): IndexedCapacityInf
 describe('SignerPool selectCandidates', () => {
     it('returns empty array when all signers have zero capacity', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 0, pending: 16, address: '0x1' as Hex, error: false },
-            { index: 1, capacity: 0, pending: 16, address: '0x2' as Hex, error: false },
+            { index: 0, capacity: 0, pending: 16, address: '0x1', error: false },
+            { index: 1, capacity: 0, pending: 16, address: '0x2', error: false },
         ]
 
         const result = selectCandidates(capacities)
@@ -62,8 +62,8 @@ describe('SignerPool selectCandidates', () => {
 
     it('returns empty array when all signers have errors', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 10, pending: 6, address: '0x1' as Hex, error: true },
-            { index: 1, capacity: 5, pending: 11, address: '0x2' as Hex, error: true },
+            { index: 0, capacity: 10, pending: 6, address: '0x1', error: true },
+            { index: 1, capacity: 5, pending: 11, address: '0x2', error: true },
         ]
 
         const result = selectCandidates(capacities)
@@ -77,9 +77,9 @@ describe('SignerPool selectCandidates', () => {
 
     it('filters out signers with zero capacity', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 0, pending: 16, address: '0x1' as Hex, error: false },
-            { index: 1, capacity: 10, pending: 6, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 0, pending: 16, address: '0x3' as Hex, error: false },
+            { index: 0, capacity: 0, pending: 16, address: '0x1', error: false },
+            { index: 1, capacity: 10, pending: 6, address: '0x2', error: false },
+            { index: 2, capacity: 0, pending: 16, address: '0x3', error: false },
         ]
 
         const result = selectCandidates(capacities)
@@ -89,9 +89,9 @@ describe('SignerPool selectCandidates', () => {
 
     it('filters out signers with errors', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 10, pending: 6, address: '0x1' as Hex, error: true },
-            { index: 1, capacity: 5, pending: 11, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 8, pending: 8, address: '0x3' as Hex, error: true },
+            { index: 0, capacity: 10, pending: 6, address: '0x1', error: true },
+            { index: 1, capacity: 5, pending: 11, address: '0x2', error: false },
+            { index: 2, capacity: 8, pending: 8, address: '0x3', error: true },
         ]
 
         const result = selectCandidates(capacities)
@@ -101,9 +101,9 @@ describe('SignerPool selectCandidates', () => {
 
     it('sorts candidates by capacity descending', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 5, pending: 11, address: '0x1' as Hex, error: false },
-            { index: 1, capacity: 15, pending: 1, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 10, pending: 6, address: '0x3' as Hex, error: false },
+            { index: 0, capacity: 5, pending: 11, address: '0x1', error: false },
+            { index: 1, capacity: 15, pending: 1, address: '0x2', error: false },
+            { index: 2, capacity: 10, pending: 6, address: '0x3', error: false },
         ]
 
         const result = selectCandidates(capacities)
@@ -115,10 +115,10 @@ describe('SignerPool selectCandidates', () => {
 
     it('filters and sorts correctly', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 0, pending: 16, address: '0x1' as Hex, error: false }, // filtered
-            { index: 1, capacity: 8, pending: 8, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 12, pending: 4, address: '0x3' as Hex, error: true }, // filtered
-            { index: 3, capacity: 3, pending: 13, address: '0x4' as Hex, error: false },
+            { index: 0, capacity: 0, pending: 16, address: '0x1', error: false }, // filtered
+            { index: 1, capacity: 8, pending: 8, address: '0x2', error: false },
+            { index: 2, capacity: 12, pending: 4, address: '0x3', error: true }, // filtered
+            { index: 3, capacity: 3, pending: 13, address: '0x4', error: false },
         ]
 
         const result = selectCandidates(capacities)
@@ -129,9 +129,9 @@ describe('SignerPool selectCandidates', () => {
 
     it('handles single available signer', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 0, pending: 16, address: '0x1' as Hex, error: false },
-            { index: 1, capacity: 5, pending: 11, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 0, pending: 16, address: '0x3' as Hex, error: true },
+            { index: 0, capacity: 0, pending: 16, address: '0x1', error: false },
+            { index: 1, capacity: 5, pending: 11, address: '0x2', error: false },
+            { index: 2, capacity: 0, pending: 16, address: '0x3', error: true },
         ]
 
         const result = selectCandidates(capacities)
@@ -142,7 +142,7 @@ describe('SignerPool selectCandidates', () => {
     it('handles null addresses', () => {
         const capacities: IndexedCapacityInfo[] = [
             { index: 0, capacity: 10, pending: 6, address: null, error: false },
-            { index: 1, capacity: 5, pending: 11, address: '0x2' as Hex, error: false },
+            { index: 1, capacity: 5, pending: 11, address: '0x2', error: false },
         ]
 
         const result = selectCandidates(capacities)
@@ -213,9 +213,9 @@ describe('SignerPool shuffle', () => {
 describe('SignerPool capacity-based selection', () => {
     it('prefers higher capacity signers', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 1, pending: 15, address: '0x1' as Hex, error: false },
-            { index: 1, capacity: 10, pending: 6, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 5, pending: 11, address: '0x3' as Hex, error: false },
+            { index: 0, capacity: 1, pending: 15, address: '0x1', error: false },
+            { index: 1, capacity: 10, pending: 6, address: '0x2', error: false },
+            { index: 2, capacity: 5, pending: 11, address: '0x3', error: false },
         ]
 
         const result = selectCandidates(capacities)
@@ -225,9 +225,9 @@ describe('SignerPool capacity-based selection', () => {
 
     it('handles equal capacities (shuffle provides fairness)', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 10, pending: 6, address: '0x1' as Hex, error: false },
-            { index: 1, capacity: 10, pending: 6, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 10, pending: 6, address: '0x3' as Hex, error: false },
+            { index: 0, capacity: 10, pending: 6, address: '0x1', error: false },
+            { index: 1, capacity: 10, pending: 6, address: '0x2', error: false },
+            { index: 2, capacity: 10, pending: 6, address: '0x3', error: false },
         ]
 
         // Run multiple times to verify ordering varies for ties
@@ -245,11 +245,11 @@ describe('SignerPool capacity-based selection', () => {
 
     it('mixed capacity levels are sorted correctly', () => {
         const capacities: IndexedCapacityInfo[] = [
-            { index: 0, capacity: 5, pending: 11, address: '0x1' as Hex, error: false },
-            { index: 1, capacity: 5, pending: 11, address: '0x2' as Hex, error: false },
-            { index: 2, capacity: 10, pending: 6, address: '0x3' as Hex, error: false },
-            { index: 3, capacity: 3, pending: 13, address: '0x4' as Hex, error: false },
-            { index: 4, capacity: 10, pending: 6, address: '0x5' as Hex, error: false },
+            { index: 0, capacity: 5, pending: 11, address: '0x1', error: false },
+            { index: 1, capacity: 5, pending: 11, address: '0x2', error: false },
+            { index: 2, capacity: 10, pending: 6, address: '0x3', error: false },
+            { index: 3, capacity: 3, pending: 13, address: '0x4', error: false },
+            { index: 4, capacity: 10, pending: 6, address: '0x5', error: false },
         ]
 
         const result = selectCandidates(capacities)

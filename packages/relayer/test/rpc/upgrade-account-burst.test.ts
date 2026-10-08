@@ -7,15 +7,17 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
 import { privateKeyToAccount } from 'viem/accounts'
-import type { Address, Hex } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
 import { installFormerProd8453 } from '../former-prod-env'
 import { authMiddleware } from '../../src/auth/middleware'
-import type { AuthProvider } from '../../src/auth/types'
+import type {AuthProvider} from '../../src/auth/types'
 import { dispatch } from '../../src/rpc/dispatcher'
 import { createMethods } from '../../src/rpc/methods'
-import type { Env } from '../../src/types/env'
+import type {Env} from '../../src/types/env'
+import { testEnv } from '../helpers/env'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 import {
     consumeRateLimit,
     peekRateLimit,
@@ -24,9 +26,9 @@ import {
 
 const CHAIN_ID = 8453
 
-const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
-const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 const BURST = 20
 
@@ -46,8 +48,7 @@ function providerFor(userId: string): AuthProvider {
     return {
         name: 'test',
         enabled: () => true,
-        verify: async () => ({ ok: true, userId }),
-    }
+        verify: async () => ({ ok: true, userId }) }
 }
 
 function createBurstGate(burst: number) {
@@ -73,8 +74,7 @@ function createBurstGate(burst: number) {
                     resolve()
                 })
             })
-        },
-    }
+        } }
 }
 
 function createEnv(
@@ -88,7 +88,7 @@ function createEnv(
 
         if (bodyText) {
             try {
-                parsed = JSON.parse(bodyText) as { type?: string } & RateBody
+                parsed = parseJson<{ type?: string } & RateBody>(bodyText)
             } catch {
                 parsed = {}
             }
@@ -98,10 +98,7 @@ function createEnv(
             await gate.wait()
             capture.push(parsed)
 
-            return {
-                ok: false,
-                json: async () => ({ error: 'execution reverted' }),
-            } as unknown as Response
+            return jsonStub({ error: 'execution reverted' }, false)
         }
 
         const buckets = upgradeRateBuckets({
@@ -109,16 +106,12 @@ function createEnv(
             chainId: typeof parsed.chainId === 'number' ? parsed.chainId : CHAIN_ID,
             account: parsed.account ?? 'unknown',
             ip: parsed.ip ?? 'unknown',
-            identity: parsed.identity,
-        })
+            identity: parsed.identity })
 
         gate.note()
 
         if (parsed.action === 'peek') {
-            return {
-                ok: true,
-                json: async () => ({ allowed: peekRateLimit(store, buckets, NOW).allowed }),
-            } as unknown as Response
+            return jsonStub({ allowed: peekRateLimit(store, buckets, NOW).allowed })
         }
 
         if (parsed.action === 'release') {
@@ -132,29 +125,16 @@ function createEnv(
                 else store.set(secondId, next)
             }
 
-            return {
-                ok: true,
-                json: async () => ({ allowed: true }),
-            } as unknown as Response
+            return jsonStub({ allowed: true })
         }
 
         const decision = consumeRateLimit(store, buckets, NOW)
 
-        return {
-            ok: true,
-            json: async () => ({ allowed: decision.allowed, reservedAt: NOW }),
-        } as unknown as Response
+        return jsonStub({ allowed: decision.allowed, reservedAt: NOW })
     }
 
-    return {
-        SIGNER: {} as Env['SIGNER'],
-        SIGNER_POOL: {
-            idFromName: () => 'pool-id',
-            get: () => ({ fetch }),
-        } as unknown as Env['SIGNER_POOL'],
-        INTENT_NONCE_MANAGER: {} as Env['INTENT_NONCE_MANAGER'],
-        MONITOR_QUEUE: {} as Env['MONITOR_QUEUE'],
-        RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
+    return testEnv({
+        SIGNER_POOL: signerPoolWithFetch(fetch),
         CHAIN_IDS: String(CHAIN_ID),
         RPC_URL: 'http://127.0.0.1:18545',
         RPC_8453: 'http://127.0.0.1:18545',
@@ -162,7 +142,7 @@ function createEnv(
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
-    } as Env
+    })
 }
 
 function createApp(providers: AuthProvider[]) {
@@ -173,8 +153,7 @@ function createApp(providers: AuthProvider[]) {
 
         const response = await dispatch(body, createMethods(c.env), {
             env: c.env,
-            request: c.req.raw,
-        })
+            request: c.req.raw })
 
         return c.json(response)
     })
@@ -195,8 +174,7 @@ describe('upgrade quota reservation', () => {
         vi.stubGlobal('fetch', async () => {
             return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x0' }), {
                 status: 200,
-                headers: { 'Content-Type': 'application/json' },
-            })
+                headers: { 'Content-Type': 'application/json' } })
         })
     })
 
@@ -211,9 +189,7 @@ describe('upgrade quota reservation', () => {
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
                 chainId: CHAIN_ID,
-                nonce: 0,
-            }),
-        })
+                nonce: 0 }) })
 
         const capture: unknown[] = []
         const store = new Map<string, number>()
@@ -232,20 +208,15 @@ describe('upgrade quota reservation', () => {
                         authorization: {
                             contractAddress: ACCOUNT_PROXY,
                             chainId: CHAIN_ID,
-                            nonce: 0,
-                        },
+                            nonce: 0 },
                         preCall: {
                             eoa: owner.address,
                             executionData: '0x',
                             nonce: '0',
                             signature: '0x',
-                            chainId: '0x2105',
-                        },
-                    },
-                    signatures: { auth, exec: '0x' },
-                },
-            ],
-        }
+                            chainId: '0x2105' } },
+                    signatures: { auth, exec: '0x' } },
+            ] }
 
         const results = await Promise.all(
             Array.from({ length: BURST }, async () => {
@@ -254,12 +225,11 @@ describe('upgrade quota reservation', () => {
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    },
+                        body: JSON.stringify(body) },
                     env,
                 )
 
-                const json = (await response.json()) as { error?: { code?: number } }
+                const json = parseJson<{ error?: { code?: number } }>(await response.text())
 
                 return json
             }),
@@ -270,8 +240,7 @@ describe('upgrade quota reservation', () => {
             chainId: CHAIN_ID,
             account: owner.address,
             ip: 'unknown',
-            identity: owner.address,
-        })[0].limit
+            identity: owner.address })[0].limit
 
         const rateLimited = results.filter((result) => result.error?.code === -32014)
 

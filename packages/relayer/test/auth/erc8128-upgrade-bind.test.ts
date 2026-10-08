@@ -16,7 +16,10 @@ import { signRequest } from '@slicekit/erc8128'
 import { authMiddleware } from '../../src/auth/middleware'
 import { identityAuthProviders } from '../../src/auth/identity-registry'
 import { createErc8128Provider } from '../../src/auth/providers/erc8128'
+import type { JsonRpcResponse } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
+import { stubNamespace, testEnv } from '../helpers/env'
+import { parseJson } from '../helpers/rpc'
 
 const { readContract } = vi.hoisted(() => ({
     readContract: vi.fn(async () => {
@@ -49,7 +52,7 @@ type UpgradeMethod = (typeof METHODS)[number]
 
 /** Stage/prod shape: Privy on, ERC-8128 on, signer not allowlisted. */
 function prodEnv(overrides: Partial<Env> = {}): Env {
-    return {
+    return testEnv({
         CHAIN_IDS: String(CHAIN_ID),
         RPC_8453: 'http://127.0.0.1:1',
         CONTEXT: 'prod',
@@ -58,12 +61,12 @@ function prodEnv(overrides: Partial<Env> = {}): Env {
         PRIVY_APP_ID: 'app-id',
         PRIVY_APP_SECRET: 'app-secret',
         ERC8128_ENABLED: 'true',
-        HTTP_AUTH_NONCE_MANAGER: {
+        HTTP_AUTH_NONCE_MANAGER: stubNamespace<Env['HTTP_AUTH_NONCE_MANAGER']>({
             idFromName: () => 'nonce',
             get: () => ({ consumeNonce: async () => true }),
-        },
+        }),
         ...overrides,
-    } as unknown as Env
+    })
 }
 
 function upgradeParams(method: UpgradeMethod, address: Address, chainId: unknown) {
@@ -126,7 +129,7 @@ async function throughWorker(request: Request, env: Env) {
     })
     const response = await app.fetch(request, env)
 
-    return { reached, body: (await response.json()) as Record<string, unknown> }
+    return { reached, body: parseJson<JsonRpcResponse>(await response.text()) }
 }
 
 const STRANGER = privateKeyToAccount(generatePrivateKey()).address

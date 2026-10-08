@@ -68,7 +68,7 @@ describe('BundleStatusDO', () => {
 
         it('returns isNew=true for first attempt', () => {
             // #given
-            const escrowId = '0x1234' as Hex
+            const escrowId = '0x1234'
             const bundleId = 'bundle-1'
 
             // #when
@@ -81,9 +81,9 @@ describe('BundleStatusDO', () => {
 
         it('returns isNew=false with existing txHash for duplicate attempt', () => {
             // #given
-            const escrowId = '0x1234' as Hex
+            const escrowId = '0x1234'
             const bundleId = 'bundle-1'
-            const txHash = '0xabcd' as Hex
+            const txHash = '0xabcd'
 
             // First attempt
             checkAttemptIdempotency(attempts, escrowId, bundleId)
@@ -99,7 +99,7 @@ describe('BundleStatusDO', () => {
 
         it('allows retry when previous attempt has no txHash', () => {
             // #given - attempt started but tx never sent (crashed before broadcast)
-            const escrowId = '0x1234' as Hex
+            const escrowId = '0x1234'
             const bundleId = 'bundle-1'
             checkAttemptIdempotency(attempts, escrowId, bundleId)
             // Note: completeAttempt not called - simulates crash before tx
@@ -113,8 +113,8 @@ describe('BundleStatusDO', () => {
 
         it('tracks attempts per escrowId independently', () => {
             // #given
-            const escrow1 = '0x1111' as Hex
-            const escrow2 = '0x2222' as Hex
+            const escrow1 = '0x1111'
+            const escrow2 = '0x2222'
             const bundleId = 'bundle-1'
 
             // #when
@@ -179,8 +179,8 @@ describe('BundleStatusDO', () => {
                 bundleId: 'bundle-1',
                 refundTimestamp: now + 3600, // 1 hour from now
                 inputChainId: 31337,
-                escrowId: '0x1234' as Hex,
-                escrowAddress: '0x5555' as Address,
+                escrowId: '0x1234',
+                escrowAddress: '0x5555',
             }
 
             // #when
@@ -198,15 +198,15 @@ describe('BundleStatusDO', () => {
                 bundleId: 'bundle-1',
                 refundTimestamp: now - 100, // past
                 inputChainId: 31337,
-                escrowId: '0x1234' as Hex,
-                escrowAddress: '0x5555' as Address,
+                escrowId: '0x1234',
+                escrowAddress: '0x5555',
             })
             scheduleRefund({
                 bundleId: 'bundle-2',
                 refundTimestamp: now + 100, // future
                 inputChainId: 31337,
-                escrowId: '0x5678' as Hex,
-                escrowAddress: '0x5555' as Address,
+                escrowId: '0x5678',
+                escrowAddress: '0x5555',
             })
 
             // #when
@@ -228,8 +228,8 @@ describe('BundleStatusDO', () => {
                 bundleId: 'bundle-1',
                 refundTimestamp: now - 100,
                 inputChainId: 31337,
-                escrowId: '0x1234' as Hex,
-                escrowAddress: '0x5555' as Address,
+                escrowId: '0x1234',
+                escrowAddress: '0x5555',
             })
 
             // #when - first claim
@@ -249,8 +249,8 @@ describe('BundleStatusDO', () => {
                 bundleId: 'bundle-1',
                 refundTimestamp: now + 3600,
                 inputChainId: 31337,
-                escrowId: '0x1234' as Hex,
-                escrowAddress: '0x5555' as Address,
+                escrowId: '0x1234',
+                escrowAddress: '0x5555',
             })
 
             // #when - settlement succeeds, cancel refund
@@ -419,7 +419,7 @@ describe('BundleStatusDO', () => {
             // #given
             const job: ConfirmJob = {
                 bundleId: 'bundle-1',
-                txHash: '0xabc' as Hex,
+                txHash: '0xabc',
                 attempt: 0,
             }
 
@@ -435,7 +435,7 @@ describe('BundleStatusDO', () => {
             // #given
             const job: ConfirmJob = {
                 bundleId: 'bundle-1',
-                txHash: '0xabc' as Hex,
+                txHash: '0xabc',
                 attempt: MAX_CONFIRM_ATTEMPTS,
             }
 

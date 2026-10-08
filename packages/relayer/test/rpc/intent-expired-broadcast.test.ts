@@ -137,8 +137,10 @@ describe('post-broadcast Intent expired text', () => {
         try {
             await handleSendPreparedCalls(createParams(), ctx)
         } catch (error) {
-            expect((error as RpcError).code).toBe(SERVICE_UNAVAILABLE)
-            expect((error as RpcError).code).not.toBe(INTENT_EXPIRED)
+            if (!(error instanceof RpcError)) throw new Error('expected RpcError on the broadcast-failure branch')
+
+            expect(error.code).toBe(SERVICE_UNAVAILABLE)
+            expect(error.code).not.toBe(INTENT_EXPIRED)
         }
     })
 
@@ -165,9 +167,11 @@ describe('post-broadcast Intent expired text', () => {
         expect(results).toHaveLength(1)
         const error = results[0]?.error
         expect(error).toBeInstanceOf(RpcError)
-        const rpcError = error as RpcError
-        expect(rpcError.code).toBe(SERVICE_UNAVAILABLE)
-        expect(rpcError.code).not.toBe(INTENT_EXPIRED)
+
+        if (!(error instanceof RpcError)) throw new Error('expected RpcError on the batch broadcast-failure branch')
+
+        expect(error.code).toBe(SERVICE_UNAVAILABLE)
+        expect(error.code).not.toBe(INTENT_EXPIRED)
     })
 
     it('still maps a pre-send INTENT_EXPIRED code to intent expiry', async () => {

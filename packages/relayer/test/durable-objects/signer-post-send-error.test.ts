@@ -7,18 +7,20 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
 import { privateKeyToAccount } from 'viem/accounts'
-import type { Address, Hex } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
 import { installFormerProd8453 } from '../former-prod-env'
 import { authMiddleware } from '../../src/auth/middleware'
-import type { AuthProvider } from '../../src/auth/types'
+import type {AuthProvider} from '../../src/auth/types'
 import { SignerDO } from '../../src/durable-objects/signer.do'
 import { SignerPoolDO } from '../../src/durable-objects/signer-pool.do'
 import { dispatch } from '../../src/rpc/dispatcher'
 import { createMethods } from '../../src/rpc/methods'
-import type { Env } from '../../src/types/env'
-import type { IndexedCapacityInfo, SendResult } from '../../src/types/pool'
+import type {Env} from '../../src/types/env'
+import type {IndexedCapacityInfo, SendResult} from '../../src/types/pool'
+import { testEnv } from '../helpers/env'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, namespaceStub, signerPoolWithFetch } from '../helpers/stubs'
 import {
     consumeRateLimit,
     releaseRateLimit,
@@ -27,9 +29,9 @@ import {
 
 const CHAIN_ID = 8453
 
-const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
-const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 const NOW = 1_700_000_500
 
@@ -59,17 +61,17 @@ describe('post-send signer errors', () => {
     })
 
     it('keeps the slot when a plain error is thrown after the send', async () => {
-        const signer = Object.create(SignerDO.prototype) as SignerDO
-        signer.sendTransaction = async () =>
-            ({
-                txHash: '0xabc',
-                nonce: 1,
-                signer: '0x0000000000000000000000000000000000000001',
-                signerName: 'signer-8453-0',
-            }) as SendResult
+        const signer: SignerDO = Object.create(SignerDO.prototype)
+        signer.sendTransaction = async (): Promise<SendResult> => ({
+            txHash: '0xabc',
+            nonce: 1,
+            signer: '0x0000000000000000000000000000000000000001',
+            signerName: 'signer-8453-0',
+        })
 
         const originalJson = Response.json
-        Response.json = ((data: unknown, init?: ResponseInit) => {
+
+        function jsonAfterSend(data: Parameters<typeof Response.json>[0], init?: ResponseInit): Response {
             if (
                 data !== null &&
                 typeof data === 'object' &&
@@ -80,7 +82,9 @@ describe('post-send signer errors', () => {
             }
 
             return originalJson.call(Response, data, init)
-        }) as typeof Response.json
+        }
+
+        Response.json = jsonAfterSend
 
         let signerBody: { error?: string; broadcastAttempted?: boolean }
 
@@ -89,26 +93,27 @@ describe('post-send signer errors', () => {
                 new Request('http://do/send', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: 'tx-1', type: 'create-account' }),
-                }),
+                    body: JSON.stringify({ id: 'tx-1', type: 'create-account' }) }),
             )
 
-            signerBody = (await response.json()) as typeof signerBody
+            signerBody = await response.json()
         } finally {
             Response.json = originalJson
         }
 
         const seen: string[] = []
 
-        const pool = Object.create(SignerPoolDO.prototype) as Pick<SignerPoolDO, 'sendTransaction'> & {
+        type PoolHarness = Pick<SignerPoolDO, 'sendTransaction'> & {
             env: Env
             ctx: { id: { name: string } }
             getAllCapacities: () => Promise<IndexedCapacityInfo[]>
         }
 
-        pool.env = {
+        const pool: PoolHarness = Object.create(SignerPoolDO.prototype)
+
+        pool.env = testEnv({
             RELAYER_COUNT: '2',
-            SIGNER: {
+            SIGNER: namespaceStub<Env['SIGNER']>({
                 idFromName: (name: string) => name,
                 get: (name: string) => ({
                     fetch: async () => {
@@ -126,8 +131,8 @@ describe('post-send signer errors', () => {
                         })
                     },
                 }),
-            },
-        } as unknown as Env
+            }),
+        })
         pool.ctx = { id: { name: 'pool-8453' } }
         pool.getAllCapacities = async () => [
             {
@@ -135,15 +140,13 @@ describe('post-send signer errors', () => {
                 capacity: 10,
                 pending: 0,
                 address: '0x0000000000000000000000000000000000000001',
-                error: false,
-            },
+                error: false },
             {
                 index: 1,
                 capacity: 1,
                 pending: 0,
                 address: '0x0000000000000000000000000000000000000002',
-                error: false,
-            },
+                error: false },
         ]
 
         let poolBroadcastAttempted: boolean | undefined
@@ -160,19 +163,17 @@ describe('post-send signer errors', () => {
                     nonce: 0,
                     r: '0x1',
                     s: '0x2',
-                    yParity: 0,
-                },
-            })
+                    yParity: 0 } })
             poolBroadcastAttempted = undefined
         } catch (error) {
+            // SAFETY: SignerPoolDO attaches broadcastAttempted to the Error it throws after a send.
             poolBroadcastAttempted = (error as { broadcastAttempted?: boolean }).broadcastAttempted
         }
 
         vi.stubGlobal('fetch', async () => {
             return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x0' }), {
                 status: 200,
-                headers: { 'Content-Type': 'application/json' },
-            })
+                headers: { 'Content-Type': 'application/json' } })
         })
         const owner = privateKeyToAccount(OWNER_KEY)
 
@@ -180,9 +181,7 @@ describe('post-send signer errors', () => {
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
                 chainId: CHAIN_ID,
-                nonce: 0,
-            }),
-        })
+                nonce: 0 }) })
 
         const store = new Map<string, number>()
         let releases = 0
@@ -196,8 +195,7 @@ describe('post-send signer errors', () => {
         const provider: AuthProvider = {
             name: 'test',
             enabled: () => true,
-            verify: async () => ({ ok: true, userId: owner.address }),
-        }
+            verify: async () => ({ ok: true, userId: owner.address }) }
 
         app.use('*', authMiddleware({ providers: [provider] }))
         app.post('/', async (c) => {
@@ -205,8 +203,7 @@ describe('post-send signer errors', () => {
 
             const response = await dispatch(body, createMethods(c.env), {
                 env: c.env,
-                request: c.req.raw,
-            })
+                request: c.req.raw })
 
             return c.json(response)
         })
@@ -227,21 +224,15 @@ describe('post-send signer errors', () => {
                                 authorization: {
                                     contractAddress: ACCOUNT_PROXY,
                                     chainId: CHAIN_ID,
-                                    nonce: 0,
-                                },
+                                    nonce: 0 },
                                 preCall: {
                                     eoa: owner.address,
                                     executionData: '0x',
                                     nonce: '0',
                                     signature: '0x',
-                                    chainId: '0x2105',
-                                },
-                            },
-                            signatures: { auth, exec: '0x' },
-                        },
-                    ],
-                }),
-            },
+                                    chainId: '0x2105' } },
+                            signatures: { auth, exec: '0x' } },
+                    ] }) },
             env,
         )
 
@@ -250,22 +241,19 @@ describe('post-send signer errors', () => {
             chainId: CHAIN_ID,
             account: owner.address,
             ip: 'unknown',
-            identity: owner.address,
-        })[0].key
+            identity: owner.address })[0].key
 
         expect({
             signerBroadcastAttempted: signerBody.broadcastAttempted ?? null,
             signersTried: seen,
             poolBroadcastAttempted: poolBroadcastAttempted ?? null,
             releases,
-            identityHits: store.get(`${identityKey}#${NOW}`) ?? 0,
-        }).toEqual({
+            identityHits: store.get(`${identityKey}#${NOW}`) ?? 0 }).toEqual({
             signerBroadcastAttempted: true,
             signersTried: ['signer-8453-0'],
             poolBroadcastAttempted: true,
             releases: 0,
-            identityHits: 1,
-        })
+            identityHits: 1 })
     })
 })
 
@@ -280,17 +268,14 @@ function createUpgradeEnv(
 
         if (bodyText) {
             try {
-                parsed = JSON.parse(bodyText) as RateBody
+                parsed = parseJson<RateBody>(bodyText)
             } catch {
                 parsed = {}
             }
         }
 
         if (parsed.type === 'create-account') {
-            return {
-                ok: false,
-                json: async () => signerBody,
-            } as unknown as Response
+            return jsonStub(signerBody, false)
         }
 
         const buckets = upgradeRateBuckets({
@@ -298,8 +283,7 @@ function createUpgradeEnv(
             chainId: typeof parsed.chainId === 'number' ? parsed.chainId : CHAIN_ID,
             account: parsed.account ?? 'unknown',
             ip: parsed.ip ?? 'unknown',
-            identity: parsed.identity,
-        })
+            identity: parsed.identity })
 
         if (parsed.action === 'release') {
             onRelease()
@@ -309,29 +293,16 @@ function createUpgradeEnv(
                 typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW,
             )
 
-            return {
-                ok: true,
-                json: async () => ({ allowed: true }),
-            } as unknown as Response
+            return jsonStub({ allowed: true })
         }
 
         const allowed = consumeRateLimit(store, buckets, NOW).allowed
 
-        return {
-            ok: true,
-            json: async () => ({ allowed, reservedAt: NOW }),
-        } as unknown as Response
+        return jsonStub({ allowed, reservedAt: NOW })
     }
 
-    return {
-        SIGNER: {} as Env['SIGNER'],
-        SIGNER_POOL: {
-            idFromName: () => 'pool-id',
-            get: () => ({ fetch }),
-        } as unknown as Env['SIGNER_POOL'],
-        INTENT_NONCE_MANAGER: {} as Env['INTENT_NONCE_MANAGER'],
-        MONITOR_QUEUE: {} as Env['MONITOR_QUEUE'],
-        RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
+    return testEnv({
+        SIGNER_POOL: signerPoolWithFetch(fetch),
         CHAIN_IDS: String(CHAIN_ID),
         RPC_URL: 'http://127.0.0.1:18545',
         RPC_8453: 'http://127.0.0.1:18545',
@@ -339,5 +310,5 @@ function createUpgradeEnv(
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
-    } as Env
+    })
 }

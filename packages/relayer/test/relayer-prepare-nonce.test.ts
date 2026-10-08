@@ -1,42 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Address } from 'viem'
 
 const { mockReadContract, mockGetCode, mockCall } = vi.hoisted(() => ({
     mockReadContract: vi.fn(),
     mockGetCode: vi.fn(),
-    mockCall: vi.fn(),
-}))
+    mockCall: vi.fn() }))
 
 vi.mock('../src/lib/viem-utils', () => ({
     createRelayerPublicClient: vi.fn().mockReturnValue({
         readContract: mockReadContract,
         getCode: mockGetCode,
-        call: mockCall,
-    }),
-    isEip7702Delegated: vi.fn().mockReturnValue(true),
-}))
+        call: mockCall }),
+    isEip7702Delegated: vi.fn().mockReturnValue(true) }))
 
-import { RelayerService } from '../src/services/relayer'
+import { RelayerService, type IntentNonceProvider } from '../src/services/relayer'
+import { testIntentNonceProvider, testLogger, testRelayerConfig } from './helpers/relayer'
 
 function makeRelayer(intentNonceProvider?: {
-    acquireOrGetDraft: ReturnType<typeof vi.fn>
+    acquireOrGetDraft: IntentNonceProvider['acquireOrGetDraft']
 }): RelayerService {
     return new RelayerService(
-        {
-            chainId: 8453,
-            rpcUrl: 'http://localhost:8545',
-            contracts: {
-                orchestrator: '0x0000000000000000000000000000000000000011',
-                simulator: '0x0000000000000000000000000000000000000022',
-            } as any,
-        },
-        {
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-            debug: vi.fn(),
-        } as any,
-        intentNonceProvider as any,
+        testRelayerConfig(),
+        testLogger(),
+        intentNonceProvider
+            ? testIntentNonceProvider(intentNonceProvider.acquireOrGetDraft)
+            : undefined,
     )
 }
 
@@ -55,15 +42,13 @@ describe('RelayerService prepareIntent nonce behavior', () => {
             draftId: 'd-1',
             createdAtMs: 1000,
             expiresAtMs: 2000,
-            fromCache: false,
-        })
+            fromCache: false })
 
         const relayer = makeRelayer({ acquireOrGetDraft })
 
         const result = await relayer.prepareIntent({
-            eoa: '0x0000000000000000000000000000000000000001' as Address,
-            calls: [{ to: '0x0000000000000000000000000000000000000002', value: '0x0', data: '0x' }],
-        })
+            eoa: '0x0000000000000000000000000000000000000001',
+            calls: [{ to: '0x0000000000000000000000000000000000000002', value: '0x0', data: '0x' }] })
 
         expect(result.success).toBe(true)
         expect(acquireOrGetDraft).toHaveBeenCalledWith(
@@ -79,10 +64,9 @@ describe('RelayerService prepareIntent nonce behavior', () => {
         const relayer = makeRelayer({ acquireOrGetDraft })
 
         const result = await relayer.prepareIntent({
-            eoa: '0x0000000000000000000000000000000000000001' as Address,
+            eoa: '0x0000000000000000000000000000000000000001',
             calls: [{ to: '0x0000000000000000000000000000000000000002', value: '0x0', data: '0x' }],
-            nonce: '7',
-        })
+            nonce: '7' })
 
         expect(result.success).toBe(true)
         expect(result.typedData?.message.nonce).toBe(7n)
@@ -98,15 +82,13 @@ describe('RelayerService prepareIntent nonce behavior', () => {
             draftId: 'd-1',
             createdAtMs: 1000,
             expiresAtMs: 2000,
-            fromCache: false,
-        })
+            fromCache: false })
 
         const relayer = makeRelayer({ acquireOrGetDraft })
 
         const input = {
-            eoa: '0x0000000000000000000000000000000000000001' as Address,
-            calls: [{ to: '0x0000000000000000000000000000000000000002', value: '0x0', data: '0x' }],
-        }
+            eoa: '0x0000000000000000000000000000000000000001',
+            calls: [{ to: '0x0000000000000000000000000000000000000002', value: '0x0', data: '0x' }] }
 
         const first = await relayer.prepareIntent(input)
         const second = await relayer.prepareIntent(input)

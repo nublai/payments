@@ -19,6 +19,9 @@ import type { AuthProvider } from '../../src/auth/types'
 import { dispatch } from '../../src/rpc/dispatcher'
 import { createMethods } from '../../src/rpc/methods'
 import type { Env } from '../../src/types/env'
+import { testEnv } from '../helpers/env'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 import { getChainConfig } from '../../src/config'
 import {
     buildKeyInitializationData,
@@ -35,13 +38,13 @@ import {
 
 const CHAIN_ID = 8453
 
-const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
-const BOMB_DELEGATION = '0x000000000000000000000000000000000000dEaD' as Address
+const BOMB_DELEGATION = '0x000000000000000000000000000000000000dEaD'
 
-const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
-const OTHER_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e141207b4c24b44a4361' as Hex
+const OTHER_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e141207b4c24b44a4361'
 
 interface RateBody {
     action?: string
@@ -70,7 +73,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
 
         if (bodyText) {
             try {
-                parsed = JSON.parse(bodyText) as { type?: string } & RateBody
+                parsed = parseJson<{ type?: string } & RateBody>(bodyText)
             } catch {
                 parsed = {}
             }
@@ -79,10 +82,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
         if (parsed.type === 'create-account') {
             capture.push(parsed)
 
-            return {
-                ok: false,
-                json: async () => ({ error: 'execution reverted', broadcastAttempted: false }),
-            } as unknown as Response
+            return jsonStub({ error: 'execution reverted', broadcastAttempted: false }, false)
         }
 
         const buckets = upgradeRateBuckets({
@@ -100,10 +100,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
                 typeof parsed.reservedAt === 'number' ? parsed.reservedAt : now,
             )
 
-            return {
-                ok: true,
-                json: async () => ({ allowed: true }),
-            } as unknown as Response
+            return jsonStub({ allowed: true })
         }
 
         const allowed =
@@ -111,21 +108,11 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
                 ? peekRateLimit(store, buckets, now).allowed
                 : consumeRateLimit(store, buckets, now).allowed
 
-        return {
-            ok: true,
-            json: async () => ({ allowed, reservedAt: now }),
-        } as unknown as Response
+        return jsonStub({ allowed, reservedAt: now })
     }
 
-    return {
-        SIGNER: {} as Env['SIGNER'],
-        SIGNER_POOL: {
-            idFromName: () => 'pool-id',
-            get: () => ({ fetch }),
-        } as unknown as Env['SIGNER_POOL'],
-        INTENT_NONCE_MANAGER: {} as Env['INTENT_NONCE_MANAGER'],
-        MONITOR_QUEUE: {} as Env['MONITOR_QUEUE'],
-        RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
+    return testEnv({
+        SIGNER_POOL: signerPoolWithFetch(fetch),
         CHAIN_IDS: String(CHAIN_ID),
         RPC_URL: 'http://127.0.0.1:18545',
         RPC_8453: 'http://127.0.0.1:18545',
@@ -133,7 +120,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
-    } as Env
+    })
 }
 
 function createApp(providers: AuthProvider[]) {
@@ -218,7 +205,7 @@ async function post(env: Env, body: unknown, userId: string) {
 
     const text = await response.text()
 
-    return { json: JSON.parse(text) as { error?: { code?: number; message?: string } }, text }
+    return { json: parseJson<{ error?: { code?: number; message?: string } }>(text), text }
 }
 
 let restoreDeployment: () => void

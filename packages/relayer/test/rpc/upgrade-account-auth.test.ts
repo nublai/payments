@@ -20,6 +20,10 @@ import type { AuthProvider } from '../../src/auth/types'
 import { dispatch } from '../../src/rpc/dispatcher'
 import { createMethods } from '../../src/rpc/methods'
 import type { Env } from '../../src/types/env'
+import { testEnv } from '../helpers/env'
+import { parseHex } from '../helpers/hex'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 
 const RPC_URL = 'http://127.0.0.1:18545'
 
@@ -32,17 +36,17 @@ const LEAKY_POOL_ERROR = [
     'Request body: {"method":"eth_sendRawTransaction","params":["' + RAW_TX + '"]}',
 ].join('\n')
 
-const DUMMY_AUTH = `0x${'11'.repeat(32)}${'22'.repeat(32)}1b` as Hex
+const DUMMY_AUTH = parseHex(`0x${'11'.repeat(32)}${'22'.repeat(32)}1b`)
 
-const VICTIM = '0x1111111111111111111111111111111111111111' as Address
+const VICTIM = '0x1111111111111111111111111111111111111111'
 
-const DELEGATION = '0x2222222222222222222222222222222222222222' as Address
+const DELEGATION = '0x2222222222222222222222222222222222222222'
 
-const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
 const CHAIN_ID = 8453
 
-const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 interface BroadcastCapture {
     broadcasts: unknown[]
@@ -59,7 +63,7 @@ function createEnv(
 
         if (bodyText) {
             try {
-                parsed = JSON.parse(bodyText) as { type?: string }
+                parsed = parseJson<{ type?: string }>(bodyText)
             } catch {
                 parsed = null
             }
@@ -68,27 +72,14 @@ function createEnv(
         if (parsed?.type === 'create-account') {
             capture.broadcasts.push(parsed)
 
-            return {
-                ok: false,
-                json: async () => ({ error: LEAKY_POOL_ERROR }),
-            } as unknown as Response
+            return jsonStub({ error: LEAKY_POOL_ERROR }, false)
         }
 
-        return {
-            ok: true,
-            json: async () => ({ allowed: options.upgradeAllowed !== false }),
-        } as unknown as Response
+        return jsonStub({ allowed: options.upgradeAllowed !== false })
     }
 
-    return {
-        SIGNER: {} as Env['SIGNER'],
-        SIGNER_POOL: {
-            idFromName: () => 'pool-id',
-            get: () => ({ fetch }),
-        } as unknown as Env['SIGNER_POOL'],
-        INTENT_NONCE_MANAGER: {} as Env['INTENT_NONCE_MANAGER'],
-        MONITOR_QUEUE: {} as Env['MONITOR_QUEUE'],
-        RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
+    return testEnv({
+        SIGNER_POOL: signerPoolWithFetch(fetch),
         CHAIN_IDS: String(CHAIN_ID),
         RPC_URL,
         RPC_8453: RPC_URL,
@@ -97,7 +88,7 @@ function createEnv(
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
         ...overrides,
-    }
+    })
 }
 
 function createApp(providers: AuthProvider[]) {
@@ -192,7 +183,9 @@ async function post(
 
     const text = await response.text()
 
-    return { status: response.status, json: JSON.parse(text) as unknown, text }
+    const json: unknown = JSON.parse(text)
+
+    return { status: response.status, json, text }
 }
 
 function expectNoLeak(text: string) {

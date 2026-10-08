@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { encodeAbiParameters, encodeFunctionData, type Address, type Hex, zeroAddress } from 'viem'
 import { orchestratorAbi } from '@nubl/contracts/abis'
 import type { IntentStruct } from '../src/types/pool'
+import { emptyHex, hex, repeatedHex } from './helpers/hex'
 
 /**
  * Encode a single intent to bytes (for the execute(bytes) or execute(bytes[]) calls)
@@ -16,9 +17,9 @@ import type { IntentStruct } from '../src/types/pool'
 function encodeIntent(intent: IntentStruct): Hex {
     // Convert calls to executionData
     const calls = intent.calls.map((call) => ({
-        to: call.to as Address,
+        to: call.to,
         value: call.value ? BigInt(call.value) : 0n,
-        data: (call.data ?? '0x') as Hex,
+        data: call.data ?? hex('0x'),
     }))
 
     const executionData = encodeAbiParameters(
@@ -36,28 +37,30 @@ function encodeIntent(intent: IntentStruct): Hex {
     )
 
     // Build full intent struct
+    const encodedPreCalls: Hex[] = intent.encodedPreCalls ?? emptyHex()
+    const encodedFundTransfers: Hex[] = intent.encodedFundTransfers ?? emptyHex()
+
     const intentForContract = {
-        eoa: intent.eoa as Address,
+        eoa: intent.eoa,
         executionData,
         nonce: BigInt(intent.nonce),
-        payer: (intent.payer ?? zeroAddress) as Address,
-        paymentToken: (intent.paymentToken ?? zeroAddress) as Address,
+        payer: intent.payer ?? zeroAddress,
+        paymentToken: intent.paymentToken ?? zeroAddress,
         paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? '0'),
         combinedGas: BigInt(intent.combinedGas),
-        encodedPreCalls: (intent.encodedPreCalls ?? []) as Hex[],
-        encodedFundTransfers: (intent.encodedFundTransfers ?? []) as Hex[],
-        settler: (intent.settler ?? zeroAddress) as Address,
+        encodedPreCalls,
+        encodedFundTransfers,
+        settler: intent.settler ?? zeroAddress,
         expiry: BigInt(intent.expiry ?? '0'),
         isMultichain: intent.isMultichain ?? false,
-        funder: (intent.funder ?? zeroAddress) as Address,
-        funderSignature: (intent.funderSignature ?? '0x') as Hex,
-        settlerContext: (intent.settlerContext ?? '0x') as Hex,
+        funder: intent.funder ?? zeroAddress,
+        funderSignature: intent.funderSignature ?? hex('0x'),
+        settlerContext: intent.settlerContext ?? hex('0x'),
         paymentAmount: BigInt(intent.paymentAmount ?? '0'),
-        paymentRecipient: (intent.paymentRecipient ?? zeroAddress) as Address,
-        signature: intent.signature as Hex,
-        paymentSignature: (intent.paymentSignature ?? '0x') as Hex,
-        supportedAccountImplementation: (intent.supportedAccountImplementation ??
-            zeroAddress) as Address,
+        paymentRecipient: intent.paymentRecipient ?? zeroAddress,
+        signature: intent.signature,
+        paymentSignature: intent.paymentSignature ?? hex('0x'),
+        supportedAccountImplementation: intent.supportedAccountImplementation ?? zeroAddress,
     }
 
     return encodeAbiParameters(
@@ -108,18 +111,18 @@ function encodeBatchExecute(encodedIntents: Hex[]): Hex {
  */
 function createTestIntent(overrides: Partial<IntentStruct> = {}): IntentStruct {
     return {
-        eoa: '0x1111111111111111111111111111111111111111' as Address,
+        eoa: '0x1111111111111111111111111111111111111111',
         calls: [
             {
-                to: '0x2222222222222222222222222222222222222222' as Address,
+                to: '0x2222222222222222222222222222222222222222',
                 value: '0',
-                data: '0x' as Hex,
+                data: '0x',
             },
         ],
         nonce: '1',
         combinedGas: '500000',
         expiry: '1700000000',
-        signature: ('0x' + 'ab'.repeat(65)) as Hex,
+        signature: repeatedHex('ab', 65),
         ...overrides,
     }
 }
@@ -137,19 +140,19 @@ describe('encodeIntent', () => {
         const intent = createTestIntent({
             calls: [
                 {
-                    to: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as Address,
+                    to: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
                     value: '100',
-                    data: '0x1234' as Hex,
+                    data: '0x1234',
                 },
                 {
-                    to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Address,
+                    to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
                     value: '200',
-                    data: '0x5678' as Hex,
+                    data: '0x5678',
                 },
                 {
-                    to: '0xcccccccccccccccccccccccccccccccccccccccc' as Address,
+                    to: '0xcccccccccccccccccccccccccccccccccccccccc',
                     value: '0',
-                    data: '0xabcd' as Hex,
+                    data: '0xabcd',
                 },
             ],
         })
@@ -195,9 +198,9 @@ describe('encodeBatchExecute', () => {
 
     it('encodes multiple intents for batch call', () => {
         const intents = [
-            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' as Address }),
-            createTestIntent({ eoa: '0x2222222222222222222222222222222222222222' as Address }),
-            createTestIntent({ eoa: '0x3333333333333333333333333333333333333333' as Address }),
+            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' }),
+            createTestIntent({ eoa: '0x2222222222222222222222222222222222222222' }),
+            createTestIntent({ eoa: '0x3333333333333333333333333333333333333333' }),
         ]
 
         const encodedIntents = intents.map(encodeIntent)
@@ -238,7 +241,7 @@ describe('batch intent grouping', () => {
         const groups = new Map<Address, IntentStruct[]>()
 
         for (const intent of intents) {
-            const eoa = intent.eoa as Address
+            const eoa = intent.eoa
             const existing = groups.get(eoa) ?? []
             existing.push(intent)
             groups.set(eoa, existing)
@@ -249,23 +252,23 @@ describe('batch intent grouping', () => {
 
     it('groups intents by EOA', () => {
         const intents = [
-            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' as Address }),
-            createTestIntent({ eoa: '0x2222222222222222222222222222222222222222' as Address }),
-            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' as Address }),
+            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' }),
+            createTestIntent({ eoa: '0x2222222222222222222222222222222222222222' }),
+            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' }),
         ]
 
         const groups = groupIntentsByEoa(intents)
 
         expect(groups.size).toBe(2)
-        expect(groups.get('0x1111111111111111111111111111111111111111' as Address)).toHaveLength(2)
-        expect(groups.get('0x2222222222222222222222222222222222222222' as Address)).toHaveLength(1)
+        expect(groups.get('0x1111111111111111111111111111111111111111')).toHaveLength(2)
+        expect(groups.get('0x2222222222222222222222222222222222222222')).toHaveLength(1)
     })
 
     it('handles all unique EOAs', () => {
         const intents = [
-            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' as Address }),
-            createTestIntent({ eoa: '0x2222222222222222222222222222222222222222' as Address }),
-            createTestIntent({ eoa: '0x3333333333333333333333333333333333333333' as Address }),
+            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' }),
+            createTestIntent({ eoa: '0x2222222222222222222222222222222222222222' }),
+            createTestIntent({ eoa: '0x3333333333333333333333333333333333333333' }),
         ]
 
         const groups = groupIntentsByEoa(intents)
@@ -275,15 +278,15 @@ describe('batch intent grouping', () => {
 
     it('handles all same EOA', () => {
         const intents = [
-            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' as Address }),
-            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' as Address }),
-            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' as Address }),
+            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' }),
+            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' }),
+            createTestIntent({ eoa: '0x1111111111111111111111111111111111111111' }),
         ]
 
         const groups = groupIntentsByEoa(intents)
 
         expect(groups.size).toBe(1)
-        expect(groups.get('0x1111111111111111111111111111111111111111' as Address)).toHaveLength(3)
+        expect(groups.get('0x1111111111111111111111111111111111111111')).toHaveLength(3)
     })
 
     it('handles empty input', () => {
@@ -311,7 +314,7 @@ describe('batch result mapping', () => {
         const intentIds = ['intent-1', 'intent-2', 'intent-3']
 
         const batchResult = {
-            txHash: '0xabc123' as Hex,
+            txHash: '0xabc123',
             success: true,
         }
 
@@ -327,7 +330,7 @@ describe('batch result mapping', () => {
         const intentIds = ['intent-1', 'intent-2']
 
         const batchResult = {
-            txHash: '0x0' as Hex,
+            txHash: '0x0',
             success: false,
         }
 
@@ -338,7 +341,7 @@ describe('batch result mapping', () => {
 
     it('handles single intent', () => {
         const results = mapBatchResultToIntents(['intent-1'], {
-            txHash: '0x123' as Hex,
+            txHash: '0x123',
             success: true,
         })
 
@@ -346,7 +349,7 @@ describe('batch result mapping', () => {
     })
 
     it('handles empty array', () => {
-        const results = mapBatchResultToIntents([], { txHash: '0x123' as Hex, success: true })
+        const results = mapBatchResultToIntents([], { txHash: '0x123', success: true })
         expect(results).toHaveLength(0)
     })
 })

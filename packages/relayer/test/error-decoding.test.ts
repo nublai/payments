@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { encodeErrorResult, type Hex } from 'viem'
+import { encodeErrorResult } from 'viem'
 import { orchestratorAbi } from '@nubl/contracts/abis'
 
 import {
@@ -23,8 +23,7 @@ describe('decodeOrchestratorError', () => {
     it('decodes PaymentError', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'PaymentError',
-        })
+            errorName: 'PaymentError' })
 
         const decoded = decodeOrchestratorError(encoded)
 
@@ -35,8 +34,7 @@ describe('decodeOrchestratorError', () => {
     it('decodes VerificationError', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'VerificationError',
-        })
+            errorName: 'VerificationError' })
 
         const decoded = decodeOrchestratorError(encoded)
 
@@ -47,8 +45,7 @@ describe('decodeOrchestratorError', () => {
     it('decodes CallError', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'CallError',
-        })
+            errorName: 'CallError' })
 
         const decoded = decodeOrchestratorError(encoded)
 
@@ -59,8 +56,7 @@ describe('decodeOrchestratorError', () => {
     it('decodes InsufficientGas', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'InsufficientGas',
-        })
+            errorName: 'InsufficientGas' })
 
         const decoded = decodeOrchestratorError(encoded)
 
@@ -71,8 +67,7 @@ describe('decodeOrchestratorError', () => {
     it('decodes IntentExpired', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'IntentExpired',
-        })
+            errorName: 'IntentExpired' })
 
         const decoded = decodeOrchestratorError(encoded)
 
@@ -84,8 +79,7 @@ describe('decodeOrchestratorError', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
             errorName: 'SimulationPassed',
-            args: [500000n],
-        })
+            args: [500000n] })
 
         const decoded = decodeOrchestratorError(encoded)
 
@@ -98,8 +92,7 @@ describe('decodeOrchestratorError', () => {
     it('decodes PreCallVerificationError', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'PreCallVerificationError',
-        })
+            errorName: 'PreCallVerificationError' })
 
         const decoded = decodeOrchestratorError(encoded)
 
@@ -109,7 +102,7 @@ describe('decodeOrchestratorError', () => {
 
     it('returns null for unknown error selector', () => {
         // Random 4-byte selector that doesn't match any error
-        const unknownError = '0xdeadbeef' as Hex
+        const unknownError = '0xdeadbeef'
 
         const decoded = decodeOrchestratorError(unknownError)
 
@@ -117,12 +110,12 @@ describe('decodeOrchestratorError', () => {
     })
 
     it('returns null for empty data', () => {
-        const decoded = decodeOrchestratorError('0x' as Hex)
+        const decoded = decodeOrchestratorError('0x')
         expect(decoded).toBeNull()
     })
 
     it('returns null for invalid hex', () => {
-        const decoded = decodeOrchestratorError('0x123' as Hex)
+        const decoded = decodeOrchestratorError('0x123')
         expect(decoded).toBeNull()
     })
 })
@@ -158,8 +151,7 @@ describe('error selector extraction', () => {
     it('extracts 4-byte selector from encoded error', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'PaymentError',
-        })
+            errorName: 'PaymentError' })
 
         // First 4 bytes (8 hex chars + 0x prefix = 10 chars)
         const selector = encoded.slice(0, 10)
@@ -173,8 +165,7 @@ describe('error selector extraction', () => {
         const selectors = errors.map((errorName) => {
             const encoded = encodeErrorResult({
                 abi: orchestratorAbi,
-                errorName,
-            })
+                errorName })
 
             return encoded.slice(0, 10)
         })
@@ -188,8 +179,7 @@ describe('contractErrorToRpcError', () => {
     it('creates RpcError with correct code for known error', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'IntentExpired',
-        })
+            errorName: 'IntentExpired' })
 
         const rpcError = contractErrorToRpcError(encoded)
 
@@ -202,20 +192,24 @@ describe('contractErrorToRpcError', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
             errorName: 'SimulationPassed',
-            args: [123456n],
-        })
+            args: [123456n] })
 
         const rpcError = contractErrorToRpcError(encoded)
 
         expect(rpcError.data).toHaveProperty('args')
-        expect((rpcError.data as { args: unknown[] }).args[0]).toBe(123456n)
+
+        type ContractErrorData = { args: readonly unknown[] }
+
+        // SAFETY: contractErrorToRpcError stores decoded.args on data when decoding succeeds.
+        const errorData = rpcError.data as ContractErrorData
+
+        expect(errorData.args[0]).toBe(123456n)
     })
 
     it('includes original data in error', () => {
         const encoded = encodeErrorResult({
             abi: orchestratorAbi,
-            errorName: 'PaymentError',
-        })
+            errorName: 'PaymentError' })
 
         const rpcError = contractErrorToRpcError(encoded)
 
@@ -223,7 +217,7 @@ describe('contractErrorToRpcError', () => {
     })
 
     it('returns CONTRACT_ERROR for unknown error', () => {
-        const unknownError = '0xdeadbeef' as Hex
+        const unknownError = '0xdeadbeef'
 
         const rpcError = contractErrorToRpcError(unknownError)
 

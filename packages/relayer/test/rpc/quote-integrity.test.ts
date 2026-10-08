@@ -18,13 +18,13 @@ import type { Quote, SignedQuotes } from '../../src/rpc/schema/prepareCalls'
 import type { SendPreparedCallsParams } from '../../src/rpc/schema/sendPreparedCalls'
 import { convertToFeeToken } from '../../src/services/fees'
 
-const PAYER = '0x4444444444444444444444444444444444444444' as Address
+const PAYER = '0x4444444444444444444444444444444444444444'
 
-const EOA = '0x1111111111111111111111111111111111111111' as Address
+const EOA = '0x1111111111111111111111111111111111111111'
 
-const ORCHESTRATOR = '0x3456789012345678901234567890123456789012' as Address
+const ORCHESTRATOR = '0x3456789012345678901234567890123456789012'
 
-const FEE_TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const FEE_TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 function makeQuote(overrides?: {
     paymentAmount?: string
@@ -91,7 +91,10 @@ describe('quote payment integrity', () => {
         const result = await validateQuote(makeSigned(quote, ttl, '0x'), {})
 
         expect(result).toBeInstanceOf(RpcError)
-        expect((result as RpcError).code).toBe(INVALID_QUOTE_SIGNATURE)
+
+        if (!(result instanceof RpcError)) throw new Error('expected RpcError on the unsigned-quote branch')
+
+        expect(result.code).toBe(INVALID_QUOTE_SIGNATURE)
     })
 
     it('collects the recomputed fee instead of a client paymentAmount of 0', () => {
@@ -127,8 +130,11 @@ describe('quote payment integrity', () => {
         })
 
         expect(result).toBeInstanceOf(RpcError)
-        expect((result as RpcError).code).toBe(PAYMENT_EXCEEDS_MAX)
-        expect((result as RpcError).message).toContain('100000')
+
+        if (!(result instanceof RpcError)) throw new Error('expected RpcError on the payment-exceeds-max branch')
+
+        expect(result.code).toBe(PAYMENT_EXCEEDS_MAX)
+        expect(result.message).toContain('100000')
     })
 
     it('recomputes an ERC-20 fee from nativeRate and ignores paymentAmount 0', () => {
@@ -167,7 +173,10 @@ describe('quote payment integrity', () => {
         })
 
         expect(result).toBeInstanceOf(RpcError)
-        expect((result as RpcError).code).toBe(INVALID_PARAMS)
+
+        if (!(result instanceof RpcError)) throw new Error('expected RpcError on the missing-nativeRate branch')
+
+        expect(result.code).toBe(INVALID_PARAMS)
     })
 
     it('still recomputes the fee when a signed quote claims paymentAmount 0', async () => {
@@ -209,7 +218,10 @@ describe('quote payment integrity', () => {
         })
 
         expect(result).toBeInstanceOf(RpcError)
-        expect((result as RpcError).code).toBe(INVALID_QUOTE_SIGNATURE)
+
+        if (!(result instanceof RpcError)) throw new Error('expected RpcError on the rewritten-payment branch')
+
+        expect(result.code).toBe(INVALID_QUOTE_SIGNATURE)
     })
 
     it('rejects a signed payer quote whose recomputed fee is zero outside local', async () => {
@@ -233,8 +245,11 @@ describe('quote payment integrity', () => {
         })
 
         expect(result).toBeInstanceOf(RpcError)
-        expect((result as RpcError).code).toBe(INVALID_PARAMS)
-        expect((result as RpcError).message).toContain('zero fee')
+
+        if (!(result instanceof RpcError)) throw new Error('expected RpcError on the zero-fee branch')
+
+        expect(result.code).toBe(INVALID_PARAMS)
+        expect(result.message).toContain('zero fee')
     })
 
     it('rejects an ERC-8128 caller that only matches a client authSigner', async () => {
@@ -254,6 +269,9 @@ describe('quote payment integrity', () => {
         )
 
         expect(result).toBeInstanceOf(RpcError)
-        expect((result as RpcError).code).toBe(INVALID_SIGNATURE)
+
+        if (!(result instanceof RpcError)) throw new Error('expected RpcError on the erc8128-authSigner branch')
+
+        expect(result.code).toBe(INVALID_SIGNATURE)
     })
 })
