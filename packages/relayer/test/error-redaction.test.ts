@@ -1,5 +1,5 @@
 import { env as workerEnv } from 'cloudflare:test'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
 import { REDACTED } from '../src/lib/redact'
 import type { JsonRpcRequest } from '../src/rpc/types'
@@ -59,6 +59,11 @@ function expectNoSecrets(text: string) {
 }
 
 describe('client-facing error text', () => {
+    // Test files share one worker, and viem's RPC retries need real timers.
+    beforeEach(() => {
+        vi.useRealTimers()
+    })
+
     it('JSON-RPC error omits the RPC URL and its key when the RPC call fails', async () => {
         const { status, text } = await post(prepareCallsRequest, env)
 
