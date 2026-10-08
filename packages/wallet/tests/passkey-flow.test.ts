@@ -122,7 +122,7 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     })
 
-    const body = (await response.json()) as { result?: unknown; error?: { message?: string } }
+    const body: { result?: unknown; error?: { message?: string } } = await response.json()
 
     if (!response.ok || body.error) {
         throw new Error(body.error?.message ?? `${method} failed`)
@@ -263,7 +263,7 @@ test('p256 key hash uses Account key type 2 and x||y', () => {
 })
 
 test('account passkey stays on the MCP tool list with send, swap, bridge, and permissions', async () => {
-    const child = spawn('bun', ['src/cli.ts', '--mcp'], {
+    const child: ChildProcessWithoutNullStreams = spawn('bun', ['src/cli.ts', '--mcp'], {
         cwd: walletDir,
         env: {
             ...process.env,
@@ -271,7 +271,7 @@ test('account passkey stays on the MCP tool list with send, swap, bridge, and pe
         },
         detached: true,
         stdio: ['pipe', 'pipe', 'pipe'],
-    }) as ChildProcessWithoutNullStreams
+    })
 
     let stdout = ''
     let stderr = ''

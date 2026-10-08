@@ -8,7 +8,11 @@ import {
   type Hex,
 } from "viem";
 import { INTENT_TYPES } from "@nubl/relayer-client";
-import { reviewSwapSessionSignature } from "../src/lib/session-daemon-policy";
+import {
+  PhraseLessSignError,
+  SwapSignRefused,
+  reviewSwapSessionSignature,
+} from "../src/lib/session-daemon-policy";
 import { installFormerProdDeployments } from "./helpers/former-deployment-env";
 
 let restoreFormerProdDeployments = () => {};
@@ -21,19 +25,19 @@ afterAll(() => {
   restoreFormerProdDeployments();
 });
 
-const USER = "0x1111111111111111111111111111111111111111" as Address;
+const USER = "0x1111111111111111111111111111111111111111";
 
-const THIRD_PARTY = "0x6666666666666666666666666666666666666666" as Address;
+const THIRD_PARTY = "0x6666666666666666666666666666666666666666";
 
-const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
+const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
-const ROUTER = "0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f" as Address;
+const ROUTER = "0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f";
 
-const APPROVAL_PROXY = "0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE" as Address;
+const APPROVAL_PROXY = "0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE";
 
-const ORCHESTRATOR = "0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8" as Address;
+const ORCHESTRATOR = "0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8";
 
-const SIMPLE_SETTLER = "0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE" as Address;
+const SIMPLE_SETTLER = "0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE";
 
 const relayAbi = parseAbi([
   "function multicall((address target, bool allowFailure, uint256 value, bytes callData)[] calls, address refundTo, address nftRecipient, bytes metadata)",
@@ -143,7 +147,11 @@ function refusal(typedData: unknown): {
   try {
     reviewSwapSessionSignature(typedData);
   } catch (error) {
-    return error as { name?: string; code?: string; message?: string };
+    if (error instanceof SwapSignRefused || error instanceof PhraseLessSignError) {
+      return error;
+    }
+
+    throw error;
   }
 
   return {};

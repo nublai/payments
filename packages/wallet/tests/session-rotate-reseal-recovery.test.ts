@@ -11,19 +11,19 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { type Call } from '@nubl/relayer-client'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createRootKeystore, createSessionKeystore, decryptRootKeystore } from '../src/lib/keystore'
-import { executeSessionRotate } from '../src/lib/session-rotate'
+import { executeSessionRotate, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a'
 
-const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 const rootPrivateKey =
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
 const oldAddress = privateKeyToAccount(oldKey).address
 
@@ -117,7 +117,7 @@ function quotePreparer(captured: PreparedInput[]) {
     })
 }
 
-function baseDeps(extra: Record<string, unknown> = {}) {
+function baseDeps(extra: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),
@@ -196,7 +196,7 @@ async function firstRunWithEnospc(sessions: string, keystorePath: string) {
                     (call) => (call >= 2 ? 'fail' : 'write'),
                     enospc,
                 ),
-            }) as never,
+            }),
         )
     } catch (error) {
         caught = error
@@ -213,8 +213,11 @@ test('ENOSPC on the post-broadcast reseal reports the sent bundle and resume rec
         const first = await firstRunWithEnospc(sessions, keystorePath)
         expect(first.sends).toEqual(['bundle-1'])
         expect(first.caught).toMatchObject({ code: 'ROTATION_SUBMITTED' })
-        expect((first.caught as Error).message).toContain('bundle-1')
-        expect((first.caught as Error).message).not.toContain('ENOSPC')
+
+        if (!(first.caught instanceof Error)) throw first.caught
+
+        expect(first.caught.message).toContain('bundle-1')
+        expect(first.caught.message).not.toContain('ENOSPC')
 
         const resumePrepares: PreparedInput[] = []
 
@@ -232,7 +235,7 @@ test('ENOSPC on the post-broadcast reseal reports the sent bundle and resume rec
                 sendPreparedCalls: mock(async () => {
                     throw new Error('must not send')
                 }),
-            }) as never,
+            }),
         )
 
         expect(result.status).toBe('complete')
@@ -259,7 +262,7 @@ test('ENOSPC on the post-broadcast reseal can be abandoned without deleting file
 
         const result = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, abandon: true },
-            baseDeps({ getKeys }) as never,
+            baseDeps({ getKeys }),
         )
 
         expect(getKeys).toHaveBeenCalled()
@@ -292,7 +295,7 @@ test('a crash after the resealed marker is written and before the sidecar update
                         (call) => (call === 1 ? 'write' : call === 2 ? 'write-then-fail' : 'fail'),
                         () => new Error('killed'),
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(sends).toEqual(['bundle-1'])
@@ -320,7 +323,7 @@ test('a crash after the resealed marker is written and before the sidecar update
                     throw new Error('must not send')
                 }),
                 waitForBundle,
-            }) as never,
+            }),
         )
 
         expect(result.bundle.id).toBe('bundle-1')
@@ -358,7 +361,7 @@ test('abandon with a wrong password says so and leaves every file in place', asy
                     readNonce: mock(async () => {
                         throw new Error('rpc down before send')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/rpc down before send/)
         const before = await readdir(sessions)
@@ -383,14 +386,17 @@ test('abandon with a wrong password says so and leaves every file in place', asy
                     readKeystoreBundle: mock(async () => bundleWithRealRoot()),
                     decryptRootKeystore,
                     getKeys,
-                }) as never,
+                }),
             )
         } catch (error) {
             caught = error
         }
 
         expect(caught).toMatchObject({ code: 'PASSWORD_INCORRECT' })
-        expect((caught as Error).message).not.toMatch(/unverified|Delete the marker/)
+
+        if (!(caught instanceof Error)) throw caught
+
+        expect(caught.message).not.toMatch(/unverified|Delete the marker/)
         expect(getKeys).not.toHaveBeenCalled()
         expect(await readdir(sessions)).toEqual(before)
         expect(before).toContain('.rotation.json')
@@ -421,7 +427,7 @@ test('restoring only the pre-broadcast marker after a reseal is still refused', 
                     waitForBundle: mock(async () => {
                         throw new Error('Timeout waiting for bundle bundle-1 to reach final status')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(JSON.parse(pendingCopy)).toMatchObject({ status: 'pending' })
@@ -436,7 +442,7 @@ test('restoring only the pre-broadcast marker after a reseal is still refused', 
                     prepareCalls: quotePreparer(prepares),
                     signTypedData: mock(async () => rootPrivateKey),
                     sendPreparedCalls: mock(async () => ({ id: 'bundle-2' })),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_MARKER_MISMATCH' })
         expect(prepares).toHaveLength(0)

@@ -128,5 +128,8 @@ test('executeEscrowStatus maps getEscrowStatus errors via toEscrowError', async 
     )
 
     expect(result).toBeInstanceOf(EscrowError)
-    expect((result as EscrowError).code).toBe('KEYSTORE_NOT_FOUND')
+
+    if (!(result instanceof EscrowError)) throw result
+
+    expect(result.code).toBe('KEYSTORE_NOT_FOUND')
 })

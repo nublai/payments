@@ -16,17 +16,17 @@ import { installFormerProdDeployments, installFormerStageDeployments } from './h
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import type { Call } from '@nubl/relayer-client'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+const oldKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
 
-const newKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+const newKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6'
 
-const attackerKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const attackerKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
-const siblingKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+const siblingKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a'
 
-const rootPrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+const rootPrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
 const oldAddress = privateKeyToAccount(oldKey).address
 
@@ -36,13 +36,13 @@ const attackerAddress = privateKeyToAccount(attackerKey).address
 
 const siblingAddress = privateKeyToAccount(siblingKey).address
 
-const wrongAddress = '0x5555555555555555555555555555555555555555' as Address
+const wrongAddress = '0x5555555555555555555555555555555555555555'
 
-const approveSelector = '0x095ea7b3' as Hex
+const approveSelector = '0x095ea7b3'
 
-const transferSelector = '0xa9059cbb' as Hex
+const transferSelector = '0xa9059cbb'
 
-const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const keysByAddress: Record<string, Hex> = {
     [oldAddress.toLowerCase()]: oldKey,
@@ -176,7 +176,7 @@ function confirmedStatus() {
         statusCode: 200,
         status: 'confirmed',
         receipt: {
-            transactionHash: '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca' as Hex,
+            transactionHash: '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
         },
     }
 }
@@ -231,7 +231,7 @@ test('a status-poll failure after send keeps the new key and resume is not a noo
                     waitForBundle: mock(async () => {
                         throw statusError
                     }),
-                } as never,
+                },
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
 
@@ -243,10 +243,9 @@ test('a status-poll failure after send keeps the new key and resume is not a noo
         const names = await readdir(sessions)
         expect(names).toContain('default-next.json')
 
-        const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
-            status?: string
-            bundleId?: string
-        }
+        const marker: { status?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        )
 
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBe('bundle-in-flight')
@@ -281,7 +280,7 @@ test('a status-poll failure after send keeps the new key and resume is not a noo
                     waitForBundle: mock(async () => {
                         throw statusError
                     }),
-                } as never,
+                },
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(resumePrepares).toHaveLength(0)
@@ -364,7 +363,7 @@ test('a planted marker does not authorize an attacker key or revoke the active k
                     }),
                     sendPreparedCalls: mock(async () => ({ id: 'bundle-plant' })),
                     waitForBundle: mock(async () => confirmedStatus()),
-                } as never,
+                },
             ),
         ).rejects.toThrow(/decrypt|decrypted session key|missing the account|missing the old key/i)
         expect(signed).toEqual([])
@@ -428,7 +427,7 @@ test('a planted narrow marker does not sign', async () => {
                     signTypedData: mock(async () => rootPrivateKey),
                     sendPreparedCalls: mock(async () => ({ id: 'bundle-narrow-plant' })),
                     waitForBundle: mock(async () => confirmedStatus()),
-                } as never,
+                },
             ),
         ).rejects.toThrow(/decrypt|decrypted session key/i)
         expect(prepares).toHaveLength(0)
@@ -495,7 +494,7 @@ test('tampering the active session file does not revoke the swapped address', as
                     signTypedData: mock(async () => rootPrivateKey),
                     sendPreparedCalls: mock(async () => ({ id: 'bundle-wrong-revoke' })),
                     waitForBundle: mock(async () => confirmedStatus()),
-                } as never,
+                },
             ),
         ).rejects.toThrow(/decrypted session key|old key/i)
         expect(prepares).toHaveLength(0)
@@ -550,7 +549,7 @@ test('an older marker missing its account, old key hash, or permissions is refus
                     signTypedData: mock(async () => rootPrivateKey),
                     sendPreparedCalls: mock(async () => ({ id: 'bundle-legacy' })),
                     waitForBundle: mock(async () => confirmedStatus()),
-                } as never,
+                },
             ),
         ).rejects.toThrow(/missing the account/)
         expect(prepares).toHaveLength(0)
@@ -583,7 +582,7 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
                 executeSignedCalls: mock(async () => {
                     throw new Error('symlink marker must not sign')
                 }),
-            } as never,
+            },
         )
 
         expect(symlinkResult.bundle.id).toBe('noop')
@@ -622,11 +621,11 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
                     executeSignedCalls: mock(async () => {
                         throw new Error('must not send before the nonce read')
                     }),
-                } as never,
+                },
             ),
         ).rejects.toThrow(/rpc down before send/)
 
-        const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
+        const marker: {
             status?: string
             permissions?: {
                 kind?: string
@@ -635,7 +634,7 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
                 spendLimit?: string
                 spendPeriod?: string
             }
-        }
+        } = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8'))
 
         expect(marker.status).toBe('pending')
         expect(marker.permissions).toEqual({
@@ -680,7 +679,7 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
                 signTypedData: mock(async () => rootPrivateKey),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-drift' })),
                 waitForBundle: mock(async () => confirmedStatus()),
-            } as never,
+            },
         )
         const calls = decodeCalls(prepares[0]!.calls)
         const spend = calls.find((call) => call.decoded.functionName === 'setSpendLimit')
@@ -729,7 +728,7 @@ test('sessions directory is owner-only even when umask is 002', async () => {
                         }),
                         readActiveUsdcDaily: mock(async () => 0n),
                         readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
-                    } as never,
+                    },
                 ),
             ).rejects.toThrow(/stop after the directory is created/)
             const created = (await stat(sessions)).mode & 0o777
@@ -758,7 +757,7 @@ test('sessions directory is owner-only even when umask is 002', async () => {
                         executeSignedCalls: mock(async () => {
                             throw new Error('must not sign')
                         }),
-                    } as never,
+                    },
                 ),
             ).rejects.toMatchObject({ code: 'ROTATION_IN_PROGRESS' })
             expect((await stat(sessions)).mode & 0o777).toBe(0o700)
@@ -817,7 +816,7 @@ test('a fresh rotate refuses while a marker exists and does not replace it', asy
 
                         return rootPrivateKey
                     }),
-                } as never,
+                },
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_IN_PROGRESS' })
         expect(signed).toEqual([])
@@ -887,7 +886,7 @@ test('a marker whose new session file is gone reports on-chain keys and does not
                     signTypedData: mock(async () => {
                         throw new Error('must not sign typed data')
                     }),
-                } as never,
+                },
             ),
         ).rejects.toThrow(/not authorized/)
         await expect(
@@ -899,7 +898,7 @@ test('a marker whose new session file is gone reports on-chain keys and does not
                     decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
                     getKeys,
                     executeSignedCalls: execute,
-                } as never,
+                },
             ),
         ).rejects.toThrow(/still live/)
         expect(getKeys).toHaveBeenCalled()
@@ -922,7 +921,7 @@ test('a marker whose new session file is gone reports on-chain keys and does not
                         throw new Error('must not generate a key')
                     }),
                     executeSignedCalls: execute,
-                } as never,
+                },
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_IN_PROGRESS' })
         expect(await readdir(sessions)).not.toContain('default-other.json')
@@ -995,7 +994,7 @@ test('pointer-moved resume does not delete a sibling key that is still on chain'
                     signTypedData: mock(async () => {
                         throw new Error('must not sign typed data')
                     }),
-                } as never,
+                },
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_VERIFICATION_FAILED' })
         expect(executeSigned).not.toHaveBeenCalled()
@@ -1063,7 +1062,7 @@ test('pointer-moved full-access resume requires the phrase and does not delete a
                     signTypedData: mock(async () => {
                         throw new Error('must not sign typed data')
                     }),
-                } as never,
+                },
             ),
         ).rejects.toThrow(/ROTATE FULL ACCESS SESSION/)
         const names = await readdir(sessions)
@@ -1083,7 +1082,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
         const server = Bun.serve({
             port: 0,
             async fetch(request) {
-                const body = (await request.json()) as { method?: string; id?: number }
+                const body: { method?: string; id?: number } = await request.json()
                 methods.push(body.method ?? '')
                 const id = body.id ?? 1
 
@@ -1130,9 +1129,9 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
                                     paymentMaxAmount: input.paymentMaxAmount,
                                 })
 
-                                const quote = prepared.context.quote.quotes[0] as {
-                                    paymentAmount: string
-                                }
+                                const quote = prepared.context.quote.quotes[0]
+
+                                if (!quote) throw new Error('prepared fixture has no quote')
 
                                 quote.paymentAmount = '10000000'
 
@@ -1187,7 +1186,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
         const server = Bun.serve({
             port: 0,
             async fetch(request) {
-                const body = (await request.json()) as { method?: string; id?: number }
+                const body: { method?: string; id?: number } = await request.json()
                 methods.push(body.method ?? '')
 
                 return Response.json({
@@ -1207,7 +1206,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
 
             const base = {
                 from: account,
-                calls: [{ target: account, value: 0n, data: '0x1234' as Hex }],
+                calls: [{ target: account, value: 0n, data: '0x1234' }],
                 nonce: 1n,
                 signerPrivateKey: rootPrivateKey,
                 chainId: 8453,
@@ -1218,7 +1217,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                 rpcUrl: `http://127.0.0.1:${server.port}`,
                 now: 1_700_000_000n,
                 expiry: 1_700_000_060n,
-                verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address,
+                verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8',
             }
 
             const prepare = (quote: string) =>
@@ -1245,7 +1244,10 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                             paymentMaxAmount: input.paymentMaxAmount,
                         })
 
-                        const row = prepared.context.quote.quotes[0] as { paymentAmount: string }
+                        const row = prepared.context.quote.quotes[0]
+
+                        if (!row) throw new Error('prepared fixture has no quote')
+
                         row.paymentAmount = quote
 
                         return prepared

@@ -45,7 +45,7 @@ export type AccountNonceResult = {
     nonce: string
 }
 
-type AccountNonceDeps = {
+export type AccountNonceDeps = {
     executeAccountAddress: (options: AccountAddressOptions) => Promise<{
         keystorePath: string
         address: string

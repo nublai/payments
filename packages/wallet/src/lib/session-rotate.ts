@@ -182,7 +182,7 @@ export type SessionRotateResult = {
     markerRemoved?: boolean
 }
 
-type SessionRotateDeps = {
+export type SessionRotateDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     createSessionKeystore: typeof createSessionKeystore

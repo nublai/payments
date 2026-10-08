@@ -1,6 +1,10 @@
 import { expect, mock, test } from 'bun:test'
 import { AccountAddressError } from '../src/lib/account-address'
-import { AccountNonceError, executeAccountNonce } from '../src/lib/account-nonce'
+import {
+    AccountNonceError,
+    executeAccountNonce,
+    type AccountNonceOptions,
+} from '../src/lib/account-nonce'
 
 test('executeAccountNonce returns nonce details', async () => {
     const result = await executeAccountNonce(
@@ -115,23 +119,26 @@ test('executeAccountNonce maps unsupported chain errors', async () => {
 })
 
 test('executeAccountNonce preserves cause for invalid chain override', async () => {
+    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
     const invalidOptions = {
         env: 'prod',
         keystorePath: '/tmp/alice.json',
         chain: 'foobar',
-    } as unknown as Parameters<typeof executeAccountNonce>[0]
+    } as unknown as AccountNonceOptions
 
     try {
         await executeAccountNonce(invalidOptions)
         throw new Error('expected executeAccountNonce to throw')
     } catch (error) {
         expect(error).toBeInstanceOf(AccountNonceError)
-        const nonceError = error as AccountNonceError
-        expect(nonceError.code).toBe('UNSUPPORTED_CHAIN')
-        expect(nonceError.cause).toBeInstanceOf(Error)
+
+        if (!(error instanceof AccountNonceError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.cause).toBeInstanceOf(Error)
 
         const causeMessage =
-            nonceError.cause instanceof Error ? nonceError.cause.message : String(nonceError.cause)
+            error.cause instanceof Error ? error.cause.message : String(error.cause)
 
         expect(causeMessage).toContain('Unsupported chain')
     }

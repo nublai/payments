@@ -9,23 +9,24 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
-import { executeSessionRotate, sealRotationMarker, type RotationIntentPayload } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker, type RotationIntentPayload, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { parseAddr } from './helpers/hex'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
 
-const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6'
 
 const oldAddress = privateKeyToAccount(oldSessionKey).address
 
 const newAddress = privateKeyToAccount(newSessionKey).address
 
 const rootPrivateKey =
-    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 const anvilDeployEnv = {
     ORCHESTRATOR_31337: '0x2222222222222222222222222222222222222222',
@@ -110,7 +111,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 generatePrivateKey: mock(() => rootPrivateKey),
                 decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
                 decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
-                    const session = getAddress(keystore.addresses.session as Address)
+                    const session = getAddress(parseAddr(keystore.addresses.session))
 
                     if (session === newAddress) return { sessionPrivateKey: newSessionKey }
 
@@ -150,7 +151,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 waitForBundle: mock(async () => {
                     throw new Error('waitForBundle should not run')
                 }),
-            } as never,
+            },
         )
 
         expect(result.status).toBe('complete')
@@ -194,9 +195,9 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
 })
 
 const ANY_KEYHASH =
-    '0x3232323232323232323232323232323232323232323232323232323232323232' as Hex
+    '0x3232323232323232323232323232323232323232323232323232323232323232'
 
-function rotateDeps(overrides: Record<string, unknown>) {
+function rotateDeps(overrides: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
     const oldSession = {
         addresses: { session: oldAddress, delegated: account },
         name: 'default',
@@ -237,7 +238,7 @@ function rotateDeps(overrides: Record<string, unknown>) {
         generatePrivateKey: mock(() => rootPrivateKey),
         decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
         decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
-            const session = getAddress(keystore.addresses.session as Address)
+            const session = getAddress(parseAddr(keystore.addresses.session))
 
             if (session === newAddress) return { sessionPrivateKey: newSessionKey }
 
@@ -299,18 +300,18 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                 readGuardCleanup: mock(async () => ({
                     anyCalls: [
                         {
-                            target: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address,
-                            selector: '0x39509351' as Hex,
+                            target: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                            selector: '0x39509351',
                         },
                     ],
                     checkers: [
                         {
                             keyHash: ANY_KEYHASH,
-                            target: '0x4444444444444444444444444444444444444444' as Address,
+                            target: '0x4444444444444444444444444444444444444444',
                         },
                         {
                             keyHash: computeSessionKeyHash(oldAddress),
-                            target: '0x5555555555555555555555555555555555555555' as Address,
+                            target: '0x5555555555555555555555555555555555555555',
                         },
                     ],
                 })),
@@ -330,7 +331,7 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                         },
                     }
                 }),
-            }) as never,
+            }),
         )
         const decoded = captured.map((data) => decodeFunctionData({ abi: accountAbi, data }))
 
@@ -387,7 +388,7 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
                         signed = true
                         throw new Error('should not send')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/ROTATE FULL ACCESS SESSION/)
         expect(signed).toBe(false)
@@ -399,11 +400,11 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
 
 const POLYGON_CHAIN_ID = 137
 
-const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' as Address
+const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
 
-const PLANTED_TARGET = '0x4444444444444444444444444444444444444444' as Address
+const PLANTED_TARGET = '0x4444444444444444444444444444444444444444'
 
-const PLANTED_SELECTOR = '0x39509351' as Hex
+const PLANTED_SELECTOR = '0x39509351'
 
 test('extra-chain cleanup resolves the fee policy for that chain', async () => {
     const previous = process.env.RELAYER_URL_STAGE
@@ -481,7 +482,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                             '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
                     },
                 })),
-            }) as never,
+            }),
         )
 
         expect(result.status).toBe('complete')
@@ -640,7 +641,7 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
 
     try {
         await expect(
-            executeSessionRotate(harness.options, harness.deps as never),
+            executeSessionRotate(harness.options, harness.deps),
         ).rejects.toMatchObject({
             code: 'ROTATION_PARTIAL',
             details: { chains: ['polygon'] },
@@ -663,7 +664,7 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
 
     try {
         await expect(
-            executeSessionRotate(harness.options, harness.deps as never),
+            executeSessionRotate(harness.options, harness.deps),
         ).rejects.toMatchObject({
             code: 'ROTATION_PARTIAL',
             details: { chains: ['polygon'] },
@@ -685,7 +686,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
 
     try {
         await expect(
-            executeSessionRotate(harness.options, harness.deps as never),
+            executeSessionRotate(harness.options, harness.deps),
         ).rejects.toMatchObject({ code: 'ROTATION_PARTIAL' })
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
         const polygonBefore = harness.prepares.filter((prepare) => prepare.chainId === POLYGON_CHAIN_ID).length
@@ -694,7 +695,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
 
         const result = await executeSessionRotate(
             { ...harness.options, resume: true },
-            harness.deps as never,
+            harness.deps,
         )
 
         expect(result.status).toBe('complete')
@@ -710,7 +711,7 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
     }
 })
 
-const attacker = '0x4444444444444444444444444444444444444444' as Address
+const attacker = '0x4444444444444444444444444444444444444444'
 
 function stageEnv<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
@@ -770,7 +771,7 @@ test('resume after a successful rotation does not start another rotation', async
                 narrow: true,
                 newName: 'default-next',
             },
-            deps as never,
+            deps,
         )
 
         expect(first.status).toBe('complete')
@@ -784,7 +785,7 @@ test('resume after a successful rotation does not start another rotation', async
                 password: 'pw',
                 resume: true,
             },
-            deps as never,
+            deps,
         )
 
         expect(again.resumed).toBe(true)
@@ -850,7 +851,7 @@ test('a tampered pending marker is not authorized', async () => {
                     password: 'pw',
                     resume: true,
                 },
-                deps as never,
+                deps,
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_MARKER_MISMATCH' })
         expect(signed).toEqual([])
@@ -915,7 +916,7 @@ test('two rotation markers are refused instead of using the lexicographic last',
                     password: 'pw',
                     resume: true,
                 },
-                deps as never,
+                deps,
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_MARKER_AMBIGUOUS' })
         expect(signed).toEqual([])
@@ -971,7 +972,7 @@ test('resume --chain refuses a marker for a different chain', async () => {
                     password: 'pw',
                     resume: true,
                 },
-                deps as never,
+                deps,
             ),
         ).rejects.toMatchObject({
             code: 'ROTATION_WRONG_CHAIN',
@@ -1031,7 +1032,7 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
                 resume: true,
                 narrow: true,
             },
-            deps as never,
+            deps,
         )
 
         expect(result.status).toBe('complete')

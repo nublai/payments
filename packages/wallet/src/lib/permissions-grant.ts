@@ -74,7 +74,7 @@ export type PermissionsGrantResult = {
     feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
-type PermissionsGrantDeps = {
+export type PermissionsGrantDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     listSessionNames: typeof listSessionNames

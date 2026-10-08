@@ -37,7 +37,7 @@ export type AccountAddressResult = {
     address: string
 }
 
-type AccountAddressDeps = {
+export type AccountAddressDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
 }

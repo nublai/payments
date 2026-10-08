@@ -14,6 +14,30 @@ import { executePermissionsGrant } from '../src/lib/permissions-grant'
 import { executePermissionsList } from '../src/lib/permissions-list'
 import { executePermissionsRevoke } from '../src/lib/permissions-revoke'
 import { executePermissionsShow } from '../src/lib/permissions-show'
+import { confirmedBundle } from './helpers/bundle-status'
+import { parseHex, repeatedHex } from './helpers/hex'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+
+function permissionsBundle() {
+    const bundle = testKeystoreBundle(
+        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        '0x3333333333333333333333333333333333333333',
+        31337,
+        'dev',
+    )
+
+    return {
+        ...bundle,
+        root: {
+            ...bundle.root,
+            addresses: {
+                root: bundle.root.addresses.root,
+                delegated: accountAddress,
+            },
+            sessionRef: { active: 'default', dir: 'sessions' },
+        },
+    }
+}
 
 const accountAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
@@ -78,36 +102,18 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
+            decryptRootKeystore: mock(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
             readNonce: mock(async () => 9n),
             executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
                     id: 'bundle-1',
-                    finalStatus: {
-                        success: true,
-                        status: 'confirmed',
-                        statusCode: 200,
-                        receipt: { transactionHash: '0x' + '22'.repeat(32) },
-                    } as any,
+                    finalStatus: confirmedBundle('bundle-1', repeatedHex('22', 32)),
                     feeCap,
                 }
             }),
@@ -147,20 +153,9 @@ test('executePermissionsGrant rejects admin key rule changes', async () => {
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
+                readSessionKeystoreFile: mock(async () => permissionsBundle().session),
                 getKeys: mock(async () => ({ '0x7a69': [makeKey({ role: 'admin' })] })),
             },
         ),
@@ -182,24 +177,11 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
+            decryptRootKeystore: mock(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
             readNonce: mock(async () => 10n),
             executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
@@ -210,7 +192,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
                         success: true,
                         status: 'confirmed',
                         statusCode: 200,
-                    } as any,
+                    },
                     feeCap,
                 }
             }),
@@ -247,20 +229,9 @@ test('executePermissionsRevoke rejects using --all with --rule together', async 
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
+                readSessionKeystoreFile: mock(async () => permissionsBundle().session),
                 getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
@@ -272,7 +243,7 @@ test('executePermissionsRevoke rejects using --all with --rule together', async 
 
 test('executePermissionsShow derives external address and emits deterministic rule ids', async () => {
     const externalAddress = '0x4444444444444444444444444444444444444444'
-    const externalPublicKey = `${externalAddress}${'00'.repeat(12)}`.toLowerCase() as Hex
+    const externalPublicKey = parseHex(`${externalAddress}${'00'.repeat(12)}`.toLowerCase())
 
     const result = await executePermissionsShow(
         {
@@ -282,20 +253,9 @@ test('executePermissionsShow derives external address and emits deterministic ru
             keyHash,
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({
                 '0x7a69': [
                     makeKey({
@@ -340,20 +300,9 @@ test('executePermissionsList returns spend usage summary ids and hashes', async 
             keystorePath: '/tmp/permissions-keystore.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({
                 '0x7a69': [
                     makeKey({
@@ -394,23 +343,12 @@ test('executePermissionsRevoke surfaces send failure diagnostics', async () => {
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
+                readSessionKeystoreFile: mock(async () => permissionsBundle().session),
                 getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
                 decryptRootKeystore: mock(
-                    async () => ({ rootPrivateKey: ('0x' + '11'.repeat(32)) as Hex }) as any,
+                    async () => ({ rootPrivateKey: repeatedHex('11', 32) }),
                 ),
                 readNonce: mock(async () => 10n),
                 executeSignedCalls: mock(async () => ({
@@ -421,13 +359,12 @@ test('executePermissionsRevoke surfaces send failure diagnostics', async () => {
                         statusCode: 500,
                         error: 'execution reverted',
                         receipt: {
-                            transactionHash: '0x' + '44'.repeat(32),
-                            intentError: {
-                                name: 'IntentCallFailed',
-                                args: [],
-                            },
+                            transactionHash: repeatedHex('44', 32),
+                            blockNumber: '1',
+                            gasUsed: '1',
+                            status: 'reverted',
                         },
-                    } as any,
+                    },
                     feeCap,
                 })),
             },
@@ -464,36 +401,18 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
+            decryptRootKeystore: mock(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
             readNonce: mock(async () => 5n),
             executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
                     id: 'bundle-spend',
-                    finalStatus: {
-                        success: true,
-                        status: 'confirmed',
-                        statusCode: 200,
-                        receipt: { transactionHash: '0x' + '33'.repeat(32) },
-                    } as any,
+                    finalStatus: confirmedBundle('bundle-1', repeatedHex('33', 32)),
                     feeCap,
                 }
             }),
@@ -524,20 +443,9 @@ test('executePermissionsGrant rejects call grant missing target', async () => {
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
+                readSessionKeystoreFile: mock(async () => permissionsBundle().session),
                 getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
@@ -560,20 +468,9 @@ test('executePermissionsGrant rejects spend grant missing token', async () => {
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
+                readSessionKeystoreFile: mock(async () => permissionsBundle().session),
                 getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
@@ -615,24 +512,11 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({ '0x7a69': [keyWithPermissions] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
+            decryptRootKeystore: mock(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
             readNonce: mock(async () => 10n),
             executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 for (const call of params.calls) {
@@ -645,7 +529,7 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
                         success: true,
                         status: 'confirmed',
                         statusCode: 200,
-                    } as any,
+                    },
                     feeCap,
                 }
             }),
@@ -674,20 +558,9 @@ test('executePermissionsRevoke returns no-op when key has no permissions and --a
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
         },
     )
@@ -708,20 +581,9 @@ test('executePermissionsRevoke rejects without --rule or --all', async () => {
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
+                readSessionKeystoreFile: mock(async () => permissionsBundle().session),
                 getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
@@ -746,24 +608,11 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
+            readSessionKeystoreFile: mock(async () => permissionsBundle().session),
             getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
+            decryptRootKeystore: mock(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
             readNonce: mock(async () => 10n),
             executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
@@ -774,7 +623,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
                         success: true,
                         status: 'confirmed',
                         statusCode: 200,
-                    } as any,
+                    },
                     feeCap,
                 }
             }),
@@ -799,20 +648,9 @@ test('executePermissionsRevoke rejects admin key', async () => {
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
+                readSessionKeystoreFile: mock(async () => permissionsBundle().session),
                 getKeys: mock(async () => ({ '0x7a69': [makeKey({ role: 'admin' })] })),
             },
         ),

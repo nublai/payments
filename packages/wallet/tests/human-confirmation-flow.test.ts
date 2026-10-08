@@ -27,14 +27,16 @@ import {
     type LoginSessionKeystoreV2,
     type RelayerSessionKeystoreV2,
 } from '../src/lib/keystore'
+import { parseHex, repeatedHex } from './helpers/hex'
+import { parseJson } from './helpers/parse-json'
 
 type SessionCreateDepsArg = NonNullable<Parameters<typeof executeSessionCreate>[1]>
 
 const walletDir = resolve(import.meta.dir, '..')
 
-const rootPrivateKey = `0x${'11'.repeat(32)}` as Hex
+const rootPrivateKey = repeatedHex('11', 32)
 
-const sessionPrivateKey = `0x${'22'.repeat(32)}` as Hex
+const sessionPrivateKey = repeatedHex('22', 32)
 
 const password = 'proof-password'
 
@@ -101,12 +103,12 @@ function callMcpTool(
     env: Record<string, string | undefined> = {},
 ): Promise<string> {
     return new Promise((resolvePromise, reject) => {
-        const child = spawn('bun', ['src/cli.ts', '--mcp'], {
+        const child: ChildProcessWithoutNullStreams = spawn('bun', ['src/cli.ts', '--mcp'], {
             cwd: walletDir,
             env: { ...process.env, ...env },
             detached: true,
             stdio: ['pipe', 'pipe', 'pipe'],
-        }) as ChildProcessWithoutNullStreams
+        })
 
         let stdout = ''
         let stderr = ''
@@ -854,7 +856,7 @@ test('MCP permissions_grant raw 10000000 per minute on a non-USDC token requires
     }
 })
 
-const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const usdc: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const increaseAllowance = '0x39509351'
 
@@ -1080,9 +1082,9 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
 
         existing = [
             {
-                hash: `0x${'ab'.repeat(32)}` as Hex,
+                hash: repeatedHex('ab', 32),
                 calls: [],
-                spends: [{ token: usdc as Address, period: 2, limit: 10_000_000n }],
+                spends: [{ token: usdc, period: 2, limit: 10_000_000n }],
             },
         ]
 
@@ -1148,7 +1150,7 @@ const packedInfosSelector = toFunctionSelector('canExecutePackedInfos(bytes32)')
 const callCheckerSelector = toFunctionSelector('callCheckerInfos(bytes32)')
 
 const ANY_KEYHASH =
-    '0x3232323232323232323232323232323232323232323232323232323232323232' as Hex
+    '0x3232323232323232323232323232323232323232323232323232323232323232'
 
 type ChainScript = {
     keys: ScriptedKey[]
@@ -1165,7 +1167,7 @@ type ScriptedKey = {
 function packCall(target: string, selector: string): Hex {
     const packed = (BigInt(target) << 96n) | BigInt(selector)
 
-    return `0x${packed.toString(16).padStart(64, '0')}` as Hex
+    return parseHex(`0x${packed.toString(16).padStart(64, '0')}`)
 }
 
 function encodeChainView(keys: ScriptedKey[]): { getKeys: Hex; spend: Hex } {
@@ -1178,7 +1180,7 @@ function encodeChainView(keys: ScriptedKey[]): { getKeys: Hex; spend: Hex } {
                     expiry: 0,
                     keyType: 0,
                     isSuperAdmin: false,
-                    publicKey: '0x' as Hex,
+                    publicKey: '0x',
                 })),
                 keys.map((key) => key.hash),
             ],
@@ -1218,8 +1220,8 @@ const wildcardOnChain: ScriptedKey = {
 
 const narrowOnChain: ScriptedKey = {
     hash: sessionKeyHash,
-    calls: [{ target: usdc as Address, selector: '0xa9059cbb' }],
-    spends: [{ token: usdc as Address, period: 2, limit: 10_000_000n }],
+    calls: [{ target: usdc, selector: '0xa9059cbb' }],
+    spends: [{ token: usdc, period: 2, limit: 10_000_000n }],
 }
 
 const narrowRelayerPermissions = [
@@ -1253,9 +1255,10 @@ function relayerKeys(permissions: unknown[]): Record<string, unknown[]> {
 }
 
 function jsonRpcReply(body: string, respond: (message: { id?: unknown; method?: string; params?: unknown }) => unknown): unknown {
-    const parsed = JSON.parse(body) as
+    const parsed = parseJson<
         | { id?: unknown; method?: string; params?: unknown }
         | { id?: unknown; method?: string; params?: unknown }[]
+    >(body)
 
     if (Array.isArray(parsed)) return parsed.map((message) => respond(message))
 
@@ -1329,7 +1332,10 @@ function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
             }
         }
 
-        const params = message.params as [{ data?: string }] | undefined
+        const params: [{ data?: string }] | undefined = Array.isArray(message.params)
+            ? [message.params[0]]
+            : undefined
+
         const data = (params?.[0]?.data ?? '').toLowerCase()
         const script: ChainScript = Array.isArray(keys) ? { keys } : keys
         const view = encodeChainView(script.keys)
@@ -1587,7 +1593,7 @@ test('allowlisted escrow calls with no spend limit require the unlock phrase', a
         MULTI_SIG_SIGNER_31337: process.env.MULTI_SIG_SIGNER_31337,
     }
 
-    const escrow = '0x05f9597eed844410b7c0746A1C584188d0644730'
+    const escrow: Address = '0x05f9597eed844410b7c0746A1C584188d0644730'
     process.env.ORCHESTRATOR_31337 = '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC'
     process.env.SIMPLE_FUNDER_31337 = '0x0000000000000000000000000000000000000002'
     process.env.SIMULATOR_31337 = '0x0000000000000000000000000000000000000003'
@@ -1602,7 +1608,7 @@ test('allowlisted escrow calls with no spend limit require the unlock phrase', a
             [
                 {
                     hash: sessionKeyHash,
-                    calls: [{ target: escrow as Address, selector: '0x657061bf' }],
+                    calls: [{ target: escrow, selector: '0x657061bf' }],
                     spends: [],
                 },
             ],
@@ -1621,7 +1627,7 @@ test('USDC calls with no spend limit require the unlock phrase', async () => {
         [
             {
                 hash: sessionKeyHash,
-                calls: [{ target: usdc as Address, selector: '0xa9059cbb' }],
+                calls: [{ target: usdc, selector: '0xa9059cbb' }],
                 spends: [],
             },
         ],
@@ -1639,9 +1645,9 @@ test('two session creates started together authorize at most one 10 USDC/day key
                 ? []
                 : [
                       {
-                          hash: `0x${'cd'.repeat(32)}` as Hex,
+                          hash: repeatedHex('cd', 32),
                           calls: [],
-                          spends: [{ token: usdc as Address, period: 2, limit: daily }],
+                          spends: [{ token: usdc, period: 2, limit: daily }],
                       },
                   ],
         )(message),
@@ -1653,7 +1659,7 @@ test('two session creates started together authorize at most one 10 USDC/day key
 
     const root = await createRootKeystore({
         password: 'pw',
-        rootPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+        rootPrivateKey: repeatedHex('11', 32),
         env: 'dev',
         relayerUrl: 'http://127.0.0.1:8787',
         rpcUrl: 'http://127.0.0.1:8545',
@@ -1809,12 +1815,12 @@ test('two session creates started together authorize at most one 10 USDC/day key
         expect(authorizeCount).toBeLessThanOrEqual(1)
         expect(fulfilled).toHaveLength(1)
         expect(rejected).toHaveLength(1)
-        expect(String((rejected[0] as PromiseRejectedResult).reason)).toContain(
-            'HUMAN_CONFIRMATION_REQUIRED',
-        )
-        expect(String((rejected[0] as PromiseRejectedResult).reason)).toContain(
-            'CREATE FULL ACCESS SESSION',
-        )
+        const firstRejected = rejected[0]
+
+        if (firstRejected?.status !== 'rejected') throw new Error('expected one rejection')
+
+        expect(String(firstRejected.reason)).toContain('HUMAN_CONFIRMATION_REQUIRED')
+        expect(String(firstRejected.reason)).toContain('CREATE FULL ACCESS SESSION')
     } finally {
         await chainServer.close()
     }

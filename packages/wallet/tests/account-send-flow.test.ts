@@ -15,6 +15,7 @@ import {
     AccountSendError,
     executeAccountSend,
     resolveAccountSendPassword,
+    type AccountSendOptions,
 } from '../src/lib/account-send'
 import {
     LoginProfileError,
@@ -23,7 +24,31 @@ import {
     type RelayerSessionKeystoreV2,
 } from '../src/lib/keystore'
 import { RecipientResolutionError } from '../src/lib/recipient-resolver'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+
+function sendBundle(
+    rootPath = '/tmp/alice.json',
+    sessionDir = 'sessions',
+    session = '0x3333333333333333333333333333333333333333',
+) {
+    const bundle = testKeystoreBundle(
+        '0x1111111111111111111111111111111111111111',
+        session,
+        8453,
+        'prod',
+    )
+
+    return {
+        ...bundle,
+        rootPath,
+        sessionPath: `${sessionDir.startsWith('/') ? sessionDir : '/tmp/' + sessionDir}/default.json`,
+        root: {
+            ...bundle.root,
+            sessionRef: { active: 'default', dir: sessionDir },
+        },
+    }
+}
 
 test('resolveAccountSendPassword uses RELAYER_CLI_PASSWORD first', async () => {
     const value = await resolveAccountSendPassword(
@@ -49,6 +74,7 @@ test('resolveAccountSendPassword uses RELAYER_CLI_PASSWORD first', async () => {
 })
 
 test('executeAccountSend preserves cause for invalid chain override', async () => {
+    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
     const invalidOptions = {
         env: 'prod',
         amount: '1',
@@ -56,26 +82,28 @@ test('executeAccountSend preserves cause for invalid chain override', async () =
         chain: 'foobar',
         password: 'pw',
         keystorePath: '/tmp/alice.json',
-    } as unknown as Parameters<typeof executeAccountSend>[0]
+    } as unknown as AccountSendOptions
 
     try {
         await executeAccountSend(invalidOptions)
         throw new Error('expected executeAccountSend to throw')
     } catch (error) {
         expect(error).toBeInstanceOf(AccountSendError)
-        const sendError = error as AccountSendError
-        expect(sendError.code).toBe('UNSUPPORTED_CHAIN')
-        expect(sendError.cause).toBeInstanceOf(Error)
+
+        if (!(error instanceof AccountSendError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.cause).toBeInstanceOf(Error)
 
         const causeMessage =
-            sendError.cause instanceof Error ? sendError.cause.message : String(sendError.cause)
+            error.cause instanceof Error ? error.cause.message : String(error.cause)
 
         expect(causeMessage).toContain('Unsupported chain')
     }
 })
 
 test('executeAccountSend executes sponsored transfer flow', async () => {
-    const prepareCalls = mock(async (input) => matchingPreparedCalls(input)) as unknown as any
+    const prepareCalls = mock(async (input) => matchingPreparedCalls(input))
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
 
     const result = await executeAccountSend(
@@ -88,31 +116,13 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                        },
-                        session: {
-                            addresses: {
-                                session: '0x3333333333333333333333333333333333333333',
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => sendBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             resolveAddressOrEnsInput: mock(async () => ({
-                address: '0x2222222222222222222222222222222222222222' as `0x${string}`,
+                address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
             hasLegacyRecipientAlias: mock(async () => false),
@@ -121,7 +131,7 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls,
             waitForBundle: mock(async () => ({
                 success: true,
@@ -135,7 +145,7 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
                     gasUsed: '1',
                     status: 'success' as const,
                 },
-            })) as unknown as any,
+            })),
         },
     )
 
@@ -146,11 +156,11 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
     expect(result.token.amount).toBe('1.5')
     expect(result.bundle.id).toBe('bundle-1')
     expect(result.txHash).toBe('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-    const prepareInput = (prepareCalls as any).mock.calls[0]?.[0]
+    const prepareInput = prepareCalls.mock.calls[0]?.[0]
     expect(typeof prepareInput.sessionKey).toBe('string')
     expect(prepareInput.sessionKey.startsWith('0x')).toBe(true)
     expect(prepareInput.nonce).toBe(2n)
-    const sentSignature = (sendPreparedCalls as any).mock.calls[0]?.[0]?.signature as string
+    const sentSignature = sendPreparedCalls.mock.calls[0]?.[0]?.signature
     expect(sentSignature.startsWith('0x11111111111111111111111111111111')).toBe(true)
     expect(sentSignature.length).toBeGreaterThan(132)
 })
@@ -167,47 +177,29 @@ test('executeAccountSend supports legacy polygon USDC.e override', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                        },
-                        session: {
-                            addresses: {
-                                session: '0x3333333333333333333333333333333333333333',
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => sendBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             resolveAddressOrEnsInput: mock(async () => ({
-                address: '0x2222222222222222222222222222222222222222' as `0x${string}`,
+                address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
                 statusCode: 200,
-            })) as unknown as any,
+            })),
         },
     )
 
@@ -227,7 +219,7 @@ test('executeAccountSend rejects invalid amount precision', async () => {
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => ({}) as any),
+                readKeystoreBundle: mock(async () => sendBundle()),
             },
         ),
     ).rejects.toMatchObject({
@@ -247,24 +239,7 @@ test('executeAccountSend rejects unresolved ENS recipient', async () => {
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            format: 'split',
-                            rootPath: '/tmp/alice.json',
-                            sessionPath: '/tmp/sessions/default.json',
-                            root: {
-                                addresses: {
-                                    root: '0x1111111111111111111111111111111111111111',
-                                },
-                            },
-                            session: {
-                                addresses: {
-                                    session: '0x3333333333333333333333333333333333333333',
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => sendBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -299,49 +274,36 @@ test('executeAccountSend surfaces guidance for legacy alias recipients', async (
                     )
                 }),
                 hasLegacyRecipientAlias: mock(async () => true),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                addresses: {
-                                    root: '0x1111111111111111111111111111111111111111',
-                                    delegated: '0x1111111111111111111111111111111111111111',
-                                },
-                            },
-                            session: {
-                                addresses: {
-                                    session: '0x3333333333333333333333333333333333333333',
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => sendBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readNonce: mock(async () => 1n),
-                prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
+                prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
                 waitForBundle: mock(async () => ({
                     success: true,
                     id: 'bundle-1',
                     status: 'confirmed' as const,
                     statusCode: 200,
-                })) as unknown as any,
+                })),
             },
         )
         throw new Error('expected executeAccountSend to throw')
     } catch (error) {
         expect(error).toBeInstanceOf(AccountSendError)
-        const sendError = error as AccountSendError
-        expect(sendError.code).toBe('INVALID_RECIPIENT')
-        expect(sendError.message).toContain('Contact aliases are no longer supported.')
-        expect(sendError.message).toContain('"vitalik"')
-        expect(sendError.details).toEqual({ legacyAlias: 'vitalik' })
+
+        if (!(error instanceof AccountSendError)) throw error
+
+        expect(error.code).toBe('INVALID_RECIPIENT')
+        expect(error.message).toContain('Contact aliases are no longer supported.')
+        expect(error.message).toContain('"vitalik"')
+        expect(error.details).toEqual({ legacyAlias: 'vitalik' })
     }
 })
 
@@ -356,47 +318,33 @@ test('executeAccountSend resolves ENS recipient', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                        },
-                        session: {
-                            addresses: {
-                                session: '0x3333333333333333333333333333333333333333',
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => sendBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            resolveAddressOrEnsInput: mock(async () => ({
-                address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' as `0x${string}`,
-                ens: 'vitalik.eth' as `${string}.eth`,
-            })),
+            resolveAddressOrEnsInput: mock(async () => {
+                const ens: `${string}.eth` = 'vitalik.eth'
+
+                return {
+                    address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+                    ens,
+                }
+            }),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 1n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
                 statusCode: 200,
-            })) as unknown as any,
+            })),
         },
     )
 
@@ -415,25 +363,7 @@ test('executeAccountSend classifies empty recipient as invalid recipient', async
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            format: 'split',
-                            rootPath: '/tmp/alice.json',
-                            sessionPath: '/tmp/sessions/default.json',
-                            root: {
-                                addresses: {
-                                    root: '0x1111111111111111111111111111111111111111',
-                                    delegated: '0x1111111111111111111111111111111111111111',
-                                },
-                            },
-                            session: {
-                                addresses: {
-                                    session: '0x3333333333333333333333333333333333333333',
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => sendBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -498,23 +428,23 @@ test('executeAccountSend supports --session-file direct mode', async () => {
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             resolveAddressOrEnsInput: mock(async () => ({
-                address: '0x2222222222222222222222222222222222222222' as `0x${string}`,
+                address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
                 statusCode: 200,
-            })) as unknown as any,
+            })),
         },
     )
 
@@ -571,49 +501,30 @@ test('executeAccountSend supports --session local selection mode', async () => {
             sessionName: 'worker-2',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/default.keystore.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                        },
-                        session: {
-                            addresses: {
-                                session: '0x3333333333333333333333333333333333333333',
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => sendBundle('/tmp/default.keystore.json')),
             readSessionKeystoreFile,
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             resolveAddressOrEnsInput: mock(async () => ({
-                address: '0x2222222222222222222222222222222222222222' as `0x${string}`,
+                address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
             hasLegacyRecipientAlias: mock(async () => false),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)) as unknown as any,
+            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
             waitForBundle: mock(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
                 statusCode: 200,
-            })) as unknown as any,
+            })),
         },
     )
 
@@ -634,26 +545,7 @@ test('executeAccountSend preserves selected session lookup failures', async () =
                 sessionName: 'worker-missing',
             },
             {
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            format: 'split',
-                            rootPath: '/tmp/default.keystore.json',
-                            sessionPath: '/tmp/sessions/default.json',
-                            root: {
-                                addresses: {
-                                    root: '0x1111111111111111111111111111111111111111',
-                                    delegated: '0x1111111111111111111111111111111111111111',
-                                },
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                            },
-                            session: {
-                                addresses: {
-                                    session: '0x3333333333333333333333333333333333333333',
-                                },
-                            },
-                        }) as any,
-                ),
+                readKeystoreBundle: mock(async () => sendBundle('/tmp/default.keystore.json')),
                 readSessionKeystoreFile: mock(async () => {
                     throw new Error('ENOENT: no such file or directory')
                 }),

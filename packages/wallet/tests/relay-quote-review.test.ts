@@ -7,11 +7,17 @@ import { formatQuotedBuy, formatRelayQuoteCalls, reviewRelayQuote } from '../src
 import { quoteSpendCalls } from '../src/lib/quote-spend'
 import { accountAbi } from '@nubl/contracts/abis'
 import { hashRelayOrder } from '../src/lib/relay-order'
+import type { RelayQuoteResponse } from '../src/lib/relay-link'
 import { simulateRelayQuote, type SimulateRelayQuoteInput } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
+import type { AccountSwapDeps } from '../src/lib/account-swap'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { parseAddr, parseHex, repeatedHex } from './helpers/hex'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { typedMock } from './helpers/typed-mock'
+import { confirmedBundle } from './helpers/bundle-status'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -23,25 +29,25 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const USER = '0x1111111111111111111111111111111111111111' as Address
+const USER = '0x1111111111111111111111111111111111111111'
 
-const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+const ATTACKER = '0x2222222222222222222222222222222222222222'
 
-const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
 
-const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE'
 
-const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31' as Address
+const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31'
 
 const EXECUTION = {
-    orchestrator: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address,
-    delegation: '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address,
-    origin: '0x9999999999999999999999999999999999999999' as Address,
-    keyHash: `0x${'ab'.repeat(32)}` as Hex,
+    orchestrator: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8',
+    delegation: '0x3Be52867f8Dca2911f81076B37921c334dE29551',
+    origin: '0x9999999999999999999999999999999999999999',
+    keyHash: repeatedHex('ab', 32),
     nonce: 0n,
 }
 
@@ -50,21 +56,24 @@ const SIGNATURE =
 
 const CAP = 5_000000n
 
-const fixture = JSON.parse(
-    readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
-) as {
+type RelayQuoteFixture = {
     requestId: string
     orderId: Hex
     orderData: {
         solver: string
         fees: unknown[]
-        output: { payments: { recipient: string }[] }
+        output: { payments: { recipient: string }[]; calls?: string[] }
         inputs: { refunds: { recipient: string }[] }[]
     }
     approve: { to: string; data: string; value: string }
     deposit: { to: string; data: string; value: string }
     currencyOutMinimum: string
 }
+
+// SAFETY: this file's checked-in quote fixture matches RelayQuoteFixture.
+const fixture = JSON.parse(
+    readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
+) as RelayQuoteFixture
 
 const multicallAbi = [
     {
@@ -152,13 +161,13 @@ function word(address: Address): string {
 }
 
 function depositNative(depositor: Address, id: Hex): Hex {
-    return `0x49290c1c${word(depositor)}${id.slice(2).padStart(64, '0')}` as Hex
+    return parseHex(`0x49290c1c${word(depositor)}${id.slice(2).padStart(64, '0')}`)
 }
 
 function depositErc20(depositor: Address, token: Address, amount: bigint, id: Hex): Hex {
     const amountWord = amount.toString(16).padStart(64, '0')
 
-    return `0xe8017952${word(depositor)}${word(token)}${amountWord}${id.slice(2).padStart(64, '0')}` as Hex
+    return parseHex(`0xe8017952${word(depositor)}${word(token)}${amountWord}${id.slice(2).padStart(64, '0')}`)
 }
 
 function approve(spender: Address, amount = CAP): Hex {
@@ -169,7 +178,10 @@ function approve(spender: Address, amount = CAP): Hex {
     })
 }
 
-function quoteWith(items: { to: Address; data: Hex; value?: string }[], extra?: Record<string, unknown>) {
+function quoteWith(
+    items: { to: Address; data: Hex; value?: string }[],
+    extra?: Partial<RelayQuoteResponse>,
+): RelayQuoteResponse {
     return {
         requestId: fixture.requestId,
         steps: [
@@ -203,11 +215,11 @@ function liveQuote(input?: { order?: unknown; orderId?: string; depositData?: He
         [
             {
                 to: getAddressSafe(fixture.approve.to),
-                data: fixture.approve.data as Hex,
+                data: parseHex(fixture.approve.data),
             },
             {
                 to: getAddressSafe(fixture.deposit.to),
-                data: input?.depositData ?? (fixture.deposit.data as Hex),
+                data: input?.depositData ?? parseHex(fixture.deposit.data),
             },
         ],
         {
@@ -231,7 +243,7 @@ function liveQuote(input?: { order?: unknown; orderId?: string; depositData?: He
 }
 
 function getAddressSafe(value: string): Address {
-    return value as Address
+    return parseAddr(value)
 }
 
 function patchedOrder(patch: (order: typeof fixture.orderData) => void) {
@@ -244,7 +256,11 @@ function patchedOrder(patch: (order: typeof fixture.orderData) => void) {
 function scriptedBalances(input: { before: bigint[]; after: bigint[]; revert?: boolean }) {
     let reads = 0
 
-    return async (method: string, params: unknown[]) => {
+    type SimulateBlock = {
+        blockStateCalls: { calls: Array<{ to?: string; data?: string; value?: string }> }[]
+    }
+
+    return async (method: string, params: SimulateBlock[]) => {
         if (method === 'eth_getBalance' || method === 'eth_call') {
             const wordValue = input.before[reads]
 
@@ -258,7 +274,7 @@ function scriptedBalances(input: { before: bigint[]; after: bigint[]; revert?: b
         }
 
         if (method === 'eth_simulateV1') {
-            const block = params[0] as { blockStateCalls: { calls: unknown[] }[] }
+            const block = params[0]
             const calls = block.blockStateCalls[0]?.calls ?? []
             const probeStart = calls.length - input.after.length
 
@@ -329,52 +345,27 @@ function run(input: {
             yes: input.yes ?? true,
         },
         {
-            readKeystoreBundle: mock(async () => ({
-                format: 'split',
-                rootPath: '/tmp/alice.json',
-                sessionPath: '/tmp/sessions/default.json',
-                root: {
-                    addresses: { root: USER, delegated: USER },
-                    sessionRef: { dir: '/tmp/sessions' },
-                },
-                session: {
-                    network: {
-                        env: 'prod' as const,
-                        relayerUrl: 'http://127.0.0.1:8787',
-                        rpcUrl: 'https://mainnet.base.org',
-                        chainId: 8453,
-                    },
-                    addresses: { delegated: USER, session: SESSION_ADDRESS },
-                },
-            })) as any,
+            readKeystoreBundle: mock(async () => testKeystoreBundle(USER, SESSION_ADDRESS, 8453, 'prod')),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => input.balance ?? 10_000000n),
-            getQuote: mock(input.getQuote ?? (async () => input.quote)) as any,
+            getQuote: typedMock<AccountSwapDeps['getQuote']>(
+                input.getQuote ?? (async () => input.quote),
+            ),
             readNonce: mock(async () => 2n),
             confirmQuote,
-            prepareCalls: prepareCalls as any,
-            signTypedData: signTypedData as any,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(prepareCalls),
+            signTypedData: typedMock<AccountSwapDeps['signTypedData']>(signTypedData),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => ({
-                success: true,
-                id: 'bundle-1',
-                status: 'confirmed',
-                statusCode: 200,
-                receipt: {
-                    transactionHash:
-                        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                    blockNumber: '1',
-                    gasUsed: '1',
-                    status: 'success',
-                },
-            })) as any,
-            pollIntentStatus: mock(async () => ({
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                confirmedBundle(),
+            ),
+            pollIntentStatus: typedMock<AccountSwapDeps['pollIntentStatus']>(async () => ({
                 status: 'success',
                 txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
-            })) as any,
+            })),
             simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
             installQuoteSpendLimit:
                 input.installQuoteSpendLimit ??
@@ -393,19 +384,21 @@ function run(input: {
             readErc4626ShareBalance: async () => 0n,
             readErc4626ShareAllowance: async () => 0n,
             readApprovedSignatureCheckers: async () => [],
-            getKeys: (input.getKeys ??
-                (async () => ({
-                    '0x2105': [
-                        {
-                            hash: computeSessionKeyHash(SESSION_ADDRESS),
-                            expiry: '0x0',
-                            type: 'secp256k1',
-                            role: 'normal',
-                            publicKey: '0x',
-                            permissions: relaySessionCallPermissions(8453),
-                        },
-                    ],
-                }))) as any,
+            getKeys: typedMock<AccountSwapDeps['getKeys']>(
+                input.getKeys ??
+                    (async () => ({
+                        '0x2105': [
+                            {
+                                hash: computeSessionKeyHash(SESSION_ADDRESS),
+                                expiry: '0x0',
+                                type: 'secp256k1',
+                                role: 'normal',
+                                publicKey: '0x',
+                                permissions: relaySessionCallPermissions(8453),
+                            },
+                        ],
+                    })),
+            ),
         },
     )
 
@@ -453,7 +446,7 @@ test('refuses an inner USDC.transfer inside transferAndMulticall', async () => {
     ])
 
     expect(() =>
-        reviewRelayQuote(quote as any, {
+        reviewRelayQuote(quote, {
             sourceChainId: 8453,
             destinationChainId: 8453,
             slippageBps: 50,
@@ -535,7 +528,7 @@ test('allows a zero refundTo and nftRecipient', async () => {
 test('refuses a hostile depositor on depositNative', async () => {
     const ran = run({
         quote: quoteWith([
-            { to: DEPOSITORY, data: depositNative(ATTACKER, fixture.orderId as Hex) },
+            { to: DEPOSITORY, data: depositNative(ATTACKER, fixture.orderId) },
         ]),
     })
 
@@ -551,7 +544,7 @@ test('refuses a hostile depositor on depositErc20', async () => {
         quote: quoteWith([
             {
                 to: DEPOSITORY,
-                data: depositErc20(ATTACKER, USDC, CAP, fixture.orderId as Hex),
+                data: depositErc20(ATTACKER, USDC, CAP, fixture.orderId),
             },
         ]),
     })
@@ -564,7 +557,7 @@ test('refuses a hostile depositor on depositErc20', async () => {
 })
 
 test('refuses depositErc20 calldata that omits the id word', async () => {
-    const short = depositErc20(USER, USDC, CAP, fixture.orderId as Hex).slice(0, 2 + 8 + 64 * 3) as Hex
+    const short = parseHex(depositErc20(USER, USDC, CAP, fixture.orderId).slice(0, 2 + 8 + 64 * 3))
     const ran = run({ quote: quoteWith([{ to: DEPOSITORY, data: short }]) })
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
@@ -576,7 +569,7 @@ test('refuses depositErc20 calldata that omits the id word', async () => {
 test('refuses a deposit id that is the request id instead of the order hash', async () => {
     const ran = run({
         quote: liveQuote({
-            depositData: depositErc20(USER, USDC, CAP, fixture.requestId as Hex),
+            depositData: depositErc20(USER, USDC, CAP, parseHex(fixture.requestId)),
         }),
         toToken: 'USDC',
         destinationChain: 'polygon',
@@ -593,7 +586,7 @@ test('refuses a deposit id that is the request id instead of the order hash', as
 
 test('signs the live quote whose deposit id is the order hash', async () => {
     const quote = liveQuote()
-    const text = formatRelayQuoteCalls(quote as any)
+    const text = formatRelayQuoteCalls(quote)
     expect(text).toContain(`depositor ${USER}`)
     expect(text).toContain(`Output recipient: ${USER}`)
     expect(text).toContain('depositErc20 (0xe8017952)')
@@ -614,7 +607,7 @@ test('signs the live quote whose deposit id is the order hash', async () => {
 })
 
 test('confirmation text shows refundTo and the decoded inner calls', () => {
-    const cleanup = '0x9bb43718' as Hex
+    const cleanup = '0x9bb43718'
 
     const quote = quoteWith([
         {
@@ -628,7 +621,7 @@ test('confirmation text shows refundTo and the decoded inner calls', () => {
         },
     ])
 
-    const text = formatRelayQuoteCalls(quote as any)
+    const text = formatRelayQuoteCalls(quote)
     expect(text).toContain(`refundTo ${USER}`)
     expect(text).toContain(`nftRecipient ${zeroAddress}`)
     expect(text).toContain(`inner 1. ${USDC} approve (0x095ea7b3)`)
@@ -838,7 +831,7 @@ test('refuses a simulation that drops an unspent balance', async () => {
             rpcUrl: 'http://127.0.0.1:1',
             chainId: 8453,
             user: USER,
-            calls: [{ to: DEPOSITORY, data: fixture.deposit.data as Hex, value: 0n }],
+            calls: [{ to: DEPOSITORY, data: parseHex(fixture.deposit.data), value: 0n }],
             watches: [
                 { kind: 'erc20', token: USDC, role: 'origin' },
                 { kind: 'native', role: 'other' },
@@ -884,7 +877,7 @@ test('refuses when the simulation reverts', async () => {
             rpcUrl: 'http://127.0.0.1:1',
             chainId: 8453,
             user: USER,
-            calls: [{ to: DEPOSITORY, data: fixture.deposit.data as Hex, value: 0n }],
+            calls: [{ to: DEPOSITORY, data: parseHex(fixture.deposit.data), value: 0n }],
             watches: [{ kind: 'erc20', token: USDC, role: 'origin' }],
             cap: CAP,
             sameChain: false,
@@ -904,7 +897,7 @@ test('refuses when the injected rpc cannot simulate', async () => {
             rpcUrl: 'http://127.0.0.1:1',
             chainId: 8453,
             user: USER,
-            calls: [{ to: DEPOSITORY, data: fixture.deposit.data as Hex, value: 0n }],
+            calls: [{ to: DEPOSITORY, data: parseHex(fixture.deposit.data), value: 0n }],
             watches: [{ kind: 'erc20', token: USDC, role: 'origin' }],
             cap: CAP,
             sameChain: false,
@@ -965,7 +958,8 @@ test('refuses an order fee, a foreign solver, and output calls', async () => {
     })
 
     const calls = patchedOrder((order) => {
-        ;(order.output as { calls?: string[] }).calls = ['0xdeadbeef']
+        const output: { payments: { recipient: string }[]; calls?: string[] } = order.output
+        output.calls = ['0xdeadbeef']
     })
 
     for (const [patched, message] of [
@@ -1037,7 +1031,7 @@ test('installs the quoted spend limit before signing and simulates twice', async
 })
 
 test('quote spend calldata is a minute limit equal to the input, never uint256 max', () => {
-    const weth = '0x4200000000000000000000000000000000000006' as Address
+    const weth = '0x4200000000000000000000000000000000000006'
 
     const calls = quoteSpendCalls(
         {

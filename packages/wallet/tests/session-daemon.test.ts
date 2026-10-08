@@ -10,6 +10,7 @@ import { runSessionDaemon } from '../src/lib/session-daemon'
 import { SessionDaemonClient } from '../src/lib/session-daemon-client'
 import type { DaemonTypedData } from '../src/lib/session-daemon-protocol'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { emptyHex } from './helpers/hex'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -108,9 +109,9 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
     await daemon.stop()
 })
 
-const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
 
-const PROD_BASE_ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+const PROD_BASE_ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
 function routerMulticall(user: Address, innerSelector: Hex): Hex {
     return encodeFunctionData({
@@ -166,12 +167,12 @@ function orchestratorIntent(user: Address, data: Hex): DaemonTypedData {
             paymentToken: zeroAddress,
             paymentMaxAmount: 0n,
             combinedGas: 0n,
-            encodedPreCalls: [],
-            encodedFundTransfers: [],
+            encodedPreCalls: emptyHex(),
+            encodedFundTransfers: emptyHex(),
             settler: zeroAddress,
             expiry: 0n,
         },
-    } as DaemonTypedData
+    }
 }
 
 test('a phrase-confirmed swap session signs only a relay quote', async () => {

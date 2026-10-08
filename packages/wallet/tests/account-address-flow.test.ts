@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 import { executeAccountAddress } from '../src/lib/account-address'
 import { LoginProfileError, type LoginSessionKeystoreV2 } from '../src/lib/keystore'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
 
 test('executeAccountAddress returns root address from keystore bundle', async () => {
     const result = await executeAccountAddress(
@@ -9,23 +10,11 @@ test('executeAccountAddress returns root address from keystore bundle', async ()
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split' as const,
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                            },
-                        },
-                        session: {
-                            addresses: {
-                                session: '0x2222222222222222222222222222222222222222',
-                            },
-                        },
-                    }) as any,
+            readKeystoreBundle: mock(async () =>
+                testKeystoreBundle(
+                    '0x1111111111111111111111111111111111111111',
+                    '0x2222222222222222222222222222222222222222',
+                ),
             ),
         },
     )

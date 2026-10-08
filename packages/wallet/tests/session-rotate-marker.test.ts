@@ -2,30 +2,31 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
-import { decodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import { decodeFunctionData, getAddress, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
 import { executeAccountUpdatePassword } from '../src/lib/account-update-password'
 import { executePermissionsList } from '../src/lib/permissions-list'
 import { executeSessionList } from '../src/lib/session-list'
 import { executeSessionRevoke } from '../src/lib/session-revoke'
-import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
+import { parseAddr } from './helpers/hex'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
 
-const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6'
 
 const oldAddress = privateKeyToAccount(oldSessionKey).address
 
 const newAddress = privateKeyToAccount(newSessionKey).address
 
-const rootPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const rootPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
-const txHash = '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca' as Hex
+const txHash = '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca'
 
 const oldSession = {
     addresses: { session: oldAddress, delegated: account },
@@ -97,7 +98,7 @@ function confirmedBundle(id: string) {
     }
 }
 
-function rotateDeps(keystorePath: string, overrides: Record<string, unknown> = {}) {
+function rotateDeps(keystorePath: string, overrides: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),
@@ -110,7 +111,7 @@ function rotateDeps(keystorePath: string, overrides: Record<string, unknown> = {
         generatePrivateKey: mock(() => rootPrivateKey),
         decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
         decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
-            const session = getAddress(keystore.addresses.session as Address)
+            const session = getAddress(parseAddr(keystore.addresses.session))
 
             if (session === newAddress) return { sessionPrivateKey: newSessionKey }
 
@@ -124,7 +125,7 @@ function rotateDeps(keystorePath: string, overrides: Record<string, unknown> = {
         readGuardCleanup: mock(async (input: { chainId: number }) => {
             if (input.chainId === 137) {
                 return {
-                    anyCalls: [{ target: account, selector: '0xa9059cbb' as Hex }],
+                    anyCalls: [{ target: account, selector: '0xa9059cbb' }],
                     checkers: [],
                 }
             }
@@ -167,7 +168,7 @@ async function leaveRealMarker(keystorePath: string) {
                 narrow: true,
                 newName: 'default-next',
             },
-            rotateDeps(keystorePath) as never,
+            rotateDeps(keystorePath),
         ),
     ).rejects.toMatchObject({ code: 'ROTATION_PARTIAL' })
 }
@@ -203,7 +204,7 @@ test('rotation marker written by the real writer is resumed instead of a noop', 
                 password: 'pw',
                 resume: true,
             },
-            rotateDeps(keystorePath) as never,
+            rotateDeps(keystorePath),
         )
 
         await expect(result).rejects.toMatchObject({ code: 'ROTATION_PARTIAL' })
@@ -232,7 +233,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                           }
                         : oldSession,
                 ),
-            } as never,
+            },
         )
 
         expect(listed.status).toBe('complete')
@@ -244,7 +245,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 readKeystoreBundle: mock(async () => rootBundle()),
                 readSessionKeystoreFile: mock(async () => oldSession),
                 getKeys: mock(async () => ({})),
-            } as never,
+            },
         )
 
         expect(permissions.status).toBe('complete')
@@ -267,7 +268,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 getKeys: mock(async () => ({})),
                 unlink: mock(async () => {}),
                 writeRootKeystoreFile: mock(async () => {}),
-            } as never,
+            },
         )
 
         expect(revoked.status).toBe('complete')
@@ -303,7 +304,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 })),
                 writeRootKeystoreFile: mock(async () => {}),
                 writeSessionKeystoreFile: mock(async () => {}),
-            } as never,
+            },
         )
 
         expect(updated.status).toBe('complete')
@@ -353,7 +354,7 @@ test('rotation marker plus any other marker is ambiguous and does not sign', asy
                             return confirmedBundle('bundle-evil')
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_MARKER_AMBIGUOUS' })
         expect(signed).toEqual([])
@@ -403,7 +404,7 @@ test('rotation marker with fullAccess requires the human phrase on a plain resum
                             return confirmedBundle('bundle-evil')
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/ROTATE FULL ACCESS SESSION/)
         expect(signed).toEqual([])
@@ -464,7 +465,7 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
                             return confirmedBundle('bundle-evil')
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/tw session rotate --resume --full-access/)
         expect(signed).toEqual([])
@@ -512,7 +513,7 @@ test('rotation marker newKeyHash must be 0x and 64 hex characters', async () => 
                             return confirmedBundle('bundle-bad')
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/64 hex/)
         expect(signed).toEqual([])
@@ -545,7 +546,7 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
                             'Timeout waiting for bundle bundle-timeout to reach final status. Current status: 100',
                         )
                     }),
-                }) as never,
+                }),
             )
         } catch (error) {
             caught = error
@@ -556,7 +557,10 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
             recoveryCommand: 'tw session rotate --resume',
         })
         expect(caught).toBeInstanceOf(Error)
-        expect((caught as Error).message).toMatch(/--resume/)
+
+        if (!(caught instanceof Error)) throw caught
+
+        expect(caught.message).toMatch(/--resume/)
 
         const onDisk = await readdir(sessions)
 
@@ -566,10 +570,9 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
 
         expect(markers).toHaveLength(1)
 
-        const raw = JSON.parse(await readFile(join(sessions, markers[0]!), 'utf8')) as {
-            status?: string
-            bundleId?: string
-        }
+        const raw: { status?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, markers[0]!), 'utf8'),
+        )
 
         expect(raw.status).toBe('submitted')
         expect(raw.bundleId).toBe('bundle-timeout')
@@ -597,13 +600,13 @@ test('rotation without --resume refuses an existing marker and does not authoriz
                             'Timeout waiting for bundle bundle-timeout to reach final status. Current status: 100',
                         )
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
 
-        const before = JSON.parse(
+        const before: { newSessionName?: string; bundleId?: string } = JSON.parse(
             await readFile(join(sessions, '.rotation.json'), 'utf8'),
-        ) as { newSessionName?: string; bundleId?: string }
+        )
 
         const signed: Hex[] = []
 
@@ -636,17 +639,16 @@ test('rotation without --resume refuses an existing marker and does not authoriz
                             return confirmedBundle('bundle-second')
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/tw session rotate --resume/)
         expect(signed).toEqual([])
         expect(signTypedData).not.toHaveBeenCalled()
         expect(sendPreparedCalls).not.toHaveBeenCalled()
 
-        const after = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
-            newSessionName?: string
-            bundleId?: string
-        }
+        const after: { newSessionName?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        )
 
         expect(after.newSessionName).toBe(before.newSessionName)
         expect(after.bundleId).toBe(before.bundleId)
@@ -717,7 +719,7 @@ test('resume after the pointer moved finishes cleanup and signs nothing', async 
                 signTypedData,
                 sendPreparedCalls,
                 executeSignedCalls: executeSigned,
-            }) as never,
+            }),
         )
 
         expect(result.status).toBe('complete')

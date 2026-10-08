@@ -150,7 +150,7 @@ test('executeSessionImport stores non-prod session profiles under env directory'
             input: inputPath,
             profile,
             env: 'dev',
-        } as any,
+        },
         {
             readSessionKeystoreFile: mock(async () => importedSession),
             writeSessionKeystoreFile: mock(async () => {}),
@@ -173,7 +173,7 @@ test('executeSessionImport keeps profile path aligned with default keystore reso
             input: inputPath,
             profile,
             env,
-        } as any,
+        },
         {
             readSessionKeystoreFile: mock(async () => importedSession),
             writeSessionKeystoreFile: mock(async () => {}),

@@ -54,7 +54,7 @@ export type AccountBalanceResult = {
     formattedBalance: string
 }
 
-type AccountBalanceDeps = {
+export type AccountBalanceDeps = {
     executeAccountAddress: (options: AccountAddressOptions) => Promise<AccountAddressResult>
     readUsdcBalance: (input: {
         chain: ChainName

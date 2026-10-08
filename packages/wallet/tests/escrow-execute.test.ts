@@ -154,8 +154,15 @@ test('executeEscrowRefund reports KEYSTORE_NOT_FOUND when neither root keystore 
         ).catch((error) => error)
 
         expect(err).toBeInstanceOf(EscrowError)
-        expect((err as EscrowError).code).toBe('KEYSTORE_NOT_FOUND')
-        const cause = (err as EscrowError).cause as NodeJS.ErrnoException
+
+        if (!(err instanceof EscrowError)) throw err
+
+        expect(err.code).toBe('KEYSTORE_NOT_FOUND')
+
+        const cause = err.cause
+
+        if (!(cause instanceof Error) || !('code' in cause) || !('path' in cause)) throw cause
+
         expect(cause.code).toBe('ENOENT')
         expect(cause.path).toBe(join(dir, 'session.json'))
         expect(prepareCalls).not.toHaveBeenCalled()

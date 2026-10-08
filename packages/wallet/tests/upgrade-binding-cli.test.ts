@@ -10,18 +10,19 @@ import {
     parseAbiParameters,
     zeroAddress,
     type Address,
-    type Hex,
 } from 'viem'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
-import { INTENT_TYPES } from '@nubl/relayer-client'
+import { INTENT_TYPES, type AuthorizeKey } from '@nubl/relayer-client'
+import { emptyHex, parseHex } from './helpers/hex'
+import { parseJson } from './helpers/parse-json'
 
 const walletDir = resolve(import.meta.dir, '..')
 
 const PASSWORD = 'test-password'
 
-const LOCAL_PROXY = '0x1111111111111111111111111111111111111111' as Address
+const LOCAL_PROXY = '0x1111111111111111111111111111111111111111'
 
-const LOCAL_ORCH = '0x2222222222222222222222222222222222222222' as Address
+const LOCAL_ORCH = '0x2222222222222222222222222222222222222222'
 
 const ATTACKER = getAddress('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF')
 
@@ -62,10 +63,24 @@ function capabilities(chainId: number, delegation: Address, orchestrator: Addres
     }
 }
 
-function firstParam(params: unknown): Record<string, unknown> {
+type RpcPayload = {
+    address?: string
+    delegation?: string
+    from?: string
+    calls?: Array<{ to?: string; data?: string; value?: string }>
+    capabilities?: {
+        authorizeKeys?: unknown[]
+        meta?: { expiry?: string; nonce?: string; fee_payer?: string }
+    }
+}
+
+function firstParam(params: unknown): RpcPayload {
     const value = Array.isArray(params) ? params[0] : params
 
-    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+    if (value === undefined || value === null) return {}
+
+    // SAFETY: wallet_prepare* params[0] is the request object this stub unpacks.
+    return value as RpcPayload
 }
 
 async function honestUpgradePayload(input: {
@@ -81,8 +96,9 @@ async function honestUpgradePayload(input: {
     const delegation = getAddress(input.delegation)
     const orchestrator = getAddress(input.orchestrator)
 
+    // SAFETY: this stub forwards authorizeKeys from the prepare request into the upgrade builder.
     const { calls, executionData } = mod.buildUpgradeExecution(
-        input.authorizeKeys as never,
+        input.authorizeKeys as readonly AuthorizeKey[],
         accountAddress,
     )
 
@@ -214,7 +230,7 @@ function attackerCallPayload(input: {
     txNonce: number
 }) {
     const accountAddress = getAddress(input.address)
-    const calls = [{ to: ATTACKER, value: 0n, data: '0xdeadbeef' as Hex }]
+    const calls = [{ to: ATTACKER, value: 0n, data: '0xdeadbeef' }]
 
     const executionData = encodeAbiParameters(
         parseAbiParameters('(address to, uint256 value, bytes data)[]'),
@@ -319,7 +335,7 @@ function sendPayload(input: {
     const messageCalls = input.calls.map((call) => ({
         to: getAddress(call.to ?? zeroAddress),
         value: BigInt(call.value ?? '0'),
-        data: (call.data ?? '0x') as Hex,
+        data: parseHex(call.data ?? '0x'),
     }))
 
     const message = {
@@ -331,8 +347,8 @@ function sendPayload(input: {
         paymentToken: input.paymentToken,
         paymentMaxAmount: BigInt(input.paymentMaxAmount),
         combinedGas: BigInt(input.combinedGas),
-        encodedPreCalls: [] as Hex[],
-        encodedFundTransfers: [] as Hex[],
+        encodedPreCalls: emptyHex(),
+        encodedFundTransfers: emptyHex(),
         settler: zeroAddress,
         expiry: BigInt(input.expiry),
     }
@@ -441,12 +457,15 @@ class MockRelayer {
         this.server = createServer(async (req, res) => {
             const chunks: Buffer[] = []
 
-            for await (const chunk of req) chunks.push(chunk as Buffer)
+            for await (const chunk of req) {
+                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+            }
+
             const raw = Buffer.concat(chunks).toString('utf8')
             let body: { id?: number; method?: string; params?: unknown }
 
             try {
-                body = JSON.parse(raw || '{}') as typeof body
+                body = parseJson<typeof body>(raw || '{}')
             } catch {
                 body = {}
             }
@@ -521,9 +540,7 @@ class MockRelayer {
             const address = getAddress(String(payload.address))
             const delegation = getAddress(String(payload.delegation ?? this.delegation))
 
-            const keys =
-                (payload.capabilities as { authorizeKeys?: unknown[] } | undefined)?.authorizeKeys ??
-                []
+            const keys = payload.capabilities?.authorizeKeys ?? []
 
             if (this.mode === 'bad-chain') {
                 return evilAuthPayload({ chainId: 1, contract: ATTACKER, nonce: 5, address })
@@ -565,12 +582,8 @@ class MockRelayer {
         if (method === 'wallet_prepareCalls') {
             const payload = firstParam(params)
 
-            const meta =
-                (payload.capabilities as { meta?: Record<string, string> } | undefined)?.meta ?? {}
-
-            const calls = Array.isArray(payload.calls)
-                ? (payload.calls as Array<{ to?: string; data?: string; value?: string }>)
-                : []
+            const meta = payload.capabilities?.meta ?? {}
+            const calls = payload.calls ?? []
 
             const expiry = this.mode === 'expiry-zero' ? '0' : (meta.expiry ?? '1900000000')
 
@@ -991,7 +1004,7 @@ test('CLI send refuses expiry 0 and a huge combined gas', async () => {
 test('MCP send is refused before the relayer is contacted', async () => {
     await locked(async () => {
         await withServer('honest-send', 8545, 31337, LOCAL_ORCH, LOCAL_PROXY, async (server, url) => {
-                const child = spawn('bun', ['src/cli.ts', '--mcp'], {
+                const child: ChildProcessWithoutNullStreams = spawn('bun', ['src/cli.ts', '--mcp'], {
                     cwd: walletDir,
                     env: {
                         ...process.env,
@@ -1001,7 +1014,7 @@ test('MCP send is refused before the relayer is contacted', async () => {
                         ...devEnv(url),
                     },
                     stdio: ['pipe', 'pipe', 'pipe'],
-                }) as ChildProcessWithoutNullStreams
+                })
 
                 let stdout = ''
                 let stderr = ''

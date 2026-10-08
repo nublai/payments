@@ -6,6 +6,7 @@ import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Add
 import { accountAbi } from '@nubl/contracts/abis'
 import type { GetKeysResponse } from '@nubl/relayer-client'
 import { executeAccountSwap } from '../src/lib/account-swap'
+import { parseAddr } from './helpers/hex'
 import type {
     ExecuteSignedCallsDeps,
     ExecuteSignedCallsParams,
@@ -51,29 +52,29 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const USER = '0x1111111111111111111111111111111111111111' as Address
+const USER = '0x1111111111111111111111111111111111111111'
 
-const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
 
-const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE'
 
-const ANY_TARGET = '0x3232323232323232323232323232323232323232' as Address
+const ANY_TARGET = '0x3232323232323232323232323232323232323232'
 
-const TRANSFER = '0xa9059cbb' as Hex
+const TRANSFER = '0xa9059cbb'
 
-const APPROVE = '0x095ea7b3' as Hex
+const APPROVE = '0x095ea7b3'
 
-const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730' as Address
+const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730'
 
-const ESCROW_SEL = '0x657061bf' as Hex
+const ESCROW_SEL = '0x657061bf'
 
-const VAULT = '0x4444444444444444444444444444444444444444' as Address
+const VAULT = '0x4444444444444444444444444444444444444444'
 
 const EMPTY_MULTICALL = encodeFunctionData({
     abi: [
@@ -238,7 +239,7 @@ function runSwap(input: {
         () => Promise<void>
     >
 }) {
-    const signTypedData = mock(async () => '0x11' as Hex)
+    const signTypedData = mock(async () => '0x11')
 
     const executeSignedCalls = mock(async () => ({
         id: 'bundle-1',
@@ -284,20 +285,20 @@ function runSwap(input: {
                     },
                     addresses: { delegated: USER, session: SESSION_ADDRESS },
                 },
-            })) as any,
+            })),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => 10_000000n),
-            getQuote: mock(async () => input.quote ?? quote([{ to: ROUTER, data: EMPTY_MULTICALL }])) as any,
+            getQuote: mock(async () => input.quote ?? quote([{ to: ROUTER, data: EMPTY_MULTICALL }])),
             readNonce: mock(async () => 2n),
             confirmQuote: mock(async () => true),
-            getKeys: mock(async () => keys(input.permissions)) as any,
+            getKeys: mock(async () => keys(input.permissions)),
             prepareCalls: mock(async (call: Parameters<typeof matchingPreparedCalls>[0]) =>
                 matchingPreparedCalls(call),
-            ) as any,
-            signTypedData: signTypedData as any,
+            ),
+            signTypedData: signTypedData,
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
             simulateQuoteCalls: async () => {},
             installQuoteSpendLimit: input.installQuoteSpendLimit ?? (async () => async () => {}),
@@ -313,12 +314,12 @@ function runSwap(input: {
             readApprovedSignatureCheckers:
                 input.readApprovedSignatureCheckers ?? (async () => []),
             standingRightsRegistry: input.standingRightsRegistry,
-            executeSignedCalls: executeSignedCalls as any,
+            executeSignedCalls: executeSignedCalls,
             waitForBundle: mock(async () => ({
                 success: true,
                 status: 'confirmed',
                 statusCode: 200,
-            })) as any,
+            })),
         },
     )
 
@@ -519,8 +520,8 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
         expect(canExecute).toHaveLength(relayEntryPoints(8453).length)
 
         const pairs = canExecute.map((call) => ({
-            target: call.args?.[1] as Address,
-            selector: (call.args?.[2] as string).toLowerCase(),
+            target: parseAddr(String(call.args?.[1])),
+            selector: String(call.args?.[2]).toLowerCase(),
             allowed: call.args?.[3],
         }))
 
@@ -745,7 +746,7 @@ test('a quote grant is revoked when the pending limit is recovered', async () =>
     const decoded = submitted.map((data) => decodeFunctionData({ abi: accountAbi, data }))
     expect(decoded.map((call) => call.functionName)).toEqual(['setCanExecute'])
     expect(decoded[0]?.args?.[1]).toBe(USDC)
-    expect((decoded[0]?.args?.[2] as string).toLowerCase()).toBe(APPROVE)
+    expect(String(decoded[0]?.args?.[2]).toLowerCase()).toBe(APPROVE)
     expect(decoded[0]?.args?.[3]).toBe(false)
     await expect(readFile(pendingQuoteLimitPath(keystorePath), 'utf8')).rejects.toThrow()
 })
@@ -809,7 +810,7 @@ test('standing rights include the quoted input and fail closed on a read error',
     ).rejects.toThrow(/standing allowance/)
 })
 
-const CHECKER = '0x5555555555555555555555555555555555555555' as Address
+const CHECKER = '0x5555555555555555555555555555555555555555'
 
 test('creating a swap session requires CREATE SWAP SESSION, not the full-access phrase', async () => {
     const executeSignedCalls = mock(async () => {

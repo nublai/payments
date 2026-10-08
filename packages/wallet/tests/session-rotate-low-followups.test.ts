@@ -12,18 +12,18 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { type Call } from '@nubl/relayer-client'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createSessionKeystore, deriveKeystoreKey } from '../src/lib/keystore'
-import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a'
 
-const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 const rootPrivateKey =
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
 const oldAddress = privateKeyToAccount(oldKey).address
 
@@ -114,7 +114,7 @@ function quotePreparer(captured: PreparedInput[]) {
     })
 }
 
-function baseDeps(extra: Record<string, unknown> = {}) {
+function baseDeps(extra: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),
@@ -181,7 +181,7 @@ test('a restored marker is refused when freshness no longer matches', async () =
                     readNonce: mock(async () => {
                         throw new Error('rpc down before send')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/rpc down before send/)
 
@@ -206,7 +206,7 @@ test('a restored marker is refused when freshness no longer matches', async () =
                         statusCode: 200,
                         status: 'confirmed',
                     })),
-                }) as never,
+                }),
             )
         } catch (error) {
             caught = error
@@ -265,7 +265,7 @@ test('abandon refuses an unverified marker and leaves the file', async () => {
                     signTypedData: mock(async () => {
                         throw new Error('must not sign')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/unverified/)
         expect(getKeys).not.toHaveBeenCalled()

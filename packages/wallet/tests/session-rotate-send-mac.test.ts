@@ -12,27 +12,27 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { JsonRpcClientError, type Call } from '@nubl/relayer-client'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createSessionKeystore, ensureOwnerOnlyDirectory } from '../src/lib/keystore'
-import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a'
 
-const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 const rootPrivateKey =
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
 const oldAddress = privateKeyToAccount(oldKey).address
 
 const newAddress = privateKeyToAccount(newKey).address
 
-const approveSelector = '0x095ea7b3' as Hex
+const approveSelector = '0x095ea7b3'
 
-const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const password = 'pw'
 
@@ -131,7 +131,7 @@ function decodeCalls(calls: Call[]) {
     }))
 }
 
-function baseDeps(extra: Record<string, unknown> = {}) {
+function baseDeps(extra: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),
@@ -176,17 +176,16 @@ test('a send throw before an id returns keeps the key and resume settles from ge
                     waitForBundle: mock(async () => {
                         throw new Error('must not wait')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         const names = await readdir(sessions)
         expect(names).toContain('default-next.json')
         expect(names).toContain('.rotation.json')
 
-        const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
-            status?: string
-            bundleId?: string
-        }
+        const marker: { status?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        )
 
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBeUndefined()
@@ -212,7 +211,7 @@ test('a send throw before an id returns keeps the key and resume settles from ge
                     sendPreparedCalls: mock(async () => {
                         throw new Error('must not send')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(getKeys).toHaveBeenCalled()
@@ -236,7 +235,7 @@ test('a send throw before an id returns keeps the key and resume settles from ge
                 sendPreparedCalls: mock(async () => {
                     throw new Error('must not send')
                 }),
-            }) as never,
+            }),
         )
 
         expect(settled.bundle.id).not.toBe('noop')
@@ -275,15 +274,14 @@ test('bundle tracking unavailable after broadcast keeps the key and records the 
                     waitForBundle: mock(async () => {
                         throw new Error('must not wait')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(await readdir(sessions)).toContain('default-next.json')
 
-        const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
-            status?: string
-            bundleId?: string
-        }
+        const marker: { status?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        )
 
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBe('bundle-tracked')
@@ -313,7 +311,7 @@ test('a definitive pre-broadcast refusal still drops the unsent rotation', async
                             'Missing required parameter: context',
                         )
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_FAILED' })
         const names = await readdir(sessions)
@@ -342,11 +340,11 @@ test('an edited marker is refused before resume signs', async () => {
                     readNonce: mock(async () => {
                         throw new Error('rpc down before send')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/rpc down before send/)
 
-        const attackerTarget = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead' as Address
+        const attackerTarget = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead'
         const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8'))
         marker.permissions = {
             kind: 'custom',
@@ -374,7 +372,7 @@ test('an edited marker is refused before resume signs', async () => {
                         statusCode: 200,
                         status: 'confirmed',
                     })),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_MARKER_MISMATCH' })
         expect(prepares).toHaveLength(0)
@@ -430,7 +428,7 @@ test('an older marker with no authentication is refused before resume signs', as
                         statusCode: 200,
                         status: 'confirmed',
                     })),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/not authenticated/)
         expect(prepares).toHaveLength(0)
@@ -502,7 +500,7 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
                     signed.push('prepare')
                     throw new Error('must not prepare')
                 }),
-            }) as never,
+            }),
         )
 
         expect(markerPresentAtGetKeys).toBe(true)

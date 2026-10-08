@@ -1,5 +1,4 @@
 import { test, expect, mock } from 'bun:test'
-import type { Hex } from 'viem'
 import {
     AccountCreateError,
     assertAccountCreateCanInitialize,
@@ -50,15 +49,12 @@ function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRo
             env: 'prod',
             relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
-            chainId: 8453,
-        },
+            chainId: 8453 },
         addresses: {
-            root: '0x1111111111111111111111111111111111111111',
-        },
+            root: '0x1111111111111111111111111111111111111111' },
         sessionRef: {
             active: 'default',
-            dir: 'sessions',
-        },
+            dir: 'sessions' },
         kdf: {
             name: 'argon2id',
             params: {
@@ -66,15 +62,11 @@ function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRo
                 timeCost: 2,
                 parallelism: 1,
                 hashLength: 32,
-                salt: 'dGVzdA==',
-            },
-        },
+                salt: 'dGVzdA==' } },
         crypto: { algorithm: 'aes-256-gcm' },
         secrets: {
-            rootPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' },
-        },
-        ...overrides,
-    }
+            rootPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' } },
+        ...overrides }
 }
 
 function makeSessionKeystore(
@@ -89,8 +81,7 @@ function makeSessionKeystore(
             env: 'prod',
             relayerUrl: 'https://relayer.example',
             rpcUrl: 'https://rpc.example',
-            chainId: 8453,
-        },
+            chainId: 8453 },
         kdf: {
             name: 'argon2id',
             params: {
@@ -98,19 +89,14 @@ function makeSessionKeystore(
                 timeCost: 2,
                 parallelism: 1,
                 hashLength: 32,
-                salt: 'dGVzdA==',
-            },
-        },
+                salt: 'dGVzdA==' } },
         crypto: { algorithm: 'aes-256-gcm' },
         addresses: {
             session: '0x2222222222222222222222222222222222222222',
-            delegated: '0x1111111111111111111111111111111111111111',
-        },
+            delegated: '0x1111111111111111111111111111111111111111' },
         secrets: {
-            sessionPrivateKey: { nonce: 'd', ciphertext: 'e', tag: 'f' },
-        },
-        ...overrides,
-    }
+            sessionPrivateKey: { nonce: 'd', ciphertext: 'e', tag: 'f' } },
+        ...overrides }
 }
 
 test('getDefaultKeystorePath keeps prod path stable', () => {
@@ -141,8 +127,7 @@ test('resolveKeystorePath prefers explicit --keystore-path over --profile', () =
     const path = resolveKeystorePath({
         env: 'dev',
         keystorePath: '/tmp/explicit.json',
-        name: 'alice',
-    })
+        name: 'alice' })
 
     expect(path).toBe('/tmp/explicit.json')
 })
@@ -151,8 +136,7 @@ test('resolveKeystorePath rejects invalid --profile', () => {
     expect(() =>
         resolveKeystorePath({
             env: 'prod',
-            name: 'alice.dev',
-        }),
+            name: 'alice.dev' }),
     ).toThrowError(AccountCreateError)
 })
 
@@ -165,8 +149,7 @@ test('getDefaultSessionPermissions is the narrow USDC and escrow set', () => {
         ACCOUNT_PROXY_31337: process.env.ACCOUNT_PROXY_31337,
         SIMPLE_SETTLER_31337: process.env.SIMPLE_SETTLER_31337,
         ESCROW_31337: process.env.ESCROW_31337,
-        MULTI_SIG_SIGNER_31337: process.env.MULTI_SIG_SIGNER_31337,
-    }
+        MULTI_SIG_SIGNER_31337: process.env.MULTI_SIG_SIGNER_31337 }
 
     process.env.ORCHESTRATOR_31337 = '0x2222222222222222222222222222222222222222'
     process.env.SIMPLE_FUNDER_31337 = '0x0000000000000000000000000000000000000004'
@@ -183,40 +166,33 @@ test('getDefaultSessionPermissions is the narrow USDC and escrow set', () => {
         {
             type: 'call',
             to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-            selector: '0xa9059cbb',
-        },
+            selector: '0xa9059cbb' },
         {
             type: 'call',
             to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-            selector: '0x095ea7b3',
-        },
+            selector: '0x095ea7b3' },
         {
             type: 'call',
             to: '0x05f9597eed844410b7c0746A1C584188d0644730',
-            selector: '0x657061bf',
-        },
+            selector: '0x657061bf' },
         {
             type: 'call',
             to: '0x05f9597eed844410b7c0746A1C584188d0644730',
-            selector: '0x6023fda5',
-        },
+            selector: '0x6023fda5' },
         {
             type: 'call',
             to: '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE',
-            selector: '0x84523a30',
-        },
+            selector: '0x84523a30' },
         {
             type: 'call',
             to: '0x05f9597eed844410b7c0746A1C584188d0644730',
-            selector: '0xe7f921a2',
-        },
+            selector: '0xe7f921a2' },
     ])
     expect(permissions.find((permission) => permission.type === 'spend')).toEqual({
         type: 'spend',
         token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
         limit: '10000000',
-        period: 'day',
-    })
+        period: 'day' })
     expect(JSON.stringify(permissions)).not.toContain('32323232')
     expect(() => getDefaultSessionPermissions(31337)).toThrow(/wildcard/)
     expect(() => getDefaultSessionPermissions(1, { env: 'prod' })).toThrow(/wildcard/)
@@ -234,17 +210,14 @@ test('assertAccountCreateCanInitialize fails early when keystore exists', async 
         assertAccountCreateCanInitialize(
             {
                 keystorePath: '/tmp/already-there.json',
-                resume: false,
-            },
+                resume: false },
             {
-                pathExists: async () => true,
-            },
+                pathExists: async () => true },
         ),
     ).rejects.toMatchObject({
         name: 'AccountCreateError',
         code: 'KEYSTORE_EXISTS',
-        recoveryCommand: 'tw account create --resume --keystore-path "/tmp/already-there.json"',
-    })
+        recoveryCommand: 'tw account create --resume --keystore-path "/tmp/already-there.json"' })
 })
 
 test('assertAccountCreateCanInitialize allows existing keystore with --resume', async () => {
@@ -252,49 +225,42 @@ test('assertAccountCreateCanInitialize allows existing keystore with --resume', 
         assertAccountCreateCanInitialize(
             {
                 keystorePath: '/tmp/already-there.json',
-                resume: true,
-            },
+                resume: true },
             {
-                pathExists: async () => true,
-            },
+                pathExists: async () => true },
         ),
     ).resolves.toBeUndefined()
 })
 
 test('executeAccountCreate creates keystore and delegates', async () => {
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
     const sessionPrivateKey =
-        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex
+        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7'
 
     const rootAddress = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
     const sessionAddress = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC'
 
     const rootKeystore = makeRootKeystore({
-        addresses: { root: rootAddress },
-    })
+        addresses: { root: rootAddress } })
 
     const sessionKeystore = makeSessionKeystore({
         addresses: {
             session: sessionAddress,
-            delegated: rootAddress,
-        },
-    })
+            delegated: rootAddress } })
 
     const writeRootKeystoreFile = mock(async () => {})
     const writeSessionKeystoreFile = mock(async () => {})
 
     const delegateAccount = mock(async () => ({
         accountAddress: rootAddress,
-        txHash: '0xabc',
-    }))
+        txHash: '0xabc' }))
 
     const options: AccountCreateOptions = {
         env: 'prod',
         password: 'password',
-        keystorePath: '/tmp/test-keystore.json',
-    }
+        keystorePath: '/tmp/test-keystore.json' }
 
     let generateCalls = 0
 
@@ -308,8 +274,7 @@ test('executeAccountCreate creates keystore and delegates', async () => {
         createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
         writeRootKeystoreFile,
         writeSessionKeystoreFile,
-        delegateAccount,
-    })
+        delegateAccount })
 
     expect(result.type).toBe('account_create')
     expect(result.status).toBe('complete')
@@ -327,14 +292,12 @@ test('resolveAccountCreatePassword prefers RELAYER_CLI_PASSWORD env', async () =
             json: false,
             passwordStdin: false,
             resume: false,
-            help: false,
-        },
+            help: false },
         {
             envPassword: 'secret-from-env',
             readPasswordFromStdin: () => 'ignored',
             promptForPassword: async () => 'ignored',
-            isInteractive: false,
-        },
+            isInteractive: false },
     )
 
     expect(password).toBe('secret-from-env')
@@ -347,13 +310,11 @@ test('resolveAccountCreatePassword reads stdin when --password-stdin is used', a
             json: false,
             passwordStdin: true,
             resume: false,
-            help: false,
-        },
+            help: false },
         {
             readPasswordFromStdin: () => 'secret-stdin',
             promptForPassword: async () => 'ignored',
-            isInteractive: false,
-        },
+            isInteractive: false },
     )
 
     expect(password).toBe('secret-stdin')
@@ -366,13 +327,11 @@ test('resolveAccountCreatePassword uses interactive prompt when tty is available
             json: false,
             passwordStdin: false,
             resume: false,
-            help: false,
-        },
+            help: false },
         {
             readPasswordFromStdin: () => 'ignored',
             promptForPassword: async () => 'secret-interactive',
-            isInteractive: true,
-        },
+            isInteractive: true },
     )
 
     expect(password).toBe('secret-interactive')
@@ -386,23 +345,20 @@ test('resolveAccountCreatePassword throws typed error when no input source is av
                 json: false,
                 passwordStdin: false,
                 resume: false,
-                help: false,
-            },
+                help: false },
             {
                 readPasswordFromStdin: () => 'ignored',
                 promptForPassword: async () => 'ignored',
-                isInteractive: false,
-            },
+                isInteractive: false },
         ),
     ).rejects.toMatchObject({
         name: 'AccountCreateError',
-        code: 'PASSWORD_REQUIRED',
-    })
+        code: 'PASSWORD_REQUIRED' })
 })
 
 test('executeAccountCreate maps delegation failure to typed error', async () => {
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
@@ -412,8 +368,7 @@ test('executeAccountCreate maps delegation failure to typed error', async () => 
             {
                 env: 'prod',
                 password: 'password',
-                keystorePath: '/tmp/test-keystore.json',
-            },
+                keystorePath: '/tmp/test-keystore.json' },
             {
                 generatePrivateKey: mock(() => rootPrivateKey),
                 createRootKeystore: mock(async () => rootKeystore),
@@ -422,18 +377,16 @@ test('executeAccountCreate maps delegation failure to typed error', async () => 
                 writeSessionKeystoreFile: mock(async () => {}),
                 delegateAccount: mock(async () => {
                     throw new Error('Delegation failed: relayer rejected authorization')
-                }),
-            },
+                }) },
         ),
     ).rejects.toMatchObject({
         name: 'AccountCreateError',
-        code: 'DELEGATION_FAILED',
-    })
+        code: 'DELEGATION_FAILED' })
 })
 
 test('executeAccountCreate writes session keystore before delegation so resume remains possible', async () => {
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
@@ -444,8 +397,7 @@ test('executeAccountCreate writes session keystore before delegation so resume r
             {
                 env: 'prod',
                 password: 'password',
-                keystorePath: '/tmp/test-keystore.json',
-            },
+                keystorePath: '/tmp/test-keystore.json' },
             {
                 generatePrivateKey: mock(() => rootPrivateKey),
                 createRootKeystore: mock(async () => rootKeystore),
@@ -454,55 +406,46 @@ test('executeAccountCreate writes session keystore before delegation so resume r
                 writeSessionKeystoreFile,
                 delegateAccount: mock(async () => {
                     throw new Error('Delegation failed: relayer rejected authorization')
-                }),
-            },
+                }) },
         ),
     ).rejects.toMatchObject({
-        code: 'DELEGATION_FAILED',
-    })
+        code: 'DELEGATION_FAILED' })
 
     expect(writeSessionKeystoreFile).toHaveBeenCalledTimes(1)
 })
 
 test('executeAccountCreate writes split root and session keystores', async () => {
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
     const rootKeystore = makeRootKeystore({
         addresses: {
-            root: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-        },
-    })
+            root: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' } })
 
     const sessionKeystore = makeSessionKeystore({
         addresses: {
             session: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
-            delegated: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-        },
-    })
+            delegated: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' } })
 
     const writeRootKeystoreFile = mock(async () => {})
     const writeSessionKeystoreFile = mock(async () => {})
 
     const delegateAccount = mock(async () => ({
         accountAddress: rootKeystore.addresses.root,
-        txHash: '0xabc',
-    }))
+        txHash: '0xabc' }))
 
     const result = await executeAccountCreate(
         {
             env: 'prod',
             password: 'password',
-            keystorePath: '/tmp/test-keystore.json',
-        },
+            keystorePath: '/tmp/test-keystore.json' },
         {
             generatePrivateKey: mock(() => rootPrivateKey),
             createRootKeystore: mock(async () => rootKeystore),
             createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
             writeRootKeystoreFile,
             writeSessionKeystoreFile,
-            delegateAccount,
-        },
+            delegateAccount },
     )
 
     expect(result.addresses.root).toBe(rootKeystore.addresses.root)
@@ -514,10 +457,10 @@ test('executeAccountCreate writes split root and session keystores', async () =>
 
 test('executeAccountCreate resume loads split bundle and avoids key generation', async () => {
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
     const sessionPrivateKey =
-        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex
+        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7'
 
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
@@ -529,24 +472,20 @@ test('executeAccountCreate resume loads split bundle and avoids key generation',
             env: 'dev',
             password: 'password',
             keystorePath: '/tmp/test-keystore.json',
-            resume: true,
-        },
+            resume: true },
         {
             generatePrivateKey: generateKey,
             readKeystoreBundle: mock(async () => ({
                 rootPath: '/tmp/test-keystore.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root: rootKeystore,
-                session: sessionKeystore,
-            })),
+                session: sessionKeystore })),
             decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
             decryptSessionKeystore: mock(async () => ({ sessionPrivateKey })),
             writeRootKeystoreFile: mock(async () => {}),
             writeSessionKeystoreFile: mock(async () => {}),
             delegateAccount: mock(async () => ({
-                accountAddress: rootKeystore.addresses.root,
-            })),
-        },
+                accountAddress: rootKeystore.addresses.root })) },
     )
 
     expect(result.type).toBe('account_create')
@@ -556,7 +495,7 @@ test('executeAccountCreate resume loads split bundle and avoids key generation',
 
 test('executeAccountCreate surfaces session write errors before delegation', async () => {
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
@@ -565,8 +504,7 @@ test('executeAccountCreate surfaces session write errors before delegation', asy
             {
                 env: 'prod',
                 password: 'password',
-                keystorePath: '/tmp/test-keystore.json',
-            },
+                keystorePath: '/tmp/test-keystore.json' },
             {
                 generatePrivateKey: mock(() => rootPrivateKey),
                 createRootKeystore: mock(async () => rootKeystore),
@@ -577,12 +515,9 @@ test('executeAccountCreate surfaces session write errors before delegation', asy
                 }),
                 delegateAccount: mock(async () => ({
                     accountAddress: rootKeystore.addresses.root,
-                    txHash: '0xabc',
-                })),
-            },
+                    txHash: '0xabc' })) },
         ),
     ).rejects.toMatchObject({
         name: 'AccountCreateError',
-        code: 'UNKNOWN',
-    })
+        code: 'UNKNOWN' })
 })

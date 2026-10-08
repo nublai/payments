@@ -3,18 +3,20 @@ import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { encodeAbiParameters, encodeFunctionData, getAddress, type Address, type Hex } from 'viem'
 import { simulateRelayQuote } from '../src/lib/relay-simulate'
+import { parseHex, repeatedHex } from './helpers/hex'
+import { parseJson } from './helpers/parse-json'
 
 const ANVIL = `${process.env.HOME}/.foundry/bin/anvil`
 
 const FORGE = `${process.env.HOME}/.foundry/bin/forge`
 
-const USER = '0x1111111111111111111111111111111111111111' as Address
+const USER = '0x1111111111111111111111111111111111111111'
 
-const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+const ATTACKER = '0x2222222222222222222222222222222222222222'
 
-const RELAYER_SIGNER = '0x277b7440CE050d9e9e428d1f349E51D468c7eB7E' as Address
+const RELAYER_SIGNER = '0x277b7440CE050d9e9e428d1f349E51D468c7eB7E'
 
-const STAND_IN_ORIGIN = '0x9999999999999999999999999999999999999999' as Address
+const STAND_IN_ORIGIN = '0x9999999999999999999999999999999999999999'
 
 const ROOT = new URL('./fixtures/sim-path/', import.meta.url).pathname
 
@@ -22,37 +24,41 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function rpc(url: string, method: string, params: unknown[]): Promise<unknown> {
+type JsonRpcPayload<T> = { result?: T; error?: { message?: string } }
+
+type DeployReceipt = { contractAddress?: string; status?: string } | null
+
+async function rpc<T>(url: string, method: string, params: Array<string | { from: string; data: Hex; gas: string }>): Promise<T> {
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     })
 
-    const payload = (await response.json()) as { result?: unknown; error?: { message?: string } }
+    const payload = parseJson<JsonRpcPayload<T>>(await response.text())
 
     if (payload.error) {
         throw new Error(payload.error.message ?? method)
     }
 
-    return payload.result
+    // SAFETY: this test's Anvil stub returns T for the method it just called.
+    return payload.result as T
 }
 
-type DeployReceipt = { contractAddress?: string; status?: string } | null
-
 async function deploy(url: string, bytecode: Hex): Promise<Address> {
-    const hash = (await rpc(url, 'eth_sendTransaction', [
+    const sent = await rpc<Hex>(url, 'eth_sendTransaction', [
         {
             from: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
             data: bytecode,
             gas: '0x1c9c380',
         },
-    ])) as string
+    ])
 
+    const hash = sent
     let tx: DeployReceipt = null
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
-        tx = (await rpc(url, 'eth_getTransactionReceipt', [hash])) as DeployReceipt
+        tx = await rpc<DeployReceipt>(url, 'eth_getTransactionReceipt', [hash])
 
         if (tx) break
         await sleep(50)
@@ -77,11 +83,11 @@ test(
         expect(built).toBe(0)
 
         const bytecode = (name: string): Hex => {
-            const artifact = JSON.parse(
+            const artifact = parseJson<{ bytecode: { object: string } }>(
                 readFileSync(`${ROOT}out/SimPath.sol/${name}.json`, 'utf8'),
-            ) as { bytecode: { object: string } }
+            )
 
-            return artifact.bytecode.object as Hex
+            return parseHex(artifact.bytecode.object)
         }
 
         const port = 18547
@@ -114,7 +120,7 @@ test(
             const orchestrator = await deploy(url, bytecode('HarnessOrchestrator'))
             const routerCode = bytecode('OriginRouter')
             const routerArgs = encodeAbiParameters([{ type: 'address' }], [RELAYER_SIGNER])
-            const router = await deploy(url, `${routerCode}${routerArgs.slice(2)}` as Hex)
+            const router = await deploy(url, parseHex(`${routerCode}${routerArgs.slice(2)}`))
 
             const mint = encodeFunctionData({
                 abi: [
@@ -178,7 +184,7 @@ test(
                 orchestrator,
                 delegation: forwarder,
                 origin,
-                keyHash: `0x${'ab'.repeat(32)}` as Hex,
+                keyHash: repeatedHex('ab', 32),
                 nonce: 0n,
             })
 

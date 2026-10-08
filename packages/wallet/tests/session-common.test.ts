@@ -14,7 +14,10 @@ import {
     ANY_FUNCTION_SELECTOR,
 } from '../src/lib/session-common'
 import { ANY_TARGET, type GetKeysResponse } from '@nubl/relayer-client'
+import type { SpendPeriod } from '@nubl/relayer-client'
 import { zeroAddress } from 'viem'
+import { hex } from './helpers/hex'
+import { testAuthorizedKey } from './helpers/authorized-key'
 
 // --- parseTargetAddress ---
 
@@ -92,7 +95,8 @@ test('toSpendPeriodEnum maps all known periods', () => {
 })
 
 test('toSpendPeriodEnum rejects unknown period', () => {
-    expect(() => toSpendPeriodEnum('quarterly' as any)).toThrow('Invalid spend period')
+    // SAFETY: 'quarterly' is not a SpendPeriod; this negative case checks the throw.
+    expect(() => toSpendPeriodEnum('quarterly' as SpendPeriod)).toThrow('Invalid spend period')
 })
 
 // --- normalizeSpendPeriod ---
@@ -115,7 +119,7 @@ test('normalizeSpendPeriod rejects unknown period', () => {
 
 test('getChainKeys finds keys by hex chain id', () => {
     const keys: GetKeysResponse = {
-        '0x2105': [{ hash: '0xaa', type: 'secp256k1' } as any],
+        '0x2105': [testAuthorizedKey(hex('0xaa'))],
     }
 
     expect(getChainKeys(keys, 8453)).toHaveLength(1)
@@ -123,7 +127,7 @@ test('getChainKeys finds keys by hex chain id', () => {
 
 test('getChainKeys falls back to iterating entries', () => {
     const keys: GetKeysResponse = {
-        '0x7a69': [{ hash: '0xbb' } as any],
+        '0x7a69': [testAuthorizedKey(hex('0xbb'))],
     }
 
     expect(getChainKeys(keys, 31337)).toHaveLength(1)
@@ -131,7 +135,7 @@ test('getChainKeys falls back to iterating entries', () => {
 
 test('getChainKeys returns empty for unknown chain', () => {
     const keys: GetKeysResponse = {
-        '0x2105': [{ hash: '0xaa' } as any],
+        '0x2105': [testAuthorizedKey(hex('0xaa'))],
     }
 
     expect(getChainKeys(keys, 999)).toEqual([])

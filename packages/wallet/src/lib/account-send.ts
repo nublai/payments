@@ -150,7 +150,7 @@ export type AccountSendResult = {
     feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
-type AccountSendDeps = {
+export type AccountSendDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     decryptSessionKeystore: typeof decryptSessionKeystore
