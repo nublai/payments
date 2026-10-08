@@ -118,7 +118,7 @@ type PendingRotationIntentPayload = Omit<PendingRotationIntent, 'fileName'>
 
 type SubmittedRotationIntentPayload = Omit<SubmittedRotationIntent, 'fileName'>
 
-type RotationIntentPayload = PendingRotationIntentPayload | SubmittedRotationIntentPayload
+export type RotationIntentPayload = PendingRotationIntentPayload | SubmittedRotationIntentPayload
 
 type SessionRotateErrorCode =
     | 'NO_ACTIVE_SESSION'
