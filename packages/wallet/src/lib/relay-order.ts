@@ -110,7 +110,7 @@ function requireBytes20(value: unknown, field: string): void {
     }
 }
 
-function assertOrderShape(order: Record<string, unknown>): void {
+function assertOrder(order: Record<string, unknown>): void {
     if (order.version !== 'v1') {
         throw new RelayOrderRejected(
             'relay.link order version is not v1. Refusing to bind the deposit id.',
@@ -184,7 +184,7 @@ export function hashRelayOrder(order: unknown): Hex {
         throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
     }
 
-    assertOrderShape(order)
+    assertOrder(order)
 
     try {
         return hashStruct({

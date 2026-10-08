@@ -339,7 +339,7 @@ function settlerAddresses(chainId: number): Set<string> {
     return settlers
 }
 
-function assertSingleChainSwapShape(message: Record<string, unknown>): void {
+function assertSingleChainSwap(message: Record<string, unknown>): void {
     const settler =
         message.settler === undefined ? zeroAddress : asAddress(message.settler, 'settler')
 
@@ -445,7 +445,7 @@ export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaym
         fail('Swap session refused an intent whose calls could not be read')
     }
 
-    assertSingleChainSwapShape(message)
+    assertSingleChainSwap(message)
     const user = asAddress(message.eoa, 'eoa')
     const calls: { to: Address; value: bigint; data: Hex }[] = []
 

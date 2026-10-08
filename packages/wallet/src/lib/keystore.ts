@@ -421,7 +421,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isEncryptedSecretShape(value: unknown): value is EncryptedSecret {
+function isEncryptedSecret(value: unknown): value is EncryptedSecret {
     return (
         isRecord(value) &&
         typeof value.nonce === 'string' &&
@@ -430,7 +430,7 @@ function isEncryptedSecretShape(value: unknown): value is EncryptedSecret {
     )
 }
 
-function isKdfParamsShape(value: unknown): value is KdfParams {
+function isKdfParams(value: unknown): value is KdfParams {
     return (
         isRecord(value) &&
         typeof value.memoryCost === 'number' &&
@@ -441,11 +441,11 @@ function isKdfParamsShape(value: unknown): value is KdfParams {
     )
 }
 
-function isKdfConfigShape(value: unknown): value is KdfConfig {
-    return isRecord(value) && value.name === 'argon2id' && isKdfParamsShape(value.params)
+function isKdfConfig(value: unknown): value is KdfConfig {
+    return isRecord(value) && value.name === 'argon2id' && isKdfParams(value.params)
 }
 
-function isNetworkConfigShape(value: unknown): value is NetworkConfig {
+function isNetworkConfig(value: unknown): value is NetworkConfig {
     return (
         isRecord(value) &&
         typeof value.env === 'string' &&
@@ -459,7 +459,7 @@ function isSessionCheckpoint(value: unknown): value is SessionCheckpoint {
     return typeof value === 'string' && SESSION_CHECKPOINTS.has(value as SessionCheckpoint)
 }
 
-function validateAgentKeystoreShape(
+function validateAgentKeystore(
     keystore: Partial<AgentSessionKeystoreV2>,
     path: string,
 ): asserts keystore is AgentSessionKeystoreV2 {
@@ -492,7 +492,7 @@ function validateAgentKeystoreShape(
     }
 }
 
-function validateLoginKeystoreShape(
+function validateLoginKeystore(
     keystore: Partial<LoginSessionKeystoreV2>,
     path: string,
 ): asserts keystore is LoginSessionKeystoreV2 {
@@ -538,7 +538,7 @@ export function isRootKeystoreV2(keystore: unknown): keystore is RelayerRootKeys
         return false
     }
 
-    if (!isNetworkConfigShape(keystore.network)) {
+    if (!isNetworkConfig(keystore.network)) {
         return false
     }
 
@@ -564,9 +564,9 @@ export function isRootKeystoreV2(keystore: unknown): keystore is RelayerRootKeys
     if (
         !isRecord(keystore.crypto) ||
         keystore.crypto.algorithm !== 'aes-256-gcm' ||
-        !isKdfConfigShape(keystore.kdf) ||
+        !isKdfConfig(keystore.kdf) ||
         !isRecord(keystore.secrets) ||
-        !isEncryptedSecretShape(keystore.secrets.rootPrivateKey)
+        !isEncryptedSecret(keystore.secrets.rootPrivateKey)
     ) {
         return false
     }
@@ -720,15 +720,15 @@ export async function readSessionKeystoreFile(path: string): Promise<AnySessionK
         parsed.version !== 2 ||
         typeof parsed.name !== 'string' ||
         !isSessionCheckpoint(parsed.checkpoint) ||
-        !isNetworkConfigShape(parsed.network) ||
-        !isKdfConfigShape(parsed.kdf) ||
+        !isNetworkConfig(parsed.network) ||
+        !isKdfConfig(parsed.kdf) ||
         !isRecord(parsed.crypto) ||
         parsed.crypto.algorithm !== 'aes-256-gcm' ||
         !isRecord(parsed.addresses) ||
         typeof parsed.addresses.session !== 'string' ||
         typeof parsed.addresses.delegated !== 'string' ||
         !isRecord(parsed.secrets) ||
-        !isEncryptedSecretShape(parsed.secrets.sessionPrivateKey)
+        !isEncryptedSecret(parsed.secrets.sessionPrivateKey)
     ) {
         throw new Error(`Unsupported session keystore format at ${path}`)
     }
@@ -736,9 +736,9 @@ export async function readSessionKeystoreFile(path: string): Promise<AnySessionK
     const sessionKeystore = parsed as AnySessionKeystore
 
     if (sessionKeystore.kind === 'agent') {
-        validateAgentKeystoreShape(sessionKeystore, path)
+        validateAgentKeystore(sessionKeystore, path)
     } else if (sessionKeystore.kind === 'login') {
-        validateLoginKeystoreShape(sessionKeystore, path)
+        validateLoginKeystore(sessionKeystore, path)
     } else if ('kind' in sessionKeystore && sessionKeystore.kind !== undefined) {
         throw new Error(`Unsupported session keystore format at ${path}`)
     }
