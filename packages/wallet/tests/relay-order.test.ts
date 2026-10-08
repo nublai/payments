@@ -1,12 +1,13 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import type { Hex } from 'viem'
 import { hashRelayOrder } from '../src/lib/relay-order'
 
 const fixture = JSON.parse(
     readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
 ) as {
     requestId: string
-    orderId: string
+    orderId: Hex
     orderData: unknown
     deposit: { data: string }
 }

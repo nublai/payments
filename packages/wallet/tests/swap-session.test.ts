@@ -4,7 +4,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
+import type { GetKeysResponse } from '@nubl/relayer-client'
 import { executeAccountSwap } from '../src/lib/account-swap'
+import type {
+    ExecuteSignedCallsDeps,
+    ExecuteSignedCallsParams,
+    ExecuteSignedCallsResult,
+} from '../src/lib/execute-calls'
+import type {
+    AnySessionKeystore,
+    createSessionKeystore,
+    KeystoreBundle,
+    LoginSessionKeystoreV2,
+    RelayerRootKeystoreV2,
+    RelayerSessionKeystoreV2,
+} from '../src/lib/keystore'
 import {
     grantsFromPending,
     pendingQuoteLimitPath,
@@ -21,6 +35,7 @@ import {
     planSwapSessionUse,
     relaySessionCallPermissions,
     swapSessionSpendTokens,
+    type SwapCallGrant,
 } from '../src/lib/swap-session'
 import { assertNoStandingRights, knownErc20Tokens, PERMIT2 } from '../src/lib/standing-rights'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -116,6 +131,68 @@ function keys(permissions: readonly Record<string, unknown>[]) {
     }
 }
 
+const TEST_KDF = {
+    name: 'argon2id',
+    params: { memoryCost: 1, timeCost: 1, parallelism: 1, hashLength: 32, salt: 's' },
+} as const
+
+const TEST_SECRET = { nonce: 'n', ciphertext: 'c', tag: 't' }
+
+const BASE_NETWORK = {
+    env: 'prod',
+    relayerUrl: 'http://127.0.0.1:8787',
+    rpcUrl: 'https://mainnet.base.org',
+    chainId: 8453,
+}
+
+function swapSessionKeystore(session: Address): RelayerSessionKeystoreV2 {
+    return {
+        version: 2,
+        createdAt: new Date().toISOString(),
+        name: 'swap',
+        checkpoint: 'initialized',
+        network: BASE_NETWORK,
+        kdf: TEST_KDF,
+        crypto: { algorithm: 'aes-256-gcm' },
+        addresses: { session, delegated: USER },
+        secrets: { sessionPrivateKey: TEST_SECRET },
+    }
+}
+
+function swapRootBundle(): KeystoreBundle {
+    const root: RelayerRootKeystoreV2 = {
+        version: 2,
+        createdAt: new Date().toISOString(),
+        network: BASE_NETWORK,
+        addresses: { root: USER, delegated: USER },
+        sessionRef: { active: 'default', dir: 'sessions' },
+        kdf: TEST_KDF,
+        crypto: { algorithm: 'aes-256-gcm' },
+        secrets: { rootPrivateKey: TEST_SECRET },
+    }
+
+    return {
+        rootPath: '/tmp/default.keystore.json',
+        sessionPath: '/tmp/sessions/default.json',
+        root,
+        session: swapSessionKeystore(SESSION_ADDRESS),
+    }
+}
+
+function createSessionKeystoreReturning(
+    keystore: RelayerSessionKeystoreV2,
+): typeof createSessionKeystore {
+    function create(input: { kind?: undefined }): Promise<RelayerSessionKeystoreV2>
+    function create(input: { kind: 'login' }): Promise<LoginSessionKeystoreV2>
+    async function create(input: { kind?: 'login' }): Promise<AnySessionKeystore> {
+        if (input.kind === 'login') throw new Error('a login session keystore is not expected')
+
+        return keystore
+    }
+
+    return create
+}
+
 function paymentPermissions() {
     return [
         { type: 'call' as const, to: USDC, selector: TRANSFER },
@@ -144,7 +221,7 @@ function runSwap(input: {
     readErc4626ShareBalance?: (vault: Address) => Promise<bigint>
     readErc4626ShareAllowance?: (vault: Address, spender: Address) => Promise<bigint>
     readApprovedSignatureCheckers?: (keyHash: Hex) => Promise<readonly Address[]>
-    installQuoteSpendLimit?: (value: { callGrants?: { target: Address; selector: Hex }[] }) => Promise<
+    installQuoteSpendLimit?: (value: { callGrants?: readonly SwapCallGrant[] }) => Promise<
         () => Promise<void>
     >
 }) {
@@ -363,7 +440,7 @@ test('executeAccountSwap asks the root to grant the missing input approve for th
         functionName: 'approve',
         args: [APPROVAL_PROXY, 5_000000n],
     })
-    let grants: { target: Address; selector: Hex }[] | undefined
+    let grants: readonly SwapCallGrant[] | undefined
     const ran = runSwap({
         permissions: relaySessionCallPermissions(8453),
         quote: quote([
@@ -398,8 +475,8 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
     const { privateKeyToAccount } = await import('viem/accounts')
     const sessionAddress = privateKeyToAccount(sessionPrivateKey).address
     const sessionKeyHash = computeSessionKeyHash(sessionAddress)
-    const executeSignedCalls = mock(async (_deps, params) => {
-        const decoded = params.calls.map((call: { data: Hex }) =>
+    const executeSignedCalls = mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams): Promise<ExecuteSignedCallsResult> => {
+        const decoded = params.calls.map((call) =>
             decodeFunctionData({ abi: accountAbi, data: call.data }),
         )
         expect(decoded[0]?.functionName).toBe('authorize')
@@ -438,8 +515,12 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
                 receipt: {
                     transactionHash:
                         '0x1111111111111111111111111111111111111111111111111111111111111111',
+                    blockNumber: '0x1',
+                    gasUsed: '0x0',
+                    status: 'success',
                 },
             },
+            feeCap: { token: zeroAddress, symbol: 'none', amountUsdc: '0', expiresIn: '1h' },
         }
     })
     const writeRoot = mock(async () => {})
@@ -455,33 +536,10 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: { root: USER, delegated: USER },
-                        },
-                    }) as const,
-            ),
+            readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
             fileExists: mock(async () => false),
             generatePrivateKey: mock(() => sessionPrivateKey),
-            createSessionKeystore: mock(async () => ({
-                version: 2,
-                createdAt: new Date().toISOString(),
-                name: 'swap',
-                checkpoint: 'initialized',
-                network: {
-                    env: 'prod',
-                    relayerUrl: 'http://127.0.0.1:8787',
-                    rpcUrl: 'https://mainnet.base.org',
-                    chainId: 8453,
-                },
-                kdf: { name: 'argon2id', params: {} },
-                crypto: { algorithm: 'aes-256-gcm' },
-                addresses: { session: sessionAddress, delegated: USER },
-                secrets: { sessionPrivateKey: { nonce: 'n', ciphertext: 'c', tag: 't' } },
-            })),
+            createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(sessionAddress)),
             writeSessionKeystoreFile: mock(async () => {}),
             writeRootKeystoreFile: writeRoot,
             decryptRootKeystore: mock(async () => ({
@@ -490,7 +548,20 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
             })),
             readNonce: mock(async () => 1n),
             executeSignedCalls,
-            getKeys: mock(async () => ({ '0x2105': [{ hash: sessionKeyHash }] }) as const),
+            getKeys: mock(
+                async (): Promise<GetKeysResponse> => ({
+                    '0x2105': [
+                        {
+                            hash: sessionKeyHash,
+                            expiry: '0x0',
+                            type: 'secp256k1',
+                            role: 'normal',
+                            publicKey: '0x',
+                            permissions: [],
+                        },
+                    ],
+                }),
+            ),
             sleep: mock(async () => {}),
             readErc20Allowance: async () => 0n,
             readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
@@ -534,33 +605,13 @@ test('swap session create refuses a standing Permit2 allowance before authorize'
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: { root: USER, delegated: USER },
-                            },
-                        }) as const,
-                ),
+                readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
                 fileExists: mock(async () => false),
                 generatePrivateKey: mock(
                     () =>
                         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
                 ),
-                createSessionKeystore: mock(async () => ({
-                    version: 2,
-                    name: 'swap',
-                    checkpoint: 'initialized',
-                    network: {
-                        env: 'prod',
-                        relayerUrl: 'http://127.0.0.1:8787',
-                        rpcUrl: 'https://mainnet.base.org',
-                        chainId: 8453,
-                    },
-                    addresses: { session: SESSION_ADDRESS, delegated: USER },
-                    secrets: {},
-                })),
+                createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
                 writeSessionKeystoreFile: mock(async () => {}),
                 decryptRootKeystore: mock(async () => ({
                     rootPrivateKey:
@@ -598,27 +649,13 @@ test('swap session create fails closed when a standing-rights read errors', asyn
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: { root: USER, delegated: USER },
-                            },
-                        }) as const,
-                ),
+                readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
                 fileExists: mock(async () => false),
                 generatePrivateKey: mock(
                     () =>
                         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
                 ),
-                createSessionKeystore: mock(async () => ({
-                    version: 2,
-                    name: 'swap',
-                    checkpoint: 'initialized',
-                    addresses: { session: SESSION_ADDRESS, delegated: USER },
-                    secrets: {},
-                })),
+                createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
                 writeSessionKeystoreFile: mock(async () => {}),
                 decryptRootKeystore: mock(async () => ({
                     rootPrivateKey:
@@ -732,33 +769,13 @@ test('creating a swap session requires CREATE SWAP SESSION, not the full-access 
         throw new Error('authorize should not be sent')
     })
     const deps = {
-        withKeystoreLock: async (_path: string, action: () => Promise<unknown>) => action(),
-        readKeystoreBundle: mock(
-            async () =>
-                ({
-                    root: {
-                        sessionRef: { active: 'default', dir: 'sessions' },
-                        addresses: { root: USER, delegated: USER },
-                    },
-                }) as const,
-        ),
+        withKeystoreLock: async <T>(_path: string, action: () => Promise<T>) => action(),
+        readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
         fileExists: mock(async () => false),
         generatePrivateKey: mock(
             () => '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
         ),
-        createSessionKeystore: mock(async () => ({
-            version: 2,
-            name: 'swap',
-            checkpoint: 'initialized',
-            network: {
-                env: 'prod',
-                relayerUrl: 'http://127.0.0.1:8787',
-                rpcUrl: 'https://mainnet.base.org',
-                chainId: 8453,
-            },
-            addresses: { session: SESSION_ADDRESS, delegated: USER },
-            secrets: {},
-        })),
+        createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
         writeSessionKeystoreFile: mock(async () => {}),
         decryptRootKeystore: mock(async () => ({
             rootPrivateKey:
@@ -830,33 +847,13 @@ test('swap session create refuses an ERC-1271 signature checker before authorize
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: { root: USER, delegated: USER },
-                            },
-                        }) as const,
-                ),
+                readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
                 fileExists: mock(async () => false),
                 generatePrivateKey: mock(
                     () =>
                         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
                 ),
-                createSessionKeystore: mock(async () => ({
-                    version: 2,
-                    name: 'swap',
-                    checkpoint: 'initialized',
-                    network: {
-                        env: 'prod',
-                        relayerUrl: 'http://127.0.0.1:8787',
-                        rpcUrl: 'https://mainnet.base.org',
-                        chainId: 8453,
-                    },
-                    addresses: { session: SESSION_ADDRESS, delegated: USER },
-                    secrets: {},
-                })),
+                createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
                 writeSessionKeystoreFile: mock(async () => {}),
                 decryptRootKeystore: mock(async () => ({
                     rootPrivateKey:

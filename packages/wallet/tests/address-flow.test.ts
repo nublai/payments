@@ -1,5 +1,13 @@
 import { expect, mock, test } from 'bun:test'
+import type { AccountAddressResult } from '../src/lib/account-address'
 import { executeAddress } from '../src/lib/address'
+
+const accountAddress: AccountAddressResult = {
+    type: 'account_address',
+    status: 'complete',
+    keystorePath: '/tmp/default.keystore.json',
+    address: '0x2222222222222222222222222222222222222222',
+}
 
 test('executeAddress returns default usdc/base context', async () => {
     const result = await executeAddress(
@@ -7,12 +15,7 @@ test('executeAddress returns default usdc/base context', async () => {
             env: 'prod',
         },
         {
-            executeAccountAddress: mock(async () => ({
-                type: 'account_address',
-                status: 'complete',
-                keystorePath: '/tmp/default.keystore.json',
-                address: '0x2222222222222222222222222222222222222222',
-            })),
+            executeAccountAddress: mock(async () => accountAddress),
         },
     )
 
@@ -34,12 +37,7 @@ test('executeAddress requires decimals for custom token amount', async () => {
                 amount: '1',
             },
             {
-                executeAccountAddress: mock(async () => ({
-                    type: 'account_address',
-                    status: 'complete',
-                    keystorePath: '/tmp/default.keystore.json',
-                    address: '0x2222222222222222222222222222222222222222',
-                })),
+                executeAccountAddress: mock(async () => accountAddress),
             },
         ),
     ).rejects.toMatchObject({
@@ -57,12 +55,7 @@ test('executeAddress encodes custom token amount with decimals', async () => {
             link: true,
         },
         {
-            executeAccountAddress: mock(async () => ({
-                type: 'account_address',
-                status: 'complete',
-                keystorePath: '/tmp/default.keystore.json',
-                address: '0x2222222222222222222222222222222222222222',
-            })),
+            executeAccountAddress: mock(async () => accountAddress),
         },
     )
 
@@ -80,12 +73,7 @@ test('executeAddress keeps usdc decimals fixed at 6', async () => {
             link: true,
         },
         {
-            executeAccountAddress: mock(async () => ({
-                type: 'account_address',
-                status: 'complete',
-                keystorePath: '/tmp/default.keystore.json',
-                address: '0x2222222222222222222222222222222222222222',
-            })),
+            executeAccountAddress: mock(async () => accountAddress),
         },
     )
 
@@ -103,12 +91,7 @@ test('executeAddress uses identical payload for link and qr', async () => {
             qr: true,
         },
         {
-            executeAccountAddress: mock(async () => ({
-                type: 'account_address',
-                status: 'complete',
-                keystorePath: '/tmp/default.keystore.json',
-                address: '0x2222222222222222222222222222222222222222',
-            })),
+            executeAccountAddress: mock(async () => accountAddress),
         },
     )
 
@@ -125,12 +108,7 @@ test('executeAddress validates decimals bounds', async () => {
                 decimals: 77,
             },
             {
-                executeAccountAddress: mock(async () => ({
-                    type: 'account_address',
-                    status: 'complete',
-                    keystorePath: '/tmp/default.keystore.json',
-                    address: '0x2222222222222222222222222222222222222222',
-                })),
+                executeAccountAddress: mock(async () => accountAddress),
             },
         ),
     ).rejects.toMatchObject({

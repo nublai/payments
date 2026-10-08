@@ -15,6 +15,9 @@ import {
 test('resolveNetworkConfig returns chain defaults for prod/base and the relayer from RELAYER_URL_PROD', () => {
     const prodUrl = process.env.RELAYER_URL_PROD
     expect(prodUrl).toBeTruthy()
+
+    if (!prodUrl) throw new Error('RELAYER_URL_PROD must be set')
+
     const network = resolveNetworkConfig('prod', 'base')
     expect(network.relayerUrl).toBe(prodUrl)
     expect(network.rpcUrl).toBe('https://mainnet.base.org')
@@ -73,6 +76,10 @@ test('normalizeTokenSymbol is case insensitive for supported swap tokens', () =>
 })
 
 test('getEnvRelayerUrl reads prod and stage from env and keeps the local dev default', () => {
+    if (!process.env.RELAYER_URL_PROD || !process.env.RELAYER_URL_STAGE) {
+        throw new Error('RELAYER_URL_PROD and RELAYER_URL_STAGE must be set')
+    }
+
     expect(getEnvRelayerUrl('prod')).toBe(process.env.RELAYER_URL_PROD)
     expect(getEnvRelayerUrl('stage')).toBe(process.env.RELAYER_URL_STAGE)
     const previous = process.env.RELAYER_URL_DEV

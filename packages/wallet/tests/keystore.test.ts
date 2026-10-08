@@ -84,7 +84,7 @@ test('encryptBufferSecret round-trips binary device payloads', async () => {
         ExportedDeviceSchema,
         create(ExportedDeviceSchema, {
             pickleKey: 'pickle',
-            pickledAccount: new Uint8Array([1, 2, 3]),
+            pickledAccount: 'pickled-account',
             hybridGroupSessions: [],
         }),
     )
@@ -123,7 +123,7 @@ test('readSessionKeystoreFile accepts agent keystores with named channel maps', 
                 ExportedDeviceSchema,
                 create(ExportedDeviceSchema, {
                     pickleKey: 'pickle',
-                    pickledAccount: new Uint8Array([1, 2, 3]),
+                    pickledAccount: 'pickled-account',
                     hybridGroupSessions: [],
                 }),
             ),

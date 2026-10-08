@@ -66,7 +66,7 @@ function executeAccountSwap(
                 hash: computeSessionKeyHash(
                     '0x3333333333333333333333333333333333333333' as Address,
                 ),
-                expiry: '0x0',
+                expiry: '0x0' as const,
                 type: 'secp256k1' as const,
                 role: 'normal' as const,
                 publicKey: '0x' as const,

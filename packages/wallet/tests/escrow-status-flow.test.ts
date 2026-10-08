@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
+import type { EscrowStatus } from '@nubl/relayer-client'
 import { executeEscrowStatus } from '../src/lib/escrow-status'
-import { EscrowError } from '../src/lib/escrow-common'
+import { EscrowError, type ResolveEscrowChainNetworkContractsResult } from '../src/lib/escrow-common'
+import type { ChainName, EnvName } from '../src/lib/network-config'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
@@ -11,7 +13,7 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const VALID_ESCROW_ID = '0x' + '00'.repeat(32)
+const VALID_ESCROW_ID = `0x${'00'.repeat(32)}` as const
 
 test('executeEscrowStatus rejects invalid escrowId with INVALID_ARGUMENT', async () => {
     await expect(
@@ -37,16 +39,19 @@ test('executeEscrowStatus rejects invalid escrowId with INVALID_ARGUMENT', async
 })
 
 test('executeEscrowStatus returns status shape with mocked getEscrowStatus', async () => {
-    const getEscrowStatus = mock(async () => ({
-        status: 'active' as const,
+    const getEscrowStatus = mock(async (): Promise<EscrowStatus> => ({
+        status: 'created',
         escrow: {
-            buyer: '0x1111111111111111111111111111111111111111',
-            seller: '0x2222222222222222222222222222222222222222',
-            oracle: '0x3333333333333333333333333333333333333333',
-            amount: 1000000n,
-            deadline: 9999999999n,
-            orderId: '0x' + '01'.repeat(32),
-            settlementId: '0x' + '02'.repeat(32),
+            depositor: '0x1111111111111111111111111111111111111111',
+            recipient: '0x2222222222222222222222222222222222222222',
+            token: '0x4444444444444444444444444444444444444444',
+            escrowAmount: 1000000n,
+            refundAmount: 0n,
+            refundTimestamp: 9999999999n,
+            settler: '0x3333333333333333333333333333333333333333',
+            sender: '0x3333333333333333333333333333333333333333',
+            settlementId: `0x${'02'.repeat(32)}`,
+            senderChainId: 8453n,
         },
     }))
 
@@ -57,23 +62,26 @@ test('executeEscrowStatus returns status shape with mocked getEscrowStatus', asy
             chain: 'base',
         },
         {
-            resolveEscrowChainNetworkContracts: mock((env, chain) => {
-                const chainName = chain ?? 'base'
-                return {
-                    chain: chainName,
-                    network: {
-                        chainId: 8453,
-                        rpcUrl: 'https://mainnet.base.org',
-                        relayerUrl: 'https://relayer.example.com',
-                        env: 'prod',
-                    },
-                    contracts: {
-                        escrowAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-                        simpleSettlerAddress: '0xssssssssssssssssssssssssssssssssssssssss',
-                        usdcAddress: '0xuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu',
-                    },
-                }
-            }),
+            resolveEscrowChainNetworkContracts: mock(
+                (_env: EnvName, chain?: ChainName): ResolveEscrowChainNetworkContractsResult => {
+                    const chainName = chain ?? 'base'
+
+                    return {
+                        chain: chainName,
+                        network: {
+                            chainId: 8453,
+                            rpcUrl: 'https://mainnet.base.org',
+                            relayerUrl: 'https://relayer.example.com',
+                            env: 'prod',
+                        },
+                        contracts: {
+                            escrowAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                            simpleSettlerAddress: '0xssssssssssssssssssssssssssssssssssssssss',
+                            usdcAddress: '0xuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu',
+                        },
+                    }
+                },
+            ),
             getEscrowStatus,
         },
     )
@@ -81,7 +89,7 @@ test('executeEscrowStatus returns status shape with mocked getEscrowStatus', asy
     expect(result.type).toBe('escrow_status')
     expect(result.escrowId).toBe(VALID_ESCROW_ID)
     expect(result.chain).toBe('base')
-    expect(result.status).toBe('active')
+    expect(result.status).toBe('created')
     expect(result.escrow).toBeDefined()
     expect(result.escrowAddress).toBe('0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee')
     expect(getEscrowStatus).toHaveBeenCalledTimes(1)
@@ -94,7 +102,7 @@ test('executeEscrowStatus maps getEscrowStatus errors via toEscrowError', async 
             escrowId: VALID_ESCROW_ID,
         },
         {
-            resolveEscrowChainNetworkContracts: mock(() => ({
+            resolveEscrowChainNetworkContracts: mock((): ResolveEscrowChainNetworkContractsResult => ({
                 chain: 'base',
                 network: {
                     chainId: 8453,

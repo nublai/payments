@@ -199,7 +199,7 @@ describe('WalletBindingDO', () => {
 
             const before = listed()
 
-            await instance.alarm({ retryCount: 0, isRetry: false })
+            await instance.alarm({ scheduledTime: Date.now(), retryCount: 0, isRetry: false })
 
             return { before, after: listed() }
         })

@@ -221,6 +221,7 @@ export class SignerPoolDO extends DurableObject<Env> {
             | 'enqueue-receipt'
             | 'reconcile-receipt'
             | 'reconcile-pending'
+            | 'track-replacement'
         kind?: UpgradeRateKind | 'paid-upgrade'
         chainId?: number
         account?: string

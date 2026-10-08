@@ -10,7 +10,36 @@ import {
     resolveAccountCreatePassword,
     type AccountCreateOptions,
 } from '../src/lib/account-create'
-import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import type {
+    AnySessionKeystore,
+    createSessionKeystore,
+    LoginSessionKeystoreV2,
+    RelayerRootKeystoreV2,
+    RelayerSessionKeystoreV2,
+} from '../src/lib/keystore'
+
+type SessionKeystoreInputs = typeof createSessionKeystore extends {
+    (input: infer RelayerInput): Promise<RelayerSessionKeystoreV2>
+    (input: infer LoginInput): Promise<LoginSessionKeystoreV2>
+}
+    ? { relayer: RelayerInput; login: LoginInput }
+    : never
+
+function returnsRelayerSessionKeystore(
+    keystore: RelayerSessionKeystoreV2,
+): typeof createSessionKeystore {
+    function create(input: SessionKeystoreInputs['relayer']): Promise<RelayerSessionKeystoreV2>
+    function create(input: SessionKeystoreInputs['login']): Promise<LoginSessionKeystoreV2>
+    async function create(
+        input: SessionKeystoreInputs['relayer'] | SessionKeystoreInputs['login'],
+    ): Promise<AnySessionKeystore> {
+        if (input.kind === 'login') throw new Error('account create must not request a login session')
+
+        return keystore
+    }
+
+    return create
+}
 
 function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRootKeystoreV2 {
     return {
@@ -267,7 +296,7 @@ test('executeAccountCreate creates keystore and delegates', async () => {
             return generateCalls === 1 ? rootPrivateKey : sessionPrivateKey
         }),
         createRootKeystore: mock(async () => rootKeystore),
-        createSessionKeystore: mock(async () => sessionKeystore),
+        createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
         writeRootKeystoreFile,
         writeSessionKeystoreFile,
         delegateAccount,
@@ -378,7 +407,7 @@ test('executeAccountCreate maps delegation failure to typed error', async () => 
             {
                 generatePrivateKey: mock(() => rootPrivateKey),
                 createRootKeystore: mock(async () => rootKeystore),
-                createSessionKeystore: mock(async () => sessionKeystore),
+                createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
                 writeRootKeystoreFile: mock(async () => {}),
                 writeSessionKeystoreFile: mock(async () => {}),
                 delegateAccount: mock(async () => {
@@ -409,7 +438,7 @@ test('executeAccountCreate writes session keystore before delegation so resume r
             {
                 generatePrivateKey: mock(() => rootPrivateKey),
                 createRootKeystore: mock(async () => rootKeystore),
-                createSessionKeystore: mock(async () => sessionKeystore),
+                createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
                 writeRootKeystoreFile: mock(async () => {}),
                 writeSessionKeystoreFile,
                 delegateAccount: mock(async () => {
@@ -455,7 +484,7 @@ test('executeAccountCreate writes split root and session keystores', async () =>
         {
             generatePrivateKey: mock(() => rootPrivateKey),
             createRootKeystore: mock(async () => rootKeystore),
-            createSessionKeystore: mock(async () => sessionKeystore),
+            createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
             writeRootKeystoreFile,
             writeSessionKeystoreFile,
             delegateAccount,
@@ -523,7 +552,7 @@ test('executeAccountCreate surfaces session write errors before delegation', asy
             {
                 generatePrivateKey: mock(() => rootPrivateKey),
                 createRootKeystore: mock(async () => rootKeystore),
-                createSessionKeystore: mock(async () => sessionKeystore),
+                createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
                 writeRootKeystoreFile: mock(async () => {}),
                 writeSessionKeystoreFile: mock(async () => {
                     throw new Error('Session keystore already exists at /tmp/sessions/default.json')

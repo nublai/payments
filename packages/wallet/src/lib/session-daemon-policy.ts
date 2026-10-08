@@ -133,6 +133,10 @@ function usdcMovedByCall(input: {
         } catch {
             fail('Phrase-less session refused an escrow call whose pull amount could not be read')
         }
+        if (decoded.functionName !== 'escrow') {
+            fail('Phrase-less session refused an escrow call whose pull amount could not be read')
+        }
+
         let total = 0n
         const rows = decoded.args[0]
         for (const row of rows) {

@@ -129,7 +129,7 @@ describe('Parallel Execution Stress Test', () => {
                 success: true,
                 bundleId: result.id,
                 durationMs,
-                nonce: prepared.context.nonce,
+                nonce: prepared.typedData.message.nonce.toString(),
             }
         } catch (error) {
             const durationMs = performance.now() - startTime

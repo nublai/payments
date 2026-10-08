@@ -9,8 +9,9 @@ import {
     relayerActions,
     signPreparedCalls,
     type Call,
+    type PrepareCallsResponse,
 } from '@nubl/relayer-client'
-import { executeSignedCalls } from '../src/lib/execute-calls'
+import { executeSignedCalls, type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
 import { getEnvRelayerUrl } from '../src/lib/network-config'
 
 const EOA = '0x1111111111111111111111111111111111111111' as Address
@@ -27,6 +28,8 @@ const EXPIRY = NOW + 60n
 const GAS_CEILING = 1_000_000n
 
 type IntentCall = { to: Address; value: bigint; data: Hex }
+
+type SignTypedDataInput = Parameters<ExecuteSignedCallsDeps['signTypedData']>[0]
 
 function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount = 2000n) {
     const message = {
@@ -113,6 +116,14 @@ const expected = {
     expiry: EXPIRY,
     now: NOW,
     combinedGasCeiling: GAS_CEILING,
+}
+
+function firstQuote(prepared: ReturnType<typeof makePrepared>) {
+    const quote = prepared.context.quote.quotes[0]
+
+    if (!quote) throw new Error('prepared fixture has no quote')
+
+    return quote
 }
 
 function rehash(prepared: ReturnType<typeof makePrepared>) {
@@ -288,7 +299,11 @@ test('executeSignedCalls and signPreparedCalls refuse a substituted fee cap', as
 
 test('executeSignedCalls refuses a quote whose target differs from the signed calls', async () => {
     const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
-    prepared.context.quote.quotes[0].intent.calls[0].to = ATTACKER
+    const quotedCall = firstQuote(prepared).intent.calls[0]
+
+    if (!quotedCall) throw new Error('prepared fixture has no quoted call')
+
+    quotedCall.to = ATTACKER
     await expectWalletRefuses(prepared, /quote does not match/)
     await expectHelperRefuses(prepared, /quote does not match/)
 })
@@ -329,19 +344,19 @@ test('executeSignedCalls refuses expiry 0, a past expiry, and an expiry past the
     const calls = [{ to: TARGET, value: 1n, data: '0x1234' as Hex }]
     const unset = makePrepared(calls)
     unset.typedData.message.expiry = 0n
-    unset.context.quote.quotes[0].intent.expiry = '0'
+    firstQuote(unset).intent.expiry = '0'
     rehash(unset)
     await expectWalletRefuses(unset, /expiry is unset/, { expiry: 0n })
 
     const past = makePrepared(calls)
     past.typedData.message.expiry = NOW
-    past.context.quote.quotes[0].intent.expiry = NOW.toString()
+    firstQuote(past).intent.expiry = NOW.toString()
     rehash(past)
     await expectWalletRefuses(past, /expiry is in the past/, { expiry: NOW, now: NOW })
 
     const tooFar = makePrepared(calls)
     tooFar.typedData.message.expiry = NOW + 3601n
-    tooFar.context.quote.quotes[0].intent.expiry = (NOW + 3601n).toString()
+    firstQuote(tooFar).intent.expiry = (NOW + 3601n).toString()
     rehash(tooFar)
     await expectWalletRefuses(tooFar, /expiry exceeds the wallet ttl/, {
         expiry: NOW + 3601n,
@@ -353,14 +368,14 @@ test('executeSignedCalls refuses a combined gas above the wallet ceiling', async
     const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
     const huge = 2n ** 96n - 1n
     prepared.typedData.message.combinedGas = huge
-    prepared.context.quote.quotes[0].intent.combinedGas = huge.toString()
+    firstQuote(prepared).intent.combinedGas = huge.toString()
     rehash(prepared)
     await expectWalletRefuses(prepared, /combined gas exceeds the wallet ceiling/)
 })
 
 test('executeSignedCalls refuses a quote payment above the wallet fee cap', async () => {
     const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
-    prepared.context.quote.quotes[0].paymentAmount = '1001'
+    firstQuote(prepared).paymentAmount = '1001'
     await expectWalletRefuses(prepared, /payment amount exceeds fee cap/)
 })
 
@@ -370,7 +385,7 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
         ...prepared.typedData.domain,
         salt: `0x${'11'.repeat(32)}`,
     } as typeof prepared.typedData.domain
-    const signTypedData = mock(async () => SIG)
+    const signTypedData = mock(async (_input: SignTypedDataInput) => SIG)
     await executeSignedCalls(
         {
             prepareCalls: async () => prepared,
@@ -399,7 +414,7 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
     expect(signed.domain.salt).toBeUndefined()
     expect(signTypedData).toHaveBeenCalled()
 
-    const helperSign = mock(async () => SIG)
+    const helperSign = mock(async (_typedData: PrepareCallsResponse['typedData']) => SIG)
     await signPreparedCalls({
         prepared: prepared as never,
         expected,

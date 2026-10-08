@@ -5,11 +5,12 @@ import {
     parseSettlementId,
     resolveEscrowContracts,
     toEscrowError,
+    type ResolveEscrowChainNetworkContractsResult,
 } from '../src/lib/escrow-common'
 import { executeEscrowCreate } from '../src/lib/escrow-create'
 import { executeEscrowSettle } from '../src/lib/escrow-settle'
 
-const VALID_BYTES32 = ('0x' + '00'.repeat(32)) as const
+const VALID_BYTES32 = `0x${'00'.repeat(32)}` as const
 
 test('parseEscrowId accepts valid 32-byte hex', () => {
     expect(parseEscrowId(VALID_BYTES32)).toBe(VALID_BYTES32)
@@ -102,7 +103,7 @@ test('toEscrowError handles non-Error throwables', () => {
 
 test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
-    const mockChainNetworkContracts = {
+    const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {
             env: 'dev' as const,
@@ -139,7 +140,7 @@ test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async (
 
 test('executeEscrowCreate rejects malformed absolute deadline timestamps', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
-    const mockChainNetworkContracts = {
+    const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {
             env: 'dev' as const,
@@ -175,7 +176,7 @@ test('executeEscrowCreate rejects malformed absolute deadline timestamps', async
 
 test('executeEscrowCreate trims relative deadline input before validation', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
-    const mockChainNetworkContracts = {
+    const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {
             env: 'dev' as const,
@@ -214,7 +215,7 @@ test('resolveEscrowContracts refuses a zeroed non-local deployment', () => {
 
 test('executeEscrowSettle rejects mismatched oracle private key', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
-    const mockChainNetworkContracts = {
+    const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {
             env: 'dev' as const,

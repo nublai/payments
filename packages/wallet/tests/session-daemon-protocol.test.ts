@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { INTENT_TYPES } from '@nubl/relayer-client'
 import {
     parseDaemonRequest,
     parseDaemonResponse,
@@ -14,16 +15,26 @@ test('protocol BigInt serialization is scoped to typedData only', () => {
             sessionName: '$bigint:42',
             typedData: {
                 domain: {
-                    name: 'demo',
+                    name: '$bigint:not-a-number',
+                    version: '1',
+                    chainId: 8453,
+                    verifyingContract: '0x2222222222222222222222222222222222222222',
                 },
-                types: {
-                    EIP712Domain: [{ name: 'name', type: 'string' }],
-                    Intent: [{ name: 'nonce', type: 'uint256' }],
-                },
+                types: INTENT_TYPES,
                 primaryType: 'Intent',
                 message: {
+                    multichain: false,
+                    eoa: '0x1111111111111111111111111111111111111111',
+                    calls: [],
                     nonce: 42n,
-                    label: '$bigint:not-a-number',
+                    payer: '0x0000000000000000000000000000000000000000',
+                    paymentToken: '0x0000000000000000000000000000000000000000',
+                    paymentMaxAmount: 0n,
+                    combinedGas: 0n,
+                    encodedPreCalls: [],
+                    encodedFundTransfers: [],
+                    settler: '0x0000000000000000000000000000000000000000',
+                    expiry: 0n,
                 },
             },
         },
@@ -41,7 +52,7 @@ test('protocol BigInt serialization is scoped to typedData only', () => {
 
     expect(parsed.params.sessionName).toBe('$bigint:42')
     expect(parsed.params.typedData.message.nonce).toBe(42n)
-    expect(parsed.params.typedData.message.label).toBe('$bigint:not-a-number')
+    expect(parsed.params.typedData.domain.name).toBe('$bigint:not-a-number')
 })
 
 test('protocol parses success and error responses', () => {
@@ -52,7 +63,7 @@ test('protocol parses success and error responses', () => {
         '{"id":"b","error":{"code":"SESSION_NOT_FOUND","message":"missing"}}',
     )
     expect('error' in err).toBe(true)
-    if ('error' in err) {
+    if (err.error !== undefined) {
         expect(err.error.code).toBe('SESSION_NOT_FOUND')
     }
 })
