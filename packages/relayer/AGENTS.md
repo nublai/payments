@@ -24,8 +24,8 @@ bun run test:run               # Single test run
 bun run test -- <pattern>      # Run specific test file
 
 # Quality
-bun run lint                   # oxlint with warnings as errors
-bun run lint:fix               # Auto-fix lint issues
+bun run --cwd ../.. lint       # Root oxlint (see root AGENTS.md)
+bun run typecheck              # tsc --noEmit
 bun run format                 # Prettier formatting
 
 # Build & Deploy

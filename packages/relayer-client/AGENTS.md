@@ -41,8 +41,8 @@ bun run dev                 # Start Anvil + relayer (keep running for manual tes
 ./scripts/dev.sh --help     # Show all options
 
 # Quality
-bun run lint                # oxlint with warnings as errors
-bun run lint:fix            # Auto-fix lint issues
+bun run --cwd ../.. lint    # Root oxlint (see root AGENTS.md)
+bun run typecheck           # tsc --noEmit -p tsconfig.json
 bun run format              # Prettier formatting
 ```
 

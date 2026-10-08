@@ -24,15 +24,14 @@
         "dev:wrangler": "wrangler dev",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "lint": "oxlint --deny-warnings",
-        "lint:fix": "oxlint --fix",
         "logs:prod": "wrangler tail --env prod",
         "logs:stage": "wrangler tail --env stage",
         "telemetry:summary": "bun run scripts/telemetry-summary.ts",
         "telemetry:summary:stage": "wrangler tail --env stage --format json | bun run scripts/telemetry-summary.ts",
         "telemetry:summary:prod": "wrangler tail --env prod --format json | bun run scripts/telemetry-summary.ts",
         "test": "vitest",
-        "test:run": "vitest run && bun ./test/integration/paid-upgrade-anvil.ts"
+        "test:run": "vitest run && bun ./test/integration/paid-upgrade-anvil.ts",
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@hono/zod-validator": "0.7.6",
@@ -43,7 +42,6 @@
         "@slicekit/erc8128": "^0.1.0",
         "hono": "^4.11.7",
         "jose": "^6.2.12",
-        "oxlint": "^1.41.0",
         "pino": "^10.3.1",
         "viem": "2.45.1",
         "zod": "^4.3.6"
