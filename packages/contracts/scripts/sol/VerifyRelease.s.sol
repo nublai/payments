@@ -30,6 +30,7 @@ contract VerifyRelease is ReleaseRuntime {
         if (proxy != address(0)) {
             require(account != address(0), "AccountProxy has no verified release Account");
             require(LibEIP7702.isEIP7702Proxy(proxy), "AccountProxy is not an EIP7702Proxy");
+            require(LibEIP7702.proxyAdmin(proxy) == address(0), "AccountProxy has an admin");
             address implementation = LibEIP7702.implementationOf(proxy);
             if (implementation != account) {
                 revert(
