@@ -181,6 +181,54 @@ expect_env_chain() {
 stage_is_base_sepolia() { expect_env_chain stage 84532; }
 prod_is_base() { expect_env_chain prod 8453; }
 
+# Phase 5 relayer calls are owner-only and are sent from the deployer, so a
+# non-local deploy with a mnemonic must be refused. Local still runs Phase 5.
+relayer_mnemonic_refused_outside_local() {
+    local mnemonic="legal winner thank year wave sausage worth useful legal winner thank yellow"
+    expect_refused "setGasWallet" \
+        --chain 8453 --rpc http://127.0.0.1:1 --dry-run --private-key "$PK" \
+        --owner "$OWNER" --relayer-mnemonic "$mnemonic" || return 1
+    STAGE_RELAYER_MNEMONIC="$mnemonic" expect_refused "setGasWallet" \
+        stage --rpc http://127.0.0.1:1 --dry-run --private-key "$PK" --owner "$OWNER" || return 1
+    setup_sandbox
+    run_deploy --chain 31337 --rpc http://127.0.0.1:1 --dry-run --relayer-mnemonic "$mnemonic"
+    if [[ "$CODE" -ne 0 ]] || ! forge_called; then
+        echo "local deploy with a relayer mnemonic did not reach forge script (exit $CODE)" >&2
+        cat "$TMP/out" >&2
+        rm -rf "$TMP"
+        return 1
+    fi
+    rm -rf "$TMP"
+}
+
+# `--opt=value` is not a supported form; the error must name the option only.
+equals_form_secret_not_printed() {
+    local arg
+    for arg in "--private-key=$PK" "--password=$PASSWORD"; do
+        setup_sandbox
+        run_deploy --chain 8453 --rpc http://127.0.0.1:1 --dry-run --skip-relayer \
+            --owner "$OWNER" "$arg"
+        if [[ "$CODE" -eq 0 ]]; then
+            echo "deploy.sh accepted ${arg%%=*}=..." >&2
+            rm -rf "$TMP"
+            return 1
+        fi
+        if grep -qF -- "${arg#*=}" "$TMP/out"; then
+            echo "deploy.sh printed the ${arg%%=*} value:" >&2
+            grep -F -- "${arg#*=}" "$TMP/out" >&2
+            rm -rf "$TMP"
+            return 1
+        fi
+        if ! grep -qF -- "Unknown option: ${arg%%=*}" "$TMP/out"; then
+            echo "deploy.sh did not name the unknown option ${arg%%=*} (exit $CODE)" >&2
+            cat "$TMP/out" >&2
+            rm -rf "$TMP"
+            return 1
+        fi
+        rm -rf "$TMP"
+    done
+}
+
 local_needs_no_owner() {
     setup_sandbox
     run_deploy --chain 31337 --rpc http://127.0.0.1:1 --dry-run --skip-relayer
@@ -207,6 +255,8 @@ if owner_equal_to_sender_refused; then pass "owner equal to deployer is refused"
 if zero_lz_signer_refused; then pass "zero LayerZero signer is refused"; else fail "zero LayerZero signer is refused"; fi
 if stage_is_base_sepolia; then pass "stage deploys to Base Sepolia 84532"; else fail "stage deploys to Base Sepolia 84532"; fi
 if prod_is_base; then pass "prod deploys to Base 8453"; else fail "prod deploys to Base 8453"; fi
+if relayer_mnemonic_refused_outside_local; then pass "relayer mnemonic is refused outside local"; else fail "relayer mnemonic is refused outside local"; fi
+if equals_form_secret_not_printed; then pass "--opt=value secrets are not printed"; else fail "--opt=value secrets are not printed"; fi
 if local_needs_no_owner; then pass "local deploy needs no owner"; else fail "local deploy needs no owner"; fi
 
 if [[ "$failures" -ne 0 ]]; then
