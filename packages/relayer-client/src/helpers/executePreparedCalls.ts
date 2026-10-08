@@ -32,11 +32,14 @@ const nonceAbi = [
 
 function localCombinedGasCeiling(calls: readonly { data?: Hex }[]): bigint {
     let sum = 0n
+
     for (const call of calls) {
         const bytes = call.data && call.data.length > 2 ? BigInt((call.data.length - 2) / 2) : 0n
         sum += 21_000n + 16n * bytes + 150_000n
     }
+
     if (sum === 0n) sum = 150_000n
+
     return sum * 8n + 500_000n
 }
 
@@ -74,11 +77,13 @@ export interface ExecutePreparedCallsResult {
 
 function readOrchestratorAddress(chainId: number): Address {
     const raw = process.env[`ORCHESTRATOR_${chainId}`]?.trim()
+
     if (!raw) {
         throw new PreparedCallsBindingError(
             `Refusing to sign prepared calls: set ORCHESTRATOR_${chainId} or pass verifyingContract`,
         )
     }
+
     return getAddress(raw)
 }
 
@@ -89,11 +94,13 @@ export async function executePreparedCalls(
     params: ExecutePreparedCallsParams,
 ): Promise<ExecutePreparedCallsResult> {
     const chainId = params.chainId ?? params.client.chain?.id ?? params.client.relayerConfig.chainId
+
     if (chainId === undefined) {
         throw new PreparedCallsBindingError(
             'Refusing to sign prepared calls: chainId is required to bind the typed data',
         )
     }
+
     const nonce =
         params.nonce ??
         (await params.client.readContract({
@@ -102,29 +109,37 @@ export async function executePreparedCalls(
             functionName: 'getNonce',
             args: [params.seqKey ?? 0n],
         }))
+
     const now = BigInt(Math.floor(Date.now() / 1000))
     const expiry = params.expiry ?? now + INTENT_EXPIRY_TTL_SECONDS
     const localChain = chainId === 31337 || chainId === 41337
+
     if (!localChain && params.paymentMaxAmount === undefined) {
         throw new PreparedCallsBindingError(
             'Refusing to sign prepared calls: paymentMaxAmount is required off local chains',
         )
     }
+
     const zeroFee = localChain
     refuseLonePayerOrToken(params.payer, params.paymentToken, params.paymentMaxAmount)
+
     if (params.paymentMaxAmount !== undefined) {
         requirePayerAndToken(params.payer, params.paymentToken)
     }
+
     if (!localChain && params.payer !== undefined && params.paymentToken !== undefined) {
         assertOffLocalFeeToken(chainId, params.payer, params.paymentToken)
     }
+
     const policyCeiling = localChain ? 0n : PAID_FEE_CAP
+
     const ceiling =
         params.paymentMaxAmount === undefined
             ? policyCeiling
             : localChain
               ? params.paymentMaxAmount
               : clampPaymentCeiling(params.paymentMaxAmount, policyCeiling)
+
     const prepare = (paymentMaxAmount: bigint) =>
         params.client.prepareCalls({
             from: params.from,
@@ -142,19 +157,24 @@ export async function executePreparedCalls(
             paymentToken: params.paymentToken,
             paymentMaxAmount,
         })
+
     let prepared = await prepare(ceiling)
+
     let signedCap = resolveSignedFeeCap({
         paymentAmount: firstQuotePaymentAmount(prepared),
         ceiling,
         zeroFee,
     })
+
     if (signedCap !== ceiling) {
         prepared = await prepare(signedCap)
+
         const again = resolveSignedFeeCap({
             paymentAmount: firstQuotePaymentAmount(prepared),
             ceiling,
             zeroFee,
         })
+
         if (again !== signedCap) {
             throw new PreparedCallsBindingError(
                 'Refusing to sign prepared calls: fee cap does not match the quote',
@@ -163,6 +183,7 @@ export async function executePreparedCalls(
     }
 
     const verifyingContract = params.verifyingContract ?? readOrchestratorAddress(chainId)
+
     const signed = await signPreparedCalls({
         prepared,
         signer: params.signer,

@@ -7,7 +7,9 @@ config({ path: resolve(__dirname, '../contracts/deployments/envs/local/.env') })
 
 // Set defaults for crosschain mode (can be overridden by env vars)
 process.env.TEST_CHAIN_ID ??= '31337'
+
 process.env.RPC_31337 ??= 'http://127.0.0.1:8545'
+
 process.env.RPC_41337 ??= 'http://127.0.0.1:8546'
 
 export default defineConfig({

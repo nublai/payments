@@ -62,6 +62,7 @@ export async function getCallsStatus(
     try {
         const transport = createRelayerTransport(client)
         const chainId = params.chainId ?? client.relayerConfig.chainId ?? client.chain?.id
+
         const rpcParams =
             chainId !== undefined
                 ? {
@@ -69,6 +70,7 @@ export async function getCallsStatus(
                       chain_id: `0x${chainId.toString(16)}`,
                   }
                 : params.id
+
         const result = await transport.request<RpcGetCallsStatusResult>(
             'wallet_getCallsStatus',
             rpcParams,

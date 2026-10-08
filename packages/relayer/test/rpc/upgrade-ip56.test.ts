@@ -23,8 +23,11 @@ import {
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
 
 const CHAIN_ID = 8453
+
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+
 const NOW = 1_700_000_400
+
 const MNEMONIC = 'test test test test test test test test test test test junk'
 
 interface RateBody {
@@ -57,8 +60,11 @@ function slash56Key(kind: 'prepare' | 'upgrade', ip: string): string | undefined
 function hostInSlash56(index: number): string {
     const hextet = index.toString(16).padStart(4, '0')
     const variant = index % 3
+
     if (variant === 0) return `2001:db8:ab00:${hextet}::1`
+
     if (variant === 1) return `2001:DB8:AB00:${hextet}::1`
+
     return `2001:0db8:ab00:${hextet}:0000:0000:0000:0001`
 }
 
@@ -74,7 +80,9 @@ function providerForRequest(): AuthProvider {
             const body = (await request.json()) as {
                 params?: Array<{ context?: { address?: string } }>
             }
+
             const userId = body.params?.[0]?.context?.address
+
             return { ok: true, userId }
         },
     }
@@ -84,6 +92,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
         const bodyText = typeof init?.body === 'string' ? init.body : ''
         let parsed: RateBody = {}
+
         if (bodyText) {
             try {
                 parsed = JSON.parse(bodyText) as RateBody
@@ -94,6 +103,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
 
         if (parsed.type === 'create-account') {
             capture.push(parsed)
+
             return {
                 ok: false,
                 json: async () => ({ error: 'execution reverted' }),
@@ -107,18 +117,22 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity,
         })
+
         if (parsed.action === 'release') {
             releaseRateLimit(
                 store,
                 buckets,
                 typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW,
             )
+
             return {
                 ok: true,
                 json: async () => ({ allowed: true }),
             } as unknown as Response
         }
+
         const allowed = consumeRateLimit(store, buckets, NOW).allowed
+
         return {
             ok: true,
             json: async () => ({ allowed, reservedAt: NOW }),
@@ -150,12 +164,15 @@ function createApp() {
     app.use('*', authMiddleware({ providers: [providerForRequest()] }))
     app.post('/', async (c) => {
         const body = await c.req.json()
+
         const response = await dispatch(body, createMethods(c.env), {
             env: c.env,
             request: c.req.raw,
         })
+
         return c.json(response)
     })
+
     return app
 }
 
@@ -178,6 +195,7 @@ describe('upgrade IPv6 /56 buckets', () => {
         const store = new Map<string, number>()
         const env = createEnv(capture, store)
         const app = createApp()
+
         const perIdentity = upgradeRateBuckets({
             kind: 'upgrade',
             chainId: CHAIN_ID,
@@ -187,6 +205,7 @@ describe('upgrade IPv6 /56 buckets', () => {
 
         for (let prefix = 0; prefix < 20; prefix++) {
             const account = accountAt(prefix)
+
             const auth = await account.sign({
                 hash: hashAuthorization({
                     contractAddress: ACCOUNT_PROXY,
@@ -194,6 +213,7 @@ describe('upgrade IPv6 /56 buckets', () => {
                     nonce: 0,
                 }),
             })
+
             for (let hit = 0; hit < perIdentity; hit++) {
                 await app.request(
                     'http://localhost/',
@@ -211,6 +231,7 @@ describe('upgrade IPv6 /56 buckets', () => {
         }
 
         const overflowAccount = accountAt(20)
+
         const overflowAuth = await overflowAccount.sign({
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
@@ -218,7 +239,9 @@ describe('upgrade IPv6 /56 buckets', () => {
                 nonce: 0,
             }),
         })
+
         const beforeOverflow = capture.length
+
         const overflowResponse = await app.request(
             'http://localhost/',
             {
@@ -231,9 +254,11 @@ describe('upgrade IPv6 /56 buckets', () => {
             },
             env,
         )
+
         const overflow = (await overflowResponse.json()) as { error?: { code?: number } }
 
         const otherAccount = accountAt(21)
+
         const otherAuth = await otherAccount.sign({
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
@@ -241,6 +266,7 @@ describe('upgrade IPv6 /56 buckets', () => {
                 nonce: 0,
             }),
         })
+
         const otherResponse = await app.request(
             'http://localhost/',
             {
@@ -253,6 +279,7 @@ describe('upgrade IPv6 /56 buckets', () => {
             },
             env,
         )
+
         const other = (await otherResponse.json()) as { error?: { code?: number } }
 
         expect({
@@ -278,6 +305,7 @@ describe('upgrade IPv6 /56 buckets', () => {
             '2001:db8:ab00:7f:0:0:0:abcd',
             '2001:0DB8:ab00:007f:0000:0000:0000:ABCD',
         ]
+
         const keys = forms.map((form) => slash56Key('upgrade', headerIp(form)))
         expect(keys).toEqual([
             'upgrade:ip56:8453:2001:db8:ab00::',
@@ -295,6 +323,7 @@ describe('upgrade IPv6 /56 buckets', () => {
                 ip: headerIp(form),
             })[1].key
         })
+
         expect(slash64[0]).toBe(slash64[1])
         expect(slash64[0]).not.toBe(slash64[3])
 
@@ -304,7 +333,9 @@ describe('upgrade IPv6 /56 buckets', () => {
             account: '0xabc',
             ip: headerIp(forms[0]),
         }).find((bucket) => bucket.key.includes(':ip56:'))!.limit
+
         const store = new Map<string, number>()
+
         for (let hit = 0; hit < limit; hit++) {
             const buckets = upgradeRateBuckets({
                 kind: 'upgrade',
@@ -312,14 +343,17 @@ describe('upgrade IPv6 /56 buckets', () => {
                 account: `0x${(hit + 1).toString(16).padStart(40, '0')}`,
                 ip: headerIp(forms[hit % forms.length]),
             })
+
             expect(consumeRateLimit(store, buckets, NOW).allowed).toBe(true)
         }
+
         const overflow = upgradeRateBuckets({
             kind: 'upgrade',
             chainId: CHAIN_ID,
             account: '0x00000000000000000000000000000000000000aa',
             ip: headerIp('2001:0db8:ab00:00aa:0000:0000:0000:0001'),
         })
+
         expect(consumeRateLimit(store, overflow, NOW).allowed).toBe(false)
         expect(slash56Key('upgrade', headerIp('2001:0db8:ab00:00aa::1'))).toBe(keys[0])
 
@@ -329,6 +363,7 @@ describe('upgrade IPv6 /56 buckets', () => {
             account: '0xabc',
             ip: headerIp(forms[0]),
         }).find((bucket) => bucket.key.includes(':ip56:'))
+
         expect(prepare?.limit).toBe(400)
         expect(prepare?.key).toBe('prepare:ip56:8453:2001:db8:ab00::')
 
@@ -338,6 +373,7 @@ describe('upgrade IPv6 /56 buckets', () => {
             account: '0xabc',
             ip: headerIp('::ffff:203.0.113.9'),
         })
+
         expect(v4.some((bucket) => bucket.key.includes(':ip56:'))).toBe(false)
         expect(v4).toHaveLength(3)
     })

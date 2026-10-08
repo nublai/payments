@@ -55,8 +55,11 @@ const createMockCtx = (): RpcContext => ({
 
 // Test data
 const validAddress = '0x1234567890123456789012345678901234567890'
+
 const validDigest = '0x' + '1'.repeat(64)
+
 const validSignature = '0x' + 'ab'.repeat(65) // 65 bytes
+
 const validChainId = '0x2105' // 8453 in hex
 
 describe('wallet_verifySignature', () => {
@@ -68,6 +71,7 @@ describe('wallet_verifySignature', () => {
         it('should throw INVALID_PARAMS when address is missing', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 { digest: validDigest, signature: validSignature, chain_id: validChainId },
             ]
@@ -83,6 +87,7 @@ describe('wallet_verifySignature', () => {
         it('should throw INVALID_PARAMS when digest is missing', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 { address: validAddress, signature: validSignature, chain_id: validChainId },
             ]
@@ -111,6 +116,7 @@ describe('wallet_verifySignature', () => {
         it('should throw INVALID_PARAMS when chain_id is missing', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 { address: validAddress, digest: validDigest, signature: validSignature },
             ]
@@ -126,6 +132,7 @@ describe('wallet_verifySignature', () => {
         it('should throw INVALID_PARAMS for invalid address format', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 {
                     address: '0xinvalid',
@@ -146,6 +153,7 @@ describe('wallet_verifySignature', () => {
         it('should throw INVALID_PARAMS for invalid digest format', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 {
                     address: validAddress,
@@ -166,6 +174,7 @@ describe('wallet_verifySignature', () => {
         it('should throw INVALID_PARAMS for chain_id mismatch', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 {
                     address: validAddress,
@@ -187,6 +196,7 @@ describe('wallet_verifySignature', () => {
         it('should return valid=false when account has no code (not delegated)', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 {
                     address: validAddress,
@@ -195,6 +205,7 @@ describe('wallet_verifySignature', () => {
                     chain_id: validChainId,
                 },
             ]
+
             mockGetCode.mockResolvedValue('0x')
 
             // #when
@@ -207,6 +218,7 @@ describe('wallet_verifySignature', () => {
         it('should return valid=false when account code is undefined', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 {
                     address: validAddress,
@@ -215,6 +227,7 @@ describe('wallet_verifySignature', () => {
                     chain_id: validChainId,
                 },
             ]
+
             mockGetCode.mockResolvedValue(undefined)
 
             // #when
@@ -229,6 +242,7 @@ describe('wallet_verifySignature', () => {
         it('should return valid=false when getKeys fails', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 {
                     address: validAddress,
@@ -237,6 +251,7 @@ describe('wallet_verifySignature', () => {
                     chain_id: validChainId,
                 },
             ]
+
             mockGetCode.mockResolvedValue('0xef0100abcd') // Has delegation code
             mockReadContract.mockRejectedValue(new Error('Contract call failed'))
 
@@ -250,6 +265,7 @@ describe('wallet_verifySignature', () => {
         it('should return valid=false when no superAdmin keys exist', async () => {
             // #given
             const ctx = createMockCtx()
+
             const params = [
                 {
                     address: validAddress,
@@ -258,6 +274,7 @@ describe('wallet_verifySignature', () => {
                     chain_id: validChainId,
                 },
             ]
+
             mockGetCode.mockResolvedValue('0xef0100abcd')
             // getKeys returns keys, none are superAdmin
             mockReadContract.mockResolvedValue([
@@ -278,6 +295,7 @@ describe('wallet_verifySignature', () => {
             // #given
             const ctx = createMockCtx()
             const keyHash = '0x' + 'aa'.repeat(32)
+
             const params = [
                 {
                     address: validAddress,
@@ -310,6 +328,7 @@ describe('wallet_verifySignature', () => {
             // #given
             const ctx = createMockCtx()
             const keyHash = '0x' + 'aa'.repeat(32)
+
             const params = [
                 {
                     address: validAddress,
@@ -340,6 +359,7 @@ describe('wallet_verifySignature', () => {
             const ctx = createMockCtx()
             const keyHash1 = '0x' + 'aa'.repeat(32)
             const keyHash2 = '0x' + 'bb'.repeat(32)
+
             const params = [
                 {
                     address: validAddress,
@@ -374,6 +394,7 @@ describe('wallet_verifySignature', () => {
             // #given
             const ctx = createMockCtx()
             const keyHash = '0x' + 'aa'.repeat(32)
+
             const params = [
                 {
                     address: validAddress,
@@ -404,6 +425,7 @@ describe('wallet_verifySignature', () => {
             // #given
             const ctx = createMockCtx()
             const keyHash = '0x' + 'aa'.repeat(32)
+
             const params = [
                 {
                     address: validAddress,
@@ -431,6 +453,7 @@ describe('wallet_verifySignature', () => {
             // #given
             const ctx = createMockCtx()
             const keyHash = '0x' + 'aa'.repeat(32)
+
             const params = {
                 address: validAddress,
                 digest: validDigest,

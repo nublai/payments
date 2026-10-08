@@ -75,6 +75,7 @@ function getDefaultDeps(): AccountNonceDeps {
                 chain: getChainConfig(chain).viemChain,
                 transport: http(rpcUrl),
             })
+
             return readAccountNonce(client, account, seqKey)
         },
     }
@@ -95,6 +96,7 @@ export async function executeAccountNonce(
             name: options.name,
             keystorePath: options.keystorePath,
         })
+
         const nonce = await deps.readNonce({
             chain,
             rpcUrl: network.rpcUrl,
@@ -126,6 +128,7 @@ function toAccountNonceError(error: unknown): AccountNonceError {
     }
 
     const message = error instanceof Error ? error.message : String(error)
+
     if (message.includes('Unsupported chain')) {
         return new AccountNonceError('UNSUPPORTED_CHAIN', message, { cause: error })
     }

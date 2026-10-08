@@ -3,12 +3,15 @@ import { readFileSync } from 'node:fs'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
+
 import { JsonRpcClientError, type GetKeysResponse } from '@nubl/relayer-client'
 import { encodeFunctionData, zeroAddress, type Address, type Hex } from 'viem'
 import { hashRelayOrder } from '../src/lib/relay-order'
@@ -18,6 +21,7 @@ import {
 } from '../src/lib/account-swap'
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const EMPTY_ROUTER_CALL: Hex = encodeFunctionData({
     abi: [
         {
@@ -72,6 +76,7 @@ function executeAccountSwap(
                 publicKey: '0x' as const,
                 permissions: relaySessionCallPermissions(8453),
             }
+
             return { '0x2105': [key], '0x89': [key], '0x7a69': [key] }
         },
         // Confirmation now simulates, which needs a nonce before the user answers.
@@ -79,6 +84,7 @@ function executeAccountSwap(
         ...deps,
     })
 }
+
 import { LoginProfileError } from '../src/lib/keystore'
 import { PromptCancelledError } from '../src/lib/password-readline'
 import { RelayLinkError } from '../src/lib/relay-link'
@@ -87,6 +93,7 @@ import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
+
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
 
 function makeKeystoreBundle() {
@@ -184,6 +191,7 @@ const bridgeOrderTemplate = JSON.parse(
 
 function depositNative(depositor: Address, id: Hex): Hex {
     const padded = depositor.toLowerCase().slice(2).padStart(64, '0')
+
     return `0x49290c1c${padded}${id.slice(2).padStart(64, '0')}` as Hex
 }
 
@@ -195,6 +203,7 @@ function makeEthBridgeQuote(input?: { recipient?: Address; omitRequestId?: boole
     const orderId = hashRelayOrder(order)
     const value = 10n ** 17n
     const requestId = input?.omitRequestId ? undefined : 'relay-request-1'
+
     return {
         requestId,
         steps: [
@@ -442,6 +451,7 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
         status: 'success',
         txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
     }))
+
     const recipient = '0x2222222222222222222222222222222222222222' as Address
     const getQuote = mock(async () => makeEthBridgeQuote({ recipient })) as unknown as any
 
@@ -1052,8 +1062,10 @@ test('executeAccountSwap rejects relay quotes with mismatched source-chain calls
 
 test('executeAccountSwap stops after repeated quote drift during confirmation', async () => {
     const confirmQuote = mock(async () => true)
+
     const getQuote = mock(async () => {
         const callCount = getQuote.mock.calls.length
+
         return makeQuote({
             details: {
                 currencyOut: {
@@ -1067,12 +1079,14 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
             },
         })
     })
+
     const nowValues = [0, 31_000, 32_000, 63_500, 64_000, 95_500]
     let nowIndex = 0
     const originalNow = Date.now
     Date.now = () => nowValues[Math.min(nowIndex++, nowValues.length - 1)] ?? 95_500
 
     let caught: unknown
+
     try {
         await executeAccountSwap(
             {
@@ -1114,6 +1128,7 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
 
 test('executeAccountSwap does not force reconfirmation when refreshed quotes are too sparse to compare', async () => {
     const confirmQuote = mock(async () => true)
+
     const getQuote = mock(async () =>
         makeQuote({
             details: {
@@ -1126,6 +1141,7 @@ test('executeAccountSwap does not force reconfirmation when refreshed quotes are
             },
         }),
     )
+
     const nowValues = [0, 31_000]
     let nowIndex = 0
     const originalNow = Date.now

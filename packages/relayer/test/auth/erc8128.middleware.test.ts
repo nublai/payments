@@ -107,6 +107,7 @@ function createAppWithBodyParsing(verifyResult: { ok: boolean; code?: string }) 
     )
     app.post('/', async (c) => {
         const body = await c.req.json()
+
         return c.json({ ok: true, method: body.method })
     })
 

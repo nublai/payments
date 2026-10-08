@@ -7,6 +7,7 @@ export async function readPidFromFile(path: string): Promise<number | undefined>
     try {
         const raw = (await readFile(path, 'utf8')).trim()
         const pid = Number.parseInt(raw, 10)
+
         return Number.isFinite(pid) && pid > 0 ? pid : undefined
     } catch {
         return undefined
@@ -21,18 +22,22 @@ export type SessionDaemonPaths = {
 
 function resolveDefaultStateDir(): string {
     const customRuntimeDir = process.env.XDG_RUNTIME_DIR
+
     if (process.platform === 'linux' && customRuntimeDir) {
         return resolve(customRuntimeDir, 'agentic-payments-tw')
     }
 
     const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'unknown'
+
     return resolve(tmpdir(), `agentic-payments-tw-${uid}`)
 }
 
 export function resolveSessionDaemonPaths(): SessionDaemonPaths {
     const envSocketPath = process.env.TW_AGENT_SOCK
+
     if (envSocketPath) {
         const socketPath = resolve(envSocketPath)
+
         return {
             stateDir: dirname(socketPath),
             socketPath,
@@ -41,6 +46,7 @@ export function resolveSessionDaemonPaths(): SessionDaemonPaths {
     }
 
     const stateDir = resolveDefaultStateDir()
+
     return {
         stateDir,
         socketPath: join(stateDir, 'session-daemon.sock'),

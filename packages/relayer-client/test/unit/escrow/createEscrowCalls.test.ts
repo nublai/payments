@@ -63,6 +63,7 @@ describe('createEscrowCalls', () => {
                 senderChainId: bigint
             }[],
         ]
+
         expect(structs).toHaveLength(1)
 
         const s = structs[0]

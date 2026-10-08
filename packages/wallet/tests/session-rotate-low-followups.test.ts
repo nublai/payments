@@ -17,12 +17,18 @@ import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
+
 const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+
 const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const rootPrivateKey =
     '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+
 const oldAddress = privateKeyToAccount(oldKey).address
+
 const newAddress = privateKeyToAccount(newKey).address
+
 const password = 'pw'
 
 const network = {
@@ -60,12 +66,14 @@ async function stageDir(prefix: string) {
     const root = await mkdtemp(join(tmpdir(), prefix))
     const sessions = join(root, 'sessions')
     await mkdir(sessions, { recursive: true })
+
     return { root, sessions, keystorePath: join(root, 'alice.json') }
 }
 
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
+
     try {
         return await fn()
     } finally {
@@ -83,13 +91,16 @@ async function writeRealSession(path: string, name: string, key: Hex) {
         name,
         checkpoint: 'authorized',
     })
+
     await writeFile(path, `${JSON.stringify(doc, null, 2)}\n`)
+
     return doc
 }
 
 function quotePreparer(captured: PreparedInput[]) {
     return mock(async (input: PreparedInput) => {
         captured.push(input)
+
         return matchingPreparedCalls({
             from: input.from,
             calls: input.calls,
@@ -181,6 +192,7 @@ test('a restored marker is refused when freshness no longer matches', async () =
 
         const prepares: PreparedInput[] = []
         let caught: unknown
+
         try {
             await executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password, resume: true },
@@ -199,6 +211,7 @@ test('a restored marker is refused when freshness no longer matches', async () =
         } catch (error) {
             caught = error
         }
+
         expect(prepares).toHaveLength(0)
         expect(caught).toMatchObject({ code: 'ROTATION_MARKER_MISMATCH' })
         expect(await readdir(sessions)).toContain('.rotation.json')
@@ -230,9 +243,11 @@ test('abandon refuses an unverified marker and leaves the file', async () => {
                 2,
             )}\n`,
         )
+
         const getKeys = mock(async () => ({
             '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
         }))
+
         await expect(
             executeSessionRotate(
                 {
@@ -272,6 +287,7 @@ test('sealRotationMarker rejects argon2 parameters above the writer cap', async 
             salt: Buffer.from('0123456789abcdef').toString('base64'),
         },
     }
+
     await expect(sealRotationMarker(payload, password)).rejects.toThrow(/KDF parameters/)
 })
 
@@ -279,6 +295,7 @@ test('the marker MAC is not the keystore argon2 digest of the legacy body', asyn
     const payload = pendingPayload()
     const sealed = await sealRotationMarker(payload, password)
     const key = await deriveKeystoreKey(password, sealed.macKdf)
+
     try {
         const legacy = createHmac('sha256', key).update(legacyMarkerMacBody(payload)).digest('hex')
         expect(sealed.mac).not.toBe(legacy)

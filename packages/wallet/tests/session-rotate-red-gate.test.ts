@@ -17,18 +17,31 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import type { Call } from '@nubl/relayer-client'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
+
 const oldKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+
 const newKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+
 const attackerKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const siblingKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+
 const rootPrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+
 const oldAddress = privateKeyToAccount(oldKey).address
+
 const newAddress = privateKeyToAccount(newKey).address
+
 const attackerAddress = privateKeyToAccount(attackerKey).address
+
 const siblingAddress = privateKeyToAccount(siblingKey).address
+
 const wrongAddress = '0x5555555555555555555555555555555555555555' as Address
+
 const approveSelector = '0x095ea7b3' as Hex
+
 const transferSelector = '0xa9059cbb' as Hex
+
 const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 
 const keysByAddress: Record<string, Hex> = {
@@ -75,9 +88,11 @@ function sessionDocument(name: string, session: Address, delegated: Address = ac
 function decryptMatching() {
     return mock(async (keystore: { addresses: { session: string } }) => {
         const key = keysByAddress[getAddress(keystore.addresses.session).toLowerCase()]
+
         if (!key) {
             return { sessionPrivateKey: oldKey }
         }
+
         return { sessionPrivateKey: key }
     })
 }
@@ -86,6 +101,7 @@ async function stageDir(prefix: string) {
     const root = await mkdtemp(join(tmpdir(), prefix))
     const sessions = join(root, 'sessions')
     await mkdir(sessions, { recursive: true })
+
     return { root, sessions, keystorePath: join(root, 'alice.json') }
 }
 
@@ -95,10 +111,12 @@ async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     // Published JSON is zero. Stage rotations resolve the orchestrator from
     // ORCHESTRATOR_<chainId> for this test only.
     const restoreStage = installFormerStageDeployments()
+
     try {
         return await fn()
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -131,6 +149,7 @@ type PreparedInput = {
 function quotePreparer(captured: PreparedInput[]) {
     return mock(async (input: PreparedInput) => {
         captured.push(input)
+
         return matchingPreparedCalls({
             from: input.from,
             calls: input.calls,
@@ -171,9 +190,11 @@ test('a status-poll failure after send keeps the new key and resume is not a noo
         )
         const prepares: PreparedInput[] = []
         const sent: { id: string }[] = []
+
         const statusError = new Error(
             'Failed to get bundle status: HTTP error: 500 Internal Server Error',
         )
+
         await expect(
             executeSessionRotate(
                 {
@@ -204,6 +225,7 @@ test('a status-poll failure after send keeps the new key and resume is not a noo
                     signTypedData: mock(async () => rootPrivateKey),
                     sendPreparedCalls: mock(async () => {
                         sent.push({ id: 'bundle-in-flight' })
+
                         return { id: 'bundle-in-flight' }
                     }),
                     waitForBundle: mock(async () => {
@@ -220,10 +242,12 @@ test('a status-poll failure after send keeps the new key and resume is not a noo
         expect(revoke?.decoded.args[0]).toBe(computeSessionKeyHash(oldAddress))
         const names = await readdir(sessions)
         expect(names).toContain('default-next.json')
+
         const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
             status?: string
             bundleId?: string
         }
+
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBe('bundle-in-flight')
 
@@ -335,6 +359,7 @@ test('a planted marker does not authorize an attacker key or revoke the active k
                     prepareCalls: quotePreparer(prepares),
                     signTypedData: mock(async () => {
                         signed.push(rootPrivateKey)
+
                         return rootPrivateKey
                     }),
                     sendPreparedCalls: mock(async () => ({ id: 'bundle-plant' })),
@@ -542,6 +567,7 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
         const elsewhere = join(sessions, 'elsewhere.json')
         await writeFile(elsewhere, '{}\n')
         await symlink(elsewhere, join(sessions, '.rotation.json'))
+
         const symlinkResult = await executeSessionRotate(
             {
                 env: 'stage',
@@ -559,6 +585,7 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
                 }),
             } as never,
         )
+
         expect(symlinkResult.bundle.id).toBe('noop')
         await rm(join(sessions, '.rotation.json'))
 
@@ -607,6 +634,7 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
                 spendLimit?: string
             }
         }
+
         expect(marker.status).toBe('pending')
         expect(marker.permissions).toEqual({
             kind: 'custom',
@@ -638,9 +666,11 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
                 readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
                 getKeys: mock(async () => {
                     keyReads += 1
+
                     if (keyReads === 1) {
                         return { '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }] }
                     }
+
                     return { '0x2105': [{ hash: computeSessionKeyHash(newAddress) }] }
                 }),
                 executeSignedCalls,
@@ -652,9 +682,11 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
         )
         const calls = decodeCalls(prepares[0]!.calls)
         const spend = calls.find((call) => call.decoded.functionName === 'setSpendLimit')
+
         const selectors = calls
             .filter((call) => call.decoded.functionName === 'setCanExecute')
             .map((call) => String(call.decoded.args[2]).toLowerCase())
+
         expect(spend?.decoded.args[3]).toBe(1_000_000n)
         expect(selectors).toEqual([approveSelector])
     })
@@ -663,6 +695,7 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
 test('sessions directory is owner-only even when umask is 002', async () => {
     await withStage(async () => {
         const previous = process.umask(0o002)
+
         try {
             const root = await mkdtemp(join(tmpdir(), 'rotate-umask-'))
             const keystorePath = join(root, 'alice.json')
@@ -744,6 +777,7 @@ test('a fresh rotate refuses while a marker exists and does not replace it', asy
             join(sessions, 'default-next.json'),
             `${JSON.stringify(sessionDocument('default-next', attackerAddress), null, 2)}\n`,
         )
+
         const marker = {
             oldSessionName: 'default',
             newSessionName: 'default-next',
@@ -754,6 +788,7 @@ test('a fresh rotate refuses while a marker exists and does not replace it', asy
             narrow: false,
             fullAccess: false,
         }
+
         await writeFile(join(sessions, '.rotation.json'), `${JSON.stringify(marker, null, 2)}\n`)
         const signed: Hex[] = []
         await expect(
@@ -777,6 +812,7 @@ test('a fresh rotate refuses while a marker exists and does not replace it', asy
                     }),
                     signTypedData: mock(async () => {
                         signed.push(rootPrivateKey)
+
                         return rootPrivateKey
                     }),
                 } as never,
@@ -800,6 +836,7 @@ test('a marker whose new session file is gone reports on-chain keys and does not
         )
         const oldHash = computeSessionKeyHash(oldAddress)
         const newHash = computeSessionKeyHash(newAddress)
+
         const marker = await sealRotationMarker(
             {
                 oldSessionName: 'default',
@@ -822,13 +859,17 @@ test('a marker whose new session file is gone reports on-chain keys and does not
             },
             'pw',
         )
+
         await writeFile(join(sessions, '.rotation.json'), `${JSON.stringify(marker, null, 2)}\n`)
+
         const getKeys = mock(async () => ({
             '0x2105': [{ hash: oldHash }],
         }))
+
         const execute = mock(async () => {
             throw new Error('must not sign')
         })
+
         await expect(
             executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password: 'pw', resume: true },
@@ -898,6 +939,7 @@ test('pointer-moved resume does not delete a sibling key that is still on chain'
             join(sessions, 'sibling.json'),
             `${JSON.stringify(sessionDocument('sibling', siblingAddress), null, 2)}\n`,
         )
+
         const marker = await sealRotationMarker(
             {
                 oldSessionName: 'sibling',
@@ -920,10 +962,13 @@ test('pointer-moved resume does not delete a sibling key that is still on chain'
             },
             'pw',
         )
+
         await writeFile(join(sessions, '.rotation.json'), `${JSON.stringify(marker, null, 2)}\n`)
+
         const executeSigned = mock(async () => {
             throw new Error('must not sign')
         })
+
         await expect(
             executeSessionRotate(
                 {
@@ -1032,15 +1077,18 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
         // test installs the prod book and restores it before the helper exits.
         const restoreProd = installFormerProdDeployments()
         const methods: string[] = []
+
         const server = Bun.serve({
             port: 0,
             async fetch(request) {
                 const body = (await request.json()) as { method?: string; id?: number }
                 methods.push(body.method ?? '')
                 const id = body.id ?? 1
+
                 if (body.method === 'eth_chainId') {
                     return Response.json({ jsonrpc: '2.0', id, result: '0x7a69' })
                 }
+
                 return Response.json({
                     jsonrpc: '2.0',
                     id,
@@ -1048,8 +1096,10 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
                 })
             },
         })
+
         const previousNodeEnv = process.env.NODE_ENV
         process.env.NODE_ENV = 'production'
+
         try {
             const ceilings: bigint[] = []
             await expect(
@@ -1066,6 +1116,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
                                 paymentMaxAmount?: bigint
                             }) => {
                                 ceilings.push(input.paymentMaxAmount ?? 0n)
+
                                 const prepared = matchingPreparedCalls({
                                     from: input.from,
                                     calls: input.calls,
@@ -1076,10 +1127,13 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
                                     paymentToken: input.paymentToken,
                                     paymentMaxAmount: input.paymentMaxAmount,
                                 })
+
                                 const quote = prepared.context.quote.quotes[0] as {
                                     paymentAmount: string
                                 }
+
                                 quote.paymentAmount = '10000000'
+
                                 return prepared
                             },
                         ),
@@ -1116,6 +1170,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
         } finally {
             restoreProd()
             server.stop(true)
+
             if (previousNodeEnv === undefined) delete process.env.NODE_ENV
             else process.env.NODE_ENV = previousNodeEnv
         }
@@ -1126,11 +1181,13 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
     await withStage(async () => {
         const restoreProd = installFormerProdDeployments()
         const methods: string[] = []
+
         const server = Bun.serve({
             port: 0,
             async fetch(request) {
                 const body = (await request.json()) as { method?: string; id?: number }
                 methods.push(body.method ?? '')
+
                 return Response.json({
                     jsonrpc: '2.0',
                     id: body.id ?? 1,
@@ -1138,11 +1195,14 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                 })
             },
         })
+
         const previousNodeEnv = process.env.NODE_ENV
         process.env.NODE_ENV = 'production'
+
         try {
             const ceilings: bigint[] = []
             const signedCaps: bigint[] = []
+
             const base = {
                 from: account,
                 calls: [{ target: account, value: 0n, data: '0x1234' as Hex }],
@@ -1158,6 +1218,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                 expiry: 1_700_000_060n,
                 verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address,
             }
+
             const prepare = (quote: string) =>
                 mock(
                     async (input: {
@@ -1170,6 +1231,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                         paymentMaxAmount?: bigint
                     }) => {
                         ceilings.push(input.paymentMaxAmount ?? 0n)
+
                         const prepared = matchingPreparedCalls({
                             from: input.from,
                             calls: input.calls,
@@ -1180,11 +1242,14 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                             paymentToken: input.paymentToken,
                             paymentMaxAmount: input.paymentMaxAmount,
                         })
+
                         const row = prepared.context.quote.quotes[0] as { paymentAmount: string }
                         row.paymentAmount = quote
+
                         return prepared
                     },
                 )
+
             await expect(
                 executeSignedCalls(
                     {
@@ -1212,6 +1277,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                     signTypedData: mock(
                         async (input: { typedData: { message: { paymentMaxAmount: bigint } } }) => {
                             signedCaps.push(input.typedData.message.paymentMaxAmount)
+
                             return rootPrivateKey
                         },
                     ),
@@ -1230,6 +1296,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
         } finally {
             restoreProd()
             server.stop(true)
+
             if (previousNodeEnv === undefined) delete process.env.NODE_ENV
             else process.env.NODE_ENV = previousNodeEnv
         }

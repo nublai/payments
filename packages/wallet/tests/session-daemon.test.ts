@@ -12,9 +12,11 @@ import type { DaemonTypedData } from '../src/lib/session-daemon-protocol'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
@@ -47,6 +49,7 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
         address: '0x1111111111111111111111111111111111111111',
         durationSeconds: 5,
     })
+
     expect(loadMismatch?.ok).toBe(false)
 
     const load = await client.loadKey({
@@ -60,10 +63,12 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
         phraseConfirmed: true,
         env: 'prod',
     })
+
     expect(load?.ok).toBe(true)
 
     const list = await client.list()
     expect(list?.ok).toBe(true)
+
     if (list?.ok) {
         expect(list.result.keys).toHaveLength(1)
         expect(list.result.keys[0]?.name).toBe('default')
@@ -86,6 +91,7 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
 
     const signed = await client.sign('default', typedData)
     expect(signed?.ok).toBe(true)
+
     if (signed?.ok) {
         const direct = await account.signTypedData(typedData)
         expect(signed.result).toBe(direct)
@@ -95,12 +101,14 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
 
     const expired = await client.sign('default', typedData)
     expect(expired?.ok).toBe(false)
+
     if (expired && !expired.ok) {
         expect(expired.error.code).toBe('SESSION_EXPIRED')
     }
 
     const missing = await client.sign('missing', typedData)
     expect(missing?.ok).toBe(false)
+
     if (missing && !missing.ok) {
         expect(missing.error.code).toBe('SESSION_NOT_FOUND')
     }
@@ -109,6 +117,7 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
 })
 
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+
 const PROD_BASE_ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
 
 function routerMulticall(user: Address, innerSelector: Hex): Hex {
@@ -179,6 +188,7 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
     const account = privateKeyToAccount(TEST_PRIVATE_KEY)
+
     try {
         const load = await client.loadKey({
             name: 'swap',
@@ -189,6 +199,7 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
             swapSession: true,
             env: 'prod',
         })
+
         expect(load?.ok).toBe(true)
 
         const arbitrary = {
@@ -200,8 +211,10 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
             primaryType: 'Intent' as const,
             message: { nonce: 1n },
         }
+
         const refused = await client.sign('swap', arbitrary)
         expect(refused?.ok).toBe(false)
+
         if (refused && !refused.ok) {
             expect(refused.error.message).toContain('not an Orchestrator intent')
         }
@@ -209,6 +222,7 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
         const badInner = orchestratorIntent(account.address, routerMulticall(account.address, '0x12345678'))
         const refusedInner = await client.sign('swap', badInner)
         expect(refusedInner?.ok).toBe(false)
+
         if (refusedInner && !refusedInner.ok) {
             expect(refusedInner.error.message).toContain('not an allowlisted relay entrypoint')
         }
@@ -216,6 +230,7 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
         const cleanup = orchestratorIntent(account.address, routerMulticall(account.address, '0x9bb43718'))
         const signed = await client.sign('swap', cleanup)
         expect(signed?.ok).toBe(true)
+
         if (signed?.ok) {
             const direct = await account.signTypedData(cleanup)
             expect(signed.result).toBe(direct)
@@ -223,6 +238,7 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
 
         const message = await client.signMessage('swap', '0x1234')
         expect(message?.ok).toBe(false)
+
         if (message && !message.ok) {
             expect(message.error.message).toContain('only signs relay quotes')
         }
@@ -237,9 +253,11 @@ test('daemon drops oversized payload without newline', async () => {
     const daemon = await runSessionDaemon()
 
     const socket = net.createConnection(process.env.TW_AGENT_SOCK!)
+
     const closed = new Promise<void>((resolve) => {
         socket.once('close', () => resolve())
     })
+
     await new Promise<void>((resolve, reject) => {
         socket.once('connect', () => resolve())
         socket.once('error', reject)

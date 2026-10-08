@@ -12,25 +12,34 @@ import { reviewSwapSessionSignature } from "../src/lib/session-daemon-policy";
 import { installFormerProdDeployments } from "./helpers/former-deployment-env";
 
 let restoreFormerProdDeployments = () => {};
+
 beforeAll(() => {
   restoreFormerProdDeployments = installFormerProdDeployments();
 });
+
 afterAll(() => {
   restoreFormerProdDeployments();
 });
 
 const USER = "0x1111111111111111111111111111111111111111" as Address;
+
 const THIRD_PARTY = "0x6666666666666666666666666666666666666666" as Address;
+
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
+
 const ROUTER = "0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f" as Address;
+
 const APPROVAL_PROXY = "0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE" as Address;
+
 const ORCHESTRATOR = "0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8" as Address;
+
 const SIMPLE_SETTLER = "0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE" as Address;
 
 const relayAbi = parseAbi([
   "function multicall((address target, bool allowFailure, uint256 value, bytes callData)[] calls, address refundTo, address nftRecipient, bytes metadata)",
   "function transferAndMulticall(address[] tokens, uint256[] amounts, (address target, bool allowFailure, uint256 value, bytes callData)[] calls, address refundTo, address nftRecipient, bytes metadata)",
 ]);
+
 const settlerAbi = parseAbi([
   "function write(address sender, bytes32 settlementId, uint256 chainId, bytes signature)",
 ]);
@@ -136,6 +145,7 @@ function refusal(typedData: unknown): {
   } catch (error) {
     return error as { name?: string; code?: string; message?: string };
   }
+
   return {};
 }
 
@@ -145,6 +155,7 @@ test("swap daemon refuses a multichain or cross-chain intent", () => {
     intent([nativeSwap()], { encodedFundTransfers: ["0x1234"] }),
     intent([nativeSwap()], { settler: SIMPLE_SETTLER }),
   ];
+
   for (const typedData of cases) {
     expect(refusal(typedData)).toMatchObject({
       name: "SwapSignRefused",
@@ -172,6 +183,7 @@ test("swap daemon refuses calls that move funds out", () => {
       args: [THIRD_PARTY, 1n],
     }),
   };
+
   const transferFrom: Call = {
     to: USDC,
     value: 0n,
@@ -181,7 +193,9 @@ test("swap daemon refuses calls that move funds out", () => {
       args: [USER, THIRD_PARTY, 1n],
     }),
   };
+
   const nativeSend: Call = { to: THIRD_PARTY, value: 1n, data: "0x" };
+
   for (const extra of [transfer, transferFrom, nativeSend]) {
     expect(refusal(intent([...usdcSwap(), extra]))).toMatchObject({
       name: "SwapSignRefused",
@@ -200,6 +214,7 @@ test("swap daemon refuses a call to the settler", () => {
       args: [USER, `0x${"11".repeat(32)}`, 8453n, "0x"],
     }),
   };
+
   expect(refusal(intent([nativeSwap(), settlerWrite]))).toMatchObject({
     name: "SwapSignRefused",
     code: "SETTLER_CALL",

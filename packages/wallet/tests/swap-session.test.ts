@@ -27,24 +27,37 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+
 const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+
 const ANY_TARGET = '0x3232323232323232323232323232323232323232' as Address
+
 const TRANSFER = '0xa9059cbb' as Hex
+
 const APPROVE = '0x095ea7b3' as Hex
+
 const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730' as Address
+
 const ESCROW_SEL = '0x657061bf' as Hex
+
 const VAULT = '0x4444444444444444444444444444444444444444' as Address
 
 const EMPTY_MULTICALL = encodeFunctionData({
@@ -149,6 +162,7 @@ function runSwap(input: {
     >
 }) {
     const signTypedData = mock(async () => '0x11' as Hex)
+
     const executeSignedCalls = mock(async () => ({
         id: 'bundle-1',
         finalStatus: {
@@ -163,6 +177,7 @@ function runSwap(input: {
         },
         feeCap: { token: zeroAddress, amount: 0n },
     }))
+
     const result = executeAccountSwap(
         {
             env: 'prod',
@@ -229,6 +244,7 @@ function runSwap(input: {
             })) as any,
         },
     )
+
     return { result, signTypedData, executeSignedCalls }
 }
 
@@ -248,6 +264,7 @@ test('an extra call permission is refused even when the relay entrypoints are pr
             { type: 'call', to: USDC, selector: TRANSFER },
         ],
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(TRANSFER),
@@ -264,6 +281,7 @@ test('a Permit2 allowance to a relay target is refused before signing', async ()
                 ? { amount: 5n, expiration: 4_000_000_000n, nonce: 0n }
                 : { amount: 0n, expiration: 0n, nonce: 0n },
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('standing Permit2 allowance'),
@@ -277,6 +295,7 @@ test('a known vault share allowance to a relay target is refused', async () => {
         standingRightsRegistry: { erc4626: [{ vault: VAULT }] },
         readErc4626ShareAllowance: async () => 1n,
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('standing share allowance'),
@@ -291,6 +310,7 @@ test('a standing-rights read error refuses the quote', async () => {
             throw new Error('rpc down')
         },
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('Could not read standing rights'),
@@ -304,11 +324,13 @@ test('the quoted input approve is granted only when the key does not already hav
         functionName: 'approve',
         args: [APPROVAL_PROXY, 5_000000n],
     })
+
     const transfer = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'transfer',
         args: [USER, 1n],
     })
+
     const missing = planSwapSessionUse({
         chainId: 8453,
         permissions: relaySessionCallPermissions(8453),
@@ -316,6 +338,7 @@ test('the quoted input approve is granted only when the key does not already hav
         quoteCalls: [{ target: USDC, data: approve }],
         chainLabel: 'base',
     })
+
     expect(missing).toEqual([{ target: USDC, selector: APPROVE }])
 
     const already = planSwapSessionUse({
@@ -328,6 +351,7 @@ test('the quoted input approve is granted only when the key does not already hav
         quoteCalls: [{ target: USDC, data: approve }],
         chainLabel: 'base',
     })
+
     expect(already).toEqual([])
 
     const withTransfer = planSwapSessionUse({
@@ -340,6 +364,7 @@ test('the quoted input approve is granted only when the key does not already hav
         ],
         chainLabel: 'base',
     })
+
     expect(withTransfer).toEqual([
         { target: USDC, selector: APPROVE },
         { target: USDC, selector: TRANSFER },
@@ -352,6 +377,7 @@ test('the quoted input approve is granted only when the key does not already hav
         quoteCalls: [{ target: ROUTER, data: EMPTY_MULTICALL }],
         chainLabel: 'base',
     })
+
     expect(noTransfer).toEqual([])
     expect(isExactRelaySession(relaySessionCallPermissions(8453), 8453)).toBe(true)
     expect(isExactRelaySession(paymentPermissions(), 8453)).toBe(false)
@@ -363,7 +389,9 @@ test('executeAccountSwap asks the root to grant the missing input approve for th
         functionName: 'approve',
         args: [APPROVAL_PROXY, 5_000000n],
     })
+
     let grants: { target: Address; selector: Hex }[] | undefined
+
     const ran = runSwap({
         permissions: relaySessionCallPermissions(8453),
         quote: quote([
@@ -372,9 +400,11 @@ test('executeAccountSwap asks the root to grant the missing input approve for th
         ]),
         installQuoteSpendLimit: async (value) => {
             grants = value.callGrants
+
             return async () => {}
         },
     })
+
     await ran.result
     expect(grants).toEqual([{ target: USDC, selector: APPROVE }])
 })
@@ -395,23 +425,28 @@ test('creating a swap session without the phrase is refused', async () => {
 test('swap session create submits only the relay entrypoints and minute-zero spends', async () => {
     const sessionPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const
+
     const { privateKeyToAccount } = await import('viem/accounts')
     const sessionAddress = privateKeyToAccount(sessionPrivateKey).address
     const sessionKeyHash = computeSessionKeyHash(sessionAddress)
+
     const executeSignedCalls = mock(async (_deps, params) => {
         const decoded = params.calls.map((call: { data: Hex }) =>
             decodeFunctionData({ abi: accountAbi, data: call.data }),
         )
+
         expect(decoded[0]?.functionName).toBe('authorize')
         expect(decoded[0]?.args?.[0]).toMatchObject({ isSuperAdmin: false })
         const canExecute = decoded.filter((call) => call.functionName === 'setCanExecute')
         const spends = decoded.filter((call) => call.functionName === 'setSpendLimit')
         expect(canExecute).toHaveLength(relayEntryPoints(8453).length)
+
         const pairs = canExecute.map((call) => ({
             target: call.args?.[1] as Address,
             selector: (call.args?.[2] as string).toLowerCase(),
             allowed: call.args?.[3],
         }))
+
         for (const entry of relayEntryPoints(8453)) {
             expect(pairs).toContainEqual({
                 target: entry.target,
@@ -419,16 +454,20 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
                 allowed: true,
             })
         }
+
         expect(pairs.some((pair) => pair.selector === TRANSFER)).toBe(false)
         expect(pairs.some((pair) => pair.target.toLowerCase() === ANY_TARGET.toLowerCase())).toBe(
             false,
         )
         expect(spends.map((call) => call.args?.[1])).toEqual(swapSessionSpendTokens(8453))
+
         for (const spend of spends) {
             expect(spend.args?.[2]).toBe(0)
             expect(spend.args?.[3]).toBe(0n)
         }
+
         expect(params.calls).toHaveLength(1 + canExecute.length + spends.length)
+
         return {
             id: 'bundle-1',
             finalStatus: {
@@ -442,7 +481,9 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
             },
         }
     })
+
     const writeRoot = mock(async () => {})
+
     const result = await executeSessionCreate(
         {
             env: 'prod',
@@ -497,6 +538,7 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
             readApprovedSignatureCheckers: async () => [],
         },
     )
+
     expect(result.activeSession).toBe('default')
     expect(result.permissions).toBeUndefined()
     expect(result.swap?.calls).toHaveLength(4)
@@ -521,6 +563,7 @@ test('swap session create refuses a standing Permit2 allowance before authorize'
     const executeSignedCalls = mock(async () => {
         throw new Error('authorize should not be sent')
     })
+
     await expect(
         executeSessionCreate(
             {
@@ -585,6 +628,7 @@ test('swap session create fails closed when a standing-rights read errors', asyn
     const executeSignedCalls = mock(async () => {
         throw new Error('authorize should not be sent')
     })
+
     await expect(
         executeSessionCreate(
             {
@@ -640,6 +684,7 @@ test('swap session create fails closed when a standing-rights read errors', asyn
 test('a quote grant is revoked when the pending limit is recovered', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'swap-grant-'))
     const keystorePath = join(dir, 'alice.json')
+
     const record = pendingRecordFromSlots({
         account: USER,
         keyHash: SESSION_KEY_HASH,
@@ -650,6 +695,7 @@ test('a quote grant is revoked when the pending limit is recovered', async () =>
         slots: [],
         callGrants: [{ target: USDC, selector: APPROVE }],
     })
+
     expect(grantsFromPending(record)).toEqual([{ target: USDC, selector: APPROVE }])
     await writePendingQuoteLimit(keystorePath, record)
     const submitted: Hex[] = []
@@ -674,6 +720,7 @@ test('canExecute grant calls encode the allowed flag', () => {
         grants: [{ target: USDC, selector: APPROVE }],
         allowed: true,
     })
+
     const decoded = decodeFunctionData({ abi: accountAbi, data: calls[0]!.data })
     expect(decoded.functionName).toBe('setCanExecute')
     expect(decoded.args?.[3]).toBe(true)
@@ -731,6 +778,7 @@ test('creating a swap session requires CREATE SWAP SESSION, not the full-access 
     const executeSignedCalls = mock(async () => {
         throw new Error('authorize should not be sent')
     })
+
     const deps = {
         withKeystoreLock: async (_path: string, action: () => Promise<unknown>) => action(),
         readKeystoreBundle: mock(
@@ -770,6 +818,7 @@ test('creating a swap session requires CREATE SWAP SESSION, not the full-access 
         readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
         readApprovedSignatureCheckers: async () => [],
     }
+
     await expect(
         executeSessionCreate(
             {
@@ -805,6 +854,7 @@ test('an ERC-1271 signature checker is refused before a swap quote is signed', a
         permissions: relaySessionCallPermissions(8453),
         readApprovedSignatureCheckers: async () => [CHECKER],
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringMatching(/signature checker[\s\S]*isValidSignature/),
@@ -816,6 +866,7 @@ test('swap session create refuses an ERC-1271 signature checker before authorize
     const executeSignedCalls = mock(async () => {
         throw new Error('authorize should not be sent')
     })
+
     await expect(
         executeSessionCreate(
             {
@@ -880,6 +931,7 @@ test('a signature-checker read error refuses the swap session', async () => {
             throw new Error('checker rpc down')
         },
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('Could not read standing rights'),

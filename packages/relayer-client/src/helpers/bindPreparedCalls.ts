@@ -4,9 +4,12 @@ import type { PrepareCallsResponse } from '../actions/prepareCalls'
 import { INTENT_TYPES, type Call } from '../types'
 
 export const ORCHESTRATOR_DOMAIN_NAME = 'Orchestrator'
+
 export const ORCHESTRATOR_DOMAIN_VERSION = '0.5.5'
+
 /** Wallet TTL for an intent expiry. The relayer does not choose this. */
 export const INTENT_EXPIRY_TTL_SECONDS = 3600n
+
 /**
  * Margin added to the accepted quote before it becomes paymentMaxAmount.
  * paymentAmount and paymentRecipient are not in the Intent typehash, so this
@@ -16,6 +19,7 @@ export const INTENT_EXPIRY_TTL_SECONDS = 3600n
  * filler far under the 5 USDC ceiling.
  */
 export const FEE_CAP_MARGIN_BPS = 500n
+
 export const FEE_CAP_MARGIN_FLOOR = 1_000n
 
 export class PreparedCallsBindingError extends Error {
@@ -71,6 +75,7 @@ export function refuseLonePayerOrToken(
 ): void {
     const hasPayer = payer !== undefined
     const hasToken = paymentToken !== undefined
+
     if (hasPayer !== hasToken && paymentMaxAmount === undefined) {
         throw new PaymentCapError(
             'Refusing to sign prepared calls: payer and paymentToken must be passed together',
@@ -86,7 +91,9 @@ export function assertOffLocalFeeToken(chainId: number, payer: Address, paymentT
             'PAYMENT_FEE_REFUSED',
         )
     }
+
     const usdc = NATIVE_USDC_BY_CHAIN_ID[chainId]
+
     if (!usdc || getAddress(paymentToken) !== getAddress(usdc)) {
         throw new PaymentCapError(
             `Refusing to sign prepared calls: paymentToken must be native USDC on chain ${chainId}`,
@@ -100,6 +107,7 @@ export function clampPaymentCeiling(requested: bigint, policyCeiling: bigint): b
     if (requested < 0n) {
         throw new PaymentCapError('Refusing to sign prepared calls: paymentMaxAmount is negative')
     }
+
     return requested > policyCeiling ? policyCeiling : requested
 }
 
@@ -156,6 +164,7 @@ function refuse(detail: string): never {
 export function feeCapMargin(paymentAmount: bigint): bigint {
     if (paymentAmount <= 0n) return 0n
     const percent = (paymentAmount * FEE_CAP_MARGIN_BPS + 9_999n) / 10_000n
+
     return percent > FEE_CAP_MARGIN_FLOOR ? percent : FEE_CAP_MARGIN_FLOOR
 }
 
@@ -168,21 +177,27 @@ export function parseQuotePaymentAmount(
     value: unknown,
 ): { ok: true; amount: bigint } | { ok: false; reason: 'missing' | 'invalid' } {
     if (value === undefined || value === null || value === '') return { ok: false, reason: 'missing' }
+
     try {
         if (typeof value === 'bigint') {
             return value < 0n ? { ok: false, reason: 'invalid' } : { ok: true, amount: value }
         }
+
         if (typeof value === 'number' && Number.isInteger(value)) {
             return value < 0 ? { ok: false, reason: 'invalid' } : { ok: true, amount: BigInt(value) }
         }
+
         if (typeof value === 'string' && value.trim() !== '') {
             const text = value.trim()
+
             if (text.startsWith('-')) return { ok: false, reason: 'invalid' }
+
             return { ok: true, amount: BigInt(text) }
         }
     } catch {
         return { ok: false, reason: 'invalid' }
     }
+
     return { ok: false, reason: 'invalid' }
 }
 
@@ -203,6 +218,7 @@ export function resolveSignedFeeCap(input: {
     zeroFee: boolean
 }): bigint {
     const parsed = parseQuotePaymentAmount(input.paymentAmount)
+
     if (!parsed.ok) {
         refuse(
             parsed.reason === 'missing'
@@ -210,18 +226,25 @@ export function resolveSignedFeeCap(input: {
                 : 'quote payment amount is not numeric',
         )
     }
+
     if (parsed.amount === 0n) {
         if (!input.zeroFee) refuse('off-local quote payment is zero')
+
         return 0n
     }
+
     const cap = signedPaymentMaxForQuote(parsed.amount)
+
     if (parsed.amount > input.ceiling || cap > input.ceiling) refuse('payment amount exceeds fee cap')
+
     return cap
 }
 
 function readUint(value: unknown, label: string): bigint {
     if (typeof value === 'bigint') return value
+
     if (typeof value === 'number' && Number.isInteger(value)) return BigInt(value)
+
     if (typeof value === 'string' && value.trim() !== '') {
         try {
             return BigInt(value.trim())
@@ -229,11 +252,13 @@ function readUint(value: unknown, label: string): bigint {
             refuse(`invalid ${label}`)
         }
     }
+
     refuse(`missing ${label}`)
 }
 
 function readAddress(value: unknown, label: string): Address {
     if (typeof value !== 'string') refuse(`missing ${label}`)
+
     try {
         return getAddress(value)
     } catch {
@@ -243,25 +268,31 @@ function readAddress(value: unknown, label: string): Address {
 
 function readHex(value: unknown, label: string): Hex {
     if (typeof value !== 'string' || !value.startsWith('0x')) refuse(`invalid ${label}`)
+
     return value.toLowerCase() as Hex
 }
 
 function readHexList(value: unknown, label: string): Hex[] {
     if (value === undefined || value === null) return []
+
     if (!Array.isArray(value)) refuse(`invalid ${label}`)
+
     return value.map((item, index) => readHex(item, `${label}[${index}]`))
 }
 
 function sameHexList(actual: readonly Hex[], expected: readonly Hex[]): boolean {
     if (actual.length !== expected.length) return false
+
     return actual.every((item, index) => item.toLowerCase() === expected[index].toLowerCase())
 }
 
 function readCalls(value: unknown, label: string): NormalizedCall[] {
     if (!Array.isArray(value)) refuse(`missing ${label}`)
+
     return value.map((item, index) => {
         if (item === null || typeof item !== 'object') refuse(`invalid ${label}[${index}]`)
         const call = item as Record<string, unknown>
+
         return {
             to: readAddress(call.to, `${label}[${index}].to`),
             value: readUint(call.value, `${label}[${index}].value`),
@@ -284,10 +315,14 @@ function typesMatch(types: PrepareCallsResponse['typedData']['types']): boolean 
 
 function parseTypedIntent(prepared: PrepareCallsResponse): NormalizedIntent {
     const message = prepared.typedData?.message as unknown
+
     if (message === null || typeof message !== 'object') refuse('typed data message is missing')
     const record = message as Record<string, unknown>
+
     if (prepared.typedData.primaryType !== 'Intent') refuse('typed data primary type does not match')
+
     if (!typesMatch(prepared.typedData.types)) refuse('typed data types do not match')
+
     return {
         multichain: record.multichain === true,
         eoa: readAddress(record.eoa, 'typed data eoa'),
@@ -306,12 +341,14 @@ function parseTypedIntent(prepared: PrepareCallsResponse): NormalizedIntent {
 
 function optionalAddress(value: unknown, fallback: Address): Address {
     if (value === undefined || value === null || value === '') return fallback
+
     return readAddress(value, 'quote address')
 }
 
 function parseQuoteIntent(intent: unknown): NormalizedIntent & { settlerContext: Hex } {
     if (intent === null || typeof intent !== 'object') refuse('quote does not match the signed intent')
     const record = intent as Record<string, unknown>
+
     return {
         multichain: false,
         eoa: readAddress(record.eoa, 'quote eoa'),
@@ -340,15 +377,20 @@ function assertCallsMatch(
     if (actual.length !== expectedCalls.length) {
         refuse(source === 'quote' ? 'quote does not match the signed intent' : 'call count does not match')
     }
+
     for (let index = 0; index < actual.length; index++) {
         const wanted = expectedCalls[index]
         const got = actual[index]
         const targetMatches = got.to === getAddress(wanted.target)
         const valueMatches = got.value === wanted.value
         const dataMatches = got.data === (wanted.data ?? '0x').toLowerCase()
+
         if (targetMatches && valueMatches && dataMatches) continue
+
         if (source === 'quote') refuse('quote does not match the signed intent')
+
         if (!targetMatches) refuse(`call target does not match (call ${index})`)
+
         if (!valueMatches) refuse(`call value does not match (call ${index})`)
         refuse(`call data does not match (call ${index})`)
     }
@@ -356,16 +398,20 @@ function assertCallsMatch(
 
 function assertIntentMatches(actual: NormalizedIntent, expected: NormalizedIntent, label: string): void {
     const source = label === 'quote' ? 'quote' : 'typed data'
+
     if (source === 'quote' && actual.eoa !== expected.eoa) refuse('quote does not match the signed intent')
+
     if (actual.multichain !== expected.multichain) {
         refuse(source === 'quote' ? 'quote does not match the signed intent' : 'multichain flag does not match')
     }
+
     if (actual.eoa !== expected.eoa) refuse('account does not match')
     assertCallsMatch(
         actual.calls,
         expected.calls.map((call) => ({ target: call.to, value: call.value, data: call.data })),
         source,
     )
+
     if (label === 'quote') {
         if (
             actual.nonce !== expected.nonce ||
@@ -380,16 +426,26 @@ function assertIntentMatches(actual: NormalizedIntent, expected: NormalizedInten
         ) {
             refuse('quote does not match the signed intent')
         }
+
         return
     }
+
     if (actual.nonce !== expected.nonce) refuse('nonce does not match')
+
     if (actual.payer !== expected.payer) refuse('fee payer does not match')
+
     if (actual.paymentToken !== expected.paymentToken) refuse('fee token does not match')
+
     if (actual.paymentMaxAmount !== expected.paymentMaxAmount) refuse('fee cap does not match')
+
     if (actual.combinedGas !== expected.combinedGas) refuse('combined gas does not match')
+
     if (actual.expiry !== expected.expiry) refuse('expiry does not match')
+
     if (actual.settler !== expected.settler) refuse('settler does not match')
+
     if (!sameHexList(actual.encodedPreCalls, expected.encodedPreCalls)) refuse('precalls do not match')
+
     if (!sameHexList(actual.encodedFundTransfers, expected.encodedFundTransfers)) {
         refuse('fund transfers do not match')
     }
@@ -413,27 +469,39 @@ export function bindPreparedCalls(
     if (!expected?.from || !expected.calls || expected.chainId === undefined || !expected.verifyingContract) {
         refuse('expected account, calls, chain, and verifying contract are required')
     }
+
     if (expected.nonce === undefined) refuse('nonce is required')
+
     if (expected.expiry === undefined) refuse('expiry is required')
+
     if (expected.combinedGasCeiling === undefined) refuse('combined gas ceiling is required')
 
     const now = expected.now ?? BigInt(Math.floor(Date.now() / 1000))
+
     if (expected.expiry === 0n) refuse('expiry is unset')
+
     if (expected.expiry <= now) refuse('expiry is in the past')
+
     if (expected.expiry > now + INTENT_EXPIRY_TTL_SECONDS) refuse('expiry exceeds the wallet ttl')
 
     const domain = prepared.typedData?.domain
+
     if (!domain) refuse('typed data domain is missing')
+
     if (domain.name !== ORCHESTRATOR_DOMAIN_NAME || domain.version !== ORCHESTRATOR_DOMAIN_VERSION) {
         refuse('domain name or version does not match')
     }
+
     if (Number(domain.chainId) !== expected.chainId) refuse('chain id does not match')
+
     if (readAddress(domain.verifyingContract, 'verifying contract') !== getAddress(expected.verifyingContract)) {
         refuse('verifying contract does not match')
     }
 
     const typed = parseTypedIntent(prepared)
+
     if (typed.combinedGas <= 0n) refuse('combined gas is unset')
+
     if (typed.combinedGas > expected.combinedGasCeiling) refuse('combined gas exceeds the wallet ceiling')
 
     const canonical: NormalizedIntent = {
@@ -458,23 +526,30 @@ export function bindPreparedCalls(
     assertIntentMatches(typed, canonical, 'typed data')
 
     const quotes = prepared.context?.quote?.quotes
+
     if (!Array.isArray(quotes) || quotes.length === 0) refuse('quote does not match the signed intent')
     const expectedSettlerContext = (expected.settlerContext ?? '0x').toLowerCase()
+
     for (const quote of quotes) {
         if (Number(readUint(quote.chainId, 'quote chain id')) !== expected.chainId) {
             refuse('chain id does not match')
         }
+
         if (readAddress(quote.orchestrator, 'quote orchestrator') !== getAddress(expected.verifyingContract)) {
             refuse('verifying contract does not match')
         }
+
         const quoteIntent = parseQuoteIntent(quote.intent)
         assertIntentMatches(quoteIntent, canonical, 'quote')
+
         if (quoteIntent.settlerContext !== expectedSettlerContext) {
             refuse('quote does not match the signed intent')
         }
+
         const parsedPayment = parseQuotePaymentAmount(
             (quote as { paymentAmount?: unknown }).paymentAmount,
         )
+
         if (!parsedPayment.ok) {
             refuse(
                 parsedPayment.reason === 'missing'
@@ -482,14 +557,17 @@ export function bindPreparedCalls(
                     : 'quote payment amount is not numeric',
             )
         }
+
         const paymentAmount = parsedPayment.amount
         const requiredCap = signedPaymentMaxForQuote(paymentAmount)
+
         if (
             expected.paymentCeiling !== undefined &&
             (paymentAmount > expected.paymentCeiling || requiredCap > expected.paymentCeiling)
         ) {
             refuse('payment amount exceeds fee cap')
         }
+
         if (canonical.paymentMaxAmount !== requiredCap) {
             refuse(
                 paymentAmount > canonical.paymentMaxAmount
@@ -505,20 +583,24 @@ export function bindPreparedCalls(
         chainId: expected.chainId,
         verifyingContract: getAddress(expected.verifyingContract),
     }
+
     const typedData: PrepareCallsResponse['typedData'] = {
         domain: signingDomain,
         types: INTENT_TYPES,
         primaryType: 'Intent',
         message: canonical,
     }
+
     const digest = hashTypedData({
         domain: signingDomain,
         types: INTENT_TYPES,
         primaryType: 'Intent',
         message: canonical,
     })
+
     if (typeof prepared.digest !== 'string' || prepared.digest.toLowerCase() !== digest.toLowerCase()) {
         refuse('digest does not match')
     }
+
     return { digest, typedData }
 }

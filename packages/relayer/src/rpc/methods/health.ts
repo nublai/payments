@@ -50,6 +50,7 @@ export async function handleLive(_params: unknown, _ctx: RpcContext): Promise<bo
 export async function handleReady(_params: unknown, _ctx: RpcContext): Promise<boolean> {
     const env = _ctx.env as Env
     const chainIds = getChainIds(env)
+
     if (chainIds.length === 0) {
         throw new Error('No configured chain IDs')
     }
@@ -67,10 +68,13 @@ async function checkRpc(rpcUrl: string, expectedChainId: number): Promise<void> 
     const chainIdHex = await jsonRpcRequest<string>(rpcUrl, 'eth_chainId', [], {
         timeoutMs: 3000,
     })
+
     const rpcChainId = parseInt(String(chainIdHex), 16)
+
     if (Number.isNaN(rpcChainId)) {
         throw new Error('RPC_URL returned invalid chainId')
     }
+
     if (rpcChainId !== expectedChainId) {
         throw new Error(`RPC_URL chainId mismatch: ${rpcChainId} != ${expectedChainId}`)
     }
@@ -80,9 +84,11 @@ async function checkSignerPool(env: Env, chainId: number): Promise<void> {
     const poolId = env.SIGNER_POOL.idFromName(`pool-${chainId}`)
     const pool = env.SIGNER_POOL.get(poolId)
     const response = await pool.fetch(`http://do/status?poolName=pool-${chainId}`)
+
     if (!response.ok) {
         throw new Error(`SignerPool status check failed: ${response.status} ${response.statusText}`)
     }
+
     // Ensure response is valid JSON to catch DO errors
     await response.json()
 }

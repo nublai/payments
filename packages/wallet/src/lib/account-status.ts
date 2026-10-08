@@ -30,6 +30,7 @@ import {
     type UsdcSymbol,
 } from './network-config'
 import { createCliRelayerClient, readAccountNonce } from './relayer-client-utils'
+
 type AccountStatusErrorCode =
     | 'INVALID_NAME'
     | 'KEYSTORE_NOT_FOUND'
@@ -148,6 +149,7 @@ function getDefaultDeps(): AccountStatusDeps {
                 chain: getChain(network.chainId, network.rpcUrl),
                 transport: http(network.rpcUrl),
             })
+
             return client.getCode({ address })
         },
         readNonce: async ({ network, address }) => {
@@ -155,15 +157,18 @@ function getDefaultDeps(): AccountStatusDeps {
                 chain: getChain(network.chainId, network.rpcUrl),
                 transport: http(network.rpcUrl),
             })
+
             return readAccountNonce(client, address)
         },
         readUsdcBalance: async ({ chain, account, legacy }) => {
             const config = getChainConfig(chain)
             const token = getUsdcTokenConfig(chain, { legacy })
+
             const client = createPublicClient({
                 chain: config.viemChain,
                 transport: http(config.rpcUrl),
             })
+
             return client.readContract({
                 address: token.address,
                 abi: erc20Abi,
@@ -173,6 +178,7 @@ function getDefaultDeps(): AccountStatusDeps {
         },
         getAuthorizedKeys: async ({ network, address }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address, chainIds: [network.chainId] })
         },
     }
@@ -212,6 +218,7 @@ function toDecimalStringFromHex(value: string): string | null {
 
 function getExpectedPermissionConfig(chainId: number, legacy?: boolean): PermissionExpectation {
     const token = getUsdcAddressByChainId(chainId, legacy ?? false)
+
     return {
         spend: token
             ? {
@@ -254,6 +261,7 @@ export async function executeAccountStatus(
 
         try {
             const code = await deps.getDelegatedCode({ network, address: root })
+
             if (!code || code === '0x') {
                 addCheck(
                     checks,
@@ -321,9 +329,11 @@ export async function executeAccountStatus(
                 network,
                 address: root,
             })
+
             const chainKey = `0x${network.chainId.toString(16)}`
             const chainKeys = keysByChain[chainKey] ?? []
             const sessionKeyHash = computeKeyHash('secp256k1', encodeSecp256k1Key(session))
+
             const sessionKey = chainKeys.find(
                 (entry) => entry.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
             )
@@ -337,9 +347,11 @@ export async function executeAccountStatus(
                 )
             } else {
                 permissionFound = true
+
                 const callSelectors = sessionKey.permissions
                     .filter((permission) => permission.type === 'call')
                     .map((permission) => normalizeHex(permission.selector))
+
                 const spendPermissions = sessionKey.permissions
                     .filter((permission) => permission.type === 'spend')
                     .map((permission) => ({
@@ -363,12 +375,14 @@ export async function executeAccountStatus(
 
                 const hasWildcard = sessionKey.permissions.some((permission) => {
                     if (permission.type !== 'call') return false
+
                     return (
                         normalizeHex(permission.selector).toLowerCase() ===
                             ANY_FUNCTION_SELECTOR.toLowerCase() ||
                         permission.to.toLowerCase() === ANY_TARGET.toLowerCase()
                     )
                 })
+
                 if (hasWildcard) {
                     addCheck(
                         checks,
@@ -390,12 +404,14 @@ export async function executeAccountStatus(
 
                 const spendAboveDaily = spendPermissions.some((permission) => {
                     if (permission.period === 'minute' || permission.period === 'hour') return true
+
                     try {
                         return BigInt(permission.limit) > DEFAULT_SESSION_SPEND_LIMIT
                     } catch {
                         return true
                     }
                 })
+
                 if (spendAboveDaily) {
                     addCheck(
                         checks,
@@ -452,6 +468,7 @@ export async function executeAccountStatus(
                         }
 
                         const actualLimit = toDecimalStringFromHex(actualSpend.limit)
+
                         if (actualLimit !== expectedPermissions.spend.limit) {
                             addCheck(
                                 checks,
@@ -484,6 +501,7 @@ export async function executeAccountStatus(
         }
 
         const readiness = checks.every((check) => check.level !== 'fail')
+
         const permissionWarnings = checks.filter(
             (check) => check.id.startsWith('session.permissions') && check.level === 'warn',
         ).length
@@ -535,6 +553,7 @@ function toAccountStatusError(
     }
 
     const message = error instanceof Error ? error.message : String(error)
+
     if (message.includes('ENOENT') || message.toLowerCase().includes('no such file')) {
         return new AccountStatusError(
             'KEYSTORE_NOT_FOUND',

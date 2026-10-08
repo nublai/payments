@@ -19,9 +19,13 @@ import {
 } from '../src/lib/keystore'
 
 const walletDir = resolve(import.meta.dir, '..')
+
 const rootPrivateKey = `0x${'11'.repeat(32)}` as Hex
+
 const sessionPrivateKey = `0x${'22'.repeat(32)}` as Hex
+
 const password = 'proof-password'
+
 const recipient = '0x1111111111111111111111111111111111111111'
 
 function frame(message: unknown): string {
@@ -31,8 +35,10 @@ function frame(message: unknown): string {
 function killChild(child: ChildProcessWithoutNullStreams): void {
     if (!child.pid) {
         child.kill('SIGTERM')
+
         return
     }
+
     try {
         process.kill(-child.pid, 'SIGTERM')
     } catch {
@@ -50,11 +56,14 @@ function runCli(
             env: { ...process.env, ...env },
             stdio: ['pipe', 'pipe', 'pipe'],
         })
+
         let output = ''
+
         const timer = setTimeout(() => {
             child.kill('SIGTERM')
             reject(new Error(`CLI timed out\n${output}`))
         }, 20_000)
+
         child.stdout.setEncoding('utf8')
         child.stderr.setEncoding('utf8')
         child.stdout.on('data', (chunk) => {
@@ -86,16 +95,20 @@ function callMcpTool(
             detached: true,
             stdio: ['pipe', 'pipe', 'pipe'],
         }) as ChildProcessWithoutNullStreams
+
         let stdout = ''
         let stderr = ''
+
         const timer = setTimeout(() => {
             killChild(child)
             reject(new Error(`MCP ${name} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`))
         }, 20_000)
+
         child.stdout.setEncoding('utf8')
         child.stderr.setEncoding('utf8')
         child.stdout.on('data', (chunk) => {
             stdout += chunk
+
             if (!stdout.includes('"id":3')) return
             clearTimeout(timer)
             killChild(child)
@@ -135,6 +148,7 @@ function callMcpTool(
 async function listenOn8545(): Promise<{ hits: string[]; close: () => Promise<void> } | undefined> {
     const hits: string[] = []
     let server: Server
+
     try {
         server = createServer((req, res) => {
             const chunks: Buffer[] = []
@@ -152,6 +166,7 @@ async function listenOn8545(): Promise<{ hits: string[]; close: () => Promise<vo
     } catch {
         return undefined
     }
+
     return {
         hits,
         close: () =>
@@ -162,6 +177,7 @@ async function listenOn8545(): Promise<{ hits: string[]; close: () => Promise<vo
 }
 
 const home = mkdtempSync(join(tmpdir(), 'tw-h3-'))
+
 const keystorePath = join(home, 'account.json')
 
 beforeAll(async () => {
@@ -173,6 +189,7 @@ beforeAll(async () => {
         rpcUrl: 'http://127.0.0.1:8545',
         chainId: 31337,
     })
+
     const session = await createSessionKeystore({
         password,
         sessionPrivateKey,
@@ -181,6 +198,7 @@ beforeAll(async () => {
         name: 'default',
         checkpoint: 'authorized',
     })
+
     await writeRootKeystoreFile(keystorePath, {
         ...root,
         checkpoint: 'delegated',
@@ -218,6 +236,7 @@ test('MCP account_export showPrivate does not print private keys', async () => {
         { env: 'dev', showPrivate: true, keystorePath },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('PRIVATE_EXPORT_CONFIRMATION_REQUIRED')
     expect(output).toContain('EXPORT PRIVATE KEYS')
     expect(output).toContain('"isError":true')
@@ -228,15 +247,18 @@ test('MCP account_export showPrivate does not print private keys', async () => {
 
 test('non-TTY send with TW_PASSWORD cannot proceed without human confirmation', async () => {
     const sink = await listenOn8545()
+
     try {
         const result = await runCli(
             ['send', '1', recipient, '--env', 'dev', '--keystore-path', keystorePath, '--json'],
             { TW_PASSWORD: password, HOME: home },
         )
+
         expect(result.status).not.toBe(0)
         expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(result.output).toContain('SEND USDC')
         expect(result.output).not.toContain('rootPrivateKey')
+
         if (sink) {
             expect(sink.hits).toEqual([])
         }
@@ -256,6 +278,7 @@ test('MCP send cannot proceed without human confirmation', async () => {
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('SEND USDC')
     expect(output).toContain('"isError":true')
@@ -276,6 +299,7 @@ test('MCP swap yes true cannot proceed without human confirmation', async () => 
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('cannot pass yes')
     expect(output).toContain('"isError":true')
@@ -295,6 +319,7 @@ test('MCP bridge yes true cannot proceed without human confirmation', async () =
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('cannot pass yes')
     expect(output).toContain('"isError":true')
@@ -319,6 +344,7 @@ test('non-TTY swap --yes cannot skip confirmation', async () => {
         ],
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(result.status).not.toBe(0)
     expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(result.output).toContain('cannot pass yes')
@@ -331,6 +357,7 @@ test('MCP session_create fullAccess cannot proceed without human confirmation', 
         { sessionName: 'worker-admin', env: 'dev', fullAccess: true, keystorePath },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -343,6 +370,7 @@ test('MCP session_rotate fullAccess cannot proceed without human confirmation', 
         { env: 'dev', fullAccess: true, keystorePath },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('ROTATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -350,6 +378,7 @@ test('MCP session_rotate fullAccess cannot proceed without human confirmation', 
 
 test('MCP account_passkey privateKey cannot proceed and does not submit a transaction', async () => {
     const hits: string[] = []
+
     const server = createServer((req, res) => {
         const chunks: Buffer[] = []
         req.on('data', (chunk) => chunks.push(chunk))
@@ -359,13 +388,16 @@ test('MCP account_passkey privateKey cannot proceed and does not submit a transa
             res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x1' }))
         })
     })
+
     await new Promise<void>((resolvePromise) => {
         server.listen(0, '127.0.0.1', () => resolvePromise())
     })
     const address = server.address()
+
     if (!address || typeof address === 'string') {
         throw new Error('mock rpc did not bind')
     }
+
     try {
         const output = await callMcpTool('account_passkey', {
             rpcUrl: `http://127.0.0.1:${address.port}`,
@@ -377,6 +409,7 @@ test('MCP account_passkey privateKey cannot proceed and does not submit a transa
             r: '1',
             s: '1',
         })
+
         expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(output).toContain('does not accept a raw private key over MCP')
         expect(output).toContain('"isError":true')
@@ -402,6 +435,7 @@ test('MCP escrow_settle oraclePrivateKey cannot proceed without human confirmati
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('does not accept a raw private key over MCP')
     expect(output).toContain('"isError":true')
@@ -431,6 +465,7 @@ test('non-TTY escrow settle with TW_ORACLE_PRIVATE_KEY cannot sign without human
             HOME: home,
         },
     )
+
     expect(result.status).not.toBe(0)
     expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(result.output).toContain('SIGN ESCROW SETTLEMENT')
@@ -440,11 +475,14 @@ test('non-TTY escrow settle with TW_ORACLE_PRIVATE_KEY cannot sign without human
 })
 
 const anyTarget = '0x3232323232323232323232323232323232323232'
+
 const anySelector = '0x32323232'
+
 const maxSpendRaw = (2n ** 256n - 1n).toString()
 
 test('MCP session_export with TW_PASSWORD does not write a decryptable session key', async () => {
     const outputPath = join(home, 'stolen.session.json')
+
     const output = await callMcpTool(
         'session_export',
         {
@@ -460,6 +498,7 @@ test('MCP session_export with TW_PASSWORD does not write a decryptable session k
             HOME: home,
         },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('EXPORT PRIVATE KEYS')
     expect(output).toContain('"isError":true')
@@ -481,6 +520,7 @@ test('MCP session_create wildcard permissions cannot proceed without the full-ac
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -507,6 +547,7 @@ test('non-TTY session_create wildcard permissions cannot proceed without the ful
         ],
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(result.status).not.toBe(0)
     expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(result.output).toContain('CREATE FULL ACCESS SESSION')
@@ -527,6 +568,7 @@ test('MCP session_rotate wildcard permissions cannot proceed without the full-ac
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('ROTATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -552,6 +594,7 @@ test('non-TTY session_rotate wildcard permissions cannot proceed without the ful
         ],
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(result.status).not.toBe(0)
     expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(result.output).toContain('ROTATE FULL ACCESS SESSION')
@@ -571,6 +614,7 @@ test('MCP permissions_grant wildcard call cannot proceed without the full-access
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -597,6 +641,7 @@ test('non-TTY permissions_grant wildcard call cannot proceed without the full-ac
         ],
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(result.status).not.toBe(0)
     expect(result.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(result.output).toContain('CREATE FULL ACCESS SESSION')
@@ -618,6 +663,7 @@ test('MCP escrow_create cannot move USDC without human confirmation', async () =
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('SEND USDC')
     expect(output).toContain('"isError":true')
@@ -634,6 +680,7 @@ test('MCP escrow_refund cannot move USDC without human confirmation', async () =
         },
         { TW_PASSWORD: password, HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('SEND USDC')
     expect(output).toContain('"isError":true')
@@ -642,6 +689,7 @@ test('MCP escrow_refund cannot move USDC without human confirmation', async () =
 test('MCP account_create cannot install a wildcard session without the phrase', async () => {
     const freshHome = mkdtempSync(join(tmpdir(), 'tw-h3-create-'))
     const freshKeystore = join(freshHome, 'account.json')
+
     const output = await callMcpTool(
         'account_create',
         {
@@ -650,6 +698,7 @@ test('MCP account_create cannot install a wildcard session without the phrase', 
         },
         { TW_PASSWORD: password, HOME: freshHome },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -668,6 +717,7 @@ test('MCP account_delegate cannot install a wildcard session without the phrase'
         },
         { TW_PASSWORD: 'wrong-password', HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -684,6 +734,7 @@ test('daemon socket refuses unlock of an unreadable session and does not return 
     const { runSessionDaemon } = await import('../src/lib/session-daemon')
     const { SessionDaemonClient } = await import('../src/lib/session-daemon-client')
     const daemon = await runSessionDaemon()
+
     try {
         const unlock = await runCli(
             [
@@ -698,6 +749,7 @@ test('daemon socket refuses unlock of an unreadable session and does not return 
             ],
             { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
         )
+
         expect(unlock.status).not.toBe(0)
         expect(unlock.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(unlock.output).toContain('UNLOCK FULL ACCESS SESSION')
@@ -709,6 +761,7 @@ test('daemon socket refuses unlock of an unreadable session and does not return 
         expect(secrets?.ok).toBe(false)
     } finally {
         await daemon.stop()
+
         if (previous === undefined) {
             delete process.env.TW_AGENT_SOCK
         } else {
@@ -728,6 +781,7 @@ test('MCP session_create minute period with no amount requires confirmation befo
         },
         { TW_PASSWORD: 'wrong-password', HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -748,6 +802,7 @@ test('MCP session_create hour period at 10 USDC requires confirmation before dec
         },
         { TW_PASSWORD: 'wrong-password', HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).toContain('"isError":true')
@@ -761,6 +816,7 @@ test('MCP permissions_grant raw 10000000 per minute on a non-USDC token requires
         ['native', '0x0000000000000000000000000000000000000000'],
         ['zero-decimal', '0x0000000000000000000000000000000000000001'],
     ] as const
+
     for (const [label, token] of tokens) {
         const output = await callMcpTool(
             'permissions_grant',
@@ -775,6 +831,7 @@ test('MCP permissions_grant raw 10000000 per minute on a non-USDC token requires
             },
             { TW_PASSWORD: 'wrong-password', HOME: home },
         )
+
         const labeled = `${label}\n${output}`
         expect(labeled).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(labeled).toContain('CREATE FULL ACCESS SESSION')
@@ -786,6 +843,7 @@ test('MCP permissions_grant raw 10000000 per minute on a non-USDC token requires
 })
 
 const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+
 const increaseAllowance = '0x39509351'
 
 const orchestratorIntent = {
@@ -822,10 +880,12 @@ async function startDaemon(socketPath: string) {
     const { runSessionDaemon } = await import('../src/lib/session-daemon')
     const { SessionDaemonClient } = await import('../src/lib/session-daemon-client')
     const daemon = await runSessionDaemon()
+
     return {
         client: new SessionDaemonClient(socketPath),
         stop: async () => {
             await daemon.stop()
+
             if (previous === undefined) delete process.env.TW_AGENT_SOCK
             else process.env.TW_AGENT_SOCK = previous
         },
@@ -836,6 +896,7 @@ test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator
     const dir = mkdtempSync(join(tmpdir(), 'tw-h3-unlock-'))
     const socketPath = join(dir, 'session.sock')
     const daemon = await startDaemon(socketPath)
+
     try {
         const unlock = await runCli(
             [
@@ -850,15 +911,18 @@ test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator
             ],
             { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
         )
+
         expect(unlock.status).not.toBe(0)
         expect(unlock.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(unlock.output).toContain('UNLOCK FULL ACCESS SESSION')
         expect(unlock.output).not.toContain('Unsupported state')
         expect(unlock.output).not.toContain(sessionPrivateKey)
         const listed = await daemon.client.list()
+
         if (listed?.ok) {
             expect(listed.result.keys).toHaveLength(0)
         }
+
         const signed = await daemon.client.sign('default', orchestratorIntent)
         expect(signed?.ok).toBe(false)
         expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
@@ -871,6 +935,7 @@ test('MCP daemon_unlock of an unreadable session cannot sign an Orchestrator int
     const dir = mkdtempSync(join(tmpdir(), 'tw-h3-unlock-mcp-'))
     const socketPath = join(dir, 'session.sock')
     const daemon = await startDaemon(socketPath)
+
     try {
         const output = await callMcpTool(
             'daemon_unlock',
@@ -881,6 +946,7 @@ test('MCP daemon_unlock of an unreadable session cannot sign an Orchestrator int
             },
             { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
         )
+
         expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(output).toContain('UNLOCK FULL ACCESS SESSION')
         expect(output).toContain('"isError":true')
@@ -905,6 +971,7 @@ test('MCP session_create increaseAllowance on USDC requires confirmation before 
         },
         { TW_PASSWORD: 'wrong-password', HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).not.toContain('Unsupported state')
@@ -924,6 +991,7 @@ test('MCP permissions_grant increaseAllowance on USDC requires confirmation befo
         },
         { TW_PASSWORD: 'wrong-password', HOME: home },
     )
+
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(output).toContain('CREATE FULL ACCESS SESSION')
     expect(output).not.toContain('Unsupported state')
@@ -933,6 +1001,7 @@ test('MCP permissions_grant increaseAllowance on USDC requires confirmation befo
 test('a second 10 USDC daily session_create requires confirmation and the first does not', async () => {
     let existing: ScriptedKey[] = []
     const chainServer = await serveJson(8545, (message) => chainResponder(existing)(message))
+
     try {
         const first = await callMcpTool(
             'session_create',
@@ -943,6 +1012,7 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
             },
             { TW_PASSWORD: 'wrong-password', HOME: home },
         )
+
         expect(first).not.toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(first).toContain('Unsupported state')
 
@@ -953,6 +1023,7 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
                 spends: [{ token: usdc as Address, period: 2, limit: 10_000_000n }],
             },
         ]
+
         const second = await callMcpTool(
             'session_create',
             {
@@ -962,6 +1033,7 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
             },
             { TW_PASSWORD: 'wrong-password', HOME: home },
         )
+
         expect(second).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(second).toContain('CREATE FULL ACCESS SESSION')
         expect(second).not.toContain('Unsupported state')
@@ -980,6 +1052,7 @@ test('MCP session rotate --narrow and session revoke are refused without the phr
         },
         { TW_PASSWORD: 'wrong-password', HOME: home },
     )
+
     expect(rotate).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(rotate).toContain('ROTATE FULL ACCESS SESSION')
     expect(rotate).not.toContain('Unsupported state')
@@ -994,17 +1067,24 @@ test('MCP session rotate --narrow and session revoke are refused without the phr
         },
         { TW_PASSWORD: 'wrong-password', HOME: home },
     )
+
     expect(revoke).toContain('HUMAN_CONFIRMATION_REQUIRED')
     expect(revoke).not.toContain('Unsupported state')
     expect(revoke).not.toContain(rootPrivateKey)
 })
 
 const sessionAddress = privateKeyToAccount(sessionPrivateKey).address
+
 const sessionKeyHash = computeSessionKeyHash(sessionAddress)
+
 const getKeysSelector = toFunctionSelector('getKeys()')
+
 const spendInfosSelector = toFunctionSelector('spendAndExecuteInfos(bytes32[])')
+
 const packedInfosSelector = toFunctionSelector('canExecutePackedInfos(bytes32)')
+
 const callCheckerSelector = toFunctionSelector('callCheckerInfos(bytes32)')
+
 const ANY_KEYHASH =
     '0x3232323232323232323232323232323232323232323232323232323232323232' as Hex
 
@@ -1022,6 +1102,7 @@ type ScriptedKey = {
 
 function packCall(target: string, selector: string): Hex {
     const packed = (BigInt(target) << 96n) | BigInt(selector)
+
     return `0x${packed.toString(16).padStart(64, '0')}` as Hex
 }
 
@@ -1113,7 +1194,9 @@ function jsonRpcReply(body: string, respond: (message: { id?: unknown; method?: 
     const parsed = JSON.parse(body) as
         | { id?: unknown; method?: string; params?: unknown }
         | { id?: unknown; method?: string; params?: unknown }[]
+
     if (Array.isArray(parsed)) return parsed.map((message) => respond(message))
+
     return respond(parsed)
 }
 
@@ -1126,6 +1209,7 @@ async function serveJson(
         req.on('data', (chunk) => chunks.push(chunk))
         req.on('end', () => {
             let payload: unknown
+
             try {
                 payload = jsonRpcReply(Buffer.concat(chunks).toString('utf8'), respond)
             } catch (error) {
@@ -1138,18 +1222,22 @@ async function serveJson(
                     },
                 }
             }
+
             res.setHeader('content-type', 'application/json')
             res.end(JSON.stringify(payload))
         })
     })
+
     await new Promise<void>((resolvePromise, reject) => {
         server.once('error', reject)
         server.listen(port, '127.0.0.1', () => resolvePromise())
     })
     const address = server.address()
+
     if (!address || typeof address === 'string') {
         throw new Error('json-rpc stub failed to bind')
     }
+
     return {
         url: `http://127.0.0.1:${address.port}`,
         close: () =>
@@ -1162,12 +1250,15 @@ async function serveJson(
 function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
     return (message: { id?: unknown; method?: string; params?: unknown }) => {
         const id = message.id ?? null
+
         if (message.method === 'eth_chainId') {
             return { jsonrpc: '2.0', id, result: '0x7a69' }
         }
+
         if (message.method !== 'eth_call') {
             return { jsonrpc: '2.0', id, result: '0x0' }
         }
+
         if (keys === 'error') {
             return {
                 jsonrpc: '2.0',
@@ -1175,22 +1266,28 @@ function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
                 error: { code: -32003, message: 'permission lookup failed' },
             }
         }
+
         const params = message.params as [{ data?: string }] | undefined
         const data = (params?.[0]?.data ?? '').toLowerCase()
         const script: ChainScript = Array.isArray(keys) ? { keys } : keys
         const view = encodeChainView(script.keys)
+
         if (data.startsWith(getKeysSelector)) {
             return { jsonrpc: '2.0', id, result: view.getKeys }
         }
+
         if (data.startsWith(spendInfosSelector)) {
             return { jsonrpc: '2.0', id, result: view.spend }
         }
+
         if (data.startsWith(packedInfosSelector)) {
             const hash = `0x${data.slice(10, 74)}`
+
             const packed =
                 hash === ANY_KEYHASH.toLowerCase()
                     ? (script.anyCalls ?? []).map((call) => packCall(call.target, call.selector))
                     : []
+
             return {
                 jsonrpc: '2.0',
                 id,
@@ -1201,11 +1298,14 @@ function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
                 }),
             }
         }
+
         if (data.startsWith(callCheckerSelector)) {
             const hash = `0x${data.slice(10, 74)}`
+
             const rows = (script.checkers ?? []).filter(
                 (checker) => checker.keyHash.toLowerCase() === hash,
             )
+
             return {
                 jsonrpc: '2.0',
                 id,
@@ -1219,6 +1319,7 @@ function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
                 }),
             }
         }
+
         return {
             jsonrpc: '2.0',
             id,
@@ -1236,6 +1337,7 @@ function relayerResponder(result: unknown | 'error') {
                 error: { code: -32003, message: 'Failed to read key permissions' },
             }
         }
+
         return { jsonrpc: '2.0', id: message.id ?? null, result }
     }
 }
@@ -1250,6 +1352,7 @@ async function expectUnlockRequiresPhrase(
     const dir = mkdtempSync(join(tmpdir(), 'tw-h3-chain-'))
     const socketPath = join(dir, 'session.sock')
     const daemon = await startDaemon(socketPath)
+
     try {
         const unlock = await runCli(
             [
@@ -1264,6 +1367,7 @@ async function expectUnlockRequiresPhrase(
             ],
             { ...env, TW_AGENT_SOCK: socketPath },
         )
+
         expect(unlock.status).not.toBe(0)
         expect(unlock.output).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(unlock.output).toContain('UNLOCK FULL ACCESS SESSION')
@@ -1278,6 +1382,7 @@ async function expectUnlockRequiresPhrase(
             { sessionName: 'default', env: 'dev', keystorePath },
             { ...env, TW_AGENT_SOCK: socketPath },
         )
+
         expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
         expect(output).toContain('UNLOCK FULL ACCESS SESSION')
         expect(output).toContain('"isError":true')
@@ -1314,8 +1419,10 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
     const env = { TW_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
     const dir = mkdtempSync(join(tmpdir(), 'tw-h3-narrow-'))
     const socketPath = join(dir, 'session.sock')
+
     try {
     const daemon = await startDaemon(socketPath)
+
     try {
         const unlock = await runCli(
             [
@@ -1330,14 +1437,17 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
             ],
             { ...env, TW_AGENT_SOCK: socketPath },
         )
+
         expect(unlock.output).not.toContain('UNLOCK FULL ACCESS SESSION')
         expect(unlock.output).not.toContain(sessionPrivateKey)
         expect(unlock.status).toBe(0)
         const listed = await daemon.client.list()
         expect(listed?.ok).toBe(true)
+
         if (listed?.ok) {
             expect(listed.result.keys.map((key) => key.name)).toContain('default')
         }
+
         const signed = await daemon.client.sign('default', orchestratorIntent)
         expect(signed?.ok).toBe(false)
         expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
@@ -1348,12 +1458,14 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
     const mcpDir = mkdtempSync(join(tmpdir(), 'tw-h3-narrow-mcp-'))
     const mcpSocket = join(mcpDir, 'session.sock')
     const mcpDaemon = await startDaemon(mcpSocket)
+
     try {
         const output = await callMcpTool(
             'daemon_unlock',
             { sessionName: 'default', env: 'dev', keystorePath },
             { ...env, TW_AGENT_SOCK: mcpSocket },
         )
+
         expect(output).not.toContain('UNLOCK FULL ACCESS SESSION')
         expect(output).not.toContain(sessionPrivateKey)
         expect(output).toContain('"status":"complete"')
@@ -1406,6 +1518,7 @@ test('allowlisted escrow calls with no spend limit require the unlock phrase', a
         ESCROW_31337: process.env.ESCROW_31337,
         MULTI_SIG_SIGNER_31337: process.env.MULTI_SIG_SIGNER_31337,
     }
+
     const escrow = '0x05f9597eed844410b7c0746A1C584188d0644730'
     process.env.ORCHESTRATOR_31337 = '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC'
     process.env.SIMPLE_FUNDER_31337 = '0x0000000000000000000000000000000000000002'
@@ -1415,6 +1528,7 @@ test('allowlisted escrow calls with no spend limit require the unlock phrase', a
     process.env.SIMPLE_SETTLER_31337 = '0x0000000000000000000000000000000000000006'
     process.env.ESCROW_31337 = escrow
     process.env.MULTI_SIG_SIGNER_31337 = '0x0000000000000000000000000000000000000007'
+
     try {
         await expectUnlockRequiresPhrase(
             [
@@ -1450,6 +1564,7 @@ test('USDC calls with no spend limit require the unlock phrase', async () => {
 test('two session creates started together authorize at most one 10 USDC/day key without the phrase', async () => {
     let daily = 0n
     let authorizeCount = 0
+
     const chainServer = await serveJson(8545, (message) =>
         chainResponder(
             daily === 0n
@@ -1463,9 +1578,11 @@ test('two session creates started together authorize at most one 10 USDC/day key
                   ],
         )(message),
     )
+
     const keystorePathForRace = join(mkdtempSync(join(tmpdir(), 'tw-h3-race-')), 'account.json')
     const keyA = generatePrivateKey()
     const keyB = generatePrivateKey()
+
     const root = await createRootKeystore({
         password: 'pw',
         rootPrivateKey: `0x${'11'.repeat(32)}` as Hex,
@@ -1474,12 +1591,15 @@ test('two session creates started together authorize at most one 10 USDC/day key
         rpcUrl: 'http://127.0.0.1:8545',
         chainId: 31337,
     })
+
     const delegatedRoot = {
         ...root,
         checkpoint: 'delegated' as const,
         addresses: { ...root.addresses, delegated: root.addresses.root },
     }
+
     await writeRootKeystoreFile(keystorePathForRace, delegatedRoot)
+
     const seededSession = await createSessionKeystore({
         password: 'pw',
         sessionPrivateKey: keyA,
@@ -1488,6 +1608,7 @@ test('two session creates started together authorize at most one 10 USDC/day key
         name: 'default',
         checkpoint: 'authorized',
     })
+
     await writeSessionKeystoreFile(
         resolveSessionKeystorePath(keystorePathForRace),
         seededSession,
@@ -1495,6 +1616,7 @@ test('two session creates started together authorize at most one 10 USDC/day key
     const account = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     const hashA = computeSessionKeyHash(privateKeyToAccount(keyA).address)
     const hashB = computeSessionKeyHash(privateKeyToAccount(keyB).address)
+
     const bundle = {
         root: {
             sessionRef: { active: 'default', dir: 'sessions' },
@@ -1544,6 +1666,7 @@ test('two session creates started together authorize at most one 10 USDC/day key
         executeSignedCalls: async () => {
             authorizeCount += 1
             daily = 10_000_000n
+
             return {
                 id: `bundle-${authorizeCount}`,
                 finalStatus: {
@@ -1569,6 +1692,7 @@ test('two session creates started together authorize at most one 10 USDC/day key
                 depsFor(keyB),
             ),
         ])
+
         const fulfilled = results.filter((result) => result.status === 'fulfilled')
         const rejected = results.filter((result) => result.status === 'rejected')
         expect(authorizeCount).toBeLessThanOrEqual(1)

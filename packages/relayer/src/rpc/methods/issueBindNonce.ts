@@ -18,9 +18,11 @@ import type { IssueBindNonceParams } from '../schema/bindAccount'
 
 export function requireOidcCaller(): { issuer: string; subject: string } {
     const identity = currentAuthIdentity()
+
     if (!identity || identity.provider !== 'oidc' || !identity.issuer || !identity.userId) {
         throw new RpcError(INVALID_PARAMS, 'OIDC identity required')
     }
+
     return { issuer: identity.issuer, subject: identity.userId }
 }
 
@@ -41,14 +43,17 @@ export async function issueBindNonce(
 }> {
     const caller = requireOidcCaller()
     const environment = walletBindEnvironment(env)
+
     if (!environment) {
         throw new RpcError(INVALID_PARAMS, 'CONTEXT is required to issue a bind nonce')
     }
+
     const typed = unwrapParams<IssueBindNonceParams>(params)
     const address = getAddress(validateAddress(requireParam(typed?.address, 'address'), 'address'))
     const chainId = resolveChainId(env, typed?.chainId)
 
     let issued: Awaited<ReturnType<ReturnType<typeof walletBindingStub>['issueNonce']>>
+
     try {
         issued = await walletBindingStub(env).issueNonce({
             issuer: caller.issuer,
@@ -67,12 +72,15 @@ export async function issueBindNonce(
         if (issued.reason === 'address_taken') {
             throw new RpcError(INVALID_PARAMS, 'Address is bound to another identity')
         }
+
         if (issued.reason === 'rate_limited') {
             throw new RpcError(RATE_LIMITED, 'Bind rate limit exceeded')
         }
+
         if (issued.reason === 'subject_cap') {
             throw new RpcError(RATE_LIMITED, 'Wallet binding cap exceeded')
         }
+
         throw new RpcError(INVALID_PARAMS, 'Invalid bind nonce request')
     }
 

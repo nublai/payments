@@ -277,6 +277,7 @@ function getDefaultDeps(): SessionCreateDeps {
         fileExists: async (path) => {
             try {
                 await access(path, constants.F_OK)
+
                 return true
             } catch {
                 return false
@@ -284,16 +285,19 @@ function getDefaultDeps(): SessionCreateDeps {
         },
         readNonce: async ({ network, account }) => {
             const client = createCliRelayerClient(network)
+
             return readAccountNonce(client, account)
         },
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address: account, chainIds: [chainId] })
         },
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         executeSignedCalls,
         prepareCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.prepareCalls({
                 from: input.from,
                 chainId: input.network.chainId,
@@ -313,10 +317,12 @@ function getDefaultDeps(): SessionCreateDeps {
         },
         sendPreparedCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.sendPreparedCalls({ context: input.context, signature: input.signature })
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return (await import('@nubl/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
@@ -346,7 +352,9 @@ export async function resolveSessionCreatePassword(
     },
 ): Promise<string> {
     if (deps.envPassword) return deps.envPassword
+
     if (args.passwordStdin) return deps.readPasswordFromStdin()
+
     if (deps.isInteractive) return deps.promptForExistingPassword()
     throw new SessionCreateError(
         'PASSWORD_REQUIRED',
@@ -369,11 +377,13 @@ function assertSwapCreateOptions(options: SessionCreateOptions, chainId: number)
             '--swap cannot be combined with --full-access, --activate, --target, --selector, --spend-limit, or --spend-period. The swap session stays inactive so the payment key remains the active session.',
         )
     }
+
     if (!options.swapPhraseConfirmed) {
         throw new HumanConfirmationError(
             humanConfirmationMessage('Creating a swap session', CONFIRM_SWAP_SESSION_PHRASE),
         )
     }
+
     if (relayEntryPoints(chainId).length === 0) {
         throw new SessionCreateError(
             'SESSION_CREATE_FAILED',
@@ -387,19 +397,24 @@ export async function executeSessionCreate(
     depsArg?: Partial<SessionCreateDeps>,
 ): Promise<SessionCreateResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
+
     const chain = options.chain
         ? normalizeChain(options.chain, options.env)
         : selectDefaultChain(options.env)
+
     if (options.swap) {
         const chainId = getChainConfig(chain).chainId
         assertSwapCreateOptions(options, chainId)
     }
+
     const network = resolveNetworkConfig(options.env, chain)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         keystorePath: options.keystorePath,
         name: options.name,
     })
+
     const sessionName = parseSessionName(options.sessionName)
 
     return deps.withKeystoreLock(keystorePath, async () => {
@@ -408,6 +423,7 @@ export async function executeSessionCreate(
         const accountAddress = bundle.root.addresses.delegated
             ? getAddress(bundle.root.addresses.delegated)
             : undefined
+
         if (!accountAddress) {
             throw new SessionCreateError(
                 'SESSION_NOT_DELEGATED',
@@ -423,6 +439,7 @@ export async function executeSessionCreate(
         )
 
         const fileExists = await deps.fileExists(sessionPath)
+
         if (fileExists && !options.resume) {
             throw new SessionCreateError(
                 'SESSION_NAME_CONFLICT',
@@ -432,8 +449,10 @@ export async function executeSessionCreate(
         }
 
         let sessionKeystore: AnySessionKeystore
+
         if (fileExists) {
             sessionKeystore = await deps.readSessionKeystoreFile(sessionPath)
+
             if (sessionKeystore.name !== sessionName) {
                 throw new SessionCreateError(
                     'SESSION_NAME_CONFLICT',
@@ -454,6 +473,7 @@ export async function executeSessionCreate(
         }
 
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+
         const signedNetwork = {
             ...network,
             authSigner: createEthHttpSigner(decryptedRoot.rootPrivateKey, network.chainId),
@@ -469,6 +489,7 @@ export async function executeSessionCreate(
                   chainId: network.chainId,
               })
             : undefined
+
         const permissionDefaults =
             options.noPermissions || swapInstall
                 ? undefined
@@ -480,6 +501,7 @@ export async function executeSessionCreate(
                       spendLimit: options.spendLimit,
                       spendPeriod: options.spendPeriod,
                   })
+
         const permissionResult = permissionDefaults
             ? {
                   target: permissionDefaults.target,
@@ -489,6 +511,7 @@ export async function executeSessionCreate(
                   spendPeriod: permissionDefaults.spendPeriod,
               }
             : undefined
+
         const swapResult = swapInstall
             ? {
                   calls: swapInstall.entryPoints.map((entry) => ({
@@ -509,26 +532,32 @@ export async function executeSessionCreate(
                 account: accountAddress,
                 chainId: network.chainId,
             })
+
             const chainKeys = getChainKeys(onChainKeys, network.chainId)
+
             const authorized = chainKeys.some(
                 (entry: { hash?: string }) =>
                     typeof entry.hash === 'string' &&
                     entry.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
             )
+
             if (authorized) {
                 const matchedKey = chainKeys.find(
                     (entry: { hash?: string }) =>
                         typeof entry.hash === 'string' &&
                         entry.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
                 )
+
                 const onChainExpiry =
                     matchedKey && typeof matchedKey.expiry === 'string'
                         ? Number(matchedKey.expiry)
                         : 0
+
                 if (options.activate) {
                     bundle.root.sessionRef.active = sessionName
                     await deps.writeRootKeystoreFile(keystorePath, bundle.root, { overwrite: true })
                 }
+
                 return {
                     type: 'session_create',
                     status: 'complete',
@@ -558,17 +587,20 @@ export async function executeSessionCreate(
 
         if (permissionDefaults && !options.fullAccessPhraseConfirmed) {
             const usdc = getUsdcTokenConfig(chain).address
+
             if (permissionDefaults.spendToken.toLowerCase() === usdc.toLowerCase()) {
                 const proposed = normalizedDailyUsdcUnits(
                     permissionDefaults.spendLimit,
                     permissionDefaults.spendPeriod,
                 )
+
                 const existing = await readActiveUsdcDaily({
                     env: options.env,
                     chain,
                     name: options.name,
                     keystorePath,
                 })
+
                 if (
                     existing === 'unreadable' ||
                     existing + proposed > DEFAULT_SESSION_SPEND_LIMIT
@@ -591,6 +623,7 @@ export async function executeSessionCreate(
                     network: signedNetwork,
                     owner: accountAddress,
                 })
+
                 await assertNoStandingRights({
                     chainId: network.chainId,
                     owner: accountAddress,
@@ -641,6 +674,7 @@ export async function executeSessionCreate(
                         cause: error,
                     })
                 }
+
                 throw new SessionCreateError(
                     'SESSION_CREATE_FAILED',
                     'Could not read standing rights. Refusing to sign.',
@@ -671,6 +705,7 @@ export async function executeSessionCreate(
                 data: authorizeCallData,
             },
         ]
+
         if (swapInstall) {
             calls.push(...swapInstall.calls)
         } else if (permissionDefaults) {
@@ -702,6 +737,7 @@ export async function executeSessionCreate(
         }
 
         const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
+
         const submission = await deps.executeSignedCalls(
             {
                 prepareCalls: (input) =>
@@ -739,6 +775,7 @@ export async function executeSessionCreate(
 
         const finalStatus = submission.finalStatus
         const statusCode = finalStatus.statusCode ?? 0
+
         if (!finalStatus.success || ![200, 201].includes(statusCode)) {
             const intentError = finalStatus.receipt?.intentError as Hex | undefined
             throw new SessionCreateError(
@@ -762,27 +799,33 @@ export async function executeSessionCreate(
             account: accountAddress,
             chainId: network.chainId,
         })
+
         let authorized = getChainKeys(keys, network.chainId).some(
             (entry: { hash?: string }) =>
                 typeof entry.hash === 'string' &&
                 entry.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
         )
+
         if (!authorized) {
             for (let attempt = 0; attempt < 4; attempt += 1) {
                 await deps.sleep(500 * (attempt + 1))
+
                 const retryKeys = await deps.getKeys({
                     network: signedNetwork,
                     account: accountAddress,
                     chainId: network.chainId,
                 })
+
                 authorized = getChainKeys(retryKeys, network.chainId).some(
                     (entry: { hash?: string }) =>
                         typeof entry.hash === 'string' &&
                         entry.hash.toLowerCase() === sessionKeyHash.toLowerCase(),
                 )
+
                 if (authorized) break
             }
         }
+
         if (!authorized) {
             throw new SessionCreateError(
                 'SESSION_AUTHORIZATION_FAILED',

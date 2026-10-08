@@ -41,12 +41,14 @@ describe('ETH Gasless Transfer', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // 2. Verify account creation was gasless - balance should be unchanged
         const senderBefore = await client.getBalance({
             address: account.address,
         })
+
         expect(senderBefore).toBe(initialBalance) // Account creation must be gasless
 
         const recipientBefore = await client.getBalance({
@@ -84,6 +86,7 @@ describe('ETH Gasless Transfer', () => {
             context: prepared.context,
             signature,
         })
+
         expect(result.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -95,6 +98,7 @@ describe('ETH Gasless Transfer', () => {
         const senderAfter = await client.getBalance({
             address: account.address,
         })
+
         const recipientAfter = await client.getBalance({
             address: recipient,
         })
@@ -120,6 +124,7 @@ describe('ETH Gasless Transfer', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // Multiple recipients - use addresses outside precompile range (0x01-0x14 are precompiles in Prague)
@@ -132,6 +137,7 @@ describe('ETH Gasless Transfer', () => {
         const senderBefore = await client.getBalance({
             address: account.address,
         })
+
         const recipient1Before = await client.getBalance({ address: recipient1 })
         const recipient2Before = await client.getBalance({ address: recipient2 })
 
@@ -161,6 +167,7 @@ describe('ETH Gasless Transfer', () => {
             context: prepared.context,
             signature,
         })
+
         expect(result.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -172,6 +179,7 @@ describe('ETH Gasless Transfer', () => {
         const senderAfter = await client.getBalance({
             address: account.address,
         })
+
         const recipient1After = await client.getBalance({ address: recipient1 })
         const recipient2After = await client.getBalance({ address: recipient2 })
 
@@ -192,6 +200,7 @@ describe('ETH Gasless Transfer', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // Try to transfer more than balance - simulation should catch this
@@ -223,6 +232,7 @@ describe('ETH Gasless Transfer', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         const prepared = await client.prepareCalls({
@@ -253,6 +263,7 @@ describe('ETH Gasless Transfer', () => {
             context: prepared.context,
             signature,
         })
+
         expect(result.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -278,6 +289,7 @@ describe('ETH Gasless Transfer', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // 2. Create wallet client for signing (simulates browser wallet)
@@ -291,6 +303,7 @@ describe('ETH Gasless Transfer', () => {
         const senderBefore = await client.getBalance({
             address: account.address,
         })
+
         expect(senderBefore).toBe(initialBalance) // Account creation must be gasless
 
         const recipientBefore = await client.getBalance({
@@ -322,6 +335,7 @@ describe('ETH Gasless Transfer', () => {
             context: prepared.context,
             signature,
         })
+
         expect(result.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -333,6 +347,7 @@ describe('ETH Gasless Transfer', () => {
         const senderAfter = await client.getBalance({
             address: account.address,
         })
+
         const recipientAfter = await client.getBalance({
             address: recipient,
         })
@@ -357,6 +372,7 @@ describe('ETH Gasless Transfer', () => {
                 signerKey: privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(createResult.success).toBe(true)
 
             const senderBefore = await client.getBalance({ address: account.address })
@@ -399,6 +415,7 @@ describe('ETH Gasless Transfer', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(result.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: result.id })
@@ -439,6 +456,7 @@ describe('ETH Gasless Transfer', () => {
             signerKey: userPrivateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(userCreateResult.success).toBe(true)
 
         const sponsorCreateResult = await client.upgradeAccount({
@@ -446,6 +464,7 @@ describe('ETH Gasless Transfer', () => {
             signerKey: sponsorPrivateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(sponsorCreateResult.success).toBe(true)
 
         const userBefore = await client.getBalance({ address: userAccount.address })
@@ -504,6 +523,7 @@ describe('ETH Gasless Transfer', () => {
             signature: userSignature,
             paymentSignature,
         })
+
         expect(result.id).toBeDefined()
 
         const status = await waitForBundle(client, { id: result.id })

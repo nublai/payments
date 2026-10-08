@@ -46,7 +46,9 @@ function refuse(detail: string): never {
 
 function keyTypeEnum(type: AuthorizeKey['type']): number {
     if (type === 'secp256k1') return 0
+
     if (type === 'external') return 1
+
     return 2
 }
 
@@ -55,6 +57,7 @@ function keyHash(key: AuthorizeKey): Hex {
         keyTypeEnum(key.type),
         keccak256(key.publicKey),
     ])
+
     return keccak256(encoded)
 }
 
@@ -70,6 +73,7 @@ export function buildUpgradeExecution(
     if (keys.length === 0) return { calls: [], executionData: '0x' }
 
     const calls: UpgradeCall[] = []
+
     for (const key of keys) {
         calls.push({
             to: getAddress(accountAddress),
@@ -90,6 +94,7 @@ export function buildUpgradeExecution(
 
         if (key.permissions.length === 0 || key.role === 'admin') continue
         const hash = keyHash(key)
+
         for (const permission of key.permissions) {
             if (permission.type === 'call') {
                 calls.push({
@@ -124,6 +129,7 @@ export function buildUpgradeExecution(
         parseAbiParameters('(address to, uint256 value, bytes data)[]'),
         [calls],
     )
+
     return { calls, executionData }
 }
 
@@ -212,31 +218,40 @@ export function bindPreparedUpgrade(
     const accountAddress = getAddress(expected.accountAddress)
     const orchestrator = getAddress(expected.orchestrator)
     const authorizationNonce = BigInt(expected.authorizationNonce)
+
     const authDigest = hashAuthorization({
         chainId: expected.chainId,
         contractAddress: delegation,
         nonce: Number(authorizationNonce),
     })
+
     if (prepared.digests?.auth?.toLowerCase() !== authDigest.toLowerCase()) {
         refuse('authorization digest does not match')
     }
 
     const authorization = prepared.context?.authorization
+
     if (!authorization) refuse('authorization is missing')
+
     if (Number(authorization.chainId) !== expected.chainId) refuse('authorization chain does not match')
+
     if (BigInt(authorization.nonce ?? -1) !== authorizationNonce) {
         refuse('authorization nonce does not match')
     }
+
     if (getAddress(authorization.contractAddress ?? '0x') !== delegation) {
         refuse('authorization target does not match')
     }
 
     const { calls, executionData } = buildUpgradeExecution(expected.authorizeKeys, accountAddress)
     const preCall = prepared.context?.preCall
+
     if ((preCall?.executionData ?? '0x').toLowerCase() !== executionData.toLowerCase()) {
         refuse('execution data does not match')
     }
+
     if (preCall?.eoa && getAddress(preCall.eoa) !== accountAddress) refuse('account does not match')
+
     if (preCall?.nonce !== undefined && BigInt(preCall.nonce) !== UPGRADE_PRECALL_NONCE) {
         refuse('precall nonce does not match')
     }
@@ -247,12 +262,14 @@ export function bindPreparedUpgrade(
         calls,
         nonce: UPGRADE_PRECALL_NONCE,
     }
+
     const signingDomain = {
         name: ORCHESTRATOR_DOMAIN_NAME,
         version: ORCHESTRATOR_DOMAIN_VERSION,
         chainId: expected.chainId,
         verifyingContract: orchestrator,
     }
+
     const execDigest = hashTypedData({
         domain: signingDomain,
         types: SIGNED_CALL_TYPES,
@@ -264,6 +281,7 @@ export function bindPreparedUpgrade(
         if (prepared.digests?.exec && prepared.digests.exec !== '0x' && prepared.context?.preCall?.executionData !== '0x') {
             refuse('execution data does not match')
         }
+
         return {
             authDigest,
             execDigest,
@@ -278,33 +296,48 @@ export function bindPreparedUpgrade(
     }
 
     const typed = prepared.typedData
+
     if (!typed?.domain || !typed.message) refuse('typed data is missing')
+
     if (typed.domain.name !== ORCHESTRATOR_DOMAIN_NAME || typed.domain.version !== ORCHESTRATOR_DOMAIN_VERSION) {
         refuse('domain name or version does not match')
     }
+
     if (Number(typed.domain.chainId) !== expected.chainId) refuse('chain id does not match')
+
     if (getAddress(typed.domain.verifyingContract ?? '0x') !== orchestrator) {
         refuse('verifying contract does not match')
     }
+
     if (typed.primaryType !== 'SignedCall') refuse('typed data primary type does not match')
+
     if (!sameTypes(typed.types?.SignedCall, SIGNED_CALL_TYPES.SignedCall) || !sameTypes(typed.types?.Call, SIGNED_CALL_TYPES.Call)) {
         refuse('typed data types do not match')
     }
+
     if (typed.message.multichain === true) refuse('multichain flag does not match')
+
     if (getAddress(typed.message.eoa ?? '0x') !== accountAddress) refuse('account does not match')
+
     if (BigInt(typed.message.nonce ?? -1) !== UPGRADE_PRECALL_NONCE) refuse('precall nonce does not match')
 
     const gotCalls = typed.message.calls ?? []
+
     if (gotCalls.length !== calls.length) refuse('call count does not match')
+
     for (let index = 0; index < calls.length; index++) {
         const got = gotCalls[index]
         const wanted = calls[index]
+
         if (getAddress(got.to ?? '0x') !== wanted.to) refuse(`call target does not match (call ${index})`)
+
         if (BigInt(got.value ?? 0) !== wanted.value) refuse(`call value does not match (call ${index})`)
+
         if ((got.data ?? '0x').toLowerCase() !== wanted.data.toLowerCase()) {
             refuse(`call data does not match (call ${index})`)
         }
     }
+
     if (prepared.digests?.exec?.toLowerCase() !== execDigest.toLowerCase()) {
         refuse('digest does not match')
     }

@@ -63,6 +63,7 @@ describe('auth policy', () => {
     it('always protects account upgrade methods, including when auth is set to none', () => {
         for (const value of [undefined, 'none', 'wallet_sendPreparedCalls', ' , ']) {
             const methods = resolveAuthProtectedMethods(value)
+
             for (const method of ALWAYS_AUTH_PROTECTED_METHODS) {
                 expect(methods.has(method)).toBe(true)
             }

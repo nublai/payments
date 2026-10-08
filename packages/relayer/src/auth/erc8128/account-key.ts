@@ -18,10 +18,12 @@ import type { Env } from '../../types/env'
  */
 export function secp256k1AccountKeyHash(signer: Address): Hex {
     const publicKey = encodeAbiParameters([{ type: 'address' }], [signer])
+
     const encoded = encodeAbiParameters(parseAbiParameters('uint8, bytes32'), [
         0,
         keccak256(publicKey),
     ])
+
     return keccak256(encoded)
 }
 
@@ -36,6 +38,7 @@ export async function isOnChainAccountKey(
     nowSeconds: number,
 ): Promise<boolean> {
     if (!isAddress(account) || !isAddress(signer)) return false
+
     try {
         const key = await client.readContract({
             address: account,
@@ -43,11 +46,15 @@ export async function isOnChainAccountKey(
             functionName: 'getKey',
             args: [secp256k1AccountKeyHash(signer)],
         })
+
         const expiry = BigInt(key.expiry)
+
         // Match Account.getKeys: expiry 0 never expires; a key is expired only after its timestamp.
         if (expiry !== 0n && BigInt(nowSeconds) > expiry) return false
+
         if (Number(key.keyType) !== 0) return false
         const [decoded] = decodeAbiParameters([{ type: 'address' }], key.publicKey)
+
         return typeof decoded === 'string' && decoded.toLowerCase() === signer.toLowerCase()
     } catch {
         return false
@@ -63,6 +70,7 @@ export async function signerIsAccountKey(
 ): Promise<boolean> {
     try {
         const client = getChainClient(chainId, env)
+
         return await isOnChainAccountKey(client, account, signer, nowSeconds)
     } catch {
         return false

@@ -10,10 +10,15 @@ import {
 import type { AuthorizeKey } from '../../src/actions/upgradeAccount.js'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
+
 const PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+
 const ATTACKER = getAddress('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF')
+
 const CHAIN_ID = 8453
+
 const TX_NONCE = 5n
 
 const KEY: AuthorizeKey = {
@@ -49,29 +54,34 @@ function expected() {
 
 function honestPrepared() {
     const { calls, executionData } = buildUpgradeExecution([KEY], ACCOUNT)
+
     const authDigest = hashAuthorization({
         chainId: CHAIN_ID,
         contractAddress: PROXY,
         nonce: Number(TX_NONCE),
     })
+
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: CHAIN_ID,
         verifyingContract: ORCHESTRATOR,
     }
+
     const message = {
         multichain: false,
         eoa: ACCOUNT,
         calls,
         nonce: UPGRADE_PRECALL_NONCE,
     }
+
     const execDigest = hashTypedData({
         domain,
         types: SIGNED_CALL_TYPES,
         primaryType: 'SignedCall',
         message,
     })
+
     return {
         digests: { auth: authDigest, exec: execDigest },
         typedData: {
@@ -145,10 +155,12 @@ describe('bindPreparedUpgrade', () => {
     it('refuses an attacker call in the SignedCall', () => {
         const prepared = honestPrepared()
         const calls = [{ to: ATTACKER, value: 0n, data: '0xdeadbeef' as Hex }]
+
         const executionData = encodeAbiParameters(
             parseAbiParameters('(address to, uint256 value, bytes data)[]'),
             [calls],
         )
+
         prepared.context.preCall.executionData = executionData
         prepared.typedData.message.calls = calls.map((call) => ({
             to: call.to,

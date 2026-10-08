@@ -40,6 +40,7 @@ test('writes split root/session keystores and decrypts both', async () => {
             rpcUrl: 'http://127.0.0.1:8545',
             chainId: 31337,
         })
+
         const session = await createSessionKeystore({
             password,
             sessionPrivateKey,
@@ -66,6 +67,7 @@ test('writes split root/session keystores and decrypts both', async () => {
 test('encryptBufferSecret round-trips binary device payloads', async () => {
     const password = 'buffer-secret-password'
     const sessionPrivateKey = generatePrivateKey()
+
     const session = await createSessionKeystore({
         password,
         sessionPrivateKey,
@@ -80,6 +82,7 @@ test('encryptBufferSecret round-trips binary device payloads', async () => {
     })
 
     const key = await deriveKeystoreKey(password, session.kdf.params)
+
     const payload = toBinary(
         ExportedDeviceSchema,
         create(ExportedDeviceSchema, {
@@ -117,7 +120,9 @@ test('readSessionKeystoreFile accepts agent keystores with named channel maps', 
             delegated: '0x1111111111111111111111111111111111111111',
             name: 'agent-alice',
         })
+
         const key = await deriveKeystoreKey(password, session.kdf.params)
+
         const encryptionDevice = encryptBufferSecret(
             toBinary(
                 ExportedDeviceSchema,
@@ -129,6 +134,7 @@ test('readSessionKeystoreFile accepts agent keystores with named channel maps', 
             ),
             key,
         )
+
         key.fill(0)
 
         await writeSessionKeystoreFile(sessionPath, {
@@ -149,9 +155,11 @@ test('readSessionKeystoreFile accepts agent keystores with named channel maps', 
 
         const loaded = await readSessionKeystoreFile(sessionPath)
         expect(isAgentKeystore(loaded)).toBe(true)
+
         if (!isAgentKeystore(loaded)) {
             throw new Error('Expected agent keystore')
         }
+
         expect(loaded.namedChannels).toEqual({
             art: {
                 streamId: '0xstream',
@@ -275,13 +283,16 @@ test('readSessionKeystoreFile accepts login keystores with encrypted bearer toke
             },
             bearerToken: '0x010203',
         })
+
         await writeSessionKeystoreFile(sessionPath, session)
 
         const loaded = await readSessionKeystoreFile(sessionPath)
         expect(isLoginKeystore(loaded)).toBe(true)
+
         if (!isLoginKeystore(loaded)) {
             throw new Error('Expected login keystore')
         }
+
         expect(loaded.secrets.bearerToken).toBeDefined()
     } finally {
         await rm(dir, { recursive: true, force: true })
@@ -305,6 +316,7 @@ test('readKeystoreBundle loads split keystore and active session file', async ()
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         })
+
         const session = await createSessionKeystore({
             password,
             sessionPrivateKey,
@@ -378,6 +390,7 @@ test('readKeystoreBundle reports session-only profiles with clear manager-requir
 
     try {
         const sessionPrivateKey = generatePrivateKey()
+
         const session = await createSessionKeystore({
             password: 'pw',
             sessionPrivateKey,
@@ -391,6 +404,7 @@ test('readKeystoreBundle reports session-only profiles with clear manager-requir
             name: 'worker-1',
             checkpoint: 'authorized',
         })
+
         await writeSessionKeystoreFile(sessionPath, session)
         await expect(readKeystoreBundle(rootPath)).rejects.toThrow(
             'This is a session-only profile.',
@@ -424,6 +438,7 @@ test('readKeystoreBundle reports login profiles with clear root-key guidance', a
                 expiryEpochMs: Date.now() + 60_000,
             },
         })
+
         await writeSessionKeystoreFile(sessionPath, session)
 
         await expect(readKeystoreBundle(rootPath)).rejects.toBeInstanceOf(LoginProfileError)
@@ -454,6 +469,7 @@ test('writes split root and session files with 0600 permissions on posix', async
             rpcUrl: 'https://mainnet.base.org',
             chainId: 8453,
         })
+
         const session = await createSessionKeystore({
             password,
             sessionPrivateKey,

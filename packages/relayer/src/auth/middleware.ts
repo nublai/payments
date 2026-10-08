@@ -77,6 +77,7 @@ export function authMiddleware(deps: MiddlewareDeps = {}): MiddlewareHandler<{
                 },
                 'auth middleware unauthorized',
             )
+
             return c.json(unauthorizedResponse(id, result), 200)
         }
 

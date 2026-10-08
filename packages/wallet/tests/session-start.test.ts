@@ -48,18 +48,21 @@ test('resolveDaemonEntrypoint throws when no candidate exists', () => {
 test('executeSessionStart with foreground calls runSessionDaemonEntry with keepStdio true', async () => {
     const uniqueDir = `/tmp/tw-session-start-foreground-${Date.now()}`
     process.env.TW_AGENT_SOCK = `${uniqueDir}/session.sock`
+
     const runEntryMock = mock(async (_keepStdio: boolean) => ({
         pid: process.pid,
         socketPath: process.env.TW_AGENT_SOCK!,
         stop: async () => {},
         untilStopped: Promise.resolve(),
     }))
+
     const result = await executeSessionStart(
         { foreground: true },
         {
             runSessionDaemonEntry: runEntryMock,
         },
     )
+
     expect(runEntryMock).toHaveBeenCalledTimes(1)
     expect(runEntryMock).toHaveBeenCalledWith(true)
     expect(result.type).toBe('session_start')

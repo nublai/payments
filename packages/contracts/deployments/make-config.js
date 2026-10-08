@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 const artifactsDir = path.join(__dirname, 'envs') // Raw build envs from Solidity scripts
 
 // Walk envs/{context}/{chainId}/*.json and build structure per context
@@ -11,6 +12,7 @@ function getDeploymentsByContext() {
 
   if (!fs.existsSync(artifactsDir)) {
     console.log(`No ${artifactsDir}/ directory found`)
+
     return byContext
   }
 
@@ -21,6 +23,7 @@ function getDeploymentsByContext() {
   for (const context of contexts) {
     byContext[context] = {}
     const contextPath = path.join(artifactsDir, context)
+
     const chains = fs
       .readdirSync(contextPath)
       .filter((f) => fs.statSync(path.join(contextPath, f)).isDirectory())
@@ -28,12 +31,14 @@ function getDeploymentsByContext() {
     for (const chainIdStr of chains) {
       const chainId = parseInt(chainIdStr, 10)
       const chainDir = path.join(contextPath, chainIdStr)
+
       const contractFiles = fs
         .readdirSync(chainDir)
         .filter((f) => f.endsWith('.json'))
 
       // Build addresses from individual contract files
       const addresses = {}
+
       for (const file of contractFiles) {
         const contractName = path.basename(file, '.json')
         const contractData = JSON.parse(fs.readFileSync(path.join(chainDir, file), 'utf8'))
@@ -45,6 +50,7 @@ function getDeploymentsByContext() {
       }
     }
   }
+
   return byContext
 }
 
@@ -72,8 +78,10 @@ function convertToEnv(contextData, context) {
 
     // Add addresses with {CONTRACT}_{chainId} suffix when context has multiple chains.
     const addresses = chainData.addresses || {}
+
     for (const key of Object.keys(addresses).sort()) {
       const value = addresses[key]
+
       if (typeof value === 'object') {
         // Handle nested utils object
         for (const nestedKey of Object.keys(value).sort()) {
@@ -107,11 +115,15 @@ function writeEnvFiles(context, contextData) {
     .split('\n')
     .map((line) => {
       const trimmed = line.trim()
+
       if (!trimmed) return line
+
       if (trimmed.startsWith('#')) return line
+
       return `VITE_${line}`
     })
     .join('\n')
+
   fs.writeFileSync(path.join(contextPath, '.env.vite'), viteEnvContent)
 
   return contextPath
@@ -122,10 +134,13 @@ function sortObjectKeys(obj) {
   if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
     return obj
   }
+
   const sorted = {}
+
   for (const key of Object.keys(obj).sort()) {
     sorted[key] = sortObjectKeys(obj[key])
   }
+
   return sorted
 }
 
@@ -155,5 +170,7 @@ for (const key of Object.keys(byContext)) {
 // Write addresses.json to deployments/ (after removing local)
 // Sort keys to ensure deterministic output regardless of fs.readdirSync order
 const deploymentsFile = path.join(__dirname, 'addresses.json')
+
 fs.writeFileSync(deploymentsFile, JSON.stringify(sortObjectKeys(byContext), null, 2))
+
 console.log(`Wrote ${deploymentsFile}`)

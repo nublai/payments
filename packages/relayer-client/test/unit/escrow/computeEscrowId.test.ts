@@ -53,6 +53,7 @@ function manualEscrowId(params: CreateEscrowParams, salt: `0x${string}`): `0x${s
             },
         ],
     )
+
     return keccak256(encoded)
 }
 
@@ -77,10 +78,12 @@ describe('computeEscrowId', () => {
 
     it('produces different ids for different buyers', () => {
         const id1 = computeEscrowId(BASE_PARAMS)
+
         const id2 = computeEscrowId({
             ...BASE_PARAMS,
             buyer: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         })
+
         expect(id1).not.toBe(id2)
     })
 
@@ -92,19 +95,23 @@ describe('computeEscrowId', () => {
 
     it('produces different ids for different orderIds', () => {
         const id1 = computeEscrowId(BASE_PARAMS)
+
         const id2 = computeEscrowId({
             ...BASE_PARAMS,
             orderId: `0x${'ff'.repeat(32)}` as `0x${string}`,
         })
+
         expect(id1).not.toBe(id2)
     })
 
     it('produces different ids for different salts', () => {
         const id1 = computeEscrowId(BASE_PARAMS)
+
         const id2 = computeEscrowId({
             ...BASE_PARAMS,
             salt: '0x010000000000000000000000' as `0x${string}`,
         })
+
         expect(id1).not.toBe(id2)
     })
 

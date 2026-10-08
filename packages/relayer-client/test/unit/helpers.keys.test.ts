@@ -43,6 +43,7 @@ describe('helpers/keys', () => {
             8453,
             '0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
         )
+
         expect(match?.role).toBe('admin')
     })
 
@@ -52,6 +53,7 @@ describe('helpers/keys', () => {
             8453,
             '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
         )
+
         expect(match).toBeUndefined()
     })
 })

@@ -78,22 +78,26 @@ export async function verifyErc8128Request(
     }
 
     const supportedKeyIds = keyIds.filter((keyId) => isSupportedChain(keyId.chainId, ctx.env))
+
     if (supportedKeyIds.length === 0) {
         return failure('UNSUPPORTED_CHAIN', `Unsupported chain ID: ${keyIds[0].chainId}`)
     }
 
     const keyIdByAddress = new Map<string, ParsedKeyId>()
+
     for (const keyId of supportedKeyIds) {
         keyIdByAddress.set(keyId.address.toLowerCase(), keyId)
     }
 
     const verifyMessage = async (args: VerifyMessageArgs): Promise<boolean> => {
         const keyId = keyIdByAddress.get(args.address.toLowerCase())
+
         if (!keyId) {
             return false
         }
 
         let client: ReturnType<typeof getChainClient> | null = null
+
         try {
             client = getChainClient(keyId.chainId, ctx.env)
             const code = await client.getCode({ address: keyId.address })
@@ -116,6 +120,7 @@ export async function verifyErc8128Request(
 
         // Fast local path for EOAs (no RPC required).
         let isEoaValid = false
+
         try {
             isEoaValid = await verifyPersonalMessage({
                 address: keyId.address,
@@ -126,6 +131,7 @@ export async function verifyErc8128Request(
             // Treat malformed signatures and verifier errors as non-valid signatures.
             isEoaValid = false
         }
+
         if (isEoaValid) {
             return true
         }
@@ -173,6 +179,7 @@ export async function verifyErc8128Request(
     }
 
     const parsed = parseKeyId(result.params.keyid)
+
     if (!parsed) {
         return failure('BAD_KEYID', 'Invalid keyid format')
     }
@@ -186,6 +193,7 @@ export async function verifyErc8128Request(
     // key of the named account. Other protected methods in the same batch need
     // the allowlist; one prepare/send binding does not cover them.
     const binding = await readBinding(bodyRequest, ctx.env)
+
     const decision = await authorizeErc8128Signer({
         env: ctx.env,
         signer: parsed.address,
@@ -193,14 +201,17 @@ export async function verifyErc8128Request(
         isAccountKey: (account, chainId, signer) =>
             signerIsAccountKey(ctx.env, account, chainId, signer, ctx.nowSeconds),
     })
+
     if (!decision.ok) {
         return failure('SIGNER_NOT_ALLOWED', decision.message)
     }
 
     let signerType: 'EOA' | 'SCA' = 'EOA'
+
     try {
         const client = getChainClient(parsed.chainId, ctx.env)
         const code = await client.getCode({ address: parsed.address })
+
         if (hasCode(code)) {
             signerType = 'SCA'
         }
@@ -235,6 +246,7 @@ function parseKeyIdsFromHeader(header: string | null): ParsedKeyId[] {
     for (const match of matches) {
         const raw = match[1]
         const key = parseKeyId(raw)
+
         if (!key) {
             continue
         }
@@ -277,6 +289,7 @@ function isSupportedChain(chainId: number, env: Partial<Env>): boolean {
 
 function mapFailure(result: Extract<VerifyResult, { ok: false }>): Erc8128VerifyFailure {
     const code = mapFailureCode(result.reason)
+
     return failure(code, result.detail ?? result.reason)
 }
 

@@ -13,13 +13,21 @@ import {
 } from '../src/lib/quote-spend-pending'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
+
 const PUBLIC_KEY = '0x1234' as Hex
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const APPROVE = '0x095ea7b3' as Hex
+
 const TRANSFER = '0xa9059cbb' as Hex
+
 const NOW = 1_700_000_000n
+
 const INSTALLED = NOW + 7200n
+
 const ROOT_SHORT = NOW + 30n
+
 const THIRTY_DAYS = NOW + 30n * 24n * 60n * 60n
 
 function snapshot(input: {
@@ -42,6 +50,7 @@ test('testRestoreOfNeverUndoesRootShorten', () => {
     const installed = snapshot({ expiry: INSTALLED, selector: APPROVE })
     const live = snapshot({ expiry: ROOT_SHORT, selector: APPROVE })
     const differences: string[] = []
+
     const calls = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
@@ -50,6 +59,7 @@ test('testRestoreOfNeverUndoesRootShorten', () => {
         live,
         differences,
     })
+
     expect(calls).toEqual([])
     expect(differences.join('; ')).toContain(`expiry: expected ${INSTALLED}, found ${ROOT_SHORT}`)
 })
@@ -61,9 +71,11 @@ test('testRestoreWritesStaleExpiryOverRootShorten', () => {
         isSuperAdmin: false,
         publicKey: PUBLIC_KEY,
     }
+
     const installed = snapshot({ expiry: INSTALLED, selector: APPROVE })
     const live = snapshot({ expiry: ROOT_SHORT, selector: APPROVE })
     const differences: string[] = []
+
     const calls = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
@@ -72,6 +84,7 @@ test('testRestoreWritesStaleExpiryOverRootShorten', () => {
         live,
         differences,
     })
+
     expect(calls).toEqual([])
     expect(differences.join('; ')).toContain(`expiry: expected ${INSTALLED}, found ${ROOT_SHORT}`)
     expect(differences.join('; ')).not.toContain(`found ${THIRTY_DAYS}`)
@@ -82,6 +95,7 @@ test('testRestoreOntoReregisteredSameHashKeepsNewRights', () => {
     const installed = snapshot({ expiry: INSTALLED, selector: APPROVE })
     const live = snapshot({ expiry: ROOT_SHORT, selector: TRANSFER })
     const differences: string[] = []
+
     const calls = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
@@ -90,6 +104,7 @@ test('testRestoreOntoReregisteredSameHashKeepsNewRights', () => {
         live,
         differences,
     })
+
     expect(calls).toEqual([])
     const text = differences.join('; ')
     expect(text).toContain(`expiry: expected ${INSTALLED}, found ${ROOT_SHORT}`)
@@ -101,8 +116,10 @@ test('testRestoreOntoReregisteredSameHashKeepsNewRights', () => {
 test('testIntended_mismatchLeavesTheGrantAndIgnoresSpentPeriodStartAndCheckers', () => {
     const previous = { expiry: 0n, keyType: 0, isSuperAdmin: false, publicKey: PUBLIC_KEY }
     const installed = snapshot({ expiry: INSTALLED, selector: APPROVE, limit: 5n })
+
     const withRuntimeFields = (expiry: bigint) => {
         const key = snapshot({ expiry, selector: APPROVE, limit: 5n })
+
         return {
             ...key,
             limits: key.limits.map((limit) => ({
@@ -115,7 +132,9 @@ test('testIntended_mismatchLeavesTheGrantAndIgnoresSpentPeriodStartAndCheckers',
             checkers: [ACCOUNT],
         }
     }
+
     const ignored: string[] = []
+
     const restored = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
@@ -124,6 +143,7 @@ test('testIntended_mismatchLeavesTheGrantAndIgnoresSpentPeriodStartAndCheckers',
         live: withRuntimeFields(INSTALLED),
         differences: ignored,
     })
+
     expect(ignored).toEqual([])
     expect(restored).toHaveLength(1)
     const restoredCall = decodeFunctionData({ abi: accountAbi, data: restored[0]!.data })
@@ -131,6 +151,7 @@ test('testIntended_mismatchLeavesTheGrantAndIgnoresSpentPeriodStartAndCheckers',
     expect(restoredCall.args?.[0]).toMatchObject({ expiry: 0, publicKey: PUBLIC_KEY })
 
     const differences: string[] = []
+
     const calls = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
@@ -139,6 +160,7 @@ test('testIntended_mismatchLeavesTheGrantAndIgnoresSpentPeriodStartAndCheckers',
         live: withRuntimeFields(ROOT_SHORT),
         differences,
     })
+
     expect(calls).toEqual([])
     expect(differences).toEqual([`expiry: expected ${INSTALLED}, found ${ROOT_SHORT}`])
 })
@@ -146,6 +168,7 @@ test('testIntended_mismatchLeavesTheGrantAndIgnoresSpentPeriodStartAndCheckers',
 test('a matching install snapshot still restores the previous expiry', () => {
     const previous = { expiry: 0n, keyType: 0, isSuperAdmin: false, publicKey: PUBLIC_KEY }
     const installed = snapshot({ expiry: INSTALLED, selector: APPROVE })
+
     const calls = restoreQuoteKeyExpiryCall({
         account: ACCOUNT,
         previous,
@@ -153,6 +176,7 @@ test('a matching install snapshot still restores the previous expiry', () => {
         installed,
         live: installed,
     })
+
     expect(calls).toHaveLength(1)
     const decoded = decodeFunctionData({ abi: accountAbi, data: calls[0]!.data })
     expect(decoded.functionName).toBe('authorize')
@@ -259,6 +283,7 @@ test('recovering onto a re-registered key leaves the new permissions', async () 
     )
     const submitted: Hex[] = []
     let message = ''
+
     try {
         await recoverPendingQuoteSpend(keystorePath, {
             readMinuteLimits: async () => new Map(),
@@ -273,6 +298,7 @@ test('recovering onto a re-registered key leaves the new permissions', async () 
     } catch (error) {
         message = error instanceof Error ? error.message : String(error)
     }
+
     expect(message).toContain('left unchanged')
     expect(message).toContain('permissions:')
     expect(message).toContain(`expiry: expected ${INSTALLED}, found ${ROOT_SHORT}`)

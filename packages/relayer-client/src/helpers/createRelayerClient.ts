@@ -28,6 +28,7 @@ export function createRelayerClient(params: CreateRelayerClientParams): CreatedR
     }
 
     const chain = params.chain ?? getChain(params.chainId, params.rpcUrl)
+
     const config: RelayerClientConfig = {
         relayerUrl: params.relayerUrl,
         chainId: params.chainId,

@@ -71,6 +71,7 @@ export function resolveEscrowContracts(
 ): EscrowContracts {
     const context = envToDeploymentContext(env)
     const addresses = getAddressesWithFallback(context, chainId)
+
     if (!addresses) {
         throw new EscrowError(
             'CONTRACTS_NOT_DEPLOYED',
@@ -101,6 +102,7 @@ function parseBytes32Hex(value: string, label: string): Hex {
             `Invalid ${label}: must be a 32-byte hex string (0x + 64 hex chars).`,
         )
     }
+
     return value as Hex
 }
 
@@ -132,12 +134,14 @@ export function assertEscrowSessionNetworkMatches(
 ): void {
     const sessionEnv = sessionKeystore.network?.env
     const sessionChainId = sessionKeystore.network?.chainId
+
     if (sessionEnv !== expectedEnv) {
         throw new EscrowError(
             'UNSUPPORTED_CHAIN',
             `Session file env mismatch: expected ${expectedEnv}, got ${sessionEnv}.`,
         )
     }
+
     if (sessionChainId !== expectedChainId) {
         throw new EscrowError(
             'UNSUPPORTED_CHAIN',
@@ -154,6 +158,7 @@ export function resolveEscrowChainNetworkContracts(env: EnvName, chainOption?: C
     const chain = chainOption ? selectDefaultChain(env, chainOption) : selectDefaultChain(env)
     const network = resolveNetworkConfig(env, chain)
     const contracts = resolveEscrowContracts(env, network.chainId, chain)
+
     return { chain, network, contracts }
 }
 
@@ -184,9 +189,11 @@ export function toEscrowError(error: unknown): EscrowError {
     if (message.includes('Unsupported chain')) {
         return new EscrowError('UNSUPPORTED_CHAIN', message, { cause: error })
     }
+
     if (message.includes('ENOENT') || message.toLowerCase().includes('no such file')) {
         return new EscrowError('KEYSTORE_NOT_FOUND', `Keystore not found`, { cause: error })
     }
+
     if (
         message.includes('No password provided on stdin') ||
         message.includes('Password required') ||
@@ -195,19 +202,23 @@ export function toEscrowError(error: unknown): EscrowError {
     ) {
         return new EscrowError('PASSWORD_REQUIRED', message, { cause: error })
     }
+
     if (message.toLowerCase().includes('simulation failed')) {
         return new EscrowError('INTENT_REVERTED', message, { cause: error })
     }
+
     if (
         message.toLowerCase().includes('timeout waiting for bundle') ||
         (message.toLowerCase().includes('timeout') && message.toLowerCase().includes('bundle'))
     ) {
         return new EscrowError('BUNDLE_TIMEOUT', message, { cause: error })
     }
+
     // Heuristic: only map known amount-validation phrases to avoid misclassifying unrelated errors
     if (/Invalid amount|Amount must be|Amount is invalid|Amount supports at most/i.test(message)) {
         return new EscrowError('INVALID_AMOUNT', message, { cause: error })
     }
+
     // Only map when message explicitly refers to escrow (avoids "Contract not found", "Method not found", etc.)
     if (/escrow/i.test(message) && /not found/i.test(message)) {
         return new EscrowError('ESCROW_NOT_FOUND', message, { cause: error })

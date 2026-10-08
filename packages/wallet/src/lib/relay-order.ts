@@ -116,47 +116,61 @@ function assertOrderShape(order: Record<string, unknown>): void {
             'relay.link order version is not v1. Refusing to bind the deposit id.',
         )
     }
+
     requireEthereumChain(order.solverChainId, 'solverChainId')
     requireBytes20(order.solver, 'solver')
+
     if (!Array.isArray(order.inputs) || order.inputs.length === 0) {
         throw new RelayOrderRejected('relay.link order is missing inputs.')
     }
+
     for (const input of order.inputs) {
         if (!isRecord(input) || !isRecord(input.payment) || !Array.isArray(input.refunds)) {
             throw new RelayOrderRejected('relay.link order input is malformed.')
         }
+
         requireEthereumChain(input.payment.chainId, 'input.chainId')
         requireBytes20(input.payment.currency, 'input.currency')
+
         for (const refund of input.refunds) {
             if (!isRecord(refund)) {
                 throw new RelayOrderRejected('relay.link order refund is malformed.')
             }
+
             requireEthereumChain(refund.chainId, 'refund.chainId')
             requireBytes20(refund.recipient, 'refund.recipient')
             requireBytes20(refund.currency, 'refund.currency')
         }
     }
+
     if (!isRecord(order.output) || !Array.isArray(order.output.payments)) {
         throw new RelayOrderRejected('relay.link order is missing output payments.')
     }
+
     requireEthereumChain(order.output.chainId, 'output.chainId')
+
     if (!Array.isArray(order.output.calls)) {
         throw new RelayOrderRejected('relay.link order is missing output calls.')
     }
+
     for (const payment of order.output.payments) {
         if (!isRecord(payment)) {
             throw new RelayOrderRejected('relay.link order output payment is malformed.')
         }
+
         requireBytes20(payment.recipient, 'output.recipient')
         requireBytes20(payment.currency, 'output.currency')
     }
+
     if (!Array.isArray(order.fees)) {
         throw new RelayOrderRejected('relay.link order is missing fees.')
     }
+
     for (const fee of order.fees) {
         if (!isRecord(fee)) {
             throw new RelayOrderRejected('relay.link order fee is malformed.')
         }
+
         requireEthereumChain(fee.recipientChainId, 'fee.recipientChainId')
         requireEthereumChain(fee.currencyChainId, 'fee.currencyChainId')
         requireBytes20(fee.recipient, 'fee.recipient')
@@ -169,7 +183,9 @@ export function hashRelayOrder(order: unknown): Hex {
     if (!isRecord(order)) {
         throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
     }
+
     assertOrderShape(order)
+
     try {
         return hashStruct({
             types: ORDER_EIP712_TYPES,
@@ -183,7 +199,9 @@ export function hashRelayOrder(order: unknown): Hex {
 
 function asUint(value: unknown, field: string): bigint {
     if (typeof value === 'bigint' && value >= 0n) return value
+
     if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return BigInt(value)
+
     if (typeof value === 'string' && /^[0-9]+$/.test(value)) return BigInt(value)
     throw new RelayOrderRejected(`relay.link order ${field} is not an amount.`)
 }
@@ -192,6 +210,7 @@ function addressOf(value: unknown, field: string): Address {
     if (typeof value !== 'string') {
         throw new RelayOrderRejected(`relay.link order ${field} is not an address.`)
     }
+
     try {
         return getAddress(value)
     } catch {
@@ -201,6 +220,7 @@ function addressOf(value: unknown, field: string): Address {
 
 function isUserOrRecipient(address: Address, user: Address, recipient: Address): boolean {
     const normalized = address.toLowerCase()
+
     return normalized === user.toLowerCase() || normalized === recipient.toLowerCase()
 }
 
@@ -213,7 +233,9 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
     if (!isRecord(order) || !isRecord(order.output)) {
         throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
     }
+
     const solver = addressOf(order.solver, 'solver')
+
     if (
         !isUserOrRecipient(solver, user, recipient) &&
         !KNOWN_RELAY_SOLVERS.has(solver.toLowerCase())
@@ -222,33 +244,42 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
             `relay.link order solver ${solver} is not the user, the bridge recipient, or the Relay filler.`,
         )
     }
+
     const calls = order.output.calls
+
     if (!Array.isArray(calls) || calls.length > 0) {
         throw new RelayOrderRejected(
             'relay.link order output calls are not bound to the user or the bridge recipient.',
         )
     }
+
     if (!Array.isArray(order.output.payments)) {
         throw new RelayOrderRejected('relay.link order is missing output payments.')
     }
+
     for (const payment of order.output.payments) {
         if (!isRecord(payment)) {
             throw new RelayOrderRejected('relay.link order output payment is malformed.')
         }
+
         if (asUint(payment.minimumAmount, 'output.minimumAmount') === 0n) {
             throw new RelayOrderRejected(
                 'relay.link order output minimum is 0. Refusing to sign.',
             )
         }
     }
+
     if (!Array.isArray(order.fees)) {
         throw new RelayOrderRejected('relay.link order is missing fees.')
     }
+
     for (const fee of order.fees) {
         if (!isRecord(fee)) {
             throw new RelayOrderRejected('relay.link order fee is malformed.')
         }
+
         const payee = addressOf(fee.recipient, 'fee.recipient')
+
         if (!isUserOrRecipient(payee, user, recipient)) {
             throw new RelayOrderRejected(
                 `relay.link order fee pays ${payee}, which is not the user or the bridge recipient.`,
@@ -261,16 +292,20 @@ export function orderPayees(order: unknown): { outputs: string[]; refunds: strin
     if (!isRecord(order) || !isRecord(order.output) || !Array.isArray(order.inputs)) {
         return { outputs: [], refunds: [] }
     }
+
     const outputs = Array.isArray(order.output.payments)
         ? order.output.payments
               .map((payment) => (isRecord(payment) ? payment.recipient : undefined))
               .filter((value): value is string => typeof value === 'string')
         : []
+
     const refunds = order.inputs.flatMap((input) => {
         if (!isRecord(input) || !Array.isArray(input.refunds)) return []
+
         return input.refunds
             .map((refund) => (isRecord(refund) ? refund.recipient : undefined))
             .filter((value): value is string => typeof value === 'string')
     })
+
     return { outputs, refunds }
 }

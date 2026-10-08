@@ -15,12 +15,14 @@ export function assertAccountUpgradeFee(maxFeePerGas: bigint, maxPriorityFeePerG
     if (maxFeePerGas <= 0n || maxFeePerGas > ACCOUNT_UPGRADE_MAX_FEE_PER_GAS) {
         throw new Error('Account upgrade max fee exceeds cap')
     }
+
     if (
         maxPriorityFeePerGas < 0n ||
         maxPriorityFeePerGas > ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS
     ) {
         throw new Error('Account upgrade priority fee exceeds cap')
     }
+
     if (maxPriorityFeePerGas > maxFeePerGas) {
         throw new Error('Account upgrade priority fee exceeds cap')
     }
@@ -32,9 +34,11 @@ export function assertAccountUpgradeGas(input: {
     maxPriorityFeePerGas: bigint
 }): { gas: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint } {
     assertAccountUpgradeFee(input.maxFeePerGas, input.maxPriorityFeePerGas)
+
     if (input.gas <= 0n || input.gas > ACCOUNT_UPGRADE_GAS_LIMIT) {
         throw new Error('Account upgrade gas limit exceeds cap')
     }
+
     return {
         gas: input.gas,
         maxFeePerGas: input.maxFeePerGas,

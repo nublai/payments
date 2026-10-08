@@ -26,6 +26,7 @@ describe('Multichain Delegation', () => {
         chain: testChain,
         rpcUrl: ANVIL_RPC_URL,
     })
+
     const secondaryClient = createRelayerTestClient({
         chain: outputChain,
         rpcUrl: ANVIL_RPC_URL_ARB,
@@ -60,6 +61,7 @@ describe('Multichain Delegation', () => {
             primaryChainId: testChain.id,
             secondaryChainId: outputChain.id,
         })
+
         expect(primaryResult.success).toBe(true)
         expect(primaryResult.txHash).toBeDefined()
 

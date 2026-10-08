@@ -82,9 +82,11 @@ describe('getCallsHistory action', () => {
         })
 
         expect(result.success).toBe(true)
+
         if (!result.success) {
             throw new Error('expected success response')
         }
+
         expect(result.items).toEqual([{ id: 'bundle-1', chainId: 10, createdAt: 123 }])
         const rpcParams = (payload?.params?.[0] ?? {}) as Record<string, unknown>
         expect(rpcParams).toEqual({

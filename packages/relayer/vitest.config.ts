@@ -2,7 +2,9 @@ import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config'
 import net from 'node:net'
 
 const LOCALHOST = '127.0.0.1'
+
 const INPUT_CHAIN_PORT = 8545
+
 const OUTPUT_CHAIN_PORT = 8546
 
 function isPortOpen(port: number, host = LOCALHOST, timeoutMs = 150): Promise<boolean> {
@@ -27,10 +29,12 @@ function isPortOpen(port: number, host = LOCALHOST, timeoutMs = 150): Promise<bo
 
 export default defineWorkersConfig(async () => {
     const forceCrosschain = process.env.FORCE_CROSSCHAIN_TESTS === '1'
+
     const [isInputChainUp, isOutputChainUp] = await Promise.all([
         isPortOpen(INPUT_CHAIN_PORT),
         isPortOpen(OUTPUT_CHAIN_PORT),
     ])
+
     const shouldSkipCrosschain = !forceCrosschain && !(isInputChainUp && isOutputChainUp)
 
     if (shouldSkipCrosschain) {

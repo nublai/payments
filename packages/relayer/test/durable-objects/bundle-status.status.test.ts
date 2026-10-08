@@ -45,6 +45,7 @@ class MockSqlStorage {
 
         if (query.startsWith('SELECT tx_id, signer_name, created_at FROM bundle_transactions')) {
             const bundleId = String(params[0])
+
             return this.rows(
                 this.txRows
                     .filter((row) => row.bundle_id === bundleId)
@@ -60,17 +61,22 @@ class MockSqlStorage {
             if (this.throwOnSignerNameUpdate) {
                 throw new Error('failed to update signer name')
             }
+
             const signerName = String(params[0])
             const bundleId = String(params[1])
             const txId = String(params[2])
+
             const row = this.txRows.find((candidate) => {
                 return candidate.bundle_id === bundleId && candidate.tx_id === txId
             })
+
             if (row) row.signer_name = signerName
+
             return this.rows([])
         }
 
         if (query.startsWith('SELECT status FROM pending_bundles')) return this.rows([])
+
         if (query.startsWith('SELECT status FROM finished_bundles')) return this.rows([])
 
         if (query.startsWith('PRAGMA table_info(bundle_transactions)')) {
@@ -83,11 +89,13 @@ class MockSqlStorage {
 
         if (query.startsWith('UPDATE bundle_transactions SET created_at = ?')) {
             const now = Number(params[0])
+
             for (const row of this.txRows) {
                 if (!Number.isFinite(row.created_at) || row.created_at <= 0) {
                     row.created_at = now
                 }
             }
+
             return this.rows([])
         }
 
@@ -128,7 +136,9 @@ function createDoStub(args: {
                 fetch: async (url: string) => {
                     const txId = new URL(url).searchParams.get('txId') ?? ''
                     const result = args.signerFetch(signerName, txId)
+
                     if (!result) return new Response('not found', { status: 404 })
+
                     return Response.json(result)
                 },
             }),
@@ -177,6 +187,7 @@ describe('BundleStatusDO status resolution', () => {
             stub,
             'bundle-fetch-log-1',
         )
+
         expect(result.statusCode).toBe(100)
         expect(result.receipts).toHaveLength(0)
         expect(mockLoggerWarn).toHaveBeenCalledWith(
@@ -201,7 +212,9 @@ describe('BundleStatusDO status resolution', () => {
             ],
             signerFetch: (signerName, txId) => {
                 if (txId !== 'tx-1') return null
+
                 if (signerName !== 'signer-137-1') return null
+
                 return makeConfirmedTxStatus()
             },
         })
@@ -225,8 +238,11 @@ describe('BundleStatusDO status resolution', () => {
             ],
             signerFetch: (signerName, txId) => {
                 if (txId !== 'tx-log-1') return null
+
                 if (signerName === 'signer-137-0') return null
+
                 if (signerName === 'signer-137-1') return makeConfirmedTxStatus()
+
                 return null
             },
             throwOnSignerNameUpdate: true,

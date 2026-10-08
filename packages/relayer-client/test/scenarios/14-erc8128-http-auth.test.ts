@@ -21,6 +21,7 @@ const describeIfAuthEnabled = process.env.ERC8128_ENABLED === 'true' ? describe 
 
 function createSigner(chainId: number): EthHttpSigner {
     const account = privateKeyToAccount(TEST_ACCOUNTS.relayer.privateKey)
+
     return {
         chainId,
         address: account.address,
@@ -38,6 +39,7 @@ function createSignedTransport(chainId: number = TEST_CHAIN_ID) {
 
 function createFailingSigner(chainId: number): EthHttpSigner {
     const account = privateKeyToAccount(TEST_ACCOUNTS.relayer.privateKey)
+
     return {
         chainId,
         address: account.address,
@@ -49,6 +51,7 @@ function createFailingSigner(chainId: number): EthHttpSigner {
 
 async function postJson(request: Request): Promise<unknown> {
     const response = await fetch(request)
+
     return response.json()
 }
 
@@ -138,6 +141,7 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
 
     it('rejects tampered signed request body', async () => {
         const signer = createSigner(TEST_CHAIN_ID)
+
         const rawBody = JSON.stringify({
             jsonrpc: '2.0',
             id: 1,
@@ -177,6 +181,7 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
     it('rejects replay of same signed request', async () => {
         const signer = createSigner(TEST_CHAIN_ID)
         const nonce = `replay-${Date.now()}`
+
         const signed = await signRequest(
             new Request(RELAYER_URL, {
                 method: 'POST',
@@ -230,6 +235,7 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
             delegation: TEST_CONTRACTS.accountProxy,
             chainId: TEST_CHAIN_ID,
         })
+
         expect(upgrade.success).toBe(true)
 
         const delegatedCode = await client.getCode({ address: account.address })

@@ -6,10 +6,15 @@ import { executePreparedCalls } from '../../src/helpers/executePreparedCalls.js'
 import { signedPaymentMaxForQuote } from '../../src/helpers/bindPreparedCalls.js';
 
 const EOA = '0x1111111111111111111111111111111111111111' as Address;
+
 const TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address;
+
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address;
+
 const SIG = `0x${'11'.repeat(65)}` as Hex;
+
 const CALLS: Call[] = [{ target: EOA, value: 0n, data: '0x' }];
+
 const PAID_FEE_CAP = 5_000_000n;
 
 function echoPrepared(input: {
@@ -28,11 +33,13 @@ function echoPrepared(input: {
     const paymentToken = input.paymentToken ?? zeroAddress;
     const expiry = input.expiry ?? 1_900_000_000n;
     const nonce = input.nonce ?? 1n;
+
     const messageCalls = input.calls.map((call) => ({
         to: call.target,
         value: call.value,
         data: call.data ?? '0x',
     }));
+
     const message = {
         multichain: false,
         eoa: input.from,
@@ -47,6 +54,7 @@ function echoPrepared(input: {
         settler: zeroAddress,
         expiry,
     };
+
     return {
         digest: hashTypedData({
             domain: {
@@ -105,6 +113,7 @@ function client(paymentAmount: string) {
     const prepareCalls = vi.fn(async (input: Parameters<typeof echoPrepared>[0]) =>
         echoPrepared(input, paymentAmount),
     );
+
     return {
         prepareCalls,
         relayer: {
@@ -139,9 +148,11 @@ describe('executePreparedCalls fee cap', () => {
             skipWait: true,
         });
         expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP);
+
         const typed = signTypedData.mock.calls.at(-1)?.[0] as {
             message: { paymentMaxAmount: bigint };
         };
+
         expect(typed.message.paymentMaxAmount).toBe(signedPaymentMaxForQuote(1n));
     });
 

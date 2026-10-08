@@ -96,23 +96,31 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
     if (typeof value === 'bigint') {
         return `${BIGINT_TAG_PREFIX}${value.toString()}`
     }
+
     if (typeof value === 'string' && revive && value.startsWith(BIGINT_TAG_PREFIX)) {
         const raw = value.slice(BIGINT_TAG_PREFIX.length)
+
         if (/^-?\d+$/.test(raw)) {
             return BigInt(raw)
         }
+
         return value
     }
+
     if (Array.isArray(value)) {
         return value.map((entry) => mapTypedDataBigInt(entry, revive))
     }
+
     if (isRecord(value)) {
         const mapped: Record<string, unknown> = {}
+
         for (const [key, entry] of Object.entries(value)) {
             mapped[key] = mapTypedDataBigInt(entry, revive)
         }
+
         return mapped
     }
+
     return value
 }
 
@@ -144,15 +152,19 @@ export function serializeDaemonRequest(request: DaemonRequest): string {
 
 export function parseDaemonRequest(raw: string): DaemonRequest {
     const parsed = JSON.parse(raw) as unknown
+
     if (!isRecord(parsed) || typeof parsed.method !== 'string') {
         throw new Error('Invalid daemon request payload')
     }
+
     if (typeof parsed.id !== 'string') {
         throw new Error('Invalid daemon request id')
     }
+
     if (!isKnownDaemonMethod(parsed.method)) {
         throw new Error(`Unknown daemon method: ${String(parsed.method)}`)
     }
+
     if (!isRecord(parsed.params)) {
         throw new Error('Invalid daemon request params')
     }
@@ -169,9 +181,11 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
             if (typeof parsed.params.sessionName !== 'string') {
                 throw new Error('Invalid sign params.sessionName')
             }
+
             if (!isRecord(parsed.params.typedData)) {
                 throw new Error('Invalid sign params.typedData')
             }
+
             return {
                 id: parsed.id,
                 method: 'sign',
@@ -181,6 +195,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 },
             }
         }
+
         case 'signMessage': {
             if (
                 typeof parsed.params.sessionName !== 'string' ||
@@ -188,6 +203,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
             ) {
                 throw new Error('Invalid signMessage params')
             }
+
             return {
                 id: parsed.id,
                 method: 'signMessage',
@@ -197,6 +213,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 },
             }
         }
+
         case 'loadKey': {
             if (
                 typeof parsed.params.name !== 'string' ||
@@ -217,6 +234,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
             ) {
                 throw new Error('Invalid loadKey params')
             }
+
             return {
                 id: parsed.id,
                 method: 'loadKey',
@@ -233,10 +251,12 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 },
             }
         }
+
         case 'getSessionSecrets': {
             if (typeof parsed.params.sessionName !== 'string') {
                 throw new Error('Invalid getSessionSecrets params.sessionName')
             }
+
             return {
                 id: parsed.id,
                 method: 'getSessionSecrets',
@@ -245,10 +265,12 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 },
             }
         }
+
         case 'remove': {
             if (typeof parsed.params.sessionName !== 'string') {
                 throw new Error('Invalid remove params.sessionName')
             }
+
             return {
                 id: parsed.id,
                 method: 'remove',
@@ -257,6 +279,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 },
             }
         }
+
         default: {
             const _: never = parsed.method
             throw new Error(`Unhandled daemon method: ${String(parsed.method)}`)
@@ -266,24 +289,31 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
 
 export function parseDaemonResponse(raw: string): DaemonResponse {
     const parsed = JSON.parse(raw) as unknown
+
     if (!isRecord(parsed)) {
         throw new Error('Invalid daemon response payload')
     }
+
     if (typeof parsed.id !== 'string') {
         throw new Error('Invalid daemon response id')
     }
+
     if ('error' in parsed) {
         if (!isRecord(parsed.error)) {
             throw new Error('Invalid daemon response error')
         }
+
         const code = parsed.error.code
         const message = parsed.error.message
+
         if (typeof code !== 'string' || typeof message !== 'string') {
             throw new Error('Invalid daemon response error payload')
         }
+
         if (!Object.values(DAEMON_ERROR_CODES).includes(code as DaemonErrorCode)) {
             throw new Error(`Unknown daemon response error code: ${code}`)
         }
+
         return {
             id: parsed.id,
             error: {
@@ -292,6 +322,7 @@ export function parseDaemonResponse(raw: string): DaemonResponse {
             },
         }
     }
+
     return {
         id: parsed.id,
         result: parsed.result,

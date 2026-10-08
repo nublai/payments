@@ -23,9 +23,13 @@ import {
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
 
 const CHAIN_ID = 8453
+
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const BURST = 20
+
 const NOW = 1_700_000_100
 
 interface RateBody {
@@ -49,15 +53,19 @@ function providerFor(userId: string): AuthProvider {
 function createBurstGate(burst: number) {
     let rateCalls = 0
     const waiters: Array<() => void> = []
+
     return {
         note() {
             rateCalls += 1
+
             if (rateCalls < burst) return
             const pending = waiters.splice(0)
+
             for (const wake of pending) wake()
         },
         wait(): Promise<void> {
             if (rateCalls >= burst) return Promise.resolve()
+
             return new Promise<void>((resolve, reject) => {
                 const timer = setTimeout(() => reject(new Error('burst gate timed out')), 4_000)
                 waiters.push(() => {
@@ -77,6 +85,7 @@ function createEnv(
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
         const bodyText = typeof init?.body === 'string' ? init.body : ''
         let parsed: { type?: string } & RateBody = {}
+
         if (bodyText) {
             try {
                 parsed = JSON.parse(bodyText) as { type?: string } & RateBody
@@ -88,6 +97,7 @@ function createEnv(
         if (parsed.type === 'create-account') {
             await gate.wait()
             capture.push(parsed)
+
             return {
                 ok: false,
                 json: async () => ({ error: 'execution reverted' }),
@@ -101,6 +111,7 @@ function createEnv(
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity,
         })
+
         gate.note()
 
         if (parsed.action === 'peek') {
@@ -112,12 +123,15 @@ function createEnv(
 
         if (parsed.action === 'release') {
             const at = typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW
+
             for (const bucket of buckets) {
                 const secondId = `${bucket.key}#${at}`
                 const next = (store.get(secondId) ?? 0) - 1
+
                 if (next <= 0) store.delete(secondId)
                 else store.set(secondId, next)
             }
+
             return {
                 ok: true,
                 json: async () => ({ allowed: true }),
@@ -125,6 +139,7 @@ function createEnv(
         }
 
         const decision = consumeRateLimit(store, buckets, NOW)
+
         return {
             ok: true,
             json: async () => ({ allowed: decision.allowed, reservedAt: NOW }),
@@ -156,12 +171,15 @@ function createApp(providers: AuthProvider[]) {
     app.use('*', authMiddleware({ providers }))
     app.post('/', async (c) => {
         const body = await c.req.json()
+
         const response = await dispatch(body, createMethods(c.env), {
             env: c.env,
             request: c.req.raw,
         })
+
         return c.json(response)
     })
+
     return app
 }
 
@@ -181,6 +199,7 @@ describe('upgrade quota reservation', () => {
 
     it('does not broadcast more than the identity cap when upgrades overlap', async () => {
         const owner = privateKeyToAccount(OWNER_KEY)
+
         const auth = await owner.sign({
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
@@ -188,10 +207,12 @@ describe('upgrade quota reservation', () => {
                 nonce: 0,
             }),
         })
+
         const capture: unknown[] = []
         const store = new Map<string, number>()
         const env = createEnv(capture, store, createBurstGate(BURST))
         const app = createApp([providerFor(owner.address)])
+
         const body = {
             jsonrpc: '2.0' as const,
             id: 1,
@@ -230,7 +251,9 @@ describe('upgrade quota reservation', () => {
                     },
                     env,
                 )
+
                 const json = (await response.json()) as { error?: { code?: number } }
+
                 return json
             }),
         )
@@ -242,6 +265,7 @@ describe('upgrade quota reservation', () => {
             ip: 'unknown',
             identity: owner.address,
         })[0].limit
+
         const rateLimited = results.filter((result) => result.error?.code === -32014)
 
         expect(capture.length).toBe(identityLimit)

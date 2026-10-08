@@ -128,14 +128,19 @@ export function knownErc20Tokens(chainId: number, extra?: Address): Address[] {
         WETH_BY_CHAIN[chainId],
         extra,
     ]
+
     const tokens: Address[] = []
+
     for (const candidate of candidates) {
         if (!candidate) continue
         const address = getAddress(candidate)
+
         if (address === zeroAddress) continue
+
         if (tokens.some((token) => token.toLowerCase() === address.toLowerCase())) continue
         tokens.push(address)
     }
+
     return tokens
 }
 
@@ -170,12 +175,14 @@ export async function assertNoStandingRights(input: {
 }): Promise<void> {
     const targets = input.targets.map((target) => getAddress(target))
     const tokens = input.tokens.map((token) => getAddress(token))
+
     const now = () =>
         input.readers.now ? input.readers.now() : BigInt(Math.floor(Date.now() / 1000))
 
     const checkers = await readOrRefuse(() =>
         input.readers.readApprovedSignatureCheckers(input.keyHash),
     )
+
     for (const checker of checkers) {
         if (getAddress(checker) === zeroAddress) continue
         revoke(
@@ -188,24 +195,29 @@ export async function assertNoStandingRights(input: {
             const allowance = await readOrRefuse(() =>
                 input.readers.readErc20Allowance(token, target),
             )
+
             if (allowance > 0n) {
                 revoke(
                     `The account has a standing allowance of ${token} to ${target}.`,
                 )
             }
         }
+
         const permit2Allowance = await readOrRefuse(() =>
             input.readers.readErc20Allowance(token, PERMIT2),
         )
+
         if (permit2Allowance > 0n) {
             revoke(
                 `The account has a standing allowance of ${token} to Permit2 ${PERMIT2}.`,
             )
         }
+
         for (const target of targets) {
             const permit = await readOrRefuse(() =>
                 input.readers.readPermit2Allowance(token, target),
             )
+
             if (permit.amount > 0n && permit.expiration > now()) {
                 revoke(
                     `The account has a standing Permit2 allowance of ${token} to ${target} for amount ${permit.amount}, expiring at ${permit.expiration}.`,
@@ -216,20 +228,24 @@ export async function assertNoStandingRights(input: {
 
     for (const nft of input.registry?.erc721 ?? []) {
         const token = getAddress(nft.token)
+
         for (const target of targets) {
             const approved = await readOrRefuse(() =>
                 input.readers.readErc721ApprovedForAll(token, target),
             )
+
             if (approved) {
                 revoke(
                     `The account has a standing ERC-721 approval of ${token} for ${target}.`,
                 )
             }
         }
+
         for (const tokenId of nft.tokenIds ?? []) {
             const approved = await readOrRefuse(() =>
                 input.readers.readErc721GetApproved(token, tokenId),
             )
+
             if (targets.some((target) => target.toLowerCase() === approved.toLowerCase())) {
                 revoke(
                     `The account has a standing ERC-721 approval of ${token} id ${tokenId} for ${approved}.`,
@@ -240,10 +256,12 @@ export async function assertNoStandingRights(input: {
 
     for (const nft of input.registry?.erc1155 ?? []) {
         const token = getAddress(nft.token)
+
         for (const target of targets) {
             const approved = await readOrRefuse(() =>
                 input.readers.readErc1155ApprovedForAll(token, target),
             )
+
             if (approved) {
                 revoke(
                     `The account has a standing ERC-1155 approval of ${token} for ${target}.`,
@@ -255,15 +273,18 @@ export async function assertNoStandingRights(input: {
     for (const vault of input.registry?.erc4626 ?? []) {
         const token = getAddress(vault.vault)
         const balance = await readOrRefuse(() => input.readers.readErc4626ShareBalance(token))
+
         if (balance > 0n) {
             revoke(
                 `The account holds ${balance} shares of vault ${token}. A swap session cannot hold shares of a known vault.`,
             )
         }
+
         for (const target of targets) {
             const allowance = await readOrRefuse(() =>
                 input.readers.readErc4626ShareAllowance(token, target),
             )
+
             if (allowance > 0n) {
                 revoke(
                     `The account has a standing share allowance of vault ${token} to ${target}.`,
@@ -286,6 +307,7 @@ export function chainStandingRightsReaders(input: {
 }): StandingRightsReaders {
     const owner = getAddress(input.owner)
     const client = clientFor(input.network)
+
     return {
         readErc20Allowance: (token, spender) =>
             client.readContract({
@@ -301,6 +323,7 @@ export function chainStandingRightsReaders(input: {
                 functionName: 'allowance',
                 args: [owner, token, spender],
             })
+
             return {
                 amount: result[0],
                 expiration: BigInt(result[1]),

@@ -16,9 +16,12 @@ export function deriveRelayerSignerAddress(mnemonic: string, index: number): Add
     const hdKey = HDKey.fromMasterSeed(seed)
     const path = `m/44'/60'/0'/0/${index}`
     const derived = hdKey.derive(path)
+
     if (!derived.privateKey) {
         throw new Error(`Failed to derive key at path ${path}`)
     }
+
     const privateKey = bytesToHex(derived.privateKey) as Hex
+
     return privateKeyToAccount(privateKey).address
 }

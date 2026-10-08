@@ -36,9 +36,11 @@ export class HttpAuthNonceDO extends DurableObject<Env> {
         const nowUnixSeconds = Math.floor(Date.now() / 1000)
         const expiryUnixSeconds = nowUnixSeconds + Math.floor(ttlSeconds)
         const accepted = this.consumeNonceSync(replayKey, expiryUnixSeconds, nowUnixSeconds)
+
         if (accepted) {
             await this.scheduleCleanupAlarmIfNeeded(expiryUnixSeconds)
         }
+
         return accepted
     }
 
@@ -50,7 +52,9 @@ export class HttpAuthNonceDO extends DurableObject<Env> {
             .exec<{ expires_at: number }>('SELECT MIN(expires_at) AS expires_at FROM nonces')
             .toArray()
             .at(0)
+
         const nextExpiryUnixSeconds = nextExpiryRow?.expires_at
+
         if (typeof nextExpiryUnixSeconds === 'number' && Number.isFinite(nextExpiryUnixSeconds)) {
             await this.scheduleCleanupAlarmIfNeeded(nextExpiryUnixSeconds)
         }
@@ -82,6 +86,7 @@ export class HttpAuthNonceDO extends DurableObject<Env> {
                 replayKey,
                 expiryUnixSeconds,
             )
+
             return true
         })
 

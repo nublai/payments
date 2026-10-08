@@ -13,11 +13,15 @@ import { RATE_LIMITED } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
 
 const ISSUER = 'https://followup.example'
+
 const CLIENT_ID = 'client_123'
+
 const NOW = 1_700_000_000
+
 const ACCOUNT = '0x10000000000000000000000000000000000000aa' as Address
 
 let privateKey: CryptoKey
+
 let publicJwk: JWK
 
 beforeAll(async () => {
@@ -31,6 +35,7 @@ beforeAll(async () => {
 
 function baseEnv(overrides: Partial<Env> = {}): Env {
     const worker = env as unknown as Env
+
     return {
         ...worker,
         PRIVY_ENABLED: 'false',
@@ -51,10 +56,14 @@ async function sign(claims: Record<string, unknown>, audience?: string | string[
         .setIssuer(ISSUER)
         .setSubject(typeof claims.sub === 'string' ? claims.sub : 'followup-user')
         .setIssuedAt(NOW)
+
     if (claims.exp !== undefined) builder.setExpirationTime(claims.exp as number)
     else if (!Object.prototype.hasOwnProperty.call(claims, 'exp')) builder.setExpirationTime(NOW + 600)
+
     if (claims.nbf !== undefined) builder.setNotBefore(claims.nbf as number)
+
     if (audience !== undefined) builder.setAudience(audience)
+
     return builder.sign(privateKey)
 }
 
@@ -62,19 +71,23 @@ async function withJwks<T>(url: string, run: () => Promise<T>, fail?: 'timeout')
     const previous = globalThis.fetch
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
         if (href === url) {
             if (fail === 'timeout') {
                 const error = new Error('The operation was aborted due to timeout')
                 error.name = 'TimeoutError'
                 throw error
             }
+
             return new Response(JSON.stringify({ keys: [publicJwk] }), {
                 status: 200,
                 headers: { 'content-type': 'application/json' },
             })
         }
+
         return previous(input, init)
     }
+
     try {
         return await run()
     } finally {
@@ -91,18 +104,22 @@ describe('oidc review follow-ups', () => {
         const url = 'https://followup.example/jwks/aud'
         const provider = createOidcIdentityProvider()
         const workerEnv = baseEnv({ OIDC_JWKS_URL: url })
+
         const mismatched = await sign(
             { sub: 'aud-client', client_id: CLIENT_ID },
             'https://resource.example',
         )
+
         const arrayWrongAzp = await sign(
             { sub: 'aud-array', azp: 'https://other.example' },
             [CLIENT_ID, 'https://other.example'],
         )
+
         const arrayRightAzp = await sign({ sub: 'aud-array-ok', azp: CLIENT_ID }, [
             CLIENT_ID,
             'https://other.example',
         ])
+
         const noExp = await sign({ sub: 'no-exp', exp: undefined, aud: CLIENT_ID })
         const clientOnly = await sign({ sub: 'client-only', client_id: CLIENT_ID })
 
@@ -136,6 +153,7 @@ describe('oidc review follow-ups', () => {
         const claimed = '0x20000000000000000000000000000000000000bb' as Address
         const token = await sign({ sub: 'claim-attacker', wallets: [claimed] }, CLIENT_ID)
         const off = baseEnv({ OIDC_JWKS_URL: url })
+
         const emptyName = baseEnv({
             OIDC_JWKS_URL: url,
             OIDC_WALLETS_CLAIM_ENABLED: 'true',
@@ -145,6 +163,7 @@ describe('oidc review follow-ups', () => {
         await withJwks(url, async () => {
             const ignored = await provider.verify(token, { env: off, nowSeconds: NOW })
             expect(ignored).toMatchObject({ ok: true, userId: 'claim-attacker', boundAccounts: [] })
+
             if (ignored.ok) {
                 runWithAuthIdentity(
                     {
@@ -158,6 +177,7 @@ describe('oidc review follow-ups', () => {
                     },
                 )
             }
+
             const empty = await provider.verify(token, { env: emptyName, nowSeconds: NOW })
             expect(empty).toMatchObject({ ok: true, boundAccounts: [] })
         })
@@ -180,6 +200,7 @@ describe('oidc review follow-ups', () => {
         const issuer = 'https://followup.example/rate'
         const subject = 'rate-subject'
         let now = NOW
+
         for (let attempt = 0; attempt < 5; attempt++) {
             const issued = await store.issueNonce({
                 issuer,
@@ -190,9 +211,11 @@ describe('oidc review follow-ups', () => {
                 ttlSeconds: 1,
                 ip: `203.0.113.${attempt + 1}`,
             })
+
             expect(issued.ok).toBe(true)
             now += 2
         }
+
         const sixth = await store.issueNonce({
             issuer,
             subject,
@@ -202,9 +225,11 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 1,
             ip: '203.0.113.50',
         })
+
         expect(sixth).toMatchObject({ ok: false, reason: 'rate_limited' })
 
         const ip = '198.51.100.10'
+
         for (let attempt = 0; attempt < 20; attempt++) {
             const issued = await store.issueNonce({
                 issuer,
@@ -215,8 +240,10 @@ describe('oidc review follow-ups', () => {
                 ttlSeconds: 60,
                 ip,
             })
+
             expect(issued.ok).toBe(true)
         }
+
         const pastIp = await store.issueNonce({
             issuer,
             subject: 'ip-subject-20',
@@ -226,9 +253,11 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 60,
             ip,
         })
+
         expect(pastIp).toMatchObject({ ok: false, reason: 'rate_limited' })
 
         const capped = 'cap-subject'
+
         for (let attempt = 0; attempt < 3; attempt++) {
             const issued = await store.issueNonce({
                 issuer,
@@ -239,8 +268,10 @@ describe('oidc review follow-ups', () => {
                 ttlSeconds: 600,
                 ip: `203.0.113.${80 + attempt}`,
             })
+
             expect(issued.ok).toBe(true)
         }
+
         const fourthOpen = await store.issueNonce({
             issuer,
             subject: capped,
@@ -250,10 +281,12 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 600,
             ip: '203.0.113.90',
         })
+
         expect(fourthOpen).toMatchObject({ ok: false, reason: 'subject_cap' })
 
         const binder = 'bind-cap'
         const bindNow = NOW + 20_000
+
         for (let attempt = 0; attempt < 4; attempt++) {
             const issued = await store.issueNonce({
                 issuer,
@@ -264,7 +297,9 @@ describe('oidc review follow-ups', () => {
                 ttlSeconds: 600,
                 ip: `192.0.2.${attempt + 1}`,
             })
+
             expect(issued.ok).toBe(true)
+
             if (!issued.ok) return
             expect(
                 await store.bind({
@@ -279,6 +314,7 @@ describe('oidc review follow-ups', () => {
                 }),
             ).toEqual({ ok: true })
         }
+
         const fifth = await store.issueNonce({
             issuer,
             subject: binder,
@@ -288,12 +324,14 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 600,
             ip: '192.0.2.9',
         })
+
         expect(fifth).toMatchObject({ ok: false, reason: 'subject_cap' })
     })
 
     it('deletes a nonce once it is used or expired', async () => {
         const store = walletBindingStub(baseEnv())
         const issuer = 'https://followup.example/cleanup'
+
         const issued = await store.issueNonce({
             issuer,
             subject: 'cleanup-user',
@@ -303,7 +341,9 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 600,
             ip: '203.0.113.70',
         })
+
         expect(issued.ok).toBe(true)
+
         if (!issued.ok) return
         expect(
             await store.bind({
@@ -339,7 +379,9 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 30,
             ip: '203.0.113.72',
         })
+
         expect(expiring.ok).toBe(true)
+
         if (!expiring.ok) return
         expect(
             await store.bind({
@@ -371,11 +413,13 @@ describe('oidc review follow-ups', () => {
         const url = 'https://followup.example/jwks/timeout'
         const provider = createOidcIdentityProvider()
         const token = await sign({ sub: 'timeout-user' }, CLIENT_ID)
+
         const result = await withJwks(
             url,
             () => provider.verify(token, { env: baseEnv({ OIDC_JWKS_URL: url }), nowSeconds: NOW }),
             'timeout',
         )
+
         expect(result).toMatchObject({ ok: false, code: 'IDP_UNAVAILABLE' })
         expect(new errors.JWKSTimeout().message).toBe('request timed out')
     })
@@ -386,6 +430,7 @@ describe('oidc review follow-ups', () => {
             OIDC_JWKS_URL: 'http://issuer.example/jwks',
             OIDC_CLIENT_ID: CLIENT_ID,
         } as Env
+
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'stage' }).ok).toBe(false)
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'prod' }).ok).toBe(false)
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'local' }).ok).toBe(true)
@@ -394,6 +439,7 @@ describe('oidc review follow-ups', () => {
 
     it('uses a nubl EIP-712 domain whose salt differs for stage and prod', async () => {
         const account = address(400)
+
         const stage = await runWithAuthIdentity(
             { provider: 'oidc', userId: 'domain-stage', issuer: ISSUER },
             () =>
@@ -407,6 +453,7 @@ describe('oidc review follow-ups', () => {
                     },
                 ),
         )
+
         const prod = await runWithAuthIdentity(
             { provider: 'oidc', userId: 'domain-prod', issuer: ISSUER },
             () =>
@@ -420,6 +467,7 @@ describe('oidc review follow-ups', () => {
                     },
                 ),
         )
+
         expect(stage.typedData.domain.name).toBe('Nubl Relayer')
         expect(stage.typedData.domain.salt).toBeTypeOf('string')
         expect(stage.typedData.domain.salt).not.toBe(prod.typedData.domain.salt)
@@ -441,6 +489,7 @@ describe('oidc review follow-ups', () => {
         const store = walletBindingStub(baseEnv())
         const shared = address(500)
         const issuer = 'https://followup.example/global'
+
         const issued = await store.issueNonce({
             issuer,
             subject: 'global-owner',
@@ -450,7 +499,9 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 600,
             ip: '203.0.113.60',
         })
+
         expect(issued.ok).toBe(true)
+
         if (!issued.ok) return
         expect(
             await store.bind({
@@ -464,6 +515,7 @@ describe('oidc review follow-ups', () => {
                 ip: '203.0.113.60',
             }),
         ).toEqual({ ok: true })
+
         const otherChain = await store.issueNonce({
             issuer,
             subject: 'global-other',
@@ -473,15 +525,18 @@ describe('oidc review follow-ups', () => {
             ttlSeconds: 600,
             ip: '203.0.113.61',
         })
+
         expect(otherChain).toEqual({ ok: false, reason: 'address_taken' })
         expect(await store.accountsFor(issuer, 'global-owner')).toEqual([shared.toLowerCase()])
     })
 
     it('returns RATE_LIMITED from wallet_issueBindNonce when the subject is over the cap', async () => {
         const workerEnv = baseEnv({ CHAIN_IDS: '31337' })
+
         const request = new Request('https://relayer.local/', {
             headers: { 'cf-connecting-ip': '203.0.113.15' },
         })
+
         for (let attempt = 0; attempt < 3; attempt++) {
             await runWithAuthIdentity({ provider: 'oidc', userId: 'rpc-cap', issuer: ISSUER }, () =>
                 handleIssueBindNonce(
@@ -490,6 +545,7 @@ describe('oidc review follow-ups', () => {
                 ),
             )
         }
+
         await expect(
             runWithAuthIdentity({ provider: 'oidc', userId: 'rpc-cap', issuer: ISSUER }, () =>
                 handleIssueBindNonce(

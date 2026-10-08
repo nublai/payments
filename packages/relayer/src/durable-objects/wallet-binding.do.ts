@@ -76,12 +76,14 @@ export class WalletBindingDO extends DurableObject<Env> {
 
     async alarm(nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
         this.deleteExpired(nowSeconds, true)
+
         const next = this.sql
             .exec<{ expires_at: number }>(
                 `SELECT MIN(expires_at) AS expires_at FROM bind_nonces`,
             )
             .toArray()
             .at(0)
+
         if (typeof next?.expires_at === 'number' && Number.isFinite(next.expires_at)) {
             await this.scheduleAlarm(next.expires_at)
         }
@@ -100,6 +102,7 @@ export class WalletBindingDO extends DurableObject<Env> {
         | { ok: false; reason: 'address_taken' | 'invalid' | 'rate_limited' | 'subject_cap' }
     > {
         const address = normalizeAddress(input.address)
+
         if (
             !input.issuer ||
             !input.subject ||
@@ -115,8 +118,10 @@ export class WalletBindingDO extends DurableObject<Env> {
 
         const nonce = randomNonce()
         const expiresAt = input.nowSeconds + input.ttlSeconds
+
         const outcome = this.ctx.storage.transactionSync(() => {
             this.deleteExpired(input.nowSeconds, true)
+
             if (
                 !this.charge('issue', input.issuer, input.subject, input.ip, input.nowSeconds)
             ) {
@@ -124,6 +129,7 @@ export class WalletBindingDO extends DurableObject<Env> {
             }
 
             const owner = this.ownerRow(address)
+
             if (owner && (owner.issuer !== input.issuer || owner.subject !== input.subject)) {
                 return { ok: false as const, reason: 'address_taken' as const }
             }
@@ -134,16 +140,19 @@ export class WalletBindingDO extends DurableObject<Env> {
                 input.subject,
                 input.nowSeconds,
             )
+
             if (open >= BIND_LIMITS.maxOpenNoncesPerSubject) {
                 return { ok: false as const, reason: 'subject_cap' as const }
             }
 
             const alreadyOwned = owner !== undefined
+
             const bindings = this.count(
                 `SELECT COUNT(*) AS n FROM bindings WHERE issuer = ? AND subject = ?`,
                 input.issuer,
                 input.subject,
             )
+
             if (!alreadyOwned && bindings >= BIND_LIMITS.maxBindingsPerSubject) {
                 return { ok: false as const, reason: 'subject_cap' as const }
             }
@@ -158,12 +167,14 @@ export class WalletBindingDO extends DurableObject<Env> {
                 input.chainId,
                 expiresAt,
             )
+
             return { ok: true as const, nonce, expiresAt }
         })
 
         if (outcome.ok && expiresAt * 1000 > Date.now()) {
             await this.scheduleAlarm(expiresAt)
         }
+
         return outcome
     }
 
@@ -192,8 +203,10 @@ export class WalletBindingDO extends DurableObject<Env> {
           }
     > {
         const address = normalizeAddress(input.address)
+
         const outcome = this.ctx.storage.transactionSync(() => {
             this.deleteExpired(input.nowSeconds, false)
+
             if (
                 !input.charged &&
                 !this.charge('bind', input.issuer, input.subject, input.ip, input.nowSeconds)
@@ -211,14 +224,19 @@ export class WalletBindingDO extends DurableObject<Env> {
                 .at(0) as NonceRow | undefined
 
             if (!nonce) return { ok: false as const, reason: 'nonce_unknown' as const }
+
             if (nonce.used) {
                 this.sql.exec(`DELETE FROM bind_nonces WHERE nonce = ?`, input.nonce)
+
                 return { ok: false as const, reason: 'nonce_used' as const }
             }
+
             if (nonce.expires_at <= input.nowSeconds) {
                 this.sql.exec(`DELETE FROM bind_nonces WHERE nonce = ?`, input.nonce)
+
                 return { ok: false as const, reason: 'nonce_expired' as const }
             }
+
             if (
                 nonce.issuer !== input.issuer ||
                 nonce.subject !== input.subject ||
@@ -230,6 +248,7 @@ export class WalletBindingDO extends DurableObject<Env> {
             }
 
             const owner = this.ownerRow(address)
+
             if (owner && (owner.issuer !== input.issuer || owner.subject !== input.subject)) {
                 return { ok: false as const, reason: 'address_taken' as const }
             }
@@ -240,9 +259,11 @@ export class WalletBindingDO extends DurableObject<Env> {
                     input.issuer,
                     input.subject,
                 )
+
                 if (bindings >= BIND_LIMITS.maxBindingsPerSubject) {
                     return { ok: false as const, reason: 'subject_cap' as const }
                 }
+
                 this.sql.exec(
                     `INSERT INTO bindings (address, issuer, subject, chain_id, created_at)
            VALUES (?, ?, ?, ?, ?)`,
@@ -255,6 +276,7 @@ export class WalletBindingDO extends DurableObject<Env> {
             }
 
             this.sql.exec(`DELETE FROM bind_nonces WHERE nonce = ?`, input.nonce)
+
             return { ok: true as const }
         })
 
@@ -271,6 +293,7 @@ export class WalletBindingDO extends DurableObject<Env> {
         const allowed = this.ctx.storage.transactionSync(() =>
             this.charge('bind', input.issuer, input.subject, input.ip, input.nowSeconds),
         )
+
         return allowed ? { ok: true } : { ok: false, reason: 'rate_limited' }
     }
 
@@ -287,7 +310,9 @@ export class WalletBindingDO extends DurableObject<Env> {
 
     async ownerOf(address: string): Promise<{ issuer: string; subject: string } | null> {
         const row = this.ownerRow(normalizeAddress(address))
+
         if (!row) return null
+
         return { issuer: row.issuer, subject: row.subject }
     }
 
@@ -311,16 +336,22 @@ export class WalletBindingDO extends DurableObject<Env> {
     ): boolean {
         const windowStart = nowSeconds - (nowSeconds % BIND_LIMITS.windowSeconds)
         const subjectBucket = `${kind}:subject:${issuer}\n${subject}`
+
         const subjectLimit =
             kind === 'issue' ? BIND_LIMITS.issuePerSubject : BIND_LIMITS.bindPerSubject
+
         const ipBucket = ip ? `${kind}:ip:${ip}` : undefined
         const ipLimit = kind === 'issue' ? BIND_LIMITS.issuePerIp : BIND_LIMITS.bindPerIp
+
         // A full IP bucket must not consume the subject window. Commit neither hit
         // unless both buckets still have room. The caller holds transactionSync.
         if (!this.hasRoom(subjectBucket, windowStart, subjectLimit)) return false
+
         if (ipBucket && !this.hasRoom(ipBucket, windowStart, ipLimit)) return false
         this.recordHit(subjectBucket, windowStart)
+
         if (ipBucket) this.recordHit(ipBucket, windowStart)
+
         return true
     }
 
@@ -337,6 +368,7 @@ export class WalletBindingDO extends DurableObject<Env> {
             )
             .toArray()
             .at(0)
+
         return Number(row?.hits ?? 0)
     }
 
@@ -349,6 +381,7 @@ export class WalletBindingDO extends DurableObject<Env> {
             )
             .toArray()
             .at(0)
+
         if (row) {
             this.sql.exec(
                 `UPDATE bind_rates SET hits = ? WHERE bucket = ? AND window_start = ?`,
@@ -356,8 +389,10 @@ export class WalletBindingDO extends DurableObject<Env> {
                 bucket,
                 windowStart,
             )
+
             return
         }
+
         this.sql.exec(
             `INSERT INTO bind_rates (bucket, window_start, hits) VALUES (?, ?, 1)`,
             bucket,
@@ -370,6 +405,7 @@ export class WalletBindingDO extends DurableObject<Env> {
             .exec<{ n: number }>(query, ...bindings)
             .toArray()
             .at(0)
+
         return Number(row?.n ?? 0)
     }
 
@@ -387,6 +423,7 @@ export class WalletBindingDO extends DurableObject<Env> {
         const nowMs = Date.now()
         const nextMs = Math.max(nowMs, expiresAt * 1000)
         const current = await this.ctx.storage.getAlarm()
+
         if (current === null || current < nowMs || nextMs < current) {
             await this.ctx.storage.setAlarm(nextMs)
         }
@@ -412,8 +449,10 @@ function randomNonce(): string {
     const bytes = new Uint8Array(16)
     crypto.getRandomValues(bytes)
     let hex = ''
+
     for (const byte of bytes) {
         hex += byte.toString(16).padStart(2, '0')
     }
+
     return hex
 }

@@ -35,6 +35,7 @@ import { concat, encodeAbiParameters, parseAbiParameters } from 'viem'
  */
 export function wrapSignature(signature: Hex, keyHash: Hex, prehash: boolean = false): Hex {
     const prehashFlag = prehash ? '0x01' : '0x00'
+
     return concat([signature, keyHash, prehashFlag as Hex])
 }
 

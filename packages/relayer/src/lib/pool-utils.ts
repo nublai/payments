@@ -23,9 +23,12 @@ export function selectSignerForEoa(eoa: Address, signerCount: number): number {
     if (signerCount <= 0) {
         throw new Error('signerCount must be positive')
     }
+
     if (signerCount === 1) {
         return 0
     }
+
     const hash = keccak256(eoa)
+
     return Number(BigInt(hash) % BigInt(signerCount))
 }

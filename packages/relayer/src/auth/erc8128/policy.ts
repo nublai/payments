@@ -2,6 +2,7 @@ import type { Env } from '../../types/env'
 import { parseAuthProtectedMethods } from '../policy'
 
 const DEFAULT_MAX_VALIDITY_SECONDS = 120
+
 const DEFAULT_CLOCK_SKEW_SECONDS = 30
 
 export interface Erc8128Policy {
@@ -15,6 +16,7 @@ export interface Erc8128Policy {
 
 function parseIntWithDefault(value: string | undefined, fallback: number): number {
     const parsed = Number.parseInt(value ?? '', 10)
+
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 

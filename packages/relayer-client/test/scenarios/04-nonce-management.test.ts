@@ -55,6 +55,7 @@ describe('Nonce Management', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // 2. Get initial nonce
@@ -93,6 +94,7 @@ describe('Nonce Management', () => {
             context: prepared.context,
             signature,
         })
+
         expect(result.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -151,6 +153,7 @@ describe('Nonce Management', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(result.id).toBeDefined()
 
             // Wait for transaction to be processed
@@ -204,6 +207,7 @@ describe('Nonce Management', () => {
             context: prepared0.context,
             signature: signature0,
         })
+
         expect(result0.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -234,6 +238,7 @@ describe('Nonce Management', () => {
             context: prepared1.context,
             signature: signature1,
         })
+
         expect(result1.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -273,6 +278,7 @@ describe('Nonce Management', () => {
                 from: account.address,
                 calls: [{ target: recipient, value: parseEther('0.01'), data: '0x' }],
             })
+
             const second = await client.prepareCalls({
                 from: account.address,
                 calls: [{ target: recipient, value: parseEther('0.02'), data: '0x' }],
@@ -316,6 +322,7 @@ describe('Nonce Management', () => {
                 seqKey: 0n,
                 noncePolicy: 'draft',
             })
+
             const second = await client.prepareCalls({
                 from: account.address,
                 calls: [{ target: recipient, value: parseEther('0.01'), data: '0x' }],
@@ -333,6 +340,7 @@ describe('Nonce Management', () => {
                 primaryType: first.typedData.primaryType,
                 message: first.typedData.message,
             })
+
             const secondSignature = await walletClient.signTypedData({
                 domain: second.typedData.domain,
                 types: second.typedData.types,
@@ -400,6 +408,7 @@ describe('Nonce Management', () => {
 
             // 2. Prepare multiple intents in parallel with different seqKeys
             const seqKeys = [0n, 1n, 2n]
+
             const preparedIntents = await Promise.all(
                 seqKeys.map((seqKey) =>
                     client.prepareCalls({
@@ -489,6 +498,7 @@ describe('Nonce Management', () => {
                 prepareKey: 'same-key',
                 noncePolicy: 'draft',
             })
+
             const firstNonce = first.typedData.message.nonce
             expect(first.context.draft?.id).toBeDefined()
             expect(first.context.draft?.fromCache).toBe(false)
@@ -505,6 +515,7 @@ describe('Nonce Management', () => {
                 prepareKey: 'same-key',
                 noncePolicy: 'draft',
             })
+
             expect(second.context.draft?.id).toBe(first.context.draft?.id)
             expect(second.context.draft?.fromCache).toBe(true)
             expect(second.typedData.message.nonce).toBe(firstNonce)
@@ -546,6 +557,7 @@ describe('Nonce Management', () => {
                 prepareKey: 'same-lane-key',
                 noncePolicy: 'draft',
             })
+
             expect(first.context.draft?.id).toBeDefined()
             expect(first.context.draft?.fromCache).toBe(false)
 
@@ -561,6 +573,7 @@ describe('Nonce Management', () => {
                 prepareKey: 'same-lane-key',
                 noncePolicy: 'draft',
             })
+
             expect(second.context.draft?.id).toBe(first.context.draft?.id)
             expect(second.context.draft?.fromCache).toBe(true)
             expect(second.typedData.message.nonce).toBe(first.typedData.message.nonce)
@@ -597,6 +610,7 @@ describe('Nonce Management', () => {
                 prepareKey: 'first-key',
                 noncePolicy: 'draft',
             })
+
             expect(first.context.draft?.id).toBeDefined()
             expect(first.context.draft?.fromCache).toBe(false)
 
@@ -643,6 +657,7 @@ describe('Nonce Management', () => {
                 prepareKey: 'lane-one',
                 noncePolicy: 'draft',
             })
+
             expect(first.context.draft?.id).toBeDefined()
             expect(first.context.draft?.fromCache).toBe(false)
 

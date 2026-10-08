@@ -22,7 +22,9 @@ import { createMethods } from '../../src/rpc/methods'
 import type { Env } from '../../src/types/env'
 
 const RPC_URL = 'http://127.0.0.1:18545'
+
 const RAW_TX = '0x04' + 'ab'.repeat(128) + 'cd'.repeat(32)
+
 const LEAKY_POOL_ERROR = [
     'HTTP request failed.',
     '',
@@ -31,9 +33,13 @@ const LEAKY_POOL_ERROR = [
 ].join('\n')
 
 const DUMMY_AUTH = `0x${'11'.repeat(32)}${'22'.repeat(32)}1b` as Hex
+
 const VICTIM = '0x1111111111111111111111111111111111111111' as Address
+
 const DELEGATION = '0x2222222222222222222222222222222222222222' as Address
+
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+
 const CHAIN_ID = 8453
 
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
@@ -50,6 +56,7 @@ function createEnv(
     const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const bodyText = typeof init?.body === 'string' ? init.body : ''
         let parsed: { type?: string } | null = null
+
         if (bodyText) {
             try {
                 parsed = JSON.parse(bodyText) as { type?: string }
@@ -60,6 +67,7 @@ function createEnv(
 
         if (parsed?.type === 'create-account') {
             capture.broadcasts.push(parsed)
+
             return {
                 ok: false,
                 json: async () => ({ error: LEAKY_POOL_ERROR }),
@@ -98,12 +106,15 @@ function createApp(providers: AuthProvider[]) {
     app.use('*', authMiddleware({ providers }))
     app.post('/', async (c) => {
         const body = await c.req.json()
+
         const response = await dispatch(body, createMethods(c.env), {
             env: c.env,
             request: c.req.raw,
         })
+
         return c.json(response)
     })
+
     return app
 }
 
@@ -125,6 +136,7 @@ function stubPendingNonce() {
     vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
         const body = typeof init?.body === 'string' ? init.body : ''
         const result = body.includes('eth_getTransactionCount') ? '0x0' : '0x'
+
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
@@ -178,7 +190,9 @@ async function post(
         },
         env,
     )
+
     const text = await response.text()
+
     return { status: response.status, json: JSON.parse(text) as unknown, text }
 }
 
@@ -208,6 +222,7 @@ describe('C1 wallet_upgradeAccount', () => {
 
     it('wallet_upgradeAccount stays unauthorized when AUTH_PROTECTED_METHODS is none', async () => {
         const capture: BroadcastCapture = { broadcasts: [] }
+
         const result = await post(
             createEnv(capture, { AUTH_PROTECTED_METHODS: 'none' }),
             upgradeBody(DUMMY_AUTH, VICTIM),
@@ -223,6 +238,7 @@ describe('C1 wallet_upgradeAccount', () => {
 
     it('authenticated wallet_upgradeAccount with a bogus authorization does not broadcast', async () => {
         const capture: BroadcastCapture = { broadcasts: [] }
+
         const result = await post(createEnv(capture), upgradeBody(DUMMY_AUTH, VICTIM), [
             acceptingProvider,
         ])
@@ -240,6 +256,7 @@ describe('C1 wallet_upgradeAccount', () => {
 
     it('wallet_upgradeAccount broadcast failure does not return the RPC URL or raw transaction', async () => {
         const owner = privateKeyToAccount(OWNER_KEY)
+
         const auth = await owner.sign({
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
@@ -251,6 +268,7 @@ describe('C1 wallet_upgradeAccount', () => {
         const capture: BroadcastCapture = { broadcasts: [] }
         stubPendingNonce()
         let result: Awaited<ReturnType<typeof post>>
+
         try {
             result = await post(
                 createEnv(capture),
@@ -274,6 +292,7 @@ describe('C1 wallet_upgradeAccount', () => {
 
     it('does not broadcast when the upgrade rate limit is exceeded', async () => {
         const owner = privateKeyToAccount(OWNER_KEY)
+
         const auth = await owner.sign({
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
@@ -285,6 +304,7 @@ describe('C1 wallet_upgradeAccount', () => {
         const capture: BroadcastCapture = { broadcasts: [] }
         stubPendingNonce()
         let result: Awaited<ReturnType<typeof post>>
+
         try {
             result = await post(
                 createEnv(capture, {}, { upgradeAllowed: false }),
@@ -307,6 +327,7 @@ describe('C1 wallet_upgradeAccount', () => {
 
     it('unauthenticated wallet_prepareUpgradeAccount is rejected before preparing an upgrade', async () => {
         const capture: BroadcastCapture = { broadcasts: [] }
+
         const result = await post(
             createEnv(capture),
             {

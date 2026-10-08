@@ -66,6 +66,7 @@ export async function handlePrepareUpgradeAccount(
     if (!authIdentityOwnsAccount(accountAddress)) {
         throw new RpcError(INVALID_PARAMS, 'Authenticated identity is not bound to the account')
     }
+
     if (getAddress(delegation) !== getAddress(config.contracts.accountProxy)) {
         throw new RpcError(INVALID_PARAMS, 'Delegation target is not the account proxy')
     }
@@ -81,6 +82,7 @@ export async function handlePrepareUpgradeAccount(
     const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
 
     let eoaNonce: bigint
+
     try {
         eoaNonce = BigInt(
             await publicClient.getTransactionCount({
@@ -123,6 +125,7 @@ export async function handlePrepareUpgradeAccount(
 
     const isMultichain = preCallNonce >> 240n === MULTICHAIN_NONCE_PREFIX
     const domain = getSignedCallDomain(config.chainId, config.contracts.orchestrator)
+
     const typedData = {
         domain,
         types: SIGNED_CALL_TYPES,

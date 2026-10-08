@@ -90,6 +90,7 @@ test('extractRequestId prefers top-level value and falls back to check endpoint'
         requestId: 'quote-request-id',
         steps: [],
     }
+
     expect(extractRequestId(explicitQuote)).toBe('quote-request-id')
 
     const endpointFallbackQuote: RelayQuoteResponse = {
@@ -406,6 +407,7 @@ test('getIntentStatus parses status responses', async () => {
 test('getQuote refuses a redirect', async () => {
     const fetchMock = mock(async (_url: string, init?: RequestInit) => {
         expect(init?.redirect).toBe('error')
+
         return new Response('{}', {
             status: 302,
             headers: { location: 'https://evil.example/quote' },
@@ -434,6 +436,7 @@ test('getQuote refuses a redirect', async () => {
 test('getIntentStatus refuses a redirect', async () => {
     const fetchMock = mock(async (_url: string, init?: RequestInit) => {
         expect(init?.redirect).toBe('error')
+
         return {
             redirected: true,
             status: 200,
@@ -463,9 +466,12 @@ test('pollIntentStatus uses stepped intervals until terminal success', async () 
                 txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
             },
         ]
+
         const next = statuses[Math.min(fetchMock.mock.calls.length, statuses.length - 1)]
+
         return new Response(JSON.stringify(next), { status: 200 })
     })
+
     const sleepMock = mock(async (_ms: number) => {})
 
     const status = await pollIntentStatus(
@@ -492,6 +498,7 @@ test('pollIntentStatus throws on timeout with latest status details', async () =
     const fetchMock = mock(
         async () => new Response(JSON.stringify({ status: 'pending' }), { status: 200 }),
     )
+
     const sleepMock = mock(async (_ms: number) => {})
     const nowValues = [0, 0, 50, 120]
     let index = 0

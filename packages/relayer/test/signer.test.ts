@@ -13,9 +13,11 @@ import { mnemonicToAccount } from 'viem/accounts'
  */
 function parseSignerName(name: string): { chainId: number; index: number } | null {
     const match = name.match(/^signer-(\d+)-(\d+)$/)
+
     if (!match) {
         return null
     }
+
     return {
         chainId: parseInt(match[1], 10),
         index: parseInt(match[2], 10),
@@ -37,6 +39,7 @@ function deriveAddress(mnemonic: string, index: number): string {
     const account = mnemonicToAccount(mnemonic, {
         addressIndex: index,
     })
+
     return account.address
 }
 
@@ -134,6 +137,7 @@ describe('SignerDO key derivation', () => {
         it('derives different addresses for different mnemonics', () => {
             const mnemonic2 =
                 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+
             const address1 = deriveAddress(testMnemonic, 0)
             const address2 = deriveAddress(mnemonic2, 0)
             expect(address1).not.toBe(address2)
@@ -199,8 +203,10 @@ describe('SignerDO name and key integration', () => {
 
     it('different signer names yield different addresses', () => {
         const names = ['signer-31337-0', 'signer-31337-1', 'signer-31337-2']
+
         const addresses = names.map((name) => {
             const parsed = parseSignerName(name)
+
             return parsed ? deriveAddress(testMnemonic, parsed.index) : null
         })
 

@@ -5,11 +5,17 @@ import { writeSettlementCalls } from '../../../src/escrow/writeSettlementCalls.j
 import { refundEscrowCalls } from '../../../src/escrow/refundEscrowCalls.js'
 
 const ESCROW_ID = `0x${'11'.repeat(32)}` as `0x${string}`
+
 const SETTLEMENT_ID = `0x${'22'.repeat(32)}` as `0x${string}`
+
 const ORACLE = '0x3333333333333333333333333333333333333333' as `0x${string}`
+
 const SIMPLE_SETTLER = '0x4444444444444444444444444444444444444444' as `0x${string}`
+
 const ESCROW_ADDR = '0x5555555555555555555555555555555555555555' as `0x${string}`
+
 const SIGNATURE = `0x${'aa'.repeat(65)}` as `0x${string}`
+
 const CHAIN_ID = 8453
 
 describe('writeSettlementCalls', () => {
@@ -35,12 +41,14 @@ describe('writeSettlementCalls', () => {
     it('first call encodes SimpleSettler.write() with correct args', () => {
         const decoded = decodeFunctionData({ abi: simpleSettlerAbi, data: calls[0].data })
         expect(decoded.functionName).toBe('write')
+
         const [sender, settlementId, chainId] = decoded.args as [
             `0x${string}`,
             `0x${string}`,
             bigint,
             `0x${string}`,
         ]
+
         expect(sender.toLowerCase()).toBe(ORACLE.toLowerCase())
         expect(settlementId.toLowerCase()).toBe(SETTLEMENT_ID.toLowerCase())
         expect(chainId).toBe(BigInt(CHAIN_ID))

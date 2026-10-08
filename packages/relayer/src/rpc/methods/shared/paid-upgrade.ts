@@ -70,6 +70,7 @@ export function paidUpgradeRateBuckets(input: {
     includeGlobal?: boolean
 }): RateBucket[] {
     const globalLimit = input.globalLimit ?? DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT
+
     const buckets: RateBucket[] = [
         {
             key: `paid-upgrade:address:${input.chainId}:${input.account.toLowerCase()}`,
@@ -82,7 +83,9 @@ export function paidUpgradeRateBuckets(input: {
             windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
         },
     ]
+
     const prefix56 = ipv6Prefix56(input.ip)
+
     if (prefix56) {
         buckets.push({
             key: `paid-upgrade:ip56:${input.chainId}:${prefix56}`,
@@ -90,6 +93,7 @@ export function paidUpgradeRateBuckets(input: {
             windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
         })
     }
+
     if (input.includeGlobal) {
         buckets.push({
             key: `paid-upgrade:global:${input.chainId}`,
@@ -97,6 +101,7 @@ export function paidUpgradeRateBuckets(input: {
             windowSeconds: PAID_UPGRADE_WINDOW_SECONDS,
         })
     }
+
     return buckets
 }
 
@@ -109,9 +114,11 @@ export function requirePaidUpgradeClientIp(
     env: { CONTEXT?: string },
 ): string {
     const ip = upgradeClientIp(request)
+
     if (ip === 'unknown' && !isLocalDevContext(env)) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade client IP is required')
     }
+
     return ip
 }
 
@@ -133,13 +140,16 @@ export const DEFAULT_PAID_UPGRADE_MAX_PAYMENT = 5_000_000n
  * The 0.001 USDC floor matches FEE_CAP_MARGIN_FLOOR there.
  */
 const PAID_UPGRADE_FEE_MARGIN_BPS = 500n
+
 const PAID_UPGRADE_FEE_MARGIN_FLOOR = 1_000n
 
 export function signedPaymentMaxForQuote(paymentAmount: bigint): bigint {
     if (paymentAmount <= 0n) return 0n
     const percent = (paymentAmount * PAID_UPGRADE_FEE_MARGIN_BPS + 9_999n) / 10_000n
+
     const margin =
         percent > PAID_UPGRADE_FEE_MARGIN_FLOOR ? percent : PAID_UPGRADE_FEE_MARGIN_FLOOR
+
     return paymentAmount + margin
 }
 
@@ -151,17 +161,22 @@ export function clampPaidUpgradePaymentMax(input: {
     if (input.paymentAmount <= 0n) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade fee must be greater than zero')
     }
+
     const quoted = signedPaymentMaxForQuote(input.paymentAmount)
+
     if (input.paymentAmount > input.ceiling || quoted > input.ceiling) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade paymentMaxAmount exceeds cap')
     }
+
     if (input.clientMax === undefined) return quoted
+
     if (input.clientMax < input.paymentAmount) {
         throw new RpcError(
             INVALID_PARAMS,
             `Payment amount ${input.paymentAmount} exceeds max ${input.clientMax}`,
         )
     }
+
     return input.clientMax < quoted ? input.clientMax : quoted
 }
 
@@ -216,6 +231,7 @@ export function paidUpgradeSignedGas(estimate: bigint): bigint {
     if (estimate <= 0n || estimate > PAID_UPGRADE_GAS_HOLD) {
         throw new Error('Paid upgrade gas limit exceeds the reserved hold')
     }
+
     return estimate
 }
 
@@ -233,10 +249,14 @@ export const PAID_UPGRADE_WINDOW_SECONDS = 10 * 60
 /** Receipt wait before the hold is left for the reconciler. Unset is 20 seconds. */
 export function paidUpgradeReceiptWaitMs(env: { PAID_UPGRADE_RECEIPT_WAIT_MS?: string }): number {
     const text = env.PAID_UPGRADE_RECEIPT_WAIT_MS?.trim()
+
     if (!text) return 20_000
+
     if (!/^[0-9]+$/.test(text)) return 20_000
     const parsed = Number(text)
+
     if (!Number.isSafeInteger(parsed) || parsed < 1) return 20_000
+
     return parsed
 }
 
@@ -263,9 +283,11 @@ export function assertPaidUpgradeEnabled(env: { PAID_UPGRADE_ENABLED?: string })
 export function chainUsdcAddress(chainId: number): Address {
     const assets = getChainAssetsConfig(chainId)
     const usdc = assets?.assets.usdc
+
     if (!usdc?.feeToken || !usdc.address) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'USDC fee token is not configured')
     }
+
     return getAddress(usdc.address as Address)
 }
 
@@ -279,9 +301,11 @@ export function paidUpgradeGlobalLimit(env: { PAID_UPGRADE_GLOBAL_LIMIT?: string
         BigInt(DEFAULT_PAID_UPGRADE_GLOBAL_LIMIT),
         'PAID_UPGRADE_GLOBAL_LIMIT',
     )
+
     if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'PAID_UPGRADE_GLOBAL_LIMIT is invalid')
     }
+
     return Number(value)
 }
 
@@ -295,10 +319,13 @@ export function paidUpgradeDailyGasBudget(env: { PAID_UPGRADE_DAILY_GAS_BUDGET?:
 
 function readPaidUpgradeBig(raw: string | undefined, fallback: bigint, label: string): bigint {
     const text = raw?.trim()
+
     if (!text) return fallback
+
     if (!/^[0-9]+$/.test(text) || text === '0') {
         throw new RpcError(SERVICE_UNAVAILABLE, `${label} is invalid`)
     }
+
     return BigInt(text)
 }
 
@@ -339,6 +366,7 @@ export function paidUpgradeFromQuote(quote: Quote | undefined): PaidUpgradeQuote
  */
 export function assertPaidUpgradeOidcOwner(account: string): void {
     if (currentAuthIdentity()?.provider !== 'oidc') return
+
     if (!isAddress(account) || !authIdentityOwnsAccount(getAddress(account))) {
         throw new RpcError(INVALID_PARAMS, 'Authenticated identity is not bound to the account')
     }
@@ -353,6 +381,7 @@ export function paidUpgradeFieldsMatch(left: PaidUpgradeQuote, right: PaidUpgrad
     const otherAuth = right.authorization
     const preCall = left.preCall
     const otherPreCall = right.preCall
+
     return (
         getAddress(auth.contractAddress) === getAddress(otherAuth.contractAddress) &&
         auth.chainId === otherAuth.chainId &&
@@ -394,28 +423,34 @@ export async function assertPaidUpgrade(args: {
 }): Promise<CheckedPaidUpgrade> {
     const eoa = getAddress(args.eoa)
     const payer = args.payer ? getAddress(args.payer) : zeroAddress
+
     if (payer !== eoa) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade payer must be the account')
     }
 
     const paymentToken = args.paymentToken ? getAddress(args.paymentToken) : zeroAddress
+
     if (paymentToken === zeroAddress || paymentToken !== getAddress(args.usdc)) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade requires the USDC fee token')
     }
 
     const authorization = args.upgrade.authorization
     const delegation = getAddress(authorization.contractAddress)
+
     if (!Number.isInteger(authorization.chainId) || authorization.chainId !== args.chainId) {
         throw new RpcError(INVALID_PARAMS, 'Authorization chain id does not match the request')
     }
+
     if (!Number.isInteger(authorization.nonce) || authorization.nonce < 0) {
         throw new RpcError(INVALID_PARAMS, 'Invalid authorization nonce')
     }
+
     if (delegation !== getAddress(args.accountProxy)) {
         throw new RpcError(INVALID_PARAMS, 'Delegation target is not the account proxy')
     }
 
     let parsedAuth: { r: Hex; s: Hex; yParity: number }
+
     try {
         parsedAuth = parseSignature(authorization.signature)
     } catch (error) {
@@ -430,6 +465,7 @@ export async function assertPaidUpgrade(args: {
         nonce: authorization.nonce,
         signature: authorization.signature,
     })
+
     if (!authorizationMatches) {
         throw new RpcError(INVALID_SIGNATURE, 'Invalid authorization signature')
     }
@@ -443,6 +479,7 @@ export async function assertPaidUpgrade(args: {
         nonce: args.upgrade.preCall.nonce,
         execSignature: args.upgrade.preCall.signature,
     })
+
     if (!allowedPreCall) {
         throw new RpcError(INVALID_PARAMS, 'Upgrade preCall is not allowed')
     }
@@ -453,33 +490,42 @@ export async function assertPaidUpgrade(args: {
         nonce: allowedPreCall.nonce,
         signature: allowedPreCall.signature,
     })
+
     const quotedPreCalls = args.encodedPreCalls ?? []
+
     if (quotedPreCalls.length !== 1 || !sameHex(quotedPreCalls[0], encoded)) {
         throw new RpcError(INVALID_PARAMS, 'Authorization or pre-call does not match the quote')
     }
 
     let paymentMaxAmount: bigint
+
     try {
         paymentMaxAmount = BigInt(args.paymentMaxAmount ?? '0')
     } catch {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade paymentMaxAmount is required')
     }
+
     if (paymentMaxAmount <= 0n) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade paymentMaxAmount is required')
     }
+
     if (paymentMaxAmount > args.maxPayment) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade paymentMaxAmount exceeds cap')
     }
+
     if (args.paymentAmount <= 0n) {
         throw new RpcError(INVALID_PARAMS, 'Paid upgrade fee must be greater than zero')
     }
+
     if (args.paymentAmount > paymentMaxAmount) {
         throw new RpcError(
             INVALID_PARAMS,
             `Payment amount ${args.paymentAmount} exceeds max ${paymentMaxAmount}`,
         )
     }
+
     const quotedMax = signedPaymentMaxForQuote(args.paymentAmount)
+
     if (quotedMax > args.maxPayment || paymentMaxAmount > quotedMax) {
         throw new RpcError(
             INVALID_PARAMS,
@@ -491,6 +537,7 @@ export async function assertPaidUpgrade(args: {
 
     let code: Hex | undefined
     let pendingNonce: number
+
     try {
         code = await args.publicClient.getCode({ address: eoa })
         pendingNonce = await args.publicClient.getTransactionCount({
@@ -501,14 +548,17 @@ export async function assertPaidUpgrade(args: {
         logger.error({ error, address: eoa }, 'failed to read account before paid upgrade')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     if (isEip7702Delegated(code)) {
         throw new RpcError(INVALID_PARAMS, 'Account is already delegated')
     }
+
     if (pendingNonce !== authorization.nonce) {
         throw new RpcError(INVALID_PARAMS, 'Authorization nonce does not match the account nonce')
     }
 
     let balance: bigint
+
     try {
         balance = await args.publicClient.readContract({
             address: args.usdc,
@@ -520,6 +570,7 @@ export async function assertPaidUpgrade(args: {
         logger.error({ error, address: eoa }, 'failed to read USDC balance before paid upgrade')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     if (balance < args.paymentAmount) {
         throw new RpcError(INSUFFICIENT_FUNDS, 'Insufficient USDC balance')
     }
@@ -561,6 +612,7 @@ async function postPaidUpgradeRateLimit(
 ): Promise<{ allowed: boolean; reservedAt?: number }> {
     const pool = getSignerPool(env, chainId)
     let response: Response
+
     try {
         response = await pool.fetch(`http://do/upgrade-rate-limit?poolName=pool-${chainId}`, {
             method: 'POST',
@@ -585,6 +637,7 @@ async function postPaidUpgradeRateLimit(
     }
 
     const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
+
     return {
         allowed: result.allowed === true,
         reservedAt: typeof result.reservedAt === 'number' ? result.reservedAt : undefined,
@@ -602,6 +655,7 @@ export async function assertPaidUpgradeRateCapacity(
         account,
         ip,
     })
+
     if (!result.allowed) {
         throw new RpcError(RATE_LIMITED, 'Paid upgrade rate limit exceeded')
     }
@@ -618,6 +672,7 @@ export async function recordPaidUpgradeRateLimit(
         account,
         ip,
     })
+
     if (!result.allowed) {
         throw new RpcError(RATE_LIMITED, 'Paid upgrade rate limit exceeded')
     }
@@ -634,9 +689,11 @@ export async function reservePaidUpgradeRateLimit(
         account,
         ip,
     })
+
     if (!result.allowed) {
         throw new RpcError(RATE_LIMITED, 'Paid upgrade rate limit exceeded')
     }
+
     return result.reservedAt ?? Math.floor(Date.now() / 1000)
 }
 
@@ -666,6 +723,7 @@ async function postPaidUpgradeGas(
 ): Promise<{ allowed: boolean; gas?: number; failures?: number; overBudget?: boolean; pending?: Hex[] }> {
     const pool = getSignerPool(env, chainId)
     let response: Response
+
     try {
         response = await pool.fetch(`http://do/upgrade-rate-limit?poolName=pool-${chainId}`, {
             method: 'POST',
@@ -676,10 +734,12 @@ async function postPaidUpgradeGas(
         logger.error({ error, chainId }, 'paid upgrade gas budget unavailable')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     if (!response.ok) {
         logger.error({ chainId, status: response.status }, 'paid upgrade gas budget failed')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     const result = (await response.json()) as {
         allowed?: boolean
         gas?: number
@@ -687,9 +747,11 @@ async function postPaidUpgradeGas(
         overBudget?: boolean
         pending?: unknown
     }
+
     const pending = Array.isArray(result.pending)
         ? result.pending.filter((hash): hash is Hex => typeof hash === 'string')
         : undefined
+
     return {
         allowed: result.allowed === true,
         gas: typeof result.gas === 'number' ? result.gas : undefined,
@@ -701,10 +763,12 @@ async function postPaidUpgradeGas(
 
 export async function reservePaidUpgradeGas(env: Env, chainId: number): Promise<void> {
     paidUpgradeDailyGasBudget(env)
+
     const result = await postPaidUpgradeGas(env, chainId, {
         action: 'reserve-gas',
         gas: PAID_UPGRADE_GAS_HOLD.toString(),
     })
+
     if (!result.allowed) {
         throw new RpcError(RATE_LIMITED, 'Paid upgrade gas budget exceeded')
     }
@@ -738,13 +802,16 @@ export async function settlePaidUpgradeGas(
         failure: input.failure,
         ...(input.txHash ? { txHash: input.txHash } : {}),
     })
+
     if (result.overBudget) {
         logger.error(
             { chainId, gas: result.gas, txHash: input.txHash },
             'paid upgrade settle exceeded the daily gas budget',
         )
+
         return
     }
+
     if (!result.allowed) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
@@ -763,6 +830,7 @@ export async function enqueuePaidUpgradeReceipt(
         ...(broadcast?.nonce !== undefined ? { nonce: broadcast.nonce } : {}),
         ...(broadcast?.signerName ? { signerName: broadcast.signerName } : {}),
     })
+
     if (!result.allowed) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
@@ -777,13 +845,17 @@ export function paidUpgradeBroadcasterAddress(
     eoa: Address,
 ): Address {
     const mnemonic = env.RELAYER_MNEMONIC?.trim()
+
     if (!mnemonic) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     const signerCount = Number.parseInt(env.RELAYER_COUNT ?? '1', 10)
+
     if (!Number.isInteger(signerCount) || signerCount < 1 || signerCount > 100) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     try {
         return deriveRelayerSignerAddress(mnemonic, selectSignerForEoa(eoa, signerCount))
     } catch (error) {
@@ -829,10 +901,13 @@ export async function assertPaidUpgradeIntentSigner(args: {
     orchestrator: Address
 }): Promise<void> {
     const signature = args.intent.signature
+
     if (!signature || signature === '0x') {
         throw new RpcError(INVALID_SIGNATURE, 'Intent signer is not the account')
     }
+
     let recovered: Address
+
     try {
         recovered = await recoverTypedDataAddress({
             domain: {
@@ -850,6 +925,7 @@ export async function assertPaidUpgradeIntentSigner(args: {
         if (error instanceof RpcError) throw error
         throw new RpcError(INVALID_SIGNATURE, 'Intent signer is not the account')
     }
+
     if (getAddress(recovered) !== getAddress(args.intent.eoa)) {
         throw new RpcError(INVALID_SIGNATURE, 'Intent signer is not the account')
     }
@@ -857,6 +933,7 @@ export async function assertPaidUpgradeIntentSigner(args: {
 
 function storedExecuteSelector(data: Hex | undefined): Hex | undefined {
     if (!data || data === '0x' || data.length < 10) return undefined
+
     return `0x${data.slice(2, 10)}` as Hex
 }
 
@@ -875,16 +952,20 @@ export async function assertPaidUpgradeSimulation(args: {
     env: { RELAYER_MNEMONIC?: string; RELAYER_COUNT?: string }
 }): Promise<void> {
     const broadcaster = paidUpgradeBroadcasterAddress(args.env, getAddress(args.intent.eoa))
+
     const intentForBroadcast: IntentStruct = {
         ...args.intent,
         paymentRecipient: getPaymentRecipient(args.feeRecipient, broadcaster),
     }
+
     const data = encodeFunctionData({
         abi: orchestratorAbi,
         functionName: 'execute',
         args: [encodeIntentCalldata(intentForBroadcast)],
     })
+
     let returned: Hex | undefined
+
     try {
         const result = await args.publicClient.call({
             account: broadcaster,
@@ -892,15 +973,19 @@ export async function assertPaidUpgradeSimulation(args: {
             data,
             authorizationList: [args.authorization],
         })
+
         returned = result.data
     } catch (error) {
         logger.error({ error }, 'paid upgrade simulation failed')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     const selector = storedExecuteSelector(returned)
+
     if (!selector) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
+
     if (selector === '0x00000000') return
     const decoded = decodeOrchestratorError(selector)
     const name = decoded?.errorName ?? 'Unknown'
@@ -925,9 +1010,11 @@ export function paidUpgradeReceiptOutcome(receipt: {
     logs: TransactionReceipt['logs']
 }): PaidUpgradeReceiptOutcome {
     const gasUsed = receipt.gasUsed
+
     if (receipt.status !== 'success') {
         return { failure: true, errorName: 'Reverted', gasUsed }
     }
+
     for (const log of receipt.logs) {
         try {
             const decoded = decodeEventLog({
@@ -935,12 +1022,16 @@ export function paidUpgradeReceiptOutcome(receipt: {
                 data: log.data,
                 topics: log.topics,
             })
+
             if (decoded.eventName !== 'IntentExecuted') continue
             const err = (decoded.args as { err?: Hex }).err
+
             if (!err || err === '0x00000000') {
                 return { failure: false, gasUsed }
             }
+
             const named = decodeOrchestratorError(err)
+
             return {
                 failure: true,
                 errorName: named?.errorName ?? 'Unknown',
@@ -951,5 +1042,6 @@ export function paidUpgradeReceiptOutcome(receipt: {
             continue
         }
     }
+
     return { failure: false, gasUsed }
 }

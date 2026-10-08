@@ -30,6 +30,7 @@ export type {
     UpgradeAccountResult,
     UpgradeAccountSignatures,
 } from '../schema/upgradeAccount'
+
 export { waitForDelegationCode }
 
 /**
@@ -55,10 +56,12 @@ export async function handleUpgradeAccount(
     }
 
     const accountAddress = validateAddress(context.address, 'context.address')
+
     const delegation = validateAddress(
         context.authorization.contractAddress,
         'context.authorization.contractAddress',
     )
+
     if (!Number.isInteger(context.authorization.nonce) || context.authorization.nonce < 0) {
         throw new RpcError(INVALID_PARAMS, 'Invalid authorization nonce')
     }
@@ -67,6 +70,7 @@ export async function handleUpgradeAccount(
     const config = getChainConfig(env, chainId)
 
     let parsedAuthSig: { r: Hex; s: Hex; yParity: number }
+
     try {
         parsedAuthSig = parseSignature(signatures.auth)
     } catch (error) {
@@ -81,6 +85,7 @@ export async function handleUpgradeAccount(
         nonce: context.authorization.nonce,
         signature: signatures.auth,
     })
+
     if (!authorizationMatches) {
         throw new RpcError(INVALID_SIGNATURE, 'Invalid authorization signature')
     }
@@ -95,6 +100,7 @@ export async function handleUpgradeAccount(
 
     const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
     let pendingNonce: number
+
     try {
         pendingNonce = await publicClient.getTransactionCount({
             address: accountAddress,
@@ -104,6 +110,7 @@ export async function handleUpgradeAccount(
         logger.error({ error, address: accountAddress }, 'failed to fetch account nonce')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
+
     if (pendingNonce !== context.authorization.nonce) {
         throw new RpcError(INVALID_PARAMS, 'Authorization nonce does not match the account nonce')
     }
@@ -119,6 +126,7 @@ export async function handleUpgradeAccount(
     })
 
     const rateIdentity = upgradeRateIdentity(accountAddress)
+
     const reservedAt = await reserveUpgradeRateLimit(env, chainId, ctx, {
         kind: 'upgrade',
         account: accountAddress,
@@ -145,6 +153,7 @@ export async function handleUpgradeAccount(
 
     const pool = getSignerPool(env, chainId)
     let response: Response
+
     try {
         response = await pool.fetch(`http://do/send?poolName=pool-${chainId}`, {
             method: 'POST',
@@ -159,17 +168,20 @@ export async function handleUpgradeAccount(
     if (!response.ok) {
         let detail = 'unknown'
         let broadcastAttempted = true
+
         try {
             const errorBody = (await response.json()) as {
                 error?: unknown
                 broadcastAttempted?: unknown
             }
+
             broadcastAttempted = errorBody.broadcastAttempted !== false
             detail =
                 typeof errorBody.error === 'string' ? errorBody.error : JSON.stringify(errorBody)
         } catch (parseError) {
             detail = parseError instanceof Error ? parseError.message : 'unreadable pool error'
         }
+
         if (!broadcastAttempted) {
             await releaseUpgradeRateLimit(env, chainId, ctx, {
                 kind: 'upgrade',
@@ -178,6 +190,7 @@ export async function handleUpgradeAccount(
                 reservedAt,
             })
         }
+
         logger.warn({ address: accountAddress, error: detail }, 'account upgrade failed')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
@@ -211,6 +224,7 @@ export async function handleUpgradeAccount(
             context.address as Address,
             receipt.blockNumber,
         )
+
         if (!isEip7702Delegated(code)) {
             logger.error(
                 {

@@ -17,12 +17,18 @@ import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
+
 const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+
 const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const rootPrivateKey =
     '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+
 const oldAddress = privateKeyToAccount(oldKey).address
+
 const newAddress = privateKeyToAccount(newKey).address
+
 const password = 'pw'
 
 const network = {
@@ -60,6 +66,7 @@ async function stageDir(prefix: string) {
     const root = await mkdtemp(join(tmpdir(), prefix))
     const sessions = join(root, 'sessions')
     await mkdir(sessions, { recursive: true })
+
     return { root, sessions, keystorePath: join(root, 'alice.json') }
 }
 
@@ -67,10 +74,12 @@ async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     const previous = process.env.RELAYER_URL_STAGE
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     const restoreStage = installFormerStageDeployments()
+
     try {
         return await fn()
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -85,13 +94,16 @@ async function writeRealSession(path: string, name: string, key: Hex) {
         name,
         checkpoint: 'authorized',
     })
+
     await writeFile(path, `${JSON.stringify(doc, null, 2)}\n`)
+
     return doc
 }
 
 function quotePreparer(captured: PreparedInput[]) {
     return mock(async (input: PreparedInput) => {
         captured.push(input)
+
         return matchingPreparedCalls({
             from: input.from,
             calls: input.calls,
@@ -135,16 +147,20 @@ function intentWriter(
     error: () => Error,
 ) {
     let calls = 0
+
     return mock(
         async (_root: string, _dir: string, value: Record<string, unknown>, fileName?: string) => {
             calls += 1
             const step = plan(calls)
+
             if (step === 'fail') throw error()
             const name = fileName ?? '.rotation.json'
             const tmp = join(sessions, `${name}.tmp-test`)
             await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
             await rename(tmp, join(sessions, name))
+
             if (step === 'write-then-fail') throw error()
+
             return { ...value, fileName: name }
         },
     )
@@ -157,6 +173,7 @@ async function firstRunWithEnospc(sessions: string, keystorePath: string) {
     const prepares: PreparedInput[] = []
     const sends: string[] = []
     let caught: unknown
+
     try {
         await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, newName: 'default-next' },
@@ -166,6 +183,7 @@ async function firstRunWithEnospc(sessions: string, keystorePath: string) {
                 signTypedData: mock(async () => rootPrivateKey),
                 sendPreparedCalls: mock(async () => {
                     sends.push('bundle-1')
+
                     return { id: 'bundle-1' }
                 }),
                 waitForBundle: mock(async () => ({
@@ -183,6 +201,7 @@ async function firstRunWithEnospc(sessions: string, keystorePath: string) {
     } catch (error) {
         caught = error
     }
+
     return { caught, sends, prepares }
 }
 
@@ -198,9 +217,11 @@ test('ENOSPC on the post-broadcast reseal reports the sent bundle and resume rec
         expect((first.caught as Error).message).not.toContain('ENOSPC')
 
         const resumePrepares: PreparedInput[] = []
+
         const signTypedData = mock(async () => {
             throw new Error('must not sign')
         })
+
         const result = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, resume: true },
             baseDeps({
@@ -213,6 +234,7 @@ test('ENOSPC on the post-broadcast reseal reports the sent bundle and resume rec
                 }),
             }) as never,
         )
+
         expect(result.status).toBe('complete')
         expect(result.resumed).toBe(true)
         expect(resumePrepares).toHaveLength(0)
@@ -234,10 +256,12 @@ test('ENOSPC on the post-broadcast reseal can be abandoned without deleting file
         expect(first.caught).toMatchObject({ code: 'ROTATION_SUBMITTED' })
 
         const getKeys = minedNewOnly()
+
         const result = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, abandon: true },
             baseDeps({ getKeys }) as never,
         )
+
         expect(getKeys).toHaveBeenCalled()
         expect(result.markerRemoved).toBe(true)
         expect(result.onChain).toEqual({ newKeyAuthorized: true, oldKeyLive: false })
@@ -260,6 +284,7 @@ test('a crash after the resealed marker is written and before the sidecar update
                     signTypedData: mock(async () => rootPrivateKey),
                     sendPreparedCalls: mock(async () => {
                         sends.push('bundle-1')
+
                         return { id: 'bundle-1' }
                     }),
                     writeRotationIntent: intentWriter(
@@ -275,11 +300,13 @@ test('a crash after the resealed marker is written and before the sidecar update
         expect(marker).toMatchObject({ status: 'submitted', bundleId: 'bundle-1' })
 
         const resumePrepares: PreparedInput[] = []
+
         const waitForBundle = mock(async () => ({
             success: true,
             statusCode: 200,
             status: 'confirmed',
         }))
+
         const result = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, resume: true },
             baseDeps({
@@ -295,6 +322,7 @@ test('a crash after the resealed marker is written and before the sidecar update
                 waitForBundle,
             }) as never,
         )
+
         expect(result.bundle.id).toBe('bundle-1')
         expect(waitForBundle).toHaveBeenCalled()
         expect(resumePrepares).toHaveLength(0)
@@ -306,6 +334,7 @@ test('abandon with a wrong password says so and leaves every file in place', asy
     await withStage(async () => {
         const { sessions, keystorePath } = await stageDir('abandon-wrong-pw-')
         await writeRealSession(join(sessions, 'default.json'), 'default', oldKey)
+
         const realRoot = await createRootKeystore({
             password,
             rootPrivateKey,
@@ -314,10 +343,12 @@ test('abandon with a wrong password says so and leaves every file in place', asy
             rpcUrl: network.rpcUrl,
             chainId: network.chainId,
         })
+
         const bundleWithRealRoot = () => ({
             root: { ...realRoot, addresses: { ...realRoot.addresses, delegated: account } },
             session: { addresses: { session: oldAddress } },
         })
+
         await expect(
             executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password, newName: 'default-next' },
@@ -336,7 +367,9 @@ test('abandon with a wrong password says so and leaves every file in place', asy
         const getKeys = mock(async () => ({
             '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
         }))
+
         let caught: unknown
+
         try {
             await executeSessionRotate(
                 {
@@ -355,6 +388,7 @@ test('abandon with a wrong password says so and leaves every file in place', asy
         } catch (error) {
             caught = error
         }
+
         expect(caught).toMatchObject({ code: 'PASSWORD_INCORRECT' })
         expect((caught as Error).message).not.toMatch(/unverified|Delete the marker/)
         expect(getKeys).not.toHaveBeenCalled()
@@ -381,6 +415,7 @@ test('restoring only the pre-broadcast marker after a reseal is still refused', 
                     signTypedData: mock(async () => rootPrivateKey),
                     sendPreparedCalls: mock(async () => {
                         pendingCopy = await readFile(join(sessions, '.rotation.json'), 'utf8')
+
                         return { id: 'bundle-1' }
                     }),
                     waitForBundle: mock(async () => {

@@ -5,6 +5,7 @@ import { AccountStatusError, executeAccountStatus } from '../src/lib/account-sta
 test('executeAccountStatus reports permission mismatches as warnings only', async () => {
     const sessionAddress = '0x2222222222222222222222222222222222222222' as const
     const sessionKeyHash = computeKeyHash('secp256k1', encodeSecp256k1Key(sessionAddress))
+
     const result = await executeAccountStatus(
         {
             env: 'dev',
@@ -72,13 +73,17 @@ test('executeAccountStatus reports permission mismatches as warnings only', asyn
     expect(result.readiness).toBe(true)
     expect(result.permissions.found).toBe(true)
     expect(result.permissions.warnings).toBeGreaterThan(0)
+
     const permissionWarnings = result.checks.filter(
         (check) => check.id.startsWith('session.permissions') && check.level === 'warn',
     )
+
     expect(permissionWarnings.length).toBeGreaterThan(0)
+
     const missingSpendPermissionWarning = result.checks.find(
         (check) => check.id === 'session.permissions.spendToken',
     )
+
     expect(missingSpendPermissionWarning?.message).toContain(
         'Run tw session create without --full-access',
     )
@@ -249,6 +254,7 @@ test('executeAccountStatus reports non-delegation code as fail', async () => {
 test('executeAccountStatus warns when a legacy wildcard session is present', async () => {
     const sessionAddress = '0x2222222222222222222222222222222222222222' as const
     const sessionKeyHash = computeKeyHash('secp256k1', encodeSecp256k1Key(sessionAddress))
+
     const result = await executeAccountStatus(
         {
             env: 'dev',
@@ -517,10 +523,12 @@ test('executeAccountStatus preserves cause for invalid chain override', async ()
         const statusError = error as AccountStatusError
         expect(statusError.code).toBe('UNSUPPORTED_CHAIN')
         expect(statusError.cause).toBeInstanceOf(Error)
+
         const causeMessage =
             statusError.cause instanceof Error
                 ? statusError.cause.message
                 : String(statusError.cause)
+
         expect(causeMessage).toContain('Unsupported chain')
     }
 })

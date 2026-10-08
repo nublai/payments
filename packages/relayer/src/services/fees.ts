@@ -53,12 +53,14 @@ export async function getFeeEstimate(
     // Average the reward values across blocks for stability
     let priorityFeeSum = 0n
     let priorityFeeCount = 0
+
     for (const reward of feeHistory.reward ?? []) {
         if (reward[0] !== undefined) {
             priorityFeeSum += reward[0]
             priorityFeeCount++
         }
     }
+
     const maxPriorityFeePerGas =
         priorityFeeCount > 0 ? priorityFeeSum / BigInt(priorityFeeCount) : 1000000000n // 1 gwei fallback
 
@@ -98,6 +100,7 @@ export function convertToFeeToken(
     // payment = nativeAmount * nativeRate / 1e18 * 10^(feeTokenDecimals - 18)
     //         = nativeAmount * nativeRate / 10^(36 - feeTokenDecimals)
     const scaleFactor = 10n ** BigInt(36 - feeTokenDecimals)
+
     return (nativeAmount * nativeRate) / scaleFactor
 }
 
@@ -126,5 +129,6 @@ export function getPaymentRecipient(
     if (configuredRecipient && configuredRecipient !== zeroAddress) {
         return configuredRecipient as Address
     }
+
     return signerAddress
 }

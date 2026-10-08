@@ -50,19 +50,23 @@ import {
 
 function parseTxHash(value: unknown): Hex | undefined {
     if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return undefined
+
     return value as Hex
 }
 
 function isTransactionMissing(error: unknown): boolean {
     if (!error || typeof error !== 'object') return false
     const name = 'name' in error && typeof error.name === 'string' ? error.name : ''
+
     return name === 'TransactionNotFoundError' || name === 'TransactionReceiptNotFoundError'
 }
 
 function parseGasUnits(value: unknown): number | undefined {
     if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) return undefined
     const parsed = Number(value)
+
     if (!Number.isSafeInteger(parsed) || parsed < 0) return undefined
+
     return parsed
 }
 
@@ -84,6 +88,7 @@ class SignerPoolSendError extends Error {
 
 // Default configuration
 const DEFAULT_SIGNER_COUNT = 1
+
 const DEFAULT_MAX_PENDING_TOTAL = 1000
 
 /**
@@ -105,6 +110,7 @@ export class SignerPoolDO extends DurableObject<Env> {
     async fetch(request: Request): Promise<Response> {
         const url = new URL(request.url)
         const poolNameParam = url.searchParams.get('poolName')
+
         if (poolNameParam) {
             this.poolNameOverride = poolNameParam
         }
@@ -115,13 +121,16 @@ export class SignerPoolDO extends DurableObject<Env> {
                     if (request.method !== 'POST') {
                         return new Response('Method not allowed', { status: 405 })
                     }
+
                     const tx = (await request.json()) as RelayTransaction
                     const result = await this.sendTransaction(tx)
+
                     return Response.json(result)
                 }
 
                 case '/status': {
                     const status = await this.getPoolStatus()
+
                     return Response.json(status)
                 }
 
@@ -129,7 +138,9 @@ export class SignerPoolDO extends DurableObject<Env> {
                     if (request.method !== 'POST') {
                         return new Response('Method not allowed', { status: 405 })
                     }
+
                     const result = await this.handleMaintenance()
+
                     return Response.json(result)
                 }
 
@@ -137,6 +148,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     if (request.method !== 'POST') {
                         return new Response('Method not allowed', { status: 405 })
                     }
+
                     const body = (await request.json()) as {
                         action?:
                             | UpgradeRateAction
@@ -163,10 +175,13 @@ export class SignerPoolDO extends DurableObject<Env> {
                         found?: boolean
                         nonceConsumed?: boolean
                     }
+
                     if (body.kind === 'paid-upgrade' && body.action === 'reconcile-pending') {
                         await this.reconcilePendingReceipts()
+
                         return Response.json({ allowed: true })
                     }
+
                     if (
                         body.kind === 'paid-upgrade' &&
                         (body.action === 'reserve-gas' ||
@@ -177,12 +192,16 @@ export class SignerPoolDO extends DurableObject<Env> {
                             body.action === 'track-replacement')
                     ) {
                         const result = this.consumePaidUpgradeGas(body)
+
                         if (body.action === 'enqueue-receipt' && result.allowed) {
                             await this.schedulePaidUpgradeReconcile()
                         }
+
                         return Response.json(result)
                     }
+
                     const result = this.consumeUpgradeRateLimit(body)
+
                     return Response.json(result)
                 }
 
@@ -191,15 +210,19 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
         } catch (error) {
             const message = getErrorMessage(error)
+
             if (url.pathname === '/send') {
                 const broadcastAttempted =
                     error instanceof SignerPoolSendError ? error.broadcastAttempted : false
+
                 const code = error instanceof SignerPoolSendError ? error.code : undefined
+
                 return Response.json(
                     { error: message, broadcastAttempted, ...(code ? { code } : {}) },
                     { status: 500 },
                 )
             }
+
             return Response.json({ error: message } as SignerError, { status: 500 })
         }
     }
@@ -234,7 +257,9 @@ export class SignerPoolDO extends DurableObject<Env> {
             body.action === 'commit' ||
             body.action === 'reserve' ||
             body.action === 'release'
+
         const paidUpgrade = body.kind === 'paid-upgrade'
+
         if (
             (body.kind !== 'prepare' && body.kind !== 'upgrade' && !paidUpgrade) ||
             typeof body.chainId !== 'number' ||
@@ -251,6 +276,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         const action = body.action ?? 'commit'
         const nowSeconds = Math.floor(Date.now() / 1000)
         let globalLimit = 0
+
         if (paidUpgrade) {
             try {
                 globalLimit = paidUpgradeGlobalLimit(this.env)
@@ -258,6 +284,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 return { allowed: false }
             }
         }
+
         const buckets = paidUpgrade
             ? paidUpgradeRateBuckets({
                   chainId: body.chainId,
@@ -273,12 +300,15 @@ export class SignerPoolDO extends DurableObject<Env> {
                   ip: body.ip as string,
                   identity: body.identity,
               })
+
         const sql = this.ensureUpgradeRateSchema()
 
         return this.ctx.storage.transactionSync(() => {
             const store = new Map<string, number>()
+
             for (const bucket of buckets) {
                 const earliest = nowSeconds - bucket.windowSeconds
+
                 const rows = sql
                     .exec<{ window_start: number; hits: number }>(
                         `SELECT window_start, hits FROM upgrade_rate_windows
@@ -287,6 +317,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                         earliest,
                     )
                     .toArray()
+
                 for (const row of rows) {
                     if (!Number.isFinite(row.hits) || !Number.isFinite(row.window_start)) continue
                     store.set(`${bucket.key}#${row.window_start}`, row.hits)
@@ -296,9 +327,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             if (action === 'release') {
                 const reservedAt = body.reservedAt ?? nowSeconds
                 releaseRateLimit(store, buckets, reservedAt)
+
                 for (const bucket of buckets) {
                     const hits = store.get(`${bucket.key}#${reservedAt}`) ?? 0
                     const sqlKey = `${bucket.key}#sec`
+
                     if (hits <= 0) {
                         sql.exec(
                             `DELETE FROM upgrade_rate_windows
@@ -317,6 +350,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                         )
                     }
                 }
+
                 return { allowed: true }
             }
 
@@ -324,14 +358,17 @@ export class SignerPoolDO extends DurableObject<Env> {
                 action === 'peek'
                     ? peekRateLimit(store, buckets, nowSeconds)
                     : consumeRateLimit(store, buckets, nowSeconds)
+
             if (!decision.allowed || action === 'peek') {
                 return { allowed: decision.allowed }
             }
 
             for (const [id, hits] of store) {
                 const splitAt = id.lastIndexOf('#')
+
                 if (splitAt < 0) continue
                 const second = Number(id.slice(splitAt + 1))
+
                 if (!Number.isInteger(second)) continue
                 sql.exec(
                     `INSERT INTO upgrade_rate_windows (bucket_key, window_start, hits)
@@ -347,6 +384,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 'DELETE FROM upgrade_rate_windows WHERE window_start <= ?',
                 nowSeconds - 3600,
             )
+
             return action === 'reserve' ? { allowed: true, reservedAt: nowSeconds } : { allowed: true }
         })
     }
@@ -373,20 +411,25 @@ export class SignerPoolDO extends DurableObject<Env> {
         if (typeof body.chainId !== 'number' || !Number.isInteger(body.chainId)) {
             return { allowed: false }
         }
+
         let budget: bigint
+
         try {
             budget = paidUpgradeDailyGasBudget(this.env)
         } catch {
             return { allowed: false }
         }
+
         const dayStart = Math.floor(Date.now() / 1000 / 86_400) * 86_400
         const sql = this.ensureUpgradeRateSchema()
         const txHash = parseTxHash(body.txHash)
 
         if (body.action === 'enqueue-receipt') {
             if (!txHash) return { allowed: false }
+
             return this.ctx.storage.transactionSync(() => {
                 const existing = this.pendingReceipt(sql, txHash)
+
                 if (!existing) {
                     sql.exec(
                         `INSERT INTO paid_upgrade_pending_receipt
@@ -399,21 +442,28 @@ export class SignerPoolDO extends DurableObject<Env> {
                         this.receiptSigner(body.signerName),
                     )
                 }
+
                 return { allowed: true }
             })
         }
 
         if (body.action === 'track-replacement') {
             const priorHash = parseTxHash(body.priorHash)
+
             if (!txHash || !priorHash) return { allowed: false }
+
             if (!Number.isInteger(body.nonce) || body.nonce === undefined || body.nonce < 0) {
                 return { allowed: false }
             }
+
             const signerName = this.receiptSigner(body.signerName)
+
             if (!signerName) return { allowed: false }
+
             return this.ctx.storage.transactionSync(() => {
                 const now = Math.floor(Date.now() / 1000)
                 const prior = this.pendingReceipt(sql, priorHash)
+
                 if (prior) {
                     sql.exec(
                         `UPDATE paid_upgrade_pending_receipt
@@ -435,6 +485,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                         signerName,
                     )
                 }
+
                 if (!this.pendingReceipt(sql, txHash)) {
                     sql.exec(
                         `INSERT INTO paid_upgrade_pending_receipt
@@ -447,16 +498,21 @@ export class SignerPoolDO extends DurableObject<Env> {
                         signerName,
                     )
                 }
+
                 const books = this.readGasBooks(sql, dayStart)
+
                 return { allowed: true, gas: books.gasSpent, held: books.held, failures: books.failures }
             })
         }
 
         if (body.action === 'reconcile-receipt') {
             if (!txHash) return { allowed: false }
+
             if (body.found === true) {
                 const gas = parseGasUnits(body.gas)
+
                 if (gas === undefined) return { allowed: false }
+
                 return this.applyPaidUpgradeSettle(sql, {
                     budget,
                     dayStart,
@@ -467,6 +523,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     chainId: body.chainId,
                 })
             }
+
             if (body.found === false) {
                 return this.applyPaidUpgradeRelease(sql, {
                     dayStart,
@@ -475,12 +532,15 @@ export class SignerPoolDO extends DurableObject<Env> {
                     nonceConsumed: body.nonceConsumed === true,
                 })
             }
+
             return { allowed: false }
         }
 
         const gas = parseGasUnits(body.gas)
+
         if (gas === undefined) return { allowed: false }
         const hold = body.action === 'settle-gas' ? parseGasUnits(body.hold) : gas
+
         if (hold === undefined) return { allowed: false }
 
         if (body.action === 'settle-gas') {
@@ -498,6 +558,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         return this.ctx.storage.transactionSync(() => {
             const books = this.readGasBooks(sql, dayStart)
             let { gasSpent, heldGas, failures } = books
+
             if (body.action === 'reserve-gas') {
                 // The signed gas limit cannot exceed this reservation, and the
                 // reservation cannot exceed the approved hold. spent + held +
@@ -508,13 +569,16 @@ export class SignerPoolDO extends DurableObject<Env> {
                 ) {
                     return { allowed: false, gas: gasSpent, held: heldGas, failures }
                 }
+
                 heldGas += gas
             } else if (body.action === 'release-gas') {
                 heldGas = Math.max(0, heldGas - gas)
             } else {
                 return { allowed: false }
             }
+
             this.writeGasBooks(sql, dayStart, gasSpent, heldGas, failures)
+
             return { allowed: true, gas: gasSpent, held: heldGas, failures }
         })
     }
@@ -547,22 +611,29 @@ export class SignerPoolDO extends DurableObject<Env> {
             const books = this.readGasBooks(sql, input.dayStart)
             let { gasSpent, heldGas, failures } = books
             const prior = input.txHash ? this.pendingReceipt(sql, input.txHash) : undefined
+
             if (prior?.status === 'settled') {
                 return { allowed: true, gas: gasSpent, held: heldGas, failures }
             }
+
             const holdToRelease = prior?.status === 'released' ? 0 : input.hold
             heldGas = Math.max(0, heldGas - holdToRelease)
+
             const holdCap =
                 input.hold > 0 && input.hold < Number(PAID_UPGRADE_GAS_HOLD)
                     ? input.hold
                     : Number(PAID_UPGRADE_GAS_HOLD)
+
             let accounted = Math.min(input.gas, holdCap)
             const room = Number(input.budget - BigInt(gasSpent) - BigInt(heldGas))
+
             if (accounted > room) accounted = Math.max(0, room)
             gasSpent += accounted
+
             if (input.failure) failures += 1
             const overBudget = BigInt(gasSpent) + BigInt(heldGas) > input.budget
             this.writeGasBooks(sql, input.dayStart, gasSpent, heldGas, failures)
+
             if (input.txHash) {
                 sql.exec(
                     `INSERT INTO paid_upgrade_pending_receipt (tx_hash, chain_id, status, enqueued_at)
@@ -574,6 +645,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 )
                 this.closePaidUpgradeGroup(sql, input.txHash, 'settled')
             }
+
             return {
                 allowed: !overBudget,
                 overBudget,
@@ -592,9 +664,11 @@ export class SignerPoolDO extends DurableObject<Env> {
             const books = this.readGasBooks(sql, input.dayStart)
             let { gasSpent, heldGas, failures } = books
             const prior = this.pendingReceipt(sql, input.txHash)
+
             if (!prior || prior.status !== 'pending') {
                 return { allowed: true, gas: gasSpent, held: heldGas, failures }
             }
+
             // Another hash for this nonce is still in flight. Dropping the
             // missing hash must not give the hold back.
             if (this.hasPendingSibling(sql, input.txHash)) {
@@ -602,19 +676,23 @@ export class SignerPoolDO extends DurableObject<Env> {
                     `UPDATE paid_upgrade_pending_receipt SET status = 'dropped' WHERE tx_hash = ?`,
                     input.txHash,
                 )
+
                 return { allowed: true, gas: gasSpent, held: heldGas, failures }
             }
+
             // A nonce we are still watching can be replaced after this hash
             // disappears. Release only once something else has consumed it.
             if (prior.nonce != null && input.nonceConsumed !== true) {
                 return { allowed: true, gas: gasSpent, held: heldGas, failures }
             }
+
             heldGas = Math.max(0, heldGas - input.hold)
             this.writeGasBooks(sql, input.dayStart, gasSpent, heldGas, failures)
             sql.exec(
                 `UPDATE paid_upgrade_pending_receipt SET status = 'released' WHERE tx_hash = ?`,
                 input.txHash,
             )
+
             return { allowed: true, gas: gasSpent, held: heldGas, failures }
         })
     }
@@ -628,10 +706,13 @@ export class SignerPoolDO extends DurableObject<Env> {
                 `SELECT day_start, gas, held, failures FROM paid_upgrade_gas_budget WHERE id = 1`,
             )
             .toArray()
+
         const row = rows[0]
+
         if (!row || row.day_start !== dayStart) {
             return { gasSpent: 0, heldGas: 0, failures: 0 }
         }
+
         return { gasSpent: row.gas, heldGas: row.held, failures: row.failures }
     }
 
@@ -676,18 +757,22 @@ export class SignerPoolDO extends DurableObject<Env> {
 
     private receiptNonce(value: unknown): number | null {
         if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
+
         return value
     }
 
     private receiptSigner(value: unknown): string | null {
         if (typeof value !== 'string') return null
         const trimmed = value.trim()
+
         return trimmed.length > 0 ? trimmed : null
     }
 
     private hasPendingSibling(sql: SqlStorage, txHash: string): boolean {
         const row = this.pendingReceipt(sql, txHash)
+
         if (!row || row.nonce == null || !row.signer_name) return false
+
         const siblings = sql
             .exec<{ tx_hash: string }>(
                 `SELECT tx_hash FROM paid_upgrade_pending_receipt
@@ -699,11 +784,13 @@ export class SignerPoolDO extends DurableObject<Env> {
                 txHash,
             )
             .toArray()
+
         return siblings.length > 0
     }
 
     private closePaidUpgradeGroup(sql: SqlStorage, txHash: string, status: 'settled' | 'released'): void {
         const row = this.pendingReceipt(sql, txHash)
+
         if (!row || row.nonce == null || !row.signer_name) return
         sql.exec(
             `UPDATE paid_upgrade_pending_receipt
@@ -722,6 +809,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
     private async schedulePaidUpgradeReconcile(): Promise<void> {
         const current = await this.ctx.storage.getAlarm()
+
         if (current === null) {
             await this.ctx.storage.setAlarm(Date.now() + 60_000)
         }
@@ -736,15 +824,19 @@ export class SignerPoolDO extends DurableObject<Env> {
      */
     private async reconcilePendingReceipts(): Promise<void> {
         const sql = this.ensureUpgradeRateSchema()
+
         const pending = sql
             .exec<{ tx_hash: string; chain_id: number; nonce: number | null; signer_name: string | null }>(
                 `SELECT tx_hash, chain_id, nonce, signer_name
                  FROM paid_upgrade_pending_receipt WHERE status = 'pending'`,
             )
             .toArray()
+
         for (const row of pending) {
             const found = await this.lookupPaidUpgradeReceipt(row.chain_id, row.tx_hash as Hex)
+
             if (found === 'wait' || found === 'mempool') continue
+
             if (found !== 'missing') {
                 this.consumePaidUpgradeGas({
                     action: 'reconcile-receipt',
@@ -756,6 +848,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 })
                 continue
             }
+
             if (row.nonce == null || !row.signer_name) {
                 this.consumePaidUpgradeGas({
                     action: 'reconcile-receipt',
@@ -766,6 +859,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 })
                 continue
             }
+
             if (this.hasPendingSibling(sql, row.tx_hash)) {
                 this.consumePaidUpgradeGas({
                     action: 'reconcile-receipt',
@@ -775,14 +869,17 @@ export class SignerPoolDO extends DurableObject<Env> {
                 })
                 continue
             }
+
             const tracked = await this.trackSignerReplacement(
                 row.chain_id,
                 row.signer_name,
                 row.nonce,
                 row.tx_hash as Hex,
             )
+
             if (tracked) continue
             const consumed = await this.signerNonceConsumed(row.chain_id, row.signer_name, row.nonce)
+
             if (consumed !== true) continue
             this.consumePaidUpgradeGas({
                 action: 'reconcile-receipt',
@@ -793,11 +890,13 @@ export class SignerPoolDO extends DurableObject<Env> {
                 failure: false,
             })
         }
+
         const stillPending = sql
             .exec<{ n: number }>(
                 `SELECT COUNT(*) AS n FROM paid_upgrade_pending_receipt WHERE status = 'pending'`,
             )
             .toArray()[0]
+
         if ((stillPending?.n ?? 0) > 0) {
             await this.ctx.storage.setAlarm(Date.now() + 60_000)
         }
@@ -810,29 +909,38 @@ export class SignerPoolDO extends DurableObject<Env> {
         'wait' | 'mempool' | 'missing' | { kind: 'settle'; gasUsed: bigint; failure: boolean }
     > {
         let rpcUrl: string
+
         try {
             rpcUrl = getChainRpcUrl(chainId, this.env)
         } catch (error) {
             logger.error({ error, chainId, txHash }, 'paid upgrade reconcile has no rpc')
+
             return 'wait'
         }
+
         const publicClient = createPublicClient({ transport: http(rpcUrl) })
+
         try {
             const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
             const outcome = paidUpgradeReceiptOutcome(receipt)
+
             return { kind: 'settle', gasUsed: outcome.gasUsed, failure: outcome.failure }
         } catch (error) {
             if (!isTransactionMissing(error)) {
                 logger.error({ error, chainId, txHash }, 'paid upgrade reconcile receipt lookup failed')
+
                 return 'wait'
             }
         }
+
         try {
             await publicClient.getTransaction({ hash: txHash })
+
             return 'mempool'
         } catch (error) {
             if (isTransactionMissing(error)) return 'missing'
             logger.error({ error, chainId, txHash }, 'paid upgrade reconcile tx lookup failed')
+
             return 'wait'
         }
     }
@@ -850,16 +958,21 @@ export class SignerPoolDO extends DurableObject<Env> {
         try {
             const signerId = this.env.SIGNER.idFromName(signerName)
             const signer = this.env.SIGNER.get(signerId)
+
             const response = await signer.fetch(
                 `http://do/paid-upgrade-tx?nonce=${nonce}&signerName=${encodeURIComponent(signerName)}`,
             )
+
             if (!response.ok) return false
             const body = (await response.json()) as { txHash?: string } | null
             const txHash = parseTxHash(body?.txHash)
+
             if (!txHash || txHash.toLowerCase() === missingHash.toLowerCase()) return false
             const sql = this.ensureUpgradeRateSchema()
             const existing = this.pendingReceipt(sql, txHash)
+
             if (existing?.status === 'pending') return true
+
             if (existing) return false
             this.consumePaidUpgradeGas({
                 action: 'track-replacement',
@@ -869,9 +982,11 @@ export class SignerPoolDO extends DurableObject<Env> {
                 nonce,
                 signerName,
             })
+
             return true
         } catch (error) {
             logger.error({ error, chainId, signerName, nonce }, 'paid upgrade signer lookup failed')
+
             return false
         }
     }
@@ -885,27 +1000,34 @@ export class SignerPoolDO extends DurableObject<Env> {
         try {
             const signerId = this.env.SIGNER.idFromName(signerName)
             const signer = this.env.SIGNER.get(signerId)
+
             const response = await signer.fetch(
                 `http://do/paid-upgrade-tx?nonce=${nonce}&signerName=${encodeURIComponent(signerName)}`,
             )
+
             if (!response.ok) return 'unknown'
             const body = (await response.json()) as { address?: string } | null
+
             if (!body?.address) return 'unknown'
             const rpcUrl = getChainRpcUrl(chainId, this.env)
             const publicClient = createPublicClient({ transport: http(rpcUrl) })
+
             const onChain = await publicClient.getTransactionCount({
                 address: body.address as Address,
                 blockTag: 'latest',
             })
+
             return onChain > nonce
         } catch (error) {
             logger.error({ error, chainId, signerName, nonce }, 'paid upgrade nonce lookup failed')
+
             return 'unknown'
         }
     }
 
     private ensureUpgradeRateSchema(): SqlStorage {
         const sql = this.ctx.storage.sql
+
         if (!this.upgradeRateSchemaReady) {
             sql.exec(`
                 CREATE TABLE IF NOT EXISTS upgrade_rate_windows (
@@ -934,20 +1056,25 @@ export class SignerPoolDO extends DurableObject<Env> {
                     signer_name TEXT
                 )
             `)
+
             const columns = new Set(
                 sql
                     .exec<{ name: string }>(`PRAGMA table_info(paid_upgrade_pending_receipt)`)
                     .toArray()
                     .map((column) => column.name),
             )
+
             if (!columns.has('nonce')) {
                 sql.exec(`ALTER TABLE paid_upgrade_pending_receipt ADD COLUMN nonce INTEGER`)
             }
+
             if (!columns.has('signer_name')) {
                 sql.exec(`ALTER TABLE paid_upgrade_pending_receipt ADD COLUMN signer_name TEXT`)
             }
+
             this.upgradeRateSchemaReady = true
         }
+
         return sql
     }
 
@@ -960,6 +1087,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         maxPendingTotal: number
     } {
         const chainId = this.getChainIdFromName()
+
         return {
             numSigners: parseInt(this.env.RELAYER_COUNT ?? String(DEFAULT_SIGNER_COUNT), 10),
             chainId,
@@ -972,17 +1100,23 @@ export class SignerPoolDO extends DurableObject<Env> {
 
     private getChainIdFromName(): number {
         const name = this.ctx.id.name ?? this.poolNameOverride
+
         if (!name) {
             throw new Error('SignerPoolDO name unavailable; expected pool-{chainId}')
         }
+
         const parts = name.split('-')
+
         if (parts.length !== 2 || parts[0] !== 'pool') {
             throw new Error(`Invalid pool DO name: ${name}`)
         }
+
         const chainId = parseInt(parts[1], 10)
+
         if (!Number.isFinite(chainId)) {
             throw new Error(`Invalid chainId in pool DO name: ${name}`)
         }
+
         return chainId
     }
 
@@ -995,15 +1129,18 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         const promises = Array.from({ length: numSigners }, async (_, i) => {
             const signerName = `signer-${chainId}-${i}`
+
             try {
                 const signerId = this.env.SIGNER.idFromName(signerName)
                 const signer = this.env.SIGNER.get(signerId)
 
                 // Include signerName query param for local dev where ctx.id.name is undefined
                 const response = await signer.fetch(`http://do/capacity?signerName=${signerName}`)
+
                 if (!response.ok) {
                     const error = (await response.json()) as SignerError
                     console.error(`Signer ${i} capacity check failed:`, error)
+
                     return {
                         index: i,
                         capacity: 0,
@@ -1014,10 +1151,12 @@ export class SignerPoolDO extends DurableObject<Env> {
                 }
 
                 const info = (await response.json()) as CapacityInfo
+
                 return { index: i, ...info, error: false }
             } catch (err) {
                 // Individual signer failure doesn't fail entire selection
                 console.error(`Signer ${i} unreachable:`, err)
+
                 return {
                     index: i,
                     capacity: 0,
@@ -1056,6 +1195,7 @@ export class SignerPoolDO extends DurableObject<Env> {
     private shuffle<T>(array: T[]): void {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1))
+
             ;[array[i], array[j]] = [array[j], array[i]]
         }
     }
@@ -1075,6 +1215,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         // Check global backpressure
         const totalPending = capacities.reduce((sum, c) => sum + c.pending, 0)
+
         if (totalPending >= maxPendingTotal) {
             throw new Error(
                 `Pool at global capacity: ${totalPending}/${maxPendingTotal} pending transactions`,
@@ -1083,6 +1224,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         // Get sorted candidates
         const candidates = this.selectCandidates(capacities)
+
         if (candidates.length === 0) {
             throw new Error('No signers available - all at capacity or in error state')
         }
@@ -1095,6 +1237,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
             // Reorder candidates to try the preferred signer first (if available)
             const preferredIdx = candidates.findIndex((c) => c.index === preferredIndex)
+
             if (preferredIdx > 0) {
                 const [preferred] = candidates.splice(preferredIdx, 1)
                 candidates.unshift(preferred)
@@ -1110,6 +1253,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         for (const candidate of candidates) {
             const signerName = `signer-${chainId}-${candidate.index}`
+
             try {
                 const signerId = this.env.SIGNER.idFromName(signerName)
                 const signer = this.env.SIGNER.get(signerId)
@@ -1123,26 +1267,32 @@ export class SignerPoolDO extends DurableObject<Env> {
 
                 if (response.ok) {
                     const result = (await response.json()) as SendResult
+
                     return result
                 }
 
                 // An unreadable body is treated as a send: the slot stays reserved.
                 let error: SignerError & { broadcastAttempted?: boolean }
+
                 try {
                     error = (await response.json()) as SignerError & { broadcastAttempted?: boolean }
                 } catch {
                     throw new SignerPoolSendError('unreadable signer error', true)
                 }
+
                 const attempt = {
                     broadcastAttempted: error.broadcastAttempted !== false,
                     message: error.error,
                 }
+
                 attempts.push(attempt)
+
                 if (signerSendDisposition(attempt) === 'retry') {
                     lastMessage = error.error
                     lastCode = error.code
                     continue
                 }
+
                 throw new SignerPoolSendError(error.error, true, error.code)
             } catch (err) {
                 if (
@@ -1156,6 +1306,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     lastCode = err.code
                     continue
                 }
+
                 if (err instanceof SignerPoolSendError) throw err
                 // The attempt has no before-send flag. Keep the reservation.
                 throw new SignerPoolSendError(getErrorMessage(err), true)
@@ -1203,6 +1354,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         const results = await Promise.all(
             Array.from({ length: numSigners }, async (_, i) => {
                 const signerName = `signer-${chainId}-${i}`
+
                 try {
                     const signerId = this.env.SIGNER.idFromName(signerName)
                     const signer = this.env.SIGNER.get(signerId)
@@ -1217,6 +1369,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
                     if (!response.ok) {
                         const error = (await response.json()) as SignerError
+
                         return {
                             index: i,
                             address: '0x' as Hex,
@@ -1233,6 +1386,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     return (await response.json()) as SignerMaintenanceResult
                 } catch (err) {
                     console.error(`Signer ${i} maintenance failed:`, err)
+
                     return {
                         index: i,
                         address: '0x' as Hex,

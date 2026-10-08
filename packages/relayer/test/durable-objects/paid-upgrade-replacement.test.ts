@@ -13,6 +13,7 @@ import type { Env } from '../../src/types/env'
 const ACCOUNT = privateKeyToAccount(
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
 )
+
 const AUTH = JSON.stringify([
     {
         address: '0x3Be52867f8Dca2911f81076B37921c334dE29551',
@@ -109,11 +110,14 @@ describe('paid upgrade stale replacement', () => {
         signer.sql = {
             exec: (query: string, ...args: unknown[]) => {
                 const text = query.replace(/\s+/g, ' ')
+
                 if (text.includes("SET status = 'replacing'") && text.includes('RETURNING')) {
                     if (row.status !== 'pending') return { toArray: () => [] }
                     row.status = 'replacing'
+
                     return { toArray: () => [{ ...row }] }
                 }
+
                 if (text.includes('SET tx_hash')) {
                     row.tx_hash = String(args[0])
                     row.status = 'pending'
@@ -123,18 +127,24 @@ describe('paid upgrade stale replacement', () => {
                     row.replacement_attempts = Number(args[3])
                     row.last_replacement_at = Number(args[4])
                     row.sent_at = Number(args[5])
+
                     return { toArray: () => [] }
                 }
+
                 if (text.includes('SET queued')) return { toArray: () => [] }
+
                 if (text.includes('SET status')) {
                     const status = text.includes("status = 'abandoned'")
                         ? 'abandoned'
                         : text.includes("status = 'pending'")
                           ? 'pending'
                           : String(args[0])
+
                     row.status = status
+
                     return { toArray: () => [] }
                 }
+
                 return { toArray: () => [] }
             },
         }
@@ -159,6 +169,7 @@ describe('paid upgrade stale replacement', () => {
             walletClient: {
                 sendTransaction: async (tx: { gas?: bigint }) => {
                     sent.push(tx)
+
                     return `0x${'bb'.repeat(32)}` as Hex
                 },
             },
@@ -167,6 +178,7 @@ describe('paid upgrade stale replacement', () => {
         const originalCaps = signer.applyCreateAccountCaps.bind(signer)
         signer.applyCreateAccountCaps = async (txParams, nonce, chainId, feeParams) => {
             seen.push(txParams)
+
             return originalCaps(txParams, nonce, chainId, feeParams)
         }
 

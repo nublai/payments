@@ -55,6 +55,7 @@ function getRemoteWalletClient() {
     if (!REMOTE_PRIVATE_KEY) {
         throw new Error('REMOTE_PRIVATE_KEY is required for remote funding helpers')
     }
+
     return createWalletClient({
         chain: testChain,
         transport: http(ANVIL_RPC_URL),
@@ -70,6 +71,7 @@ export async function setBalance(address: Address, amount: bigint) {
     if (HAS_ANVIL_CHEATCODES) {
         const client = getTestClient()
         await client.setBalance({ address, value: amount })
+
         return
     }
 
@@ -77,13 +79,16 @@ export async function setBalance(address: Address, amount: bigint) {
 
     const publicClient = getTestPublicClient()
     const currentBalance = await publicClient.getBalance({ address })
+
     if (currentBalance >= amount) return
 
     const walletClient = getRemoteWalletClient()
+
     const hash = await walletClient.sendTransaction({
         to: address,
         value: amount - currentBalance,
     })
+
     await publicClient.waitForTransactionReceipt({ hash })
 }
 
@@ -104,6 +109,7 @@ export async function deal(address: Address, token: Address, amount: bigint) {
         if (IS_LOCAL_MODE) {
             // Local mode: call MockUSDC.mint() - anyone can mint
             const deployerKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+
             const walletClient = createWalletClient({
                 chain: testChain,
                 transport: http(ANVIL_RPC_URL),
@@ -116,6 +122,7 @@ export async function deal(address: Address, token: Address, amount: bigint) {
                 functionName: 'mint',
                 args: [address, amount],
             })
+
             await client.waitForTransactionReceipt({ hash })
         } else {
             // Fork mode: impersonate a known whale and transfer
@@ -136,17 +143,20 @@ export async function deal(address: Address, token: Address, amount: bigint) {
             await client.waitForTransactionReceipt({ hash })
             await client.stopImpersonatingAccount({ address: usdcWhale })
         }
+
         return
     }
 
     const publicClient = getTestPublicClient()
     const walletClient = getRemoteWalletClient()
+
     const hash = await walletClient.writeContract({
         address: token,
         abi: erc20Abi,
         functionName: 'transfer',
         args: [address, amount],
     })
+
     await publicClient.waitForTransactionReceipt({ hash })
 }
 
@@ -155,6 +165,7 @@ export async function deal(address: Address, token: Address, amount: bigint) {
  */
 export async function getERC20Balance(token: Address, account: Address): Promise<bigint> {
     const client = getTestPublicClient()
+
     return client.readContract({
         address: token,
         abi: erc20Abi,
@@ -177,9 +188,11 @@ export async function waitForDelegation(
 
     while (Date.now() - startTime < timeoutMs) {
         const code = await client.getCode({ address })
+
         if (code && code !== '0x' && code.startsWith('0xef0100')) {
             return // Delegation confirmed
         }
+
         await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
 

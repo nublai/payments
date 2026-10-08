@@ -62,6 +62,7 @@ function resolveConfig(config?: PriceOracleConfigInput): ResolvedPriceOracleConf
     ) {
         return config as ResolvedPriceOracleConfig
     }
+
     return {
         providerId: config?.providerId ?? DEFAULT_PROVIDER_ID,
         assetMapping: config?.assetMapping ?? DEFAULT_ASSET_MAPPING,
@@ -79,17 +80,20 @@ function resolveConfig(config?: PriceOracleConfigInput): ResolvedPriceOracleConf
 
 function parseDecimalToScaledBigInt(value: string, scale: number = 18): bigint | null {
     const trimmed = value.trim()
+
     if (trimmed.length === 0) {
         return null
     }
 
     const normalized = trimmed.toLowerCase()
+
     if (!/^[+-]?\d*(\.\d*)?(e[+-]?\d+)?$/.test(normalized)) {
         return null
     }
 
     let sign = 1n
     let numeric = normalized
+
     if (numeric.startsWith('-')) {
         sign = -1n
         numeric = numeric.slice(1)
@@ -99,9 +103,11 @@ function parseDecimalToScaledBigInt(value: string, scale: number = 18): bigint |
 
     let exponent = 0
     const expIndex = numeric.indexOf('e')
+
     if (expIndex !== -1) {
         exponent = Number.parseInt(numeric.slice(expIndex + 1), 10)
         numeric = numeric.slice(0, expIndex)
+
         if (!Number.isFinite(exponent)) {
             return null
         }
@@ -121,6 +127,7 @@ function parseDecimalToScaledBigInt(value: string, scale: number = 18): bigint |
     }
 
     const digitsBig = BigInt(digits)
+
     if (totalExp >= 0) {
         return digitsBig * 10n ** BigInt(totalExp) * sign
     }
@@ -129,18 +136,23 @@ function parseDecimalToScaledBigInt(value: string, scale: number = 18): bigint |
     const quotient = digitsBig / divisor
     const remainder = digitsBig % divisor
     const rounded = remainder * 2n >= divisor ? quotient + 1n : quotient
+
     return rounded * sign
 }
 
 function normalizeUsdPrice(value: unknown): UsdPrice | null {
     if (typeof value === 'number' && Number.isFinite(value)) {
         const parsed = parseDecimalToScaledBigInt(value.toString(), 18)
+
         return parsed && parsed > 0n ? parsed : null
     }
+
     if (typeof value === 'string') {
         const parsed = parseDecimalToScaledBigInt(value, 18)
+
         return parsed && parsed > 0n ? parsed : null
     }
+
     return null
 }
 
@@ -158,6 +170,7 @@ const coingeckoProvider: PriceProvider = {
         const url = new URL(config.coingeckoUrl)
         url.searchParams.set('ids', coinIds.join(','))
         url.searchParams.set('vs_currencies', 'usd')
+
         if (config.coingeckoApiKey) {
             url.searchParams.set('x_cg_pro_api_key', config.coingeckoApiKey)
         }
@@ -179,13 +192,16 @@ const coingeckoProvider: PriceProvider = {
 export function lookupUsd(assetUid: AssetUid, config?: PriceOracleConfigInput): UsdPrice | null {
     const resolved = resolveConfig(config)
     const tick = registry.prices.get(assetUid)
+
     if (!tick) {
         return null
     }
 
     const age = Date.now() - tick.timestamp
+
     if (age > resolved.rateTtlMs) {
         logger.debug({ assetUid, age, ttl: resolved.rateTtlMs }, 'price expired')
+
         return null
     }
 
@@ -199,13 +215,17 @@ export function lookupConversion(
 ): UsdPrice | null {
     const fromUsd = lookupUsd(fromAsset, config)
     const toUsd = lookupUsd(toAsset, config)
+
     if (!fromUsd || !toUsd) {
         return null
     }
+
     if (toUsd === 0n) {
         logger.warn({ toAsset }, 'target asset has zero price')
+
         return null
     }
+
     return (fromUsd * PRICE_SCALE) / toUsd
 }
 
@@ -222,6 +242,7 @@ export async function updatePrices(
 
     const assetMapping = resolved.assetMapping
     const assetUids = Object.keys(assetMapping)
+
     if (assetUids.length === 0) {
         return
     }
@@ -236,11 +257,14 @@ export async function updatePrices(
         for (const assetUid of assetUids) {
             const coinId = assetMapping[assetUid]
             const entry = (response as Record<string, unknown>)[coinId]
+
             const usdValue =
                 typeof entry === 'object' && entry !== null
                     ? (entry as Record<string, unknown>).usd
                     : undefined
+
             const price = normalizeUsdPrice(usdValue)
+
             if (price && price > 0n) {
                 registry.prices.set(assetUid, { rate: price, timestamp: now })
                 priceCount++
@@ -262,6 +286,7 @@ export async function getEthUsdPrice(
     const fallbackValue = fallbackPrice ?? resolved.fallbackEthUsd
 
     let price = lookupUsd('eth', resolved)
+
     if (!price) {
         await updatePrices(resolved)
         price = lookupUsd('eth', resolved)
@@ -272,13 +297,16 @@ export async function getEthUsdPrice(
     }
 
     const parsedFallback = parseDecimalToScaledBigInt(fallbackValue, 18)
+
     if (!parsedFallback || parsedFallback <= 0n) {
         const defaultFallback = parseDecimalToScaledBigInt(DEFAULT_ETH_USD_FALLBACK, 18) ?? 0n
         logger.warn({ fallbackPrice: DEFAULT_ETH_USD_FALLBACK }, 'using fallback ETH/USD price')
+
         return defaultFallback
     }
 
     logger.warn({ fallbackPrice: fallbackValue }, 'using fallback ETH/USD price')
+
     return parsedFallback
 }
 
@@ -288,6 +316,7 @@ export async function getUsdPrice(
 ): Promise<UsdPrice | null> {
     const resolved = resolveConfig(config)
     let price = lookupUsd(assetUid, resolved)
+
     if (!price) {
         await updatePrices(resolved)
         price = lookupUsd(assetUid, resolved)
@@ -306,16 +335,19 @@ export async function getUsdPrice(
     }
 
     const parsedFallback = parseDecimalToScaledBigInt(fallbackValue, 18)
+
     if (!parsedFallback || parsedFallback <= 0n) {
         return null
     }
 
     logger.warn({ assetUid, fallbackPrice: fallbackValue }, 'using fallback USD price')
+
     return parsedFallback
 }
 
 export function formatPriceForQuote(usdPrice: UsdPrice): string {
     const normalized = usdPrice < 0n ? 0n : usdPrice
+
     return `0x${normalized.toString(16)}`
 }
 
@@ -323,7 +355,9 @@ export function calculateUsdValue(amount: bigint, usdPrice: UsdPrice, decimals: 
     if (decimals < 0) {
         return 0n
     }
+
     const scale = 10n ** BigInt(decimals)
+
     return (amount * usdPrice) / scale
 }
 
@@ -334,8 +368,10 @@ export function resetPriceRegistry(): void {
 
 export function getRegistryState(): { lastFetch: number; prices: Record<string, string> } {
     const prices: Record<string, string> = {}
+
     for (const [assetUid, tick] of registry.prices.entries()) {
         prices[assetUid] = tick.rate.toString()
     }
+
     return { lastFetch: registry.lastFetch, prices }
 }

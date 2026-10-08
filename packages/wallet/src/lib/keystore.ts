@@ -9,10 +9,15 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { type Hex } from 'viem'
 
 const ARGON2_MEMORY_COST = 19_456
+
 const ARGON2_TIME_COST = 2
+
 const ARGON2_PARALLELISM = 1
+
 const ARGON2_HASH_LENGTH = 32
+
 const ARGON2_SALT_LENGTH = 16
+
 const AES_GCM_NONCE_LENGTH = 12
 
 export type EncryptedSecret = {
@@ -52,13 +57,16 @@ type SessionAddressConfig = {
 }
 
 const SESSION_NAME_REGEX = /^[A-Za-z0-9_-]+$/
+
 type SessionCheckpoint = 'initialized' | 'authorized' | 'pending_rotation' | 'complete'
+
 const SESSION_CHECKPOINTS: ReadonlySet<SessionCheckpoint> = new Set([
     'initialized',
     'authorized',
     'pending_rotation',
     'complete',
 ])
+
 const ROOT_CHECKPOINTS: ReadonlySet<NonNullable<RelayerRootKeystoreV2['checkpoint']>> = new Set([
     'initialized',
     'delegated',
@@ -211,6 +219,7 @@ async function deriveKey(password: string, params?: Partial<KdfParams>) {
 
 export async function deriveKeystoreKey(password: string, params: KdfParams): Promise<Buffer> {
     const { key } = await deriveKey(password, params)
+
     return key
 }
 
@@ -245,16 +254,19 @@ export function encryptBufferSecret(secret: Uint8Array, key: Buffer): EncryptedS
 export function decryptHexSecret(secret: EncryptedSecret, key: Buffer): Hex {
     const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(secret.nonce, 'base64'))
     decipher.setAuthTag(Buffer.from(secret.tag, 'base64'))
+
     const plaintext = Buffer.concat([
         decipher.update(Buffer.from(secret.ciphertext, 'base64')),
         decipher.final(),
     ])
+
     return `0x${plaintext.toString('hex')}` as Hex
 }
 
 export function decryptBufferSecret(secret: EncryptedSecret, key: Buffer): Uint8Array {
     const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(secret.nonce, 'base64'))
     decipher.setAuthTag(Buffer.from(secret.tag, 'base64'))
+
     return Buffer.concat([
         decipher.update(Buffer.from(secret.ciphertext, 'base64')),
         decipher.final(),
@@ -297,6 +309,7 @@ export async function createRootKeystore(
     }
 
     key.fill(0)
+
     return keystore
 }
 
@@ -348,7 +361,9 @@ export async function createSessionKeystore(
                     : {}),
             },
         }
+
         key.fill(0)
+
         return loginKeystore
     }
 
@@ -360,6 +375,7 @@ export async function createSessionKeystore(
     }
 
     key.fill(0)
+
     return keystore
 }
 
@@ -370,6 +386,7 @@ export async function decryptRootKeystore(
     const { key } = await deriveKey(password, keystore.kdf.params)
     const rootPrivateKey = decryptHexSecret(keystore.secrets.rootPrivateKey, key)
     key.fill(0)
+
     return { rootPrivateKey }
 }
 
@@ -380,6 +397,7 @@ export async function decryptSessionKeystore(
     const { key } = await deriveKey(password, keystore.kdf.params)
     const sessionPrivateKey = decryptHexSecret(keystore.secrets.sessionPrivateKey, key)
     key.fill(0)
+
     return { sessionPrivateKey }
 }
 
@@ -446,6 +464,7 @@ function validateAgentKeystoreShape(
     path: string,
 ): asserts keystore is AgentSessionKeystoreV2 {
     const encryptionDevice = keystore.secrets?.encryptionDevice
+
     if (
         typeof encryptionDevice?.nonce !== 'string' ||
         typeof encryptionDevice.ciphertext !== 'string' ||
@@ -458,11 +477,14 @@ function validateAgentKeystoreShape(
         if (typeof keystore.namedChannels !== 'object' || keystore.namedChannels === null) {
             throw new Error(`Unsupported session keystore format at ${path}`)
         }
+
         for (const [key, value] of Object.entries(keystore.namedChannels)) {
             if (typeof key !== 'string' || typeof value !== 'object' || value === null) {
                 throw new Error(`Unsupported session keystore format at ${path}`)
             }
+
             const record = value as { streamId?: unknown; secretHash?: unknown }
+
             if (typeof record.streamId !== 'string' || typeof record.secretHash !== 'string') {
                 throw new Error(`Unsupported session keystore format at ${path}`)
             }
@@ -487,6 +509,7 @@ function validateLoginKeystoreShape(
 
     if (keystore.secrets?.bearerToken !== undefined) {
         const bearerToken = keystore.secrets.bearerToken
+
         if (
             typeof bearerToken?.nonce !== 'string' ||
             typeof bearerToken.ciphertext !== 'string' ||
@@ -558,6 +581,7 @@ export function resolveSessionKeystorePath(
 ): string {
     assertValidSessionName(sessionName)
     assertValidSessionName(sessionsDir)
+
     return join(dirname(rootKeystorePath), sessionsDir, `${sessionName}.json`)
 }
 
@@ -593,11 +617,13 @@ export class LoginProfileError extends Error {
 export async function readKeystoreBundle(rootPath: string): Promise<KeystoreBundle> {
     const { maybeRecoverPendingQuoteSpend } = await import('./quote-spend-lifecycle')
     await maybeRecoverPendingQuoteSpend(rootPath)
+
     return readKeystoreBundleNow(rootPath)
 }
 
 async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> {
     let content: string
+
     try {
         content = await readFile(rootPath, 'utf8')
     } catch (error) {
@@ -608,14 +634,17 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
             (error as { code?: unknown }).code === 'ENOENT'
         ) {
             const sessionOnlyPath = join(dirname(rootPath), 'session.json')
+
             try {
                 const sessionOnlyKeystore = await readSessionKeystoreFile(sessionOnlyPath)
+
                 if (isLoginKeystore(sessionOnlyKeystore)) {
                     throw new LoginProfileError({
                         sessionPath: sessionOnlyPath,
                         sessionKeystore: sessionOnlyKeystore,
                     })
                 }
+
                 throw new SessionOnlyProfileError(rootPath, {
                     sessionPath: sessionOnlyPath,
                     sessionKeystore: sessionOnlyKeystore,
@@ -627,6 +656,7 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
                 ) {
                     throw sessionError
                 }
+
                 if (
                     typeof sessionError === 'object' &&
                     sessionError !== null &&
@@ -639,15 +669,19 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
                 }
             }
         }
+
         throw error
     }
+
     let parsed: unknown
+
     try {
         parsed = JSON.parse(content) as unknown
     } catch (error) {
         if (error instanceof Error) {
             throw new Error(`Failed to parse keystore JSON at ${rootPath}: ${error.message}`)
         }
+
         throw error
     }
 
@@ -657,7 +691,9 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
             parsed.sessionRef.active,
             parsed.sessionRef.dir,
         )
+
         const session = await readSessionKeystoreFile(sessionPath)
+
         return {
             rootPath,
             sessionPath,
@@ -671,12 +707,14 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
 
 export async function readRootKeystoreFile(path: string): Promise<RelayerRootKeystoreV2> {
     const content = await readFile(path, 'utf8')
+
     return JSON.parse(content) as RelayerRootKeystoreV2
 }
 
 export async function readSessionKeystoreFile(path: string): Promise<AnySessionKeystore> {
     const content = await readFile(path, 'utf8')
     const parsed = JSON.parse(content) as unknown
+
     if (
         !isRecord(parsed) ||
         parsed.version !== 2 ||
@@ -694,7 +732,9 @@ export async function readSessionKeystoreFile(path: string): Promise<AnySessionK
     ) {
         throw new Error(`Unsupported session keystore format at ${path}`)
     }
+
     const sessionKeystore = parsed as AnySessionKeystore
+
     if (sessionKeystore.kind === 'agent') {
         validateAgentKeystoreShape(sessionKeystore, path)
     } else if (sessionKeystore.kind === 'login') {
@@ -702,7 +742,9 @@ export async function readSessionKeystoreFile(path: string): Promise<AnySessionK
     } else if ('kind' in sessionKeystore && sessionKeystore.kind !== undefined) {
         throw new Error(`Unsupported session keystore format at ${path}`)
     }
+
     assertValidSessionName(sessionKeystore.name)
+
     return sessionKeystore
 }
 
@@ -729,6 +771,7 @@ export async function ensureOwnerOnlyDirectory(dir: string): Promise<void> {
     if (process.platform !== 'win32') {
         try {
             const existing = await lstat(dir)
+
             if (existing.isSymbolicLink()) {
                 throw new Error(
                     `Refusing to chmod ${dir}: it is a symlink. sessions/ must be a real directory.`,
@@ -738,14 +781,18 @@ export async function ensureOwnerOnlyDirectory(dir: string): Promise<void> {
             if (!isEnoent(error)) throw error
         }
     }
+
     await mkdir(dir, { recursive: true, mode: 0o700 })
+
     if (process.platform === 'win32') return
     const info = await lstat(dir)
+
     if (info.isSymbolicLink()) {
         throw new Error(
             `Refusing to chmod ${dir}: it is a symlink. sessions/ must be a real directory.`,
         )
     }
+
     if ((info.mode & 0o777) !== 0o700) {
         await chmod(dir, 0o700)
     }
@@ -770,6 +817,7 @@ async function writeJsonAtomic(
             if (error instanceof Error && error.message.includes('already exists')) {
                 throw error
             }
+
             if (
                 typeof error === 'object' &&
                 error !== null &&
@@ -792,6 +840,7 @@ async function writeJsonAtomic(
     }
 
     const file = await stat(path)
+
     if (file.size === 0) {
         await unlink(path)
         throw new Error(options.emptyMessage)
@@ -851,6 +900,7 @@ export class KeystoreLockError extends Error {
         )
         this.name = 'KeystoreLockError'
         this.lockPath = lockPath
+
         if (cause !== undefined) {
             ;(this as { cause?: unknown }).cause = cause
         }
@@ -866,7 +916,9 @@ export async function withKeystoreLock<T>(
     if ((keystoreLockDepth.getStore() ?? 0) > 0) {
         return action()
     }
+
     let release: (() => Promise<void>) | undefined
+
     try {
         release = await lock(rootKeystorePath, {
             lockfilePath: `${rootKeystorePath}.lock`,
@@ -885,6 +937,7 @@ export async function withKeystoreLock<T>(
         ) {
             throw error
         }
+
         throw new KeystoreLockError(rootKeystorePath, error)
     }
 
@@ -904,6 +957,7 @@ export async function withKeystoreLock<T>(
             if (actionError !== undefined) {
                 throw actionError
             }
+
             throw releaseError
         }
     }

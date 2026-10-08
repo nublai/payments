@@ -124,15 +124,18 @@ function getDefaultDeps(): PermissionsGrantDeps {
         decryptRootKeystore,
         readNonce: async ({ network, account }) => {
             const client = createCliRelayerClient(network)
+
             return readAccountNonce(client, account)
         },
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address: account, chainIds: [chainId] })
         },
         executeSignedCalls,
         prepareCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.prepareCalls({
                 from: input.from,
                 chainId: input.network.chainId,
@@ -152,10 +155,12 @@ function getDefaultDeps(): PermissionsGrantDeps {
         },
         sendPreparedCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.sendPreparedCalls({ context: input.context, signature: input.signature })
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return (await import('@nubl/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
@@ -212,6 +217,7 @@ export async function executePermissionsGrant(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const chain = selectDefaultChain(options.env, options.chain)
     const network = resolveNetworkConfig(options.env, chain)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -220,6 +226,7 @@ export async function executePermissionsGrant(
 
     return deps.withKeystoreLock(keystorePath, async () => {
         const bundle = await deps.readKeystoreBundle(keystorePath)
+
         const accountAddress = bundle.root.addresses.delegated
             ? getAddress(bundle.root.addresses.delegated)
             : getAddress(bundle.root.addresses.root)
@@ -256,6 +263,7 @@ export async function executePermissionsGrant(
         }
 
         let callData: Hex
+
         if (options.grantType === 'call') {
             if (!options.target || !options.selector) {
                 throw new PermissionsError(
@@ -263,6 +271,7 @@ export async function executePermissionsGrant(
                     'Call grants require --target and --selector.',
                 )
             }
+
             callData = encodeFunctionData({
                 abi: accountAbi,
                 functionName: 'setCanExecute',
@@ -275,6 +284,7 @@ export async function executePermissionsGrant(
                     'Spend grants require --token, --spend-limit, and --period.',
                 )
             }
+
             callData = encodeFunctionData({
                 abi: accountAbi,
                 functionName: 'setSpendLimit',
@@ -285,10 +295,13 @@ export async function executePermissionsGrant(
                     options.spendLimit,
                 ],
             })
+
             if (!options.fullAccessPhraseConfirmed) {
                 const usdc = getUsdcTokenConfig(chain).address
+
                 if (options.token.toLowerCase() === usdc.toLowerCase()) {
                     const proposed = normalizedDailyUsdcUnits(options.spendLimit, options.period)
+
                     const existing = await readActiveUsdcDaily({
                         env: options.env,
                         chain,
@@ -296,6 +309,7 @@ export async function executePermissionsGrant(
                         keystorePath,
                         excludeKeyHash: selected.key.hash,
                     })
+
                     if (
                         existing === 'unreadable' ||
                         existing + proposed > DEFAULT_SESSION_SPEND_LIMIT
@@ -312,10 +326,12 @@ export async function executePermissionsGrant(
         }
 
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+
         const signedNetwork = {
             ...network,
             authSigner: createEthHttpSigner(decryptedRoot.rootPrivateKey, network.chainId),
         }
+
         const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
 
         const submission = await deps.executeSignedCalls(

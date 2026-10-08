@@ -5,9 +5,11 @@ import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
@@ -123,6 +125,7 @@ test('resolveAccountDelegatePassword reads stdin when requested', async () => {
             isInteractive: true,
         },
     )
+
     expect(password).toBe('stdin-password')
 })
 
@@ -143,6 +146,7 @@ test('resolveAccountDelegatePassword uses interactive prompt', async () => {
             isInteractive: true,
         },
     )
+
     expect(password).toBe('prompt-password')
 })
 
@@ -249,6 +253,7 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
                 if (network.chainId === 137) {
                     throw new Error('Delegation failed: rpc error')
                 }
+
                 return {
                     accountAddress: root.addresses.root,
                     txHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Hex,

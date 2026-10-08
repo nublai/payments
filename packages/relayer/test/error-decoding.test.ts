@@ -175,6 +175,7 @@ describe('error selector extraction', () => {
                 abi: orchestratorAbi,
                 errorName,
             })
+
             return encoded.slice(0, 10)
         })
 

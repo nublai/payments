@@ -26,6 +26,7 @@ export type {
 async function fetchSignerBalance(rpcUrl: string, address: string): Promise<string | null> {
     try {
         const result = await jsonRpcRequest<string>(rpcUrl, 'eth_getBalance', [address, 'latest'])
+
         return BigInt(result).toString()
     } catch {
         return null
@@ -44,6 +45,7 @@ export async function handleGetCapabilities(
     const chainFilter = typedParams?.chains
 
     let chainIdsToCheck: number[] = []
+
     if (chainFilter && chainFilter.length > 0) {
         chainIdsToCheck = chainFilter.map((value) => parseHexChainId(value, 'chainId'))
     } else {
@@ -55,6 +57,7 @@ export async function handleGetCapabilities(
 
     for (const chainId of chainIdsToCheck) {
         let config
+
         try {
             config = getChainConfig(env, chainId)
         } catch (error) {
@@ -64,6 +67,7 @@ export async function handleGetCapabilities(
             )
             continue
         }
+
         const hexChainId = toHexChainId(config.chainId)
         const pool = getSignerPool(env, chainId)
 
@@ -84,11 +88,13 @@ export async function handleGetCapabilities(
 
         try {
             const response = await pool.fetch(`http://do/status?poolName=pool-${chainId}`)
+
             if (!response.ok) {
                 throw new Error(
                     `Failed to fetch pool status: ${response.status} ${response.statusText}`,
                 )
             }
+
             poolStatus = (await response.json()) as typeof poolStatus
         } catch (error) {
             logger.error(
@@ -104,7 +110,9 @@ export async function handleGetCapabilities(
                     s.address && !s.error
                         ? await fetchSignerBalance(config.rpcUrl, s.address)
                         : null
+
                 const balance = chainBalance ?? s.balance ?? null
+
                 return {
                     index: s.index,
                     address: s.address,

@@ -20,9 +20,11 @@ const mockCtx: RpcContext = {
 
 // Test method handlers
 const echoHandler = vi.fn(async (params: unknown) => params)
+
 const errorHandler = vi.fn(async () => {
     throw new RpcError(-32000, 'Test error', { detail: 'test' })
 })
+
 const throwHandler = vi.fn(async () => {
     throw new Error('Unexpected error')
 })
@@ -55,6 +57,7 @@ describe('JSON-RPC Dispatcher', () => {
             const methods: MethodRegistry = {
                 test_add: async (params: unknown) => {
                     const [a, b] = params as [number, number]
+
                     return a + b
                 },
             }
@@ -222,6 +225,7 @@ describe('JSON-RPC Dispatcher', () => {
 
         it('should handle request with no params', async () => {
             const noParamsHandler = vi.fn(async () => 'no params')
+
             const methods: MethodRegistry = {
                 test_noparams: noParamsHandler,
             }
@@ -244,6 +248,7 @@ describe('JSON-RPC Dispatcher', () => {
 
         it('should handle request with object params (named)', async () => {
             const namedHandler = vi.fn(async (params: unknown) => params)
+
             const methods: MethodRegistry = {
                 test_named: namedHandler,
             }
@@ -351,6 +356,7 @@ describe('JSON-RPC Dispatcher', () => {
     describe('notifications (id: null)', () => {
         it('should process but not return response for notification', async () => {
             const handler = vi.fn(async () => 'result')
+
             const methods: MethodRegistry = {
                 test_notify: handler,
             }
@@ -371,6 +377,7 @@ describe('JSON-RPC Dispatcher', () => {
             const handler = vi.fn(async () => {
                 throw new Error('Notification error')
             })
+
             const methods: MethodRegistry = {
                 test_notify: handler,
             }

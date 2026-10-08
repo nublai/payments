@@ -10,11 +10,13 @@ export async function setBalanceOnChain(params: {
     chain: Chain
 }) {
     const { address, amount, rpcUrl, chain } = params
+
     const client = createTestClient({
         chain,
         mode: 'anvil',
         transport: http(rpcUrl),
     })
+
     await client.setBalance({ address, value: amount })
 }
 

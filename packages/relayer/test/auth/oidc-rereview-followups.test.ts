@@ -13,10 +13,12 @@ import { INVALID_PARAMS } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
 
 const ISSUER = 'https://rereview.example'
+
 const NOW = 1_800_000_000
 
 function baseEnv(overrides: Partial<Env> = {}): Env {
     const worker = env as unknown as Env
+
     return {
         ...worker,
         PRIVY_ENABLED: 'false',
@@ -36,6 +38,7 @@ describe('oidc rereview follow-ups', () => {
     it('does not spend the subject budget when the IP bucket is full', async () => {
         const store = walletBindingStub(baseEnv())
         const ip = '198.51.100.77'
+
         for (let subject = 0; subject < 4; subject++) {
             for (let attempt = 0; attempt < 5; attempt++) {
                 await store.issueNonce({
@@ -51,6 +54,7 @@ describe('oidc rereview follow-ups', () => {
         }
 
         const victim = 'budget-victim'
+
         for (let attempt = 0; attempt < 5; attempt++) {
             const denied = await store.issueNonce({
                 issuer: ISSUER,
@@ -61,10 +65,12 @@ describe('oidc rereview follow-ups', () => {
                 ttlSeconds: 60,
                 ip,
             })
+
             expect(denied).toMatchObject({ ok: false, reason: 'rate_limited' })
         }
 
         const recovered: Array<{ ok: boolean }> = []
+
         for (let attempt = 0; attempt < 5; attempt++) {
             recovered.push(
                 await store.issueNonce({
@@ -78,7 +84,9 @@ describe('oidc rereview follow-ups', () => {
                 }),
             )
         }
+
         expect(recovered.map((result) => result.ok)).toEqual([true, true, true, true, true])
+
         const sixth = await store.issueNonce({
             issuer: ISSUER,
             subject: victim,
@@ -88,12 +96,14 @@ describe('oidc rereview follow-ups', () => {
             ttlSeconds: 1,
             ip: '203.0.113.90',
         })
+
         expect(sixth).toMatchObject({ ok: false, reason: 'rate_limited' })
     })
 
     it('refuses wallet_issueBindNonce when CONTEXT is unset or blank', async () => {
         const account = address(400)
         const identity = { provider: 'oidc' as const, userId: 'missing-context', issuer: ISSUER }
+
         for (const context of [undefined, '', '   ']) {
             await expect(
                 runWithAuthIdentity(identity, () =>
@@ -118,12 +128,15 @@ describe('oidc rereview follow-ups', () => {
             OIDC_JWKS_URL: 'http://issuer.example/jwks',
             OIDC_CLIENT_ID: 'client_123',
         } as Env
+
         const stranger = '0x1111111111111111111111111111111111111111' as Address
         const owner = '0x2222222222222222222222222222222222222222' as Address
+
         const binding = {
             accounts: [{ eoa: owner, chainId: 84532 }],
             otherProtectedMethods: [],
         }
+
         const devEnv = {
             RPC_URL: 'http://127.0.0.1:8545',
             CHAIN_IDS: '84532',

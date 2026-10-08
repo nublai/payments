@@ -75,6 +75,7 @@ export async function executeSessionExport(
 ): Promise<SessionExportResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
     const sessionName = parseSessionName(options.sessionName)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -83,14 +84,17 @@ export async function executeSessionExport(
 
     try {
         const bundle = await deps.readKeystoreBundle(keystorePath)
+
         const sessionPath = deps.resolveSessionKeystorePath(
             keystorePath,
             sessionName,
             bundle.root.sessionRef.dir,
         )
+
         const source = await deps.readSessionKeystoreFile(sessionPath)
         const decrypted = await deps.decryptSessionKeystore(source, options.password)
         const delegated = bundle.root.addresses.delegated
+
         if (!delegated) {
             throw new SessionExportError(
                 'SESSION_EXPORT_FAILED',
@@ -106,9 +110,11 @@ export async function executeSessionExport(
             name: source.name,
             checkpoint: source.checkpoint,
         })
+
         exported.createdAt = source.createdAt
 
         await deps.writeSessionKeystoreFile(options.output, exported, { overwrite: true })
+
         return {
             type: 'session_export',
             status: 'complete',
@@ -128,6 +134,7 @@ function toSessionExportError(
 ): SessionExportError {
     if (error instanceof SessionExportError) return error
     const message = error instanceof Error ? error.message : String(error)
+
     if (message.includes('ENOENT') || message.toLowerCase().includes('no such file')) {
         return new SessionExportError(
             'KEYSTORE_NOT_FOUND',
@@ -135,12 +142,14 @@ function toSessionExportError(
             { cause: error },
         )
     }
+
     if (
         message.includes('No password provided on stdin') ||
         message.includes('Password required')
     ) {
         return new SessionExportError('PASSWORD_REQUIRED', message, { cause: error })
     }
+
     return new SessionExportError('UNKNOWN', message, { cause: error })
 }
 
@@ -156,6 +165,7 @@ export async function resolveSessionExportPasswords(
     },
 ): Promise<{ password: string; exportPassword: string }> {
     let sharedStdinPassword: string | undefined
+
     if (args.passwordStdin && args.exportPasswordStdin) {
         sharedStdinPassword = deps.readPasswordFromStdin()
     }
@@ -164,6 +174,7 @@ export async function resolveSessionExportPasswords(
         deps.envPassword ??
         (args.passwordStdin ? (sharedStdinPassword ?? deps.readPasswordFromStdin()) : undefined) ??
         (deps.isInteractive ? await deps.promptForExistingPassword() : undefined)
+
     if (!password) {
         throw new SessionExportError(
             'PASSWORD_REQUIRED',
@@ -177,6 +188,7 @@ export async function resolveSessionExportPasswords(
             ? (sharedStdinPassword ?? deps.readPasswordFromStdin())
             : undefined) ??
         (deps.isInteractive ? await deps.promptForExportPassword() : undefined)
+
     if (!exportPassword) {
         throw new SessionExportError(
             'PASSWORD_REQUIRED',
@@ -192,11 +204,13 @@ export async function assertSessionExportInputs(input: {
     overwrite?: boolean
 }): Promise<void> {
     if (input.overwrite) return
+
     try {
         await readFile(input.output, 'utf8')
     } catch {
         return
     }
+
     throw new SessionExportError(
         'SESSION_EXPORT_FAILED',
         `Output file already exists at ${input.output}. Use --overwrite to replace it.`,

@@ -36,12 +36,14 @@ describe('CONTEXT=dev is not local', () => {
         const zero = validateEnv(
             devEnv({ FEE_RECIPIENT: '0x0000000000000000000000000000000000000000' }),
         )
+
         expect(zero.valid).toBe(false)
         expect(zero.missing).toContain('FEE_RECIPIENT')
 
         const set = validateEnv(
             devEnv({ FEE_RECIPIENT: '0x1111111111111111111111111111111111111111' }),
         )
+
         expect(set.missing).not.toContain('FEE_RECIPIENT')
     })
 })

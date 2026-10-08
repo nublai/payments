@@ -76,6 +76,7 @@ describe('hashQuotes', () => {
 
         it('should produce different hash when quote content changes', () => {
             const quotes1 = createMockSignedQuotes()
+
             const quotes2 = createMockSignedQuotes({
                 quotes: [
                     createMockQuote({
@@ -116,6 +117,7 @@ describe('hashQuotes', () => {
             const quotes1 = createMockSignedQuotes({
                 quotes: [createMockQuote({ chainId: '0x2105' })],
             })
+
             const quotes2 = createMockSignedQuotes({
                 quotes: [createMockQuote({ chainId: '0x1' })],
             })
@@ -126,6 +128,7 @@ describe('hashQuotes', () => {
 
         it('should produce different hash when intent changes', () => {
             const quotes1 = createMockSignedQuotes()
+
             const quotes2 = createMockSignedQuotes({
                 quotes: [
                     createMockQuote({
@@ -147,6 +150,7 @@ describe('hashQuotes', () => {
             const quotes1 = createMockSignedQuotes({
                 quotes: [createMockQuote({ extraPayment: '0x0' })],
             })
+
             const quotes2 = createMockSignedQuotes({
                 quotes: [createMockQuote({ extraPayment: '0x1000' })],
             })
@@ -161,6 +165,7 @@ describe('hashQuotes', () => {
             const quotes1 = createMockSignedQuotes({
                 quotes: [createMockQuote({ feeTokenDeficit: '0x0' })],
             })
+
             const quotes2 = createMockSignedQuotes({
                 quotes: [createMockQuote({ feeTokenDeficit: '0x1000' })],
             })
@@ -203,6 +208,7 @@ describe('hashQuotes', () => {
                     }),
                 ],
             })
+
             const quotes2 = createMockSignedQuotes({
                 quotes: [
                     createMockQuote({

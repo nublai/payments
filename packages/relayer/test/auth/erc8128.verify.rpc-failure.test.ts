@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@slicekit/erc8128', () => ({
     parseKeyId: (raw: string) => {
         const [, chainId, address] = raw.split(':')
+
         return { chainId: Number.parseInt(chainId, 10), address }
     },
     verifyRequest: async (

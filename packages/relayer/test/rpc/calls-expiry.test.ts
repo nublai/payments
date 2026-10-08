@@ -55,6 +55,7 @@ const createMockCtx = (signerPoolResponse?: {
         ok: true,
         json: () => Promise.resolve({ txHash: '0xabc', signer: '0x123' }),
     }
+
     return {
         env: {
             RPC_URL: 'https://example.com/rpc',

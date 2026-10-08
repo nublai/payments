@@ -54,8 +54,11 @@ export function accountStateRequiresPhrase(input: {
     allowedCalls: ReadonlySet<string>
 }): boolean {
     if (input.checkerCount > 0) return true
+
     if (!input.permissions || input.permissions.length === 0) return true
+
     if (storedPermissionsRequirePhrase(input.permissions, input.usdcAddress)) return true
+
     return !callPermissionsFitAllowlist([...input.permissions, ...input.anyCalls], input.allowedCalls)
 }
 
@@ -70,7 +73,9 @@ export function chainPermissionsRequirePhrase(
     allowedCalls: ReadonlySet<string>,
 ): boolean {
     if (!permissions || permissions.length === 0) return true
+
     if (storedPermissionsRequirePhrase(permissions, usdcAddress)) return true
+
     return !callPermissionsFitAllowlist(permissions, allowedCalls)
 }
 
@@ -82,13 +87,16 @@ async function chainVerdict(input: {
 }): Promise<'absent' | 'narrow' | 'elevated'> {
     const chain = getChainConfig(input.chainName)
     const usdc = getUsdcTokenConfig(input.chainName).address
+
     const guard = await readSessionChainGuard({
         rpcUrl: rpcUrlForChain(input.chainName),
         chainId: chain.chainId,
         account: input.account,
         keyHash: computeSessionKeyHash(input.sessionAddress),
     })
+
     if (!guard.key) return 'absent'
+
     const elevated = accountStateRequiresPhrase({
         permissions: guard.key.permissions,
         anyCalls: guard.anyCalls,
@@ -96,6 +104,7 @@ async function chainVerdict(input: {
         usdcAddress: usdc,
         allowedCalls: narrowCallAllowlist(input.env, chain.chainId),
     })
+
     return elevated ? 'elevated' : 'narrow'
 }
 
@@ -112,6 +121,7 @@ export async function sessionOnChainRequiresPhrase(input: {
     sessionAddress: Address
 }): Promise<boolean> {
     let sawKey = false
+
     for (const chainName of chainsForEnv(input.env)) {
         try {
             const verdict = await chainVerdict({
@@ -120,14 +130,18 @@ export async function sessionOnChainRequiresPhrase(input: {
                 account: input.account,
                 sessionAddress: input.sessionAddress,
             })
+
             if (verdict === 'elevated') return true
+
             if (verdict === 'narrow') sawKey = true
         } catch {
             return true
         }
     }
+
     // Every chain was readable and none of them authorized this key.
     if (!sawKey) return true
+
     return false
 }
 
@@ -144,12 +158,16 @@ export async function storedSessionRequiresPhrase(
             name: input.name,
             keystorePath: input.keystorePath,
         })
+
         const bundle = await readKeystoreBundle(keystorePath)
         const sessionName = parseSessionName(input.sessionName)
+
         const session = await readSessionKeystoreFile(
             resolveSessionKeystorePath(keystorePath, sessionName, bundle.root.sessionRef.dir),
         )
+
         const account = getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root)
+
         return sessionOnChainRequiresPhrase({
             env: input.env,
             chain: input.chain,
@@ -173,19 +191,24 @@ export async function readActiveUsdcDaily(
         const chainName = selectDefaultChain(input.env, input.chain)
         const network = resolveNetworkConfig(input.env, chainName)
         const usdc = getUsdcTokenConfig(chainName).address
+
         const keystorePath = resolveKeystorePath({
             env: input.env,
             name: input.name,
             keystorePath: input.keystorePath,
         })
+
         const bundle = await readKeystoreBundle(keystorePath)
         const account = getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root)
+
         const keys = await readAccountKeysFromChain({
             rpcUrl: rpcUrlForChain(chainName),
             chainId: network.chainId,
             account,
         })
+
         let excludeHash = input.excludeKeyHash
+
         if (!excludeHash && input.excludeSessionName) {
             const session = await readSessionKeystoreFile(
                 resolveSessionKeystorePath(
@@ -194,8 +217,10 @@ export async function readActiveUsdcDaily(
                     bundle.root.sessionRef.dir,
                 ),
             )
+
             excludeHash = computeSessionKeyHash(getAddress(session.addresses.session))
         }
+
         return activeUsdcDailyTotal(keys, usdc, excludeHash)
     } catch {
         return 'unreadable'
@@ -214,10 +239,12 @@ export async function sessionHasWildcardCall(
         const network = resolveNetworkConfig(input.env, chainName)
         let sessionAddress: Address
         let account: Address
+
         if (input.sessionFile) {
             const session = await readSessionKeystoreFile(input.sessionFile)
             sessionAddress = getAddress(session.addresses.session)
             const delegated = session.addresses.delegated
+
             if (!delegated) return false
             account = getAddress(delegated)
         } else {
@@ -226,22 +253,29 @@ export async function sessionHasWildcardCall(
                 name: input.name,
                 keystorePath: input.keystorePath,
             })
+
             const bundle = await readKeystoreBundle(keystorePath)
             const sessionName = parseSessionName(input.sessionName ?? bundle.root.sessionRef.active)
+
             const session = await readSessionKeystoreFile(
                 resolveSessionKeystorePath(keystorePath, sessionName, bundle.root.sessionRef.dir),
             )
+
             sessionAddress = getAddress(session.addresses.session)
             account = getAddress(bundle.root.addresses.delegated ?? bundle.root.addresses.root)
         }
+
         const keys = await readAccountKeysFromChain({
             rpcUrl: rpcUrlForChain(chainName),
             chainId: network.chainId,
             account,
         })
+
         const hash = computeSessionKeyHash(sessionAddress)
         const key = keys.find((entry) => entry.hash.toLowerCase() === hash.toLowerCase())
+
         if (!key) return false
+
         return callsIncludeWildcard(key.permissions)
     } catch {
         return false

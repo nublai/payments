@@ -28,15 +28,18 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i]
+
         if (arg === '--file' || arg === '-f') {
             out.file = argv[i + 1]
             i += 1
             continue
         }
+
         if (arg === '--payment-only') {
             out.paymentOnly = true
             continue
         }
+
         if (arg === '--help' || arg === '-h') {
             printHelp()
             process.exit(0)
@@ -61,6 +64,7 @@ Examples:
 
 function toBigInt(value: string | undefined): bigint | null {
     if (!value) return null
+
     try {
         return BigInt(value)
     } catch {
@@ -71,14 +75,17 @@ function toBigInt(value: string | undefined): bigint | null {
 function percentile(values: bigint[], p: number): bigint {
     const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     const rank = Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)
+
     return sorted[Math.min(rank, sorted.length - 1)]
 }
 
 function maybeParseJsonString(input: string): Json | null {
     const trimmed = input.trim()
+
     if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
         return null
     }
+
     try {
         return JSON.parse(trimmed) as Json
     } catch {
@@ -99,14 +106,17 @@ function extractTelemetry(value: Json, out: BundleTelemetry[]): void {
         for (const item of value) {
             extractTelemetry(item, out)
         }
+
         return
     }
 
     if (!isObject(value)) {
         if (typeof value === 'string' && value.includes('bundle gas telemetry')) {
             const parsed = maybeParseJsonString(value)
+
             if (parsed) extractTelemetry(parsed, out)
         }
+
         return
     }
 
@@ -139,15 +149,18 @@ function extractTelemetry(value: Json, out: BundleTelemetry[]): void {
 function summarizeBucket(label: string, rows: BundleTelemetry[]): void {
     if (rows.length === 0) {
         console.log(`\n[${label}] no rows`)
+
         return
     }
 
     const simulationDeltas = rows
         .map((r) => toBigInt(r.simulationDelta))
         .filter((v): v is bigint => v !== null)
+
     const combinedDeltas = rows
         .map((r) => toBigInt(r.combinedDelta))
         .filter((v): v is bigint => v !== null)
+
     const txEstimateDeltas = rows
         .map((r) => toBigInt(r.txEstimateDelta))
         .filter((v): v is bigint => v !== null)
@@ -159,6 +172,7 @@ function summarizeBucket(label: string, rows: BundleTelemetry[]): void {
     const line = (name: string, values: bigint[]): void => {
         if (values.length === 0) {
             console.log(`  ${name}: n/a`)
+
             return
         }
 
@@ -191,9 +205,11 @@ async function readInput(file?: string): Promise<string> {
     }
 
     const chunks: string[] = []
+
     for await (const chunk of process.stdin) {
         chunks.push(String(chunk))
     }
+
     return chunks.join('')
 }
 
@@ -211,13 +227,16 @@ async function main(): Promise<void> {
 
     for (const line of lines) {
         const trimmed = line.trim()
+
         if (!trimmed) continue
 
         let parsed: Json | null = null
+
         try {
             parsed = JSON.parse(trimmed) as Json
         } catch {
             const jsonStart = trimmed.indexOf('{')
+
             if (jsonStart >= 0) {
                 parsed = maybeParseJsonString(trimmed.slice(jsonStart))
             }

@@ -77,10 +77,13 @@ export function serializeContext(context: PrepareCallsContext): string {
  */
 export function deserializeContext(serialized: string): PrepareCallsContext {
     const parsed: unknown = JSON.parse(serialized)
+
     if (parsed == null || typeof parsed !== 'object' || !('quote' in parsed)) {
         throw new Error('Invalid PrepareCallsContext: expected { quote: { quotes: [...] } }')
     }
+
     const obj = parsed as Record<string, unknown>
+
     if (
         obj.quote == null ||
         typeof obj.quote !== 'object' ||
@@ -89,6 +92,7 @@ export function deserializeContext(serialized: string): PrepareCallsContext {
     ) {
         throw new Error('Invalid PrepareCallsContext: expected { quote: { quotes: [...] } }')
     }
+
     return parsed as PrepareCallsContext
 }
 
@@ -98,14 +102,18 @@ export function deserializeContext(serialized: string): PrepareCallsContext {
  */
 export function getChainIdFromContext(context: PrepareCallsContext): number {
     const quote = context.quote?.quotes?.[0]
+
     if (!quote?.chainId) {
         throw new Error('Cannot extract chainId from context: no quotes found')
     }
+
     const raw = quote.chainId
     const parsed = raw.startsWith('0x') ? Number.parseInt(raw.slice(2), 16) : Number(raw)
+
     if (!Number.isFinite(parsed)) {
         throw new Error(`Cannot extract chainId from context: invalid chainId "${raw}"`)
     }
+
     return parsed
 }
 

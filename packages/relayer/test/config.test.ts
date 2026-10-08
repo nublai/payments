@@ -11,9 +11,11 @@ vi.mock('@nubl/contracts/deployments', () => ({
 vi.mock('../src/config/addresses', () => ({
     getContractAddresses: vi.fn((env: Record<string, string | undefined>, chainId: number) => {
         const orchestratorKey = `ORCHESTRATOR_${chainId}`
+
         if (!env[orchestratorKey] && !(chainId === 84532 && env.CONTEXT === 'stage')) {
             throw new Error('missing deployment')
         }
+
         return {
             orchestrator: env[orchestratorKey] ?? '0x0000000000000000000000000000000000000001',
             simpleFunder: '0x0000000000000000000000000000000000000002',
@@ -26,6 +28,7 @@ vi.mock('../src/config/addresses', () => ({
         }
     }),
 }))
+
 import { validateEnv, validatePoolConfig } from '../src/config'
 import { getGasConfig, type Env } from '../src/types/env'
 
@@ -95,6 +98,7 @@ describe('validateEnv', () => {
             CHAIN_IDS: '',
             RELAYER_MNEMONIC: '',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(false)
         expect(result.missing).toContain('CHAIN_IDS')
@@ -128,6 +132,7 @@ describe('validateEnv', () => {
             ESCROW_999999: '0x7890123456789012345678901234567890123456',
             MULTI_SIG_SIGNER_999999: '0x8901234567890123456789012345678901234567',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(true)
     })
@@ -138,6 +143,7 @@ describe('validateEnv', () => {
             PRIVY_APP_ID: '',
             PRIVY_APP_SECRET: 'secret_123',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(false)
         expect(result.missing).toContain('PRIVY_APP_ID')
@@ -149,6 +155,7 @@ describe('validateEnv', () => {
             PRIVY_APP_ID: 'app_123',
             PRIVY_APP_SECRET: '',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(false)
         expect(result.missing).toContain('PRIVY_APP_SECRET')
@@ -160,6 +167,7 @@ describe('validateEnv', () => {
             PRIVY_APP_ID: 'app_123',
             PRIVY_APP_SECRET: 'secret_123',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(true)
     })
@@ -170,6 +178,7 @@ describe('validateEnv', () => {
             PRIVY_APP_ID: '',
             PRIVY_APP_SECRET: '',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(true)
     })
@@ -190,6 +199,7 @@ describe('validateEnv', () => {
             OIDC_JWKS_URL: 'https://issuer.example/jwks',
             OIDC_CLIENT_ID: 'client_123',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(false)
         expect(result.missing).toContain('OIDC_ISSUER')
@@ -202,6 +212,7 @@ describe('validateEnv', () => {
             OIDC_JWKS_URL: 'https://issuer.example/jwks',
             OIDC_CLIENT_ID: 'client_123',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(true)
     })
@@ -214,6 +225,7 @@ describe('validateEnv', () => {
             OIDC_JWKS_URL: 'https://issuer.example/jwks',
             OIDC_CLIENT_ID: 'client_123',
         })
+
         const result = validateEnv(env)
         expect(result.valid).toBe(true)
     })
@@ -226,6 +238,7 @@ describe('validateEnv', () => {
         const zero = validateEnv(
             createMockEnv({ FEE_RECIPIENT: '0x0000000000000000000000000000000000000000' }),
         )
+
         expect(zero.valid).toBe(false)
         expect(zero.missing).toContain('FEE_RECIPIENT')
 
@@ -361,6 +374,7 @@ describe('validatePoolConfig', () => {
                 RELAYER_COUNT: '5',
                 MAX_PENDING_TOTAL: '5',
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(true)
         })
@@ -370,6 +384,7 @@ describe('validatePoolConfig', () => {
                 RELAYER_COUNT: '5',
                 MAX_PENDING_TOTAL: '100',
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(true)
         })
@@ -379,6 +394,7 @@ describe('validatePoolConfig', () => {
                 RELAYER_COUNT: '10',
                 MAX_PENDING_TOTAL: '5',
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(false)
             expect(result.errors).toContain('MAX_PENDING_TOTAL must be >= RELAYER_COUNT')
@@ -438,6 +454,7 @@ describe('validatePoolConfig', () => {
                 MIN_SIGNER_BALANCE: '10000000000000000', // 0.01 ETH in wei
                 TARGET_SIGNER_BALANCE: '0.1', // 0.1 ETH
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(true)
         })
@@ -447,6 +464,7 @@ describe('validatePoolConfig', () => {
                 MIN_SIGNER_BALANCE: '100000000000000000', // 0.1 ETH in wei
                 TARGET_SIGNER_BALANCE: '0.1', // 0.1 ETH (same as min)
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(false)
             expect(result.errors.some((e) => e.includes('TARGET_SIGNER_BALANCE'))).toBe(true)
@@ -457,6 +475,7 @@ describe('validatePoolConfig', () => {
                 MIN_SIGNER_BALANCE: '200000000000000000', // 0.2 ETH in wei
                 TARGET_SIGNER_BALANCE: '0.1', // 0.1 ETH (less than min)
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(false)
             expect(result.errors.some((e) => e.includes('TARGET_SIGNER_BALANCE'))).toBe(true)
@@ -466,6 +485,7 @@ describe('validatePoolConfig', () => {
             const env = createMockEnv({
                 TARGET_SIGNER_BALANCE: '0.1',
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(true)
         })
@@ -475,6 +495,7 @@ describe('validatePoolConfig', () => {
                 MIN_SIGNER_BALANCE: '10000000000000000',
                 TARGET_SIGNER_BALANCE: 'not-a-number',
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(false)
             expect(result.errors.some((e) => e.includes('TARGET_SIGNER_BALANCE'))).toBe(true)
@@ -487,6 +508,7 @@ describe('validatePoolConfig', () => {
                 RELAYER_COUNT: '0',
                 MAX_PENDING_PER_SIGNER: '0',
             })
+
             const result = validatePoolConfig(env)
             expect(result.valid).toBe(false)
             expect(result.errors.length).toBeGreaterThanOrEqual(2)

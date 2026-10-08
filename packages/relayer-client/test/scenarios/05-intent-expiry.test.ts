@@ -23,6 +23,7 @@ describe('Intent Expiry Validation', () => {
         rpcUrl: ANVIL_RPC_URL,
         relayerUrl: RELAYER_URL,
     })
+
     const transport = createJsonRpcTransport(RELAYER_URL, {
         httpAuth: {
             signer: createRelayerTestAuthSigner(testChain.id),
@@ -46,6 +47,7 @@ describe('Intent Expiry Validation', () => {
                 signerKey: privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(createResult.success).toBe(true)
 
             const walletClient = createWalletClient({
@@ -58,6 +60,7 @@ describe('Intent Expiry Validation', () => {
             // The relayer enforces the buffer at prepare time too, so any expiry
             // within the buffer window causes simulation to fail.
             const customExpiry = BigInt(Math.floor(Date.now() / 1000) + 3600)
+
             const prepared = await client.prepareCalls({
                 from: account.address,
                 calls: [{ target: recipient, value: parseEther('0.1'), data: '0x' }],
@@ -104,6 +107,7 @@ describe('Intent Expiry Validation', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // 2. Prepare calls and override intent expiry to an ALREADY EXPIRED timestamp
@@ -115,10 +119,12 @@ describe('Intent Expiry Validation', () => {
 
         // Expiry in the past (1 hour ago)
         const expiredExpiry = BigInt(Math.floor(Date.now() / 1000) - 3600)
+
         const prepared = await client.prepareCalls({
             from: account.address,
             calls: [{ target: recipient, value: parseEther('0.1'), data: '0x' }],
         })
+
         prepared.context.quote.quotes[0].intent.expiry = expiredExpiry.toString()
 
         // Sign typed data with matching expired expiry
@@ -156,6 +162,7 @@ describe('Intent Expiry Validation', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // 2. Prepare calls and override intent expiry very soon (within 30 second buffer)
@@ -167,10 +174,12 @@ describe('Intent Expiry Validation', () => {
 
         // Expiry in 10 seconds (within default 30 second buffer)
         const soonExpiry = BigInt(Math.floor(Date.now() / 1000) + 10)
+
         const prepared = await client.prepareCalls({
             from: account.address,
             calls: [{ target: recipient, value: parseEther('0.1'), data: '0x' }],
         })
+
         prepared.context.quote.quotes[0].intent.expiry = soonExpiry.toString()
 
         const signature = await walletClient.signTypedData({
@@ -207,6 +216,7 @@ describe('Intent Expiry Validation', () => {
             signerKey: privateKey,
             delegation: contracts.accountProxy,
         })
+
         expect(createResult.success).toBe(true)
 
         // Use the normal prepareCalls flow which sets a valid expiry

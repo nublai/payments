@@ -14,6 +14,7 @@ import { executePermissionsRevoke } from '../src/lib/permissions-revoke'
 import { executePermissionsShow } from '../src/lib/permissions-show'
 
 const accountAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
 const keyHash = parseKeyHash('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
 
 function makeSecpPublicKey(address: `0x${string}`): Hex {
@@ -89,6 +90,7 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
             readNonce: mock(async () => 9n),
             executeSignedCalls: mock(async (_deps, params) => {
                 capturedData = params.calls[0]?.data
+
                 return {
                     id: 'bundle-1',
                     finalStatus: {
@@ -110,6 +112,7 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
         abi: accountAbi,
         data: capturedData!,
     })
+
     expect(decoded.functionName).toBe('setCanExecute')
     expect(decoded.args).toEqual([
         keyHash,
@@ -190,6 +193,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
             readNonce: mock(async () => 10n),
             executeSignedCalls: mock(async (_deps, params) => {
                 capturedData = params.calls[0]?.data
+
                 return {
                     id: 'bundle-2',
                     finalStatus: {
@@ -203,10 +207,12 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
     )
 
     expect(result.ruleCount).toBe(1)
+
     const decoded = decodeFunctionData({
         abi: accountAbi,
         data: capturedData!,
     })
+
     expect(decoded.functionName).toBe('setCanExecute')
     expect(decoded.args).toEqual([
         keyHash,
@@ -467,6 +473,7 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
             readNonce: mock(async () => 5n),
             executeSignedCalls: mock(async (_deps, params) => {
                 capturedData = params.calls[0]?.data
+
                 return {
                     id: 'bundle-spend',
                     finalStatus: {
@@ -487,6 +494,7 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
         abi: accountAbi,
         data: capturedData!,
     })
+
     expect(decoded.functionName).toBe('setSpendLimit')
 })
 
@@ -617,6 +625,7 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
                 for (const call of params.calls) {
                     capturedCalls.push(call.data)
                 }
+
                 return {
                     id: 'bundle-all',
                     finalStatus: {
@@ -744,6 +753,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
             readNonce: mock(async () => 10n),
             executeSignedCalls: mock(async (_deps, params) => {
                 capturedData = params.calls[0]?.data
+
                 return {
                     id: 'bundle-spend-revoke',
                     finalStatus: {

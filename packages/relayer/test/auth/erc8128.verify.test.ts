@@ -83,6 +83,7 @@ describe('verifyErc8128Request', () => {
             consumeNonce: vi.fn(async (replayKey: string) => {
                 if (nonceSeen.has(replayKey)) return false
                 nonceSeen.add(replayKey)
+
                 return true
             }),
         }
@@ -107,6 +108,7 @@ describe('verifyErc8128Request', () => {
         )
 
         expect(result.ok).toBe(true)
+
         if (result.ok) {
             expect(result.signerType).toBe('EOA')
             expect(result.keyId.chainId).toBe(8453)
@@ -188,6 +190,7 @@ describe('verifyErc8128Request', () => {
 
     it('rejects expired signatures', async () => {
         const now = Math.floor(Date.now() / 1000)
+
         const req = await createSignedRequest({
             created: now - 90,
             expires: now - 10,
@@ -298,6 +301,7 @@ describe('verifyErc8128Request signer binding', () => {
             consumeNonce: vi.fn(async (replayKey: string) => {
                 if (nonceSeen.has(replayKey)) return false
                 nonceSeen.add(replayKey)
+
                 return true
             }),
         }
@@ -373,6 +377,7 @@ describe('verifyErc8128Request signer binding', () => {
         const req = await createSignedRequest({
             body: sendBody({ eoa: account.address }),
         })
+
         const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
 
         expect(result.ok).toBe(true)
@@ -385,6 +390,7 @@ describe('verifyErc8128Request signer binding', () => {
                 authSigner: '0x3333333333333333333333333333333333333333',
             }),
         })
+
         const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'stage' })
 
         expect(result).toEqual(
@@ -403,6 +409,7 @@ describe('verifyErc8128Request signer binding', () => {
                 chainId: '0x2105',
             }),
         })
+
         const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
 
         expect(result).toEqual(
@@ -421,12 +428,14 @@ describe('verifyErc8128Request signer binding', () => {
             isSuperAdmin: false,
             publicKey,
         })
+
         const req = await createSignedRequest({
             body: sendBody({
                 eoa: '0x2222222222222222222222222222222222222222',
                 chainId: '0x2105',
             }),
         })
+
         const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
 
         expect(result.ok).toBe(true)
@@ -435,6 +444,7 @@ describe('verifyErc8128Request signer binding', () => {
 
     it('rejects a prepare that only names the signer in session_key', async () => {
         const sessionKey = encodeAbiParameters([{ type: 'address' }], [account.address])
+
         const req = await createSignedRequest({
             body: JSON.stringify({
                 jsonrpc: '2.0',
@@ -450,6 +460,7 @@ describe('verifyErc8128Request signer binding', () => {
                 ],
             }),
         })
+
         const result = await verify(req, { CHAIN_IDS: '8453', CONTEXT: 'prod' })
 
         expect(result).toEqual(
@@ -491,6 +502,7 @@ describe('verifyErc8128Request signer binding', () => {
                 },
             ]),
         })
+
         const result = await verify(req, {
             CHAIN_IDS: '8453',
             CONTEXT: 'prod',
@@ -507,6 +519,7 @@ describe('verifyErc8128Request signer binding', () => {
 
     it('accepts an allowlisted signer that is not the intent EOA', async () => {
         const req = await createSignedRequest()
+
         const result = await verify(req, {
             CHAIN_IDS: '8453',
             CONTEXT: 'prod',
@@ -518,6 +531,7 @@ describe('verifyErc8128Request signer binding', () => {
 
     it('rejects a signer missing from the allowlist even on local when the list is set', async () => {
         const req = await createSignedRequest()
+
         const result = await verify(req, {
             CHAIN_IDS: '8453',
             CONTEXT: 'local',

@@ -4,9 +4,11 @@ import { EscrowError } from '../src/lib/escrow-common'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
@@ -59,6 +61,7 @@ test('executeEscrowStatus returns status shape with mocked getEscrowStatus', asy
         {
             resolveEscrowChainNetworkContracts: mock((env, chain) => {
                 const chainName = chain ?? 'base'
+
                 return {
                     chain: chainName,
                     network: {

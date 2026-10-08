@@ -65,6 +65,7 @@ export async function handleVerifySignature(
 
     const requestedChainId = parseHexChainId(chainIdParam, 'chain_id')
     const supportedChainIds = getChainIds(env)
+
     if (supportedChainIds.length > 0 && !supportedChainIds.includes(requestedChainId)) {
         throw new RpcError(INVALID_PARAMS, `Unsupported chain ID: ${requestedChainId}`)
     }
@@ -75,6 +76,7 @@ export async function handleVerifySignature(
     // Step 3: Delegation Status Check
     // Check if account is delegated (has EIP-7702 delegation bytecode)
     let code: Hex | undefined
+
     try {
         code = await publicClient.getCode({ address })
     } catch (error) {
@@ -85,6 +87,7 @@ export async function handleVerifySignature(
     // If not delegated, return valid: false with null proof
     if (!hasCode(code)) {
         logger.info({ address }, 'Account not delegated, signature invalid')
+
         return { valid: false, proof: null }
     }
 
@@ -99,16 +102,19 @@ export async function handleVerifySignature(
             abi: accountAbi,
             functionName: 'getKeys',
         })
+
         keys = result[0] as readonly ContractKey[]
         keyHashes = result[1] as readonly Hex[]
     } catch (error) {
         // If getKeys fails, account might not be a valid Account
         logger.warn({ error, address }, 'Failed to read account keys')
+
         return { valid: false, proof: null }
     }
 
     // Filter for superAdmin keys only
     const superAdminKeys: Array<{ key: ContractKey; hash: Hex }> = []
+
     for (let i = 0; i < keys.length; i++) {
         if (keys[i].isSuperAdmin) {
             superAdminKeys.push({ key: keys[i], hash: keyHashes[i] })
@@ -117,6 +123,7 @@ export async function handleVerifySignature(
 
     if (superAdminKeys.length === 0) {
         logger.info({ address }, 'No superAdmin keys found')
+
         return { valid: false, proof: null }
     }
 
@@ -139,9 +146,11 @@ export async function handleVerifySignature(
             })
 
             const [isValid, returnedKeyHash] = result as [boolean, Hex]
+
             return { isValid, keyHash: returnedKeyHash, attemptedKeyHash: keyHash }
         } catch (error) {
             logger.debug({ error, keyHash }, 'Signature validation failed for key')
+
             return { isValid: false, keyHash: '0x' as Hex, attemptedKeyHash: keyHash }
         }
     })
@@ -154,6 +163,7 @@ export async function handleVerifySignature(
     // Step 6: Response Construction
     if (validResult) {
         logger.info({ address, keyHash: validResult.keyHash }, 'Signature verified successfully')
+
         return {
             valid: true,
             proof: {
@@ -164,5 +174,6 @@ export async function handleVerifySignature(
     }
 
     logger.info({ address }, 'Signature verification failed for all superAdmin keys')
+
     return { valid: false, proof: null }
 }

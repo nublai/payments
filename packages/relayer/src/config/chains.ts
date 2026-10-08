@@ -20,11 +20,13 @@ export function loadChainsConfig(): ChainsConfig {
     }
 
     const result = ChainsConfigSchema.safeParse(chainsJson)
+
     if (!result.success) {
         throw new Error(`Invalid chains.json: ${result.error.message}`)
     }
 
     cachedConfig = result.data
+
     return cachedConfig
 }
 
@@ -44,6 +46,7 @@ export function getChainConfig(chainId: number | string): TypedChainConfig | und
 
     // Convert string addresses to viem Address type
     const typedAssets: Record<string, TypedAssetConfig> = {}
+
     for (const [key, asset] of Object.entries(chain.assets)) {
         typedAssets[key] = {
             ...asset,
@@ -79,6 +82,7 @@ export function getRpcUrl(env: RpcEnv, chainId: number | string): string | undef
 
     // First try chain-specific RPC
     const chainSpecificRpc = env[chainSpecificKey]
+
     if (chainSpecificRpc) {
         return chainSpecificRpc
     }
@@ -93,5 +97,6 @@ export function getRpcUrl(env: RpcEnv, chainId: number | string): string | undef
  */
 export function getSupportedChainIds(): number[] {
     const config = loadChainsConfig()
+
     return Object.keys(config.chains).map((id) => parseInt(id, 10))
 }

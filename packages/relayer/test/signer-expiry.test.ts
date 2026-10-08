@@ -15,6 +15,7 @@ export function isIntentExpired(
     const expiry = typeof expiryTimestamp === 'string' ? BigInt(expiryTimestamp) : expiryTimestamp
     const currentTime = BigInt(Math.floor(Date.now() / 1000))
     const buffer = BigInt(bufferSeconds)
+
     return currentTime + buffer >= expiry
 }
 

@@ -126,6 +126,7 @@ test('executeAccountUpdatePassword re-encrypts root and all sessions; old passwo
             activeSession: 'default',
             sessionsDir: 'sessions',
         })
+
         root.checkpoint = 'complete'
         root.addresses.delegated = root.addresses.root
 
@@ -137,6 +138,7 @@ test('executeAccountUpdatePassword re-encrypts root and all sessions; old passwo
             name: 'default',
             checkpoint: 'authorized',
         })
+
         const workerSession = await createSessionKeystore({
             password: oldPassword,
             sessionPrivateKey: workerSessionPrivateKey,
@@ -169,6 +171,7 @@ test('executeAccountUpdatePassword re-encrypts root and all sessions; old passwo
         expect(result.updatedSessions).toEqual(['default', 'worker-1'])
 
         const updatedBundle = await readKeystoreBundle(rootPath)
+
         const updatedWorker = await readSessionKeystoreFile(
             resolveSessionKeystorePath(rootPath, 'worker-1', 'sessions'),
         )
@@ -232,10 +235,12 @@ test('executeAccountUpdatePassword preserves login keystore fields (kind, delega
             activeSession: 'default',
             sessionsDir: 'sessions',
         })
+
         root.checkpoint = 'complete'
         root.addresses.delegated = root.addresses.root
 
         const delegateAuth = { sig: '0xaabbccdd', expiryEpochMs: Date.now() + 86_400_000 }
+
         const loginSession = await createSessionKeystore({
             password: oldPassword,
             sessionPrivateKey: loginSessionPrivateKey,
@@ -275,6 +280,7 @@ test('executeAccountUpdatePassword preserves login keystore fields (kind, delega
         expect(loginKeystore.secrets.bearerToken).toBeDefined()
 
         const newKey = await deriveKeystoreKey(newPassword, loginKeystore.kdf.params)
+
         try {
             const decryptedBearer = decryptHexSecret(loginKeystore.secrets.bearerToken!, newKey)
             expect(decryptedBearer).toBe(bearerTokenHex)
@@ -310,6 +316,7 @@ test('executeAccountUpdatePassword preserves agent keystore fields (encryptionDe
             activeSession: 'agent-bot',
             sessionsDir: 'sessions',
         })
+
         root.checkpoint = 'complete'
         root.addresses.delegated = root.addresses.root
 
@@ -327,9 +334,11 @@ test('executeAccountUpdatePassword preserves agent keystore fields (encryptionDe
             pickledAccount: 'test-account-data',
             hybridGroupSessions: [],
         })
+
         const namedChannels = {
             art: { streamId: '77aabb', secretHash: 'hash-1' },
         }
+
         const agentSession = await finalizeAgentSessionKeystore({
             baseKeystore: baseSession,
             password: oldPassword,
@@ -376,6 +385,7 @@ test('executeAccountUpdatePassword preserves agent keystore fields (encryptionDe
 
 test('executeAccountUpdatePassword attempts rollback on write failure', async () => {
     const writeRoot = mock(async () => {})
+
     const writeSession = mock(async (_path: string) => {
         throw new Error('disk full')
     })
@@ -399,6 +409,7 @@ test('executeAccountUpdatePassword attempts rollback on write failure', async ()
                         rpcUrl: 'https://mainnet.base.org',
                         chainId: 8453,
                     })
+
                     const session = await createSessionKeystore({
                         password: 'old',
                         sessionPrivateKey: generatePrivateKey(),
@@ -406,6 +417,7 @@ test('executeAccountUpdatePassword attempts rollback on write failure', async ()
                         delegated: root.addresses.root,
                         name: 'default',
                     })
+
                     return {
                         rootPath: '/tmp/default.keystore.json',
                         sessionPath: '/tmp/sessions/default.json',

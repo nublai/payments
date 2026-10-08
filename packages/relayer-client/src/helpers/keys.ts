@@ -7,6 +7,7 @@ import type { AuthorizedKeyInfo, GetKeysResponse } from '../actions/getKeys'
 export function getChainKeys(keysResponse: GetKeysResponse, chainId: number): AuthorizedKeyInfo[] {
     const exactKey = `0x${chainId.toString(16)}`
     const exactMatch = keysResponse[exactKey]
+
     if (Array.isArray(exactMatch)) {
         return exactMatch
     }
@@ -14,6 +15,7 @@ export function getChainKeys(keysResponse: GetKeysResponse, chainId: number): Au
     for (const [hexChainId, keys] of Object.entries(keysResponse)) {
         if (!Array.isArray(keys)) continue
         const parsed = Number.parseInt(hexChainId, 16)
+
         if (!Number.isNaN(parsed) && parsed === chainId) {
             return keys
         }
@@ -31,6 +33,7 @@ export function findAuthorizedKey(
     keyHash: Hex,
 ): AuthorizedKeyInfo | undefined {
     const normalized = keyHash.toLowerCase()
+
     return getChainKeys(keysResponse, chainId).find(
         (entry) => entry.hash.toLowerCase() === normalized,
     )

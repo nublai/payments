@@ -12,6 +12,7 @@ export function createHttpAuthNonceStore(env: Env): NonceStore {
 
             const id = env.HTTP_AUTH_NONCE_MANAGER.idFromName(GLOBAL_NONCE_OBJECT)
             const stub = env.HTTP_AUTH_NONCE_MANAGER.get(id)
+
             try {
                 return await stub.consumeNonce(replayKey, ttlSeconds)
             } catch {

@@ -57,6 +57,7 @@ describe('RelayerService prepareIntent nonce behavior', () => {
             expiresAtMs: 2000,
             fromCache: false,
         })
+
         const relayer = makeRelayer({ acquireOrGetDraft })
 
         const result = await relayer.prepareIntent({
@@ -99,6 +100,7 @@ describe('RelayerService prepareIntent nonce behavior', () => {
             expiresAtMs: 2000,
             fromCache: false,
         })
+
         const relayer = makeRelayer({ acquireOrGetDraft })
 
         const input = {

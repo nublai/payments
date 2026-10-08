@@ -41,12 +41,16 @@ export function createEscrowPasswordResolver(options: {
     resolvePassword?: () => Promise<string>
 }): () => Promise<string> {
     let cached: string | undefined = options.password
+
     return async (): Promise<string> => {
         if (cached !== undefined) return cached
+
         if (options.resolvePassword) {
             cached = await options.resolvePassword()
+
             return cached
         }
+
         throw new EscrowError('PASSWORD_REQUIRED', 'Password required.')
     }
 }
@@ -74,20 +78,25 @@ export async function loadEscrowSessionAndSender(
             '--session and --session-file are mutually exclusive.',
         )
     }
+
     if (options.sessionFile) {
         const sessionKeystore = await readSessionKeystoreFile(options.sessionFile)
+
         if (isAgentKeystore(sessionKeystore)) {
             throw new EscrowError(
                 'INVALID_ARGUMENT',
                 'Agent session keystores are not supported for escrow.',
             )
         }
+
         assertEscrowSessionNetworkMatches(sessionKeystore, options.env, networkChainId)
         const sender = getAddress(sessionKeystore.addresses.delegated)
+
         return { sessionKeystore, sender }
     }
 
     let bundle: Awaited<ReturnType<typeof readKeystoreBundle>> | undefined
+
     try {
         bundle = await readKeystoreBundle(options.keystorePath)
     } catch (error) {
@@ -104,18 +113,22 @@ export async function loadEscrowSessionAndSender(
             error.sessionPath
                 ? error.sessionPath
                 : join(dirname(options.keystorePath), 'session.json')
+
         const sessionKeystore =
             (error instanceof SessionOnlyProfileError || error instanceof LoginProfileError) &&
             error.sessionKeystore
                 ? error.sessionKeystore
                 : await readSessionKeystoreFile(sessionProfilePath)
+
         if (isAgentKeystore(sessionKeystore)) {
             throw new EscrowError(
                 'INVALID_ARGUMENT',
                 'Agent session keystores are not supported for escrow.',
             )
         }
+
         assertEscrowSessionNetworkMatches(sessionKeystore, options.env, networkChainId)
+
         return {
             sessionKeystore,
             sender: getAddress(sessionKeystore.addresses.delegated),
@@ -131,10 +144,12 @@ export async function loadEscrowSessionAndSender(
                 'Agent session keystores are not supported for escrow.',
             )
         }
+
         return { sessionKeystore: bundle.session, sender }
     }
 
     const selectedSessionName = parseSessionName(options.sessionName)
+
     const sessionPath = resolveSessionKeystorePath(
         options.keystorePath,
         selectedSessionName,
@@ -143,12 +158,14 @@ export async function loadEscrowSessionAndSender(
 
     try {
         const sessionKeystore = await readSessionKeystoreFile(sessionPath)
+
         if (isAgentKeystore(sessionKeystore)) {
             throw new EscrowError(
                 'INVALID_ARGUMENT',
                 'Agent session keystores are not supported for escrow.',
             )
         }
+
         return { sessionKeystore, sender }
     } catch (error) {
         if (error instanceof EscrowError) throw error
@@ -207,7 +224,9 @@ export async function executeEscrowCallsWithFallback(params: {
         { sessionFile, sessionName, env, keystorePath, name },
         network.chainId,
     )
+
     const calls = params.calls ?? (params.buildCalls ? params.buildCalls(sender) : undefined)
+
     if (!calls || calls.length === 0) {
         throw new EscrowError('INVALID_ARGUMENT', 'Either calls or buildCalls must be provided.')
     }
@@ -224,16 +243,19 @@ export async function executeEscrowCallsWithFallback(params: {
         ...network,
         authSigner: resolvedSigner.authSigner,
     }
+
     const client = createPublicClient({
         chain: getChain(signedNetwork.chainId, signedNetwork.rpcUrl),
         transport: http(signedNetwork.rpcUrl),
     })
+
     const nonce = await readAccountNonce(client, sender)
 
     const sessionPublicKey = encodeSecp256k1Key(sessionKeystore.addresses.session as Address)
     const sessionKeyHash = computeKeyHash('secp256k1', sessionPublicKey)
 
     const relayerClient = createCliRelayerClient(signedNetwork)
+
     const baseExecDeps: ExecuteSignedCallsDeps = {
         prepareCalls: async (input) =>
             relayerClient.prepareCalls({
@@ -259,12 +281,14 @@ export async function executeEscrowCallsWithFallback(params: {
                 chainId: signedNetwork.chainId,
             }),
     }
+
     const execDeps: ExecuteSignedCallsDeps = {
         ...baseExecDeps,
         ...executeSignedCallsDeps,
     }
 
     let submission: Awaited<ReturnType<typeof executeSignedCalls>>
+
     let signerMode: EscrowExecuteResult['signerMode'] =
         resolvedSigner.mode === 'daemon' ? 'daemon' : 'direct'
 
@@ -284,16 +308,21 @@ export async function executeEscrowCallsWithFallback(params: {
         if (error instanceof SessionSignerExpiredError) {
             throw new EscrowError('SESSION_EXPIRED', error.message, { cause: error })
         }
+
         if (!(error instanceof SessionSignerDaemonError) || resolvedSigner.mode !== 'daemon') {
             throw error
         }
+
         const fallback = await decryptSessionKeystore(sessionKeystore, await resolvePassword())
+
         const fallbackNetwork: CliNetworkConfig = {
             ...signedNetwork,
             authSigner: createEthHttpSigner(fallback.sessionPrivateKey, network.chainId),
         }
+
         signerMode = 'fallback_direct'
         const fallbackClient = createCliRelayerClient(fallbackNetwork)
+
         const fallbackBaseDeps: ExecuteSignedCallsDeps = {
             ...baseExecDeps,
             prepareCalls: async (input) =>
@@ -310,6 +339,7 @@ export async function executeEscrowCallsWithFallback(params: {
                 }),
             signTypedData: async (input) => {
                 const signer = privateKeyToAccount(input.privateKey)
+
                 return signer.signTypedData(input.typedData)
             },
             sendPreparedCalls: async (input) =>
@@ -323,10 +353,12 @@ export async function executeEscrowCallsWithFallback(params: {
                     chainId: fallbackNetwork.chainId,
                 }),
         }
+
         const fallbackDeps: ExecuteSignedCallsDeps = {
             ...fallbackBaseDeps,
             ...executeSignedCallsDeps,
         }
+
         submission = await executeSignedCalls(fallbackDeps, {
             from: sender,
             calls,
@@ -341,6 +373,7 @@ export async function executeEscrowCallsWithFallback(params: {
     }
 
     const finalStatus = submission.finalStatus
+
     if (!finalStatus.success) {
         throw new EscrowError(
             'ESCROW_FAILED',
@@ -355,6 +388,7 @@ export async function executeEscrowCallsWithFallback(params: {
     }
 
     const statusCode = finalStatus.statusCode
+
     if (statusCode !== undefined && ![200, 201].includes(statusCode)) {
         const intentError = finalStatus.receipt?.intentError as Hex | undefined
         const intentErrorName = intentError ? decodeIntentError(intentError) : undefined

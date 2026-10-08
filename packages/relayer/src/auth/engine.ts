@@ -55,7 +55,9 @@ export async function authorizeRequest(args: AuthorizeRequestArgs): Promise<Auth
                     userId: result.userId,
                     boundAccounts: result.boundAccounts,
                 }
+
                 if (result.issuer) success.issuer = result.issuer
+
                 return success
             }
 
@@ -98,6 +100,7 @@ function selectHighestPriorityFailure(failures: AuthFailure[]): AuthFailure {
 
     for (const code of FAILURE_PRIORITY) {
         const failure = pool.find((candidate) => failureMatches(code, candidate))
+
         if (failure) {
             return stripRoutingMiss(failure)
         }
@@ -112,6 +115,7 @@ function selectHighestPriorityFailure(failures: AuthFailure[]): AuthFailure {
 
 function stripRoutingMiss(failure: AuthFailure): AuthFailure {
     if (!failure.routingMiss) return failure
+
     return { ok: false, code: failure.code, message: failure.message }
 }
 
@@ -119,6 +123,7 @@ function failureMatches(code: AuthFailureCode, failure: AuthFailure): boolean {
     if (code === 'IDP_UNAVAILABLE' || code === 'PRIVY_API_UNAVAILABLE') {
         return isIdentityProviderUnavailable(failure.code)
     }
+
     return failure.code === code
 }
 

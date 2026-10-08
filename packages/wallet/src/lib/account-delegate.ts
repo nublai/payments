@@ -183,8 +183,10 @@ export async function executeAccountDelegate(
 
         for (const chain of options.chains) {
             const network = resolveNetworkConfig(options.env, chain)
+
             try {
                 const code = await deps.getDelegatedCode({ network, address: rootAddress })
+
                 if (hasDelegationCode(code)) {
                     results.push({
                         chain,
@@ -202,6 +204,7 @@ export async function executeAccountDelegate(
                         env: options.env,
                     }),
                 })
+
                 hasDelegatedAtLeastOne = true
                 results.push({
                     chain,

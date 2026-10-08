@@ -49,6 +49,7 @@ test('executeAccountHistory uses explicit address and skips keystore lookup', as
         items: [],
         total: 0,
     }))
+
     const readKeystoreBundle = mock(async () => {
         throw new Error('should not be called')
     })

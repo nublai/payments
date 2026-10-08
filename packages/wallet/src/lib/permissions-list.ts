@@ -80,6 +80,7 @@ function getDefaultDeps(): PermissionsListDeps {
         readSessionKeystoreFile,
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address: account, chainIds: [chainId] })
         },
     }
@@ -114,9 +115,11 @@ function splitPermissions(permissions: PermissionInfo[]) {
             return entry.type === 'call'
         },
     )
+
     const spends = permissions.filter(
         (entry): entry is Extract<PermissionInfo, { type: 'spend' }> => entry.type === 'spend',
     )
+
     return { calls, spends }
 }
 
@@ -132,6 +135,7 @@ export async function executePermissionsList(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const chain = selectDefaultChain(options.env, options.chain)
     const network = resolveNetworkConfig(options.env, chain)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -139,6 +143,7 @@ export async function executePermissionsList(
     })
 
     const bundle = await deps.readKeystoreBundle(keystorePath)
+
     const accountAddress = bundle.root.addresses.delegated
         ? getAddress(bundle.root.addresses.delegated)
         : getAddress(bundle.root.addresses.root)

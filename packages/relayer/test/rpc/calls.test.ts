@@ -21,6 +21,7 @@ vi.mock('../../src/services/fees', async () => {
     const actual = await vi.importActual<typeof import('../../src/services/fees')>(
         '../../src/services/fees',
     )
+
     return {
         ...actual,
         getFeeEstimate: mockGetFeeEstimate,
@@ -221,6 +222,7 @@ describe('wallet_prepareCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         const params = {
             from: '0x1234567890123456789012345678901234567890',
             chain_id: '0x2105',
@@ -255,6 +257,7 @@ describe('wallet_prepareCalls', () => {
 
     it('should throw error for missing from address', async () => {
         const ctx = createMockCtx()
+
         const params = {
             chain_id: '0x2105',
             calls: [],
@@ -265,6 +268,7 @@ describe('wallet_prepareCalls', () => {
 
     it('should throw error for invalid calls', async () => {
         const ctx = createMockCtx()
+
         const params = {
             from: '0x1234567890123456789012345678901234567890',
             chain_id: '0x2105',
@@ -290,6 +294,7 @@ describe('wallet_prepareCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         const params = {
             from: '0x1234567890123456789012345678901234567890',
             chain_id: '0x2105',
@@ -323,6 +328,7 @@ describe('wallet_prepareCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         const params = {
             from: '0x1234567890123456789012345678901234567890',
             chain_id: '0x2105',
@@ -454,6 +460,7 @@ describe('wallet_sendPreparedCalls', () => {
 
     it('should reject legacy flat context without quote chain context', async () => {
         const ctx = createMockCtx()
+
         const params = {
             context: {
                 eoa: '0x1234567890123456789012345678901234567890',
@@ -474,6 +481,7 @@ describe('wallet_sendPreparedCalls', () => {
 
     it('should throw error for missing context', async () => {
         const ctx = createMockCtx()
+
         const params = {
             signature: '0x' + 'ab'.repeat(65),
         }
@@ -483,6 +491,7 @@ describe('wallet_sendPreparedCalls', () => {
 
     it('should throw error for missing signature', async () => {
         const ctx = createMockCtx()
+
         const params = {
             context: {
                 quote: {
@@ -501,6 +510,7 @@ describe('wallet_sendPreparedCalls', () => {
         mockMarkSubmitted.mockRejectedValueOnce(new Error('draft finalize failed'))
 
         const baseParams = buildSendPreparedCallsParams()
+
         const params = {
             ...baseParams,
             context: {
@@ -526,6 +536,7 @@ describe('wallet_sendPreparedCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
@@ -535,6 +546,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const baseParams = buildSendPreparedCallsParams()
         const baseQuote = baseParams.context.quote.quotes[0]
+
         const params = {
             ...baseParams,
             context: {
@@ -563,6 +575,7 @@ describe('wallet_sendPreparedCalls', () => {
         const calledUrls = bundleFetch.mock.calls.map(
             (args) => (args[0] as string | undefined) ?? '',
         )
+
         expect(calledUrls.some((url) => url.includes('/add_bundle_tx'))).toBe(true)
         expect(calledUrls.some((url) => url.includes('/store_pending_bundle'))).toBe(false)
     })
@@ -574,6 +587,7 @@ describe('wallet_sendPreparedCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
@@ -588,6 +602,7 @@ describe('wallet_sendPreparedCalls', () => {
         const calledUrls = bundleFetch.mock.calls.map(
             (args) => (args[0] as string | undefined) ?? '',
         )
+
         expect(calledUrls.some((url) => url.includes('/upsert_bundle_telemetry'))).toBe(true)
     })
 
@@ -598,6 +613,7 @@ describe('wallet_sendPreparedCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
@@ -614,6 +630,7 @@ describe('wallet_sendPreparedCalls', () => {
         const telemetryCall = bundleFetch.mock.calls.find((args) =>
             String(args[0]).includes('/upsert_bundle_telemetry'),
         )
+
         expect(telemetryCall).toBeDefined()
         const requestInit = telemetryCall?.[1] as RequestInit
         const payload = JSON.parse(String(requestInit.body)) as { eoa?: string }
@@ -630,9 +647,11 @@ describe('wallet_sendPreparedCalls', () => {
                     json: () => Promise.resolve({ ok: true }),
                 }
             }
+
             if (url.includes('/upsert_bundle_telemetry')) {
                 throw new Error('telemetry write failed')
             }
+
             return {
                 ok: true,
                 status: 200,
@@ -642,6 +661,7 @@ describe('wallet_sendPreparedCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
@@ -662,6 +682,7 @@ describe('wallet_sendPreparedCalls', () => {
         })
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
@@ -685,6 +706,7 @@ describe('wallet_sendPreparedCalls', () => {
             .mockResolvedValueOnce({ ok: true, status: 200, statusText: 'OK' })
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
@@ -722,19 +744,23 @@ describe('wallet_getCallsHistory', () => {
         const chainSpies = new Map<number, ReturnType<typeof vi.fn>>()
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).CHAIN_IDS = Object.keys(chainEntries).join(',')
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 const chainId = Number(name.replace('bundle-status-', ''))
                 const entries = chainEntries[chainId] ?? []
+
                 const getBundlesByEoa = vi.fn(
                     async (_eoa: string, limit: number, offset: number) => ({
                         items: entries.slice(offset, offset + limit),
                         total: entries.length,
                     }),
                 )
+
                 chainSpies.set(chainId, getBundlesByEoa)
+
                 return { getBundlesByEoa }
             }),
         }
@@ -744,11 +770,13 @@ describe('wallet_getCallsHistory', () => {
 
     it('paginates correctly when offset exceeds the first per-chain fetch page', async () => {
         const chainId = 8453
+
         const entries = Array.from({ length: 30 }, (_, index) => ({
             bundleId: `bundle-${index}`,
             chainId,
             createdAt: 10_000 - index,
         }))
+
         const { ctx } = createHistoryCtx({ [chainId]: entries })
 
         const result = await handleGetCallsHistory(
@@ -795,6 +823,7 @@ describe('wallet_getCallsHistory', () => {
         })
 
         const mixedCaseAddress = '0x1234567890abCDef1234567890AbCdEf12345678'
+
         const result = await handleGetCallsHistory(
             {
                 address: mixedCaseAddress,
@@ -847,12 +876,14 @@ describe('wallet_getCallsHistory', () => {
                     resolveFirstChain = resolve
                 }),
         )
+
         const secondChainSpy = vi.fn().mockResolvedValue({
             items: [{ bundleId: 'b1', chainId: 10, createdAt: 123 }],
             total: 1,
         })
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).CHAIN_IDS = '8453,10'
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn((name: string) => name),
@@ -860,6 +891,7 @@ describe('wallet_getCallsHistory', () => {
                 if (name === 'bundle-status-8453') {
                     return { getBundlesByEoa: firstChainSpy }
                 }
+
                 return { getBundlesByEoa: secondChainSpy }
             }),
         }
@@ -891,6 +923,7 @@ describe('wallet_getCallsHistory', () => {
             chainId: 8453,
             createdAt: 20_000 - index,
         }))
+
         const chainBEntries = Array.from({ length: 50 }, (_, index) => ({
             bundleId: `b-${index}`,
             chainId: 10,
@@ -901,17 +934,20 @@ describe('wallet_getCallsHistory', () => {
             if (offset > 0) {
                 throw new Error('chain A pagination failure')
             }
+
             return {
                 items: chainAEntries.slice(offset, offset + limit),
                 total: chainAEntries.length,
             }
         })
+
         const chainBSpy = vi.fn(async (_eoa: string, limit: number, offset: number) => ({
             items: chainBEntries.slice(offset, offset + limit),
             total: chainBEntries.length,
         }))
 
         const ctx = createMockCtx()
+
         ;(ctx.env as Record<string, unknown>).CHAIN_IDS = '8453,10'
         ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
             idFromName: vi.fn((name: string) => name),
@@ -976,6 +1012,7 @@ describe('wallet_getCallsStatus', () => {
             statusCode: 100,
             receipts: [],
         })
+
         const result = await handleGetCallsStatus('bundle-123', ctx)
 
         expect(result).toHaveProperty('id', 'bundle-123')
@@ -1000,6 +1037,7 @@ describe('wallet_getCallsStatus', () => {
                 },
             ],
         })
+
         const result = await handleGetCallsStatus('bundle-456', ctx)
 
         expect(result).toHaveProperty('id', 'bundle-456')
@@ -1021,6 +1059,7 @@ describe('wallet_getCallsStatus', () => {
             statusCode: 404,
             receipts: [],
         })
+
         const result = await handleGetCallsStatus('unknown', ctx)
 
         expect(result).toHaveProperty('id', 'unknown')
@@ -1045,6 +1084,7 @@ describe('wallet_getCallsStatus', () => {
                 },
             ],
         })
+
         const result = await handleGetCallsStatus('bundle-failed', ctx)
 
         expect(result).toHaveProperty('id', 'bundle-failed')

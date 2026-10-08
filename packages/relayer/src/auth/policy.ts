@@ -22,6 +22,7 @@ function coerceJsonRpcId(id: unknown): JsonRpcId {
     if (id === null || typeof id === 'string' || typeof id === 'number') {
         return id
     }
+
     return null
 }
 
@@ -44,9 +45,11 @@ export function parseAuthProtectedMethods(value: string | undefined): Set<string
 
 export function resolveAuthProtectedMethods(value: string | undefined): Set<string> {
     const methods = parseAuthProtectedMethods(value)
+
     for (const method of ALWAYS_AUTH_PROTECTED_METHODS) {
         methods.add(method)
     }
+
     return methods
 }
 

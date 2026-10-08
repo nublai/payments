@@ -11,6 +11,7 @@ describe('signer pool send disposition', () => {
             broadcastAttempted: true,
             message: 'txpool capacity exceeded',
         }
+
         const paused = {
             broadcastAttempted: true,
             message: 'signer is paused',
@@ -25,6 +26,7 @@ describe('signer pool send disposition', () => {
             { broadcastAttempted: false, message: 'Signer at capacity' },
             { broadcastAttempted: false, message: 'Signer is paused' },
         ]
+
         expect(beforeSend.every((attempt) => signerSendDisposition(attempt) === 'retry')).toBe(true)
         expect(poolSendBroadcastAttempted(beforeSend)).toBe(false)
     })

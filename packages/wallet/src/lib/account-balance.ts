@@ -12,6 +12,7 @@ import {
     type ChainName,
     type UsdcSymbol,
 } from './network-config'
+
 type AccountBalanceErrorCode = 'UNSUPPORTED_CHAIN' | 'ADDRESS_LOOKUP_FAILED' | 'UNKNOWN'
 
 const erc20Abi = [
@@ -77,16 +78,19 @@ function getDefaultDeps(): AccountBalanceDeps {
         readUsdcBalance: async (input) => {
             const token = getUsdcTokenConfig(input.chain, { legacy: input.legacy })
             const config = getChainConfig(input.chain)
+
             const client = createPublicClient({
                 chain: config.viemChain,
                 transport: http(config.rpcUrl),
             })
+
             const balance = await client.readContract({
                 address: token.address,
                 abi: erc20Abi,
                 functionName: 'balanceOf',
                 args: [input.account],
             })
+
             return balance
         },
     }
@@ -106,6 +110,7 @@ export async function executeAccountBalance(
             name: options.name,
             keystorePath: options.keystorePath,
         })
+
         const balance = await deps.readUsdcBalance({
             chain,
             legacy: options.legacy,
@@ -138,8 +143,10 @@ function toAccountBalanceError(error: unknown): AccountBalanceError {
     }
 
     const message = error instanceof Error ? error.message : String(error)
+
     if (message.includes('Unsupported chain')) {
         return new AccountBalanceError('UNSUPPORTED_CHAIN', message, { cause: error })
     }
+
     return new AccountBalanceError('UNKNOWN', message, { cause: error })
 }

@@ -22,23 +22,35 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const WETH = '0x4200000000000000000000000000000000000006' as Address
+
 const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+
 const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+
 const ANY_TARGET = '0x3232323232323232323232323232323232323232' as Address
+
 const ANY_FN = '0x32323232' as Hex
+
 const KEY_HASH = `0x${'ab'.repeat(32)}` as Hex
+
 const TRANSFER_TOPIC = keccak256(toHex('Transfer(address,address,uint256)'))
 
 const multicallAbi = [
@@ -170,6 +182,7 @@ function run(input: {
     executeSignedCalls?: () => Promise<unknown>
 }) {
     const signTypedData = mock(async () => '0x11' as Hex)
+
     const result = executeAccountSwap(
         {
             env: 'prod',
@@ -230,14 +243,17 @@ function run(input: {
             })) as any,
         },
     )
+
     return { result, signTypedData }
 }
 
 test('a throw after the spend limit is installed still releases it', async () => {
     const events: string[] = []
+
     const ran = run({
         installQuoteSpendLimit: async () => {
             events.push('install')
+
             return async () => {
                 events.push('release')
             }
@@ -247,6 +263,7 @@ test('a throw after the spend limit is installed still releases it', async () =>
             throw new Error('send failed')
         },
     })
+
     await expect(ran.result).rejects.toThrow(/send failed/)
     expect(events).toEqual(['install', 'execute', 'release'])
     expect(ran.signTypedData).not.toHaveBeenCalled()
@@ -254,9 +271,11 @@ test('a throw after the spend limit is installed still releases it', async () =>
 
 test('success false still releases the spend limit', async () => {
     const events: string[] = []
+
     const ran = run({
         installQuoteSpendLimit: async () => {
             events.push('install')
+
             return async () => {
                 events.push('release')
             }
@@ -267,6 +286,7 @@ test('success false still releases the spend limit', async () => {
             feeCap: { token: zeroAddress, amount: 0n },
         }),
     })
+
     await expect(ran.result).rejects.toThrow(/reverted/)
     expect(events).toEqual(['install', 'release'])
 })
@@ -276,26 +296,34 @@ test('concurrent swaps serialize spend-limit installs for one account', async ()
     const keystorePath = join(dir, 'alice.json')
     await writeFile(keystorePath, '{}')
     let openGate: () => void = () => {}
+
     const gate = new Promise<void>((resolve) => {
         openGate = resolve
     })
+
     let active = 0
     let maxActive = 0
     const order: string[] = []
+
     const installQuoteSpendLimit = async () => {
         active += 1
         maxActive = Math.max(maxActive, active)
         order.push('install')
+
         if (order.length === 1) await gate
         active -= 1
+
         return async () => {
             order.push('release')
         }
     }
+
     const first = run({ keystorePath, installQuoteSpendLimit }).result
+
     for (let attempt = 0; attempt < 50 && order.length === 0; attempt += 1) {
         await sleep(10)
     }
+
     const second = run({ keystorePath, installQuoteSpendLimit }).result
     await sleep(150)
     expect(order).toEqual(['install'])
@@ -308,6 +336,7 @@ test('concurrent swaps serialize spend-limit installs for one account', async ()
 test('a pre-existing minute period is restored instead of deleted', async () => {
     const { quoteSpendRestoreCalls } = await import('../src/lib/quote-spend')
     expect(typeof quoteSpendRestoreCalls).toBe('function')
+
     const calls = quoteSpendRestoreCalls({
         keyHash: KEY_HASH,
         account: USER,
@@ -316,6 +345,7 @@ test('a pre-existing minute period is restored instead of deleted', async () => 
             { token: zeroAddress, previousLimit: null },
         ],
     })
+
     const decoded = calls.map((call) => decodeFunctionData({ abi: accountAbi, data: call.data }))
     expect(decoded[0]?.functionName).toBe('setSpendLimit')
     expect(decoded[0]?.args?.[3]).toBe(100n)
@@ -325,6 +355,7 @@ test('a pre-existing minute period is restored instead of deleted', async () => 
 test('a held token with no period is frozen at 0 for the quote', async () => {
     const { planQuoteSpendSlots } = await import('../src/lib/quote-spend')
     expect(typeof planQuoteSpendSlots).toBe('function')
+
     const slots = planQuoteSpendSlots({
         bound: {
             keyHash: KEY_HASH,
@@ -337,6 +368,7 @@ test('a held token with no period is frozen at 0 for the quote', async () => {
         spendInfos: [{ token: USDC, period: 0, limit: 100n }],
         balances: [{ token: WETH, balance: 7n }],
     })
+
     const usdc = slots.find((slot) => slot.token.toLowerCase() === USDC.toLowerCase())
     const weth = slots.find((slot) => slot.token.toLowerCase() === WETH.toLowerCase())
     expect(usdc?.installedLimit).toBe(5n)
@@ -369,9 +401,11 @@ test('recovering a pending limit puts the previous minute limit back', async () 
     const dir = await mkdtemp(join(tmpdir(), 'quote-recover-'))
     const keystorePath = join(dir, 'alice.json')
     await writeFile(keystorePath, '{}')
+
     const { writePendingQuoteLimit, pendingQuoteLimitPath } = await import(
         '../src/lib/quote-spend-pending'
     )
+
     const { recoverPendingQuoteSpend } = await import('../src/lib/quote-spend-lifecycle')
     expect(typeof recoverPendingQuoteSpend).toBe('function')
     await writePendingQuoteLimit(keystorePath, {
@@ -430,6 +464,7 @@ test('an inner selector outside the relay entrypoints is refused', async () => {
             '0x',
         ],
     })
+
     const ran = run({ quote: quoteFor(data, APPROVAL_PROXY) })
     await expect(ran.result).rejects.toThrow(/0x12345678/)
     expect(ran.signTypedData).not.toHaveBeenCalled()
@@ -440,11 +475,14 @@ test('simulation refuses when output logs do not match the balance diff', async 
     const origin = WETH
     const pad = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
     const userTopic = `0x${USER.slice(2).toLowerCase().padStart(64, '0')}`
+
     const request = async (method: string, params: unknown[]) => {
         if (method === 'eth_getBalance' || method === 'eth_call') return pad(100n)
+
         if (method === 'eth_simulateV1') {
             const block = params[0] as { blockStateCalls: { calls: unknown[] }[] }
             const calls = block.blockStateCalls[0]?.calls ?? []
+
             return [
                 {
                     calls: calls.map((_, index) => ({
@@ -464,8 +502,10 @@ test('simulation refuses when output logs do not match the balance diff', async 
                 },
             ]
         }
+
         throw new Error(method)
     }
+
     await expect(
         simulateRelayQuote({
             rpcUrl: 'http://127.0.0.1:1',
@@ -494,8 +534,10 @@ test('simulation refuses when output logs do not match the balance diff', async 
 test('the second simulation runs on the calls about to be signed, after prepare and before signTypedData', async () => {
     const order: string[] = []
     let simulated: Hex | undefined
+
     const signature =
         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const
+
     await executeAccountSwap(
         {
             env: 'prod',
@@ -520,10 +562,12 @@ test('the second simulation runs on the calls about to be signed, after prepare 
             getKeys: mock(async () => narrowKeys()) as any,
             prepareCalls: mock(async (call: Parameters<typeof matchingPreparedCalls>[0]) => {
                 order.push('prepare')
+
                 return matchingPreparedCalls(call)
             }) as any,
             signTypedData: mock(async () => {
                 order.push('sign')
+
                 return signature
             }) as any,
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),

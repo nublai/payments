@@ -68,12 +68,15 @@ function getDefaultDeps(): AddressDeps {
 function parseAmount(value?: string): string | undefined {
     if (!value) return undefined
     const normalized = value.trim()
+
     if (!/^\d+(\.\d+)?$/.test(normalized)) {
         throw new AddressError('MISSING_ARGUMENT', 'Invalid --amount. Expected a positive decimal.')
     }
+
     if (/^0+(\.0+)?$/.test(normalized)) {
         throw new AddressError('MISSING_ARGUMENT', 'Invalid --amount. Expected a positive decimal.')
     }
+
     return normalized
 }
 
@@ -95,14 +98,17 @@ function resolveToken(input: { token: string; chain: ChainName }): {
 } {
     if (input.token.toUpperCase() === 'USDC') {
         const usdc = getUsdcTokenConfig(input.chain)
+
         return { symbol: 'USDC', address: usdc.address, decimals: 6 }
     }
+
     if (!isAddress(input.token)) {
         throw new AddressError(
             'MISSING_ARGUMENT',
             `Invalid --token value: ${input.token}. Use USDC or a token address.`,
         )
     }
+
     return { address: getAddress(input.token), decimals: null }
 }
 
@@ -113,7 +119,9 @@ function buildPaymentUri(input: {
     amountAtomic?: bigint
 }): string {
     const base = `ethereum:${input.tokenAddress}@${input.chainId}/transfer?address=${input.recipient}`
+
     if (input.amountAtomic === undefined) return base
+
     return `${base}&uint256=${input.amountAtomic.toString()}`
 }
 
@@ -133,6 +141,7 @@ export async function executeAddress(
 ): Promise<AddressResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
     const chain = resolveChain(options.chain)
+
     if (
         options.decimals !== undefined &&
         (!Number.isInteger(options.decimals) || options.decimals < 0 || options.decimals > 36)
@@ -142,15 +151,18 @@ export async function executeAddress(
             'Invalid --decimals value. Expected an integer between 0 and 36.',
         )
     }
+
     const account = await deps.executeAccountAddress({
         env: options.env,
         name: options.name,
         keystorePath: options.keystorePath,
     })
+
     const recipient = getAddress(account.address)
     const token = resolveToken({ token: options.token ?? 'USDC', chain })
 
     let decimals = token.decimals
+
     if (!token.symbol && options.amount !== undefined) {
         if (options.decimals === undefined) {
             throw new AddressError(
@@ -158,21 +170,26 @@ export async function executeAddress(
                 'Custom token amount requires --decimals <int>.',
             )
         }
+
         decimals = options.decimals
     } else if (!token.symbol && options.decimals !== undefined) {
         decimals = options.decimals
     }
 
     let amountAtomic: bigint | undefined
+
     if (options.amount !== undefined) {
         const amount = parseAmount(options.amount)
+
         if (!amount) {
             throw new AddressError(
                 'MISSING_ARGUMENT',
                 'Invalid --amount. Expected a positive decimal.',
             )
         }
+
         amountAtomic = parseUnits(amount, decimals ?? 0)
+
         if (amountAtomic <= 0n) {
             throw new AddressError(
                 'MISSING_ARGUMENT',
@@ -183,6 +200,7 @@ export async function executeAddress(
 
     const chainConfig = getChainConfig(chain)
     const shouldBuildPayload = Boolean(options.link || options.qr || options.amount)
+
     const payload = shouldBuildPayload
         ? buildPaymentUri({
               tokenAddress: token.address,

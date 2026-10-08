@@ -9,10 +9,12 @@ import { executeLogin, executeLogout, LoginError } from '../src/lib/login'
 
 const SESSION_PRIVATE_KEY =
     '0x59c6995e998f97a5a0044966f0945388cf6f64f6b5f8a6d4f7e7a3fa8f8ff7f0' as const
+
 const ACCOUNT_ADDRESS = '0x1111111111111111111111111111111111111111' as const
 
 function hexToBytes(value: `0x${string}`): Uint8Array {
     const normalized = value.slice(2)
+
     return Uint8Array.from(Buffer.from(normalized, 'hex'))
 }
 
@@ -26,6 +28,7 @@ function makeTokenHex(options?: {
     chainId?: bigint
 }): `0x${string}` {
     const now = BigInt(Date.now())
+
     const token = create(WalletSessionTokenSchema, {
         sessionPrivateKey: hexToBytes(SESSION_PRIVATE_KEY),
         accountAddress: hexToBytes(ACCOUNT_ADDRESS),
@@ -40,6 +43,7 @@ function makeTokenHex(options?: {
         delegateSig: new Uint8Array([4, 5, 6]),
         delegateExpiryEpochMs: options?.delegateExpiryEpochMs ?? now + 120_000n,
     })
+
     return toHex(toBinary(WalletSessionTokenSchema, token))
 }
 
@@ -82,6 +86,7 @@ function makeRelayerSessionKeystore(): RelayerSessionKeystoreV2 {
 
 function makeLoginSessionKeystore(): LoginSessionKeystoreV2 {
     const base = makeRelayerSessionKeystore()
+
     return {
         ...base,
         kind: 'login',
