@@ -129,30 +129,25 @@ test('executeSessionCreate with noPermissions sends only authorize and omits per
     const sessionKeystore = makeSessionKeystore(sessionPrivateKey)
     const sessionAddress = getAddress(sessionKeystore.addresses.session)
     const sessionKeyHash = computeSessionKeyHash(sessionAddress)
-    const executeSignedCalls = mock(
-        async (
-            _deps: ExecuteSignedCallsDeps,
-            params: ExecuteSignedCallsParams,
-        ): Promise<ExecuteSignedCallsResult> => {
-            expect(params.calls).toHaveLength(1)
-            return {
-                id: 'bundle-1',
-                finalStatus: {
-                    success: true,
-                    status: 'confirmed',
-                    statusCode: 200,
-                    receipt: {
-                        transactionHash:
-                            '0x1111111111111111111111111111111111111111111111111111111111111111',
-                        blockNumber: '0x1',
-                        gasUsed: '0x0',
-                        status: 'success',
-                    },
+    const executeSignedCalls = mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams): Promise<ExecuteSignedCallsResult> => {
+        expect(params.calls).toHaveLength(1)
+        return {
+            id: 'bundle-1',
+            finalStatus: {
+                success: true,
+                status: 'confirmed',
+                statusCode: 200,
+                receipt: {
+                    transactionHash:
+                        '0x1111111111111111111111111111111111111111111111111111111111111111',
+                    blockNumber: '0x1',
+                    gasUsed: '0x0',
+                    status: 'success',
                 },
-                feeCap,
-            }
-        },
-    )
+            },
+            feeCap,
+        }
+    })
 
     const result = await executeSessionCreate(
         {
@@ -195,34 +190,29 @@ test('executeSessionCreate passes expiry to authorize call data', async () => {
     const sessionKeystore = makeSessionKeystore(sessionPrivateKey)
     const sessionAddress = getAddress(sessionKeystore.addresses.session)
     const sessionKeyHash = computeSessionKeyHash(sessionAddress)
-    const executeSignedCalls = mock(
-        async (
-            _deps: ExecuteSignedCallsDeps,
-            params: ExecuteSignedCallsParams,
-        ): Promise<ExecuteSignedCallsResult> => {
-            const authorizeCall = params.calls[0]
+    const executeSignedCalls = mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams): Promise<ExecuteSignedCallsResult> => {
+        const authorizeCall = params.calls[0]
 
-            if (!authorizeCall) throw new Error('expected an authorize call')
+        if (!authorizeCall) throw new Error('expected an authorize call')
 
-            expect(authorizeCall.data).toBeDefined()
-            return {
-                id: 'bundle-1',
-                finalStatus: {
-                    success: true,
-                    status: 'confirmed',
-                    statusCode: 200,
-                    receipt: {
-                        transactionHash:
-                            '0x1111111111111111111111111111111111111111111111111111111111111111',
-                        blockNumber: '0x1',
-                        gasUsed: '0x0',
-                        status: 'success',
-                    },
+        expect(authorizeCall.data).toBeDefined()
+        return {
+            id: 'bundle-1',
+            finalStatus: {
+                success: true,
+                status: 'confirmed',
+                statusCode: 200,
+                receipt: {
+                    transactionHash:
+                        '0x1111111111111111111111111111111111111111111111111111111111111111',
+                    blockNumber: '0x1',
+                    gasUsed: '0x0',
+                    status: 'success',
                 },
-                feeCap,
-            }
-        },
-    )
+            },
+            feeCap,
+        }
+    })
 
     const result = await executeSessionCreate(
         {
