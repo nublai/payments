@@ -3,7 +3,6 @@ import { Cli, z } from 'incur'
 import { readFileSync } from 'node:fs'
 import {
     resolveCliProcessExitCode,
-    scheduleActiveHandleDumpIfRequested,
     updateCliProcessExitCode,
 } from './cli-runtime'
 import { confirm, isCancel } from '@clack/prompts'

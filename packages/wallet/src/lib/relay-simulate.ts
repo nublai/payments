@@ -143,7 +143,7 @@ async function defaultRequest(rpcUrl: string, method: string, params: unknown[])
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
         })
-    } catch (error) {
+    } catch {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
