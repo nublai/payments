@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path'
 import { createPublicClient, getAddress, http, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
