@@ -9,7 +9,7 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
 import { executeSignedCalls } from '../src/lib/execute-calls'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
-import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
+import { executeSessionRotate, sealRotationMarker, type RotationIntentPayload } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
@@ -100,7 +100,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 writeSessionKeystoreFile: mock(async () => {}),
                 writeRootKeystoreFile: mock(async () => {}),
                 writeRotationIntent: mock(
-                    async (_root: string, _dir: string, value: object, fileName?: string) => ({
+                    async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => ({
                         ...value,
                         fileName: fileName ?? 'rotation.json',
                     }),
@@ -228,7 +228,7 @@ function rotateDeps(overrides: Record<string, unknown>) {
         createSessionKeystore: mock(async () => newSession),
         writeSessionKeystoreFile: mock(async () => {}),
         writeRootKeystoreFile: mock(async () => {}),
-        writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => ({
+        writeRotationIntent: mock(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => ({
             ...value,
             fileName: fileName ?? 'rotation.json',
         })),
@@ -534,7 +534,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
             '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
         })),
         readRotationIntent: mock(async () => savedIntent),
-        writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
+        writeRotationIntent: mock(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => {
             savedIntent = { ...value, fileName: fileName ?? 'rotation.json' }
 
             return savedIntent
@@ -735,7 +735,7 @@ test('resume after a successful rotation does not start another rotation', async
                 '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
             })),
             readRotationIntent: mock(async () => intent),
-            writeRotationIntent: mock(async (_root: string, _dir: string, value: object, fileName?: string) => {
+            writeRotationIntent: mock(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => {
                 intent = { ...value, fileName: fileName ?? '.rotation.json' }
 
                 return intent
