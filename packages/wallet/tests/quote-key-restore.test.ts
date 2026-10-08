@@ -13,15 +13,15 @@ import {
 } from '../src/lib/quote-spend-pending'
 import { repeatedHex } from './helpers/hex'
 
-const ACCOUNT = '0x1111111111111111111111111111111111111111'
+const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 
-const PUBLIC_KEY = '0x1234'
+const PUBLIC_KEY: Hex = '0x1234'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const APPROVE = '0x095ea7b3'
+const APPROVE: Hex = '0x095ea7b3'
 
-const TRANSFER = '0xa9059cbb'
+const TRANSFER: Hex = '0xa9059cbb'
 
 const NOW = 1_700_000_000n
 

@@ -13,10 +13,10 @@ afterAll(() => {
 
 import {
     AccountSendError,
-    executeAccountSend,
     resolveAccountSendPassword,
     type AccountSendOptions,
 } from '../src/lib/account-send'
+import { executeAccountSend } from './helpers/stub-execute'
 import {
     LoginProfileError,
     SessionOnlyProfileError,
@@ -26,6 +26,7 @@ import {
 import { RecipientResolutionError } from '../src/lib/recipient-resolver'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { firstMockArg } from './helpers/typed-mock'
 
 function sendBundle(
     rootPath = '/tmp/alice.json',
@@ -156,11 +157,11 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
     expect(result.token.amount).toBe('1.5')
     expect(result.bundle.id).toBe('bundle-1')
     expect(result.txHash).toBe('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-    const prepareInput = prepareCalls.mock.calls[0]?.[0]
+    const prepareInput = firstMockArg<{ sessionKey: string; nonce: bigint }>(prepareCalls)
     expect(typeof prepareInput.sessionKey).toBe('string')
     expect(prepareInput.sessionKey.startsWith('0x')).toBe(true)
     expect(prepareInput.nonce).toBe(2n)
-    const sentSignature = sendPreparedCalls.mock.calls[0]?.[0]?.signature
+    const sentSignature = firstMockArg<{ signature: string }>(sendPreparedCalls).signature
     expect(sentSignature.startsWith('0x11111111111111111111111111111111')).toBe(true)
     expect(sentSignature.length).toBeGreaterThan(132)
 })

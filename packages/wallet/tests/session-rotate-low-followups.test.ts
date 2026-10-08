@@ -10,13 +10,13 @@ import { expect, mock, test } from 'bun:test'
 import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { type Call } from '@nubl/relayer-client'
-import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createSessionKeystore, deriveKeystoreKey } from '../src/lib/keystore'
-import { executeSessionRotate, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
-const account = '0x1111111111111111111111111111111111111111'
+const account: Address = '0x1111111111111111111111111111111111111111'
 
 const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a'
 
@@ -114,7 +114,7 @@ function quotePreparer(captured: PreparedInput[]) {
     })
 }
 
-function baseDeps(extra: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
+function baseDeps<E>(extra?: E) {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),

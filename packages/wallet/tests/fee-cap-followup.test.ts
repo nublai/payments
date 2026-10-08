@@ -3,8 +3,9 @@ import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { zeroAddress, type Address } from 'viem'
 import { hashTypedData } from 'viem/utils'
 import { INTENT_TYPES, type Call, type PrepareCallsResponse } from '@nubl/relayer-client'
-import { executeAccountSend, type AccountSendDeps } from '../src/lib/account-send'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
+import { type AccountSendDeps } from '../src/lib/account-send'
+import { type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
+import { executeAccountSend, executeSignedCalls } from './helpers/stub-execute'
 import { discloseFeeCap } from '../src/lib/intent-payment'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from '../src/lib/gas-ceiling'
 import { getEnvRelayerUrl, getUsdcAddressByChainId } from '../src/lib/network-config'
@@ -12,9 +13,10 @@ import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { confirmedBundle } from './helpers/bundle-status'
 import { boundPort } from './helpers/bound-port'
-import { emptyHex, repeatedHex } from './helpers/hex'
+import { emptyHex, hex, repeatedHex } from './helpers/hex'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { parseJson } from './helpers/parse-json'
+import { firstMockArg } from './helpers/typed-mock'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -26,13 +28,13 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const EOA = '0x1111111111111111111111111111111111111111'
+const EOA: Address = '0x1111111111111111111111111111111111111111'
 
-const TARGET = '0x2222222222222222222222222222222222222222'
+const TARGET: Address = '0x2222222222222222222222222222222222222222'
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
+const ORCHESTRATOR: Address = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
-const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const BASE_USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
 
@@ -301,8 +303,9 @@ test('an over-ceiling caller cap is clamped to 5 USDC', async () => {
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
 
-    const signed: { message: { payer: Address; paymentToken: Address } } =
-        signTypedData.mock.calls[0]?.[0]?.typedData
+    const signed = firstMockArg<{
+        typedData: { message: { payer: Address; paymentToken: Address } }
+    }>(signTypedData).typedData
 
     expect(signed.message.payer).toBe(EOA)
     expect(signed.message.paymentToken).toBe(BASE_USDC)
@@ -337,9 +340,9 @@ test('a caller cap without payer or token is refused', async () => {
     expect(signTypedData).not.toHaveBeenCalled()
 })
 
-const USDC_E = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174'
+const USDC_E: Address = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174'
 
-const WBTC = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'
+const WBTC: Address = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'
 
 test('an explicit zero payer and token is refused off local', async () => {
     const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
@@ -459,8 +462,9 @@ test('a local zero quote signs cap 0 with a zero payer and says so', async () =>
 
     expect(signedCap(signTypedData)).toBe(0n)
 
-    const signed: { message: { payer: Address; paymentToken: Address } } =
-        signTypedData.mock.calls[0]?.[0]?.typedData
+    const signed = firstMockArg<{
+        typedData: { message: { payer: Address; paymentToken: Address } }
+    }>(signTypedData).typedData
 
     expect(signed.message.payer).toBe(zeroAddress)
     expect(signed.message.paymentToken).toBe(zeroAddress)
@@ -575,7 +579,7 @@ test('dev on a non-local chain refuses a zero payer and token', async () => {
 test('prod send returns the fee cap for human and json output', async () => {
     const signTypedData = mock(async () => SIG)
 
-    const sendDeps: Partial<AccountSendDeps> = {
+    const sendDeps = {
         readKeystoreBundle: mock(async () => testKeystoreBundle(EOA)),
         decryptSessionKeystore: mock(async () => ({
             sessionPrivateKey:
@@ -674,7 +678,7 @@ function rpcResult(body: string, gas: bigint): string {
 }
 
 test('a colluding RPC cannot raise the gas ceiling above twice the local formula', async () => {
-    const calls = [{ target: TARGET, value: 0n, data: '0x' }]
+    const calls = [{ target: TARGET, value: 0n, data: hex('0x') }]
     const local = localCombinedGasCeiling(calls)
     const { server, url } = await listen((body) => rpcResult(body, 100_000_000n))
 
@@ -693,7 +697,7 @@ test('a colluding RPC cannot raise the gas ceiling above twice the local formula
 })
 
 test('an RPC estimate within twice the local formula is kept', async () => {
-    const calls = [{ target: TARGET, value: 0n, data: '0x' }]
+    const calls = [{ target: TARGET, value: 0n, data: hex('0x') }]
     const local = localCombinedGasCeiling(calls)
     const estimated = 200_000n
     const fromRpc = estimated * 8n + 500_000n

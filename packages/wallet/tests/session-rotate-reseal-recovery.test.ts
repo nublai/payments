@@ -9,9 +9,9 @@ import { expect, mock, test } from 'bun:test'
 import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { type Call } from '@nubl/relayer-client'
-import { executeSignedCalls } from '../src/lib/execute-calls'
 import { createRootKeystore, createSessionKeystore, decryptRootKeystore } from '../src/lib/keystore'
-import { executeSessionRotate, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { type SessionRotateDeps } from '../src/lib/session-rotate'
+import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -117,7 +117,7 @@ function quotePreparer(captured: PreparedInput[]) {
     })
 }
 
-function baseDeps(extra: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
+function baseDeps<E>(extra?: E) {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { encodeFunctionData, getAddress, zeroAddress, type Hex } from 'viem'
-import { executeAccountSwap } from '../src/lib/account-swap'
+import { executeAccountSwap } from './helpers/stub-execute'
 import { PAID_FEE_CAP, resolveIntentPayment } from '../src/lib/intent-payment'
 import type { QuoteSpendBound } from '../src/lib/quote-spend'
 import { computeSessionKeyHash } from '../src/lib/session-common'
@@ -129,7 +129,7 @@ async function installedBound(input: {
                     gasUsed: '1',
                     status: 'success' } })),
             simulateQuoteCalls: async () => {},
-            installQuoteSpendLimit: async (value) => {
+            installQuoteSpendLimit: async (value: { bound: typeof bound }) => {
                 bound = value.bound
 
                 return async () => {}

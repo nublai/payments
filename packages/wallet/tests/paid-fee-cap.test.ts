@@ -12,11 +12,8 @@ afterAll(() => {
 })
 
 import type { Address } from 'viem'
-import {
-    executeAccountSend,
-    type AccountSendDeps,
-    type AccountSendOptions,
-} from '../src/lib/account-send'
+import { type AccountSendDeps, type AccountSendOptions } from '../src/lib/account-send'
+import { executeAccountSend } from './helpers/stub-execute'
 import { confirmedBundle } from './helpers/bundle-status'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -24,7 +21,7 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 /** Wallet-chosen cap. Kept literal so this file loads on the pre-fix commit. */
 const PAID_FEE_CAP = 5_000_000n
 
-const SENDER = '0x1111111111111111111111111111111111111111'
+const SENDER: Address = '0x1111111111111111111111111111111111111111'
 
 const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
 
@@ -36,7 +33,7 @@ function sendDeps(prepareCalls: ReturnType<typeof mock>, signTypedData = mock(as
 )) {
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
 
-    const deps: Partial<AccountSendDeps> = {
+    const deps = {
         readKeystoreBundle: mock(async () => testKeystoreBundle(SENDER)),
         decryptSessionKeystore: mock(async () => ({
             sessionPrivateKey: SESSION_KEY,

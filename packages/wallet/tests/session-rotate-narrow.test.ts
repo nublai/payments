@@ -7,9 +7,9 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { signedPaymentMaxForQuote } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
-import { executeSignedCalls } from '../src/lib/execute-calls'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
-import { executeSessionRotate, sealRotationMarker, type RotationIntentPayload, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { sealRotationMarker, type RotationIntentPayload, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { parseAddr } from './helpers/hex'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -197,7 +197,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
 const ANY_KEYHASH =
     '0x3232323232323232323232323232323232323232323232323232323232323232'
 
-function rotateDeps(overrides: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
+function rotateDeps<E>(overrides?: E) {
     const oldSession = {
         addresses: { session: oldAddress, delegated: account },
         name: 'default',

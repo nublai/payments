@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import type { Address } from 'viem'
-import { executeAccountDelegate, resolveAccountDelegatePassword } from '../src/lib/account-delegate'
+import { resolveAccountDelegatePassword } from '../src/lib/account-delegate'
+import { executeAccountDelegate } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 

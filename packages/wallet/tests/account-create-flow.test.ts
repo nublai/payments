@@ -2,13 +2,13 @@ import { test, expect, mock } from 'bun:test'
 import {
     AccountCreateError,
     assertAccountCreateCanInitialize,
-    executeAccountCreate,
     getDefaultSessionPermissions,
     getDefaultKeystorePath,
     resolveKeystorePath,
     resolveAccountCreatePassword,
     type AccountCreateOptions,
 } from '../src/lib/account-create'
+import { executeAccountCreate } from './helpers/stub-execute'
 import type {
     AnySessionKeystore,
     createSessionKeystore,

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import type { GetKeysResponse } from '@nubl/relayer-client'
-import { executeAccountSwap } from '../src/lib/account-swap'
+import { executeAccountSwap } from './helpers/stub-execute'
 import { parseAddr } from './helpers/hex'
 import type {
     ExecuteSignedCallsDeps,
@@ -246,7 +246,7 @@ function runSwap(input: {
         finalStatus: {
             success: true,
             id: 'bundle-1',
-            status: 'confirmed',
+            status: 'confirmed' as const,
             statusCode: 200,
             receipt: {
                 transactionHash:
@@ -317,7 +317,7 @@ function runSwap(input: {
             executeSignedCalls: executeSignedCalls,
             waitForBundle: mock(async () => ({
                 success: true,
-                status: 'confirmed',
+                status: 'confirmed' as const,
                 statusCode: 200,
             })),
         },

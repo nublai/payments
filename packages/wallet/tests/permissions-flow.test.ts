@@ -10,10 +10,12 @@ import {
     resolveSelectedKey,
     type OnChainPermissionKey,
 } from '../src/lib/permissions-common'
-import { executePermissionsGrant } from '../src/lib/permissions-grant'
-import { executePermissionsList } from '../src/lib/permissions-list'
-import { executePermissionsRevoke } from '../src/lib/permissions-revoke'
-import { executePermissionsShow } from '../src/lib/permissions-show'
+import {
+    executePermissionsGrant,
+    executePermissionsList,
+    executePermissionsRevoke,
+    executePermissionsShow,
+} from './helpers/stub-execute'
 import { confirmedBundle } from './helpers/bundle-status'
 import { parseHex, repeatedHex } from './helpers/hex'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
@@ -101,7 +103,7 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
             password: 'pw',
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
             readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
             readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -152,7 +154,7 @@ test('executePermissionsGrant rejects admin key rule changes', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
                 readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -176,7 +178,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
             readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
             readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -228,7 +230,7 @@ test('executePermissionsRevoke rejects using --all with --rule together', async 
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
                 readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -342,7 +344,7 @@ test('executePermissionsRevoke surfaces send failure diagnostics', async () => {
                 phraseConfirmed: true,
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
                 readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -400,7 +402,7 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
             password: 'pw',
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
             readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
             readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -442,7 +444,7 @@ test('executePermissionsGrant rejects call grant missing target', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
                 readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -467,7 +469,7 @@ test('executePermissionsGrant rejects spend grant missing token', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
                 readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -511,7 +513,7 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
             readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
             readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -557,7 +559,7 @@ test('executePermissionsRevoke returns no-op when key has no permissions and --a
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
             readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
             readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -580,7 +582,7 @@ test('executePermissionsRevoke rejects without --rule or --all', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
                 readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -607,7 +609,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
             readKeystoreBundle: mock(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
             readSessionKeystoreFile: mock(async () => permissionsBundle().session),
@@ -647,7 +649,7 @@ test('executePermissionsRevoke rejects admin key', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
                 readKeystoreBundle: mock(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => permissionsBundle().session),

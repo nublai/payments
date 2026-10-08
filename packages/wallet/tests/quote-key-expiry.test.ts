@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { decodeFunctionData } from 'viem'
+import { decodeFunctionData, type Address, type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import { INTENT_EXPIRY_TTL_SECONDS } from '@nubl/relayer-client'
 import {
@@ -9,9 +9,9 @@ import {
     restoreQuoteKeyExpiryCall,
 } from '../src/lib/quote-key-expiry'
 
-const ACCOUNT = '0x1111111111111111111111111111111111111111'
+const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 
-const PUBLIC_KEY = '0x1234'
+const PUBLIC_KEY: Hex = '0x1234'
 
 test('a never-expiring swap key is bounded to two intent TTLs for a quote', () => {
     expect(INTENT_EXPIRY_TTL_SECONDS).toBe(3600n)

@@ -17,6 +17,7 @@ import {
     encodeSecp256k1Key,
     keyTypeToEnum,
 } from '@nubl/relayer-client'
+import { parseJson } from './helpers/parse-json'
 
 const PORT = 18545
 
@@ -122,7 +123,9 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     })
 
-    const body: { result?: unknown; error?: { message?: string } } = await response.json()
+    const body = parseJson<{ result?: unknown; error?: { message?: string } }>(
+        await response.text(),
+    )
 
     if (!response.ok || body.error) {
         throw new Error(body.error?.message ?? `${method} failed`)

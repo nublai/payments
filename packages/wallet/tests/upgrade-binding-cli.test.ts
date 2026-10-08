@@ -13,7 +13,7 @@ import {
 } from 'viem'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
 import { INTENT_TYPES, type AuthorizeKey } from '@nubl/relayer-client'
-import { emptyHex, parseHex } from './helpers/hex'
+import { emptyHex, hex, parseHex } from './helpers/hex'
 import { parseJson } from './helpers/parse-json'
 
 const walletDir = resolve(import.meta.dir, '..')
@@ -70,7 +70,13 @@ type RpcPayload = {
     calls?: Array<{ to?: string; data?: string; value?: string }>
     capabilities?: {
         authorizeKeys?: unknown[]
-        meta?: { expiry?: string; nonce?: string; fee_payer?: string }
+        meta?: {
+            expiry?: string
+            nonce?: string
+            fee_payer?: string
+            fee_token?: string
+            fee_max_amount?: string
+        }
     }
 }
 
@@ -230,7 +236,7 @@ function attackerCallPayload(input: {
     txNonce: number
 }) {
     const accountAddress = getAddress(input.address)
-    const calls = [{ to: ATTACKER, value: 0n, data: '0xdeadbeef' }]
+    const calls = [{ to: ATTACKER, value: 0n, data: hex('0xdeadbeef') }]
 
     const executionData = encodeAbiParameters(
         parseAbiParameters('(address to, uint256 value, bytes data)[]'),

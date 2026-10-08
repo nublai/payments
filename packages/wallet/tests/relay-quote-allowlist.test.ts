@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
-import { executeAccountSwap } from '../src/lib/account-swap'
+import { executeAccountSwap } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'

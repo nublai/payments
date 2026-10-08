@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
-import { executeAccountSwap } from '../src/lib/account-swap'
+import { executeAccountSwap } from './helpers/stub-execute'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
 import { formatQuotedBuy, formatRelayQuoteCalls, reviewRelayQuote } from '../src/lib/relay-allowlist'
 import { quoteSpendCalls } from '../src/lib/quote-spend'
@@ -14,7 +14,7 @@ import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import type { AccountSwapDeps } from '../src/lib/account-swap'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
-import { parseAddr, parseHex, repeatedHex } from './helpers/hex'
+import { addr, parseAddr, parseHex, repeatedHex } from './helpers/hex'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { typedMock } from './helpers/typed-mock'
 import { confirmedBundle } from './helpers/bundle-status'
@@ -29,24 +29,24 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const USER = '0x1111111111111111111111111111111111111111'
+const USER: Address = '0x1111111111111111111111111111111111111111'
 
 const ATTACKER = '0x2222222222222222222222222222222222222222'
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
 
 const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE'
 
-const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31'
+const DEPOSITORY: Address = '0x4cD00E387622C35bDDB9b4c962C136462338BC31'
 
 const EXECUTION = {
-    orchestrator: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8',
-    delegation: '0x3Be52867f8Dca2911f81076B37921c334dE29551',
-    origin: '0x9999999999999999999999999999999999999999',
+    orchestrator: addr('0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'),
+    delegation: addr('0x3Be52867f8Dca2911f81076B37921c334dE29551'),
+    origin: addr('0x9999999999999999999999999999999999999999'),
     keyHash: repeatedHex('ab', 32),
     nonce: 0n,
 }
@@ -208,7 +208,7 @@ function quoteWith(
     }
 }
 
-function liveQuote(input?: { order?: unknown; orderId?: string; depositData?: Hex }) {
+function liveQuote(input?: { order?: typeof fixture.orderData; orderId?: string; depositData?: Hex }) {
     const order = input?.order ?? fixture.orderData
 
     return quoteWith(
@@ -225,7 +225,13 @@ function liveQuote(input?: { order?: unknown; orderId?: string; depositData?: He
         {
             requestId: fixture.requestId,
             protocol: {
-                v2: { orderId: input?.orderId ?? fixture.orderId, orderData: order },
+                v2: {
+                    orderId: input?.orderId ?? fixture.orderId,
+                    // SAFETY: fixture.orderData is the recorded relay v2 order this suite hashes.
+                    orderData: order as NonNullable<
+                        NonNullable<RelayQuoteResponse['protocol']>['v2']
+                    >['orderData'],
+                },
             },
             details: {
                 currencyIn: { amount: '5000000', amountFormatted: '5.0' },
@@ -260,7 +266,7 @@ function scriptedBalances(input: { before: bigint[]; after: bigint[]; revert?: b
         blockStateCalls: { calls: Array<{ to?: string; data?: string; value?: string }> }[]
     }
 
-    return async (method: string, params: SimulateBlock[]) => {
+    return async (method: string, params: unknown[]) => {
         if (method === 'eth_getBalance' || method === 'eth_call') {
             const wordValue = input.before[reads]
 
@@ -275,7 +281,11 @@ function scriptedBalances(input: { before: bigint[]; after: bigint[]; revert?: b
 
         if (method === 'eth_simulateV1') {
             const block = params[0]
-            const calls = block.blockStateCalls[0]?.calls ?? []
+
+            if (block === undefined) throw new Error('missing simulate block')
+
+            // SAFETY: this stub only reads blockStateCalls from eth_simulateV1 params it invented.
+            const calls = (block as SimulateBlock).blockStateCalls[0]?.calls ?? []
             const probeStart = calls.length - input.after.length
 
             return [

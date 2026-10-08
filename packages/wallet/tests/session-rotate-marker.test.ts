@@ -5,11 +5,14 @@ import { expect, mock, test } from 'bun:test'
 import { decodeFunctionData, getAddress, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
-import { executeAccountUpdatePassword } from '../src/lib/account-update-password'
-import { executePermissionsList } from '../src/lib/permissions-list'
-import { executeSessionList } from '../src/lib/session-list'
-import { executeSessionRevoke } from '../src/lib/session-revoke'
-import { executeSessionRotate, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import {
+    executeAccountUpdatePassword,
+    executePermissionsList,
+    executeSessionList,
+    executeSessionRevoke,
+    executeSessionRotate,
+} from './helpers/stub-execute'
+import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { parseAddr } from './helpers/hex'
@@ -98,7 +101,7 @@ function confirmedBundle(id: string) {
     }
 }
 
-function rotateDeps(keystorePath: string, overrides: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
+function rotateDeps<E>(keystorePath: string, overrides?: E) {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),

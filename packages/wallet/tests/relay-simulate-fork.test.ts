@@ -28,7 +28,11 @@ type JsonRpcPayload<T> = { result?: T; error?: { message?: string } }
 
 type DeployReceipt = { contractAddress?: string; status?: string } | null
 
-async function rpc<T>(url: string, method: string, params: Array<string | { from: string; data: Hex; gas: string }>): Promise<T> {
+async function rpc<T>(
+    url: string,
+    method: string,
+    params: Array<string | { from: string; to?: string; data: Hex; gas: string }>,
+): Promise<T> {
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

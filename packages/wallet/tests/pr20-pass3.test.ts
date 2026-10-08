@@ -12,8 +12,7 @@ import {
     type Hex,
 } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
-import { executeAccountSwap } from '../src/lib/account-swap'
-import { executeSignedCalls } from '../src/lib/execute-calls'
+import { executeAccountSwap, executeSignedCalls } from './helpers/stub-execute'
 import { readKeystoreBundle } from '../src/lib/keystore'
 import { simulateRelayQuote } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
@@ -481,12 +480,13 @@ test('simulation refuses when output logs do not match the balance diff', async 
         blockStateCalls: { calls: Array<{ to?: string; data?: string; value?: string }> }[]
     }
 
-    const request = async (method: string, params: SimulateBlock[]) => {
+    const request = async (method: string, params: unknown[]) => {
         if (method === 'eth_getBalance' || method === 'eth_call') return pad(100n)
 
         if (method === 'eth_simulateV1') {
             const block = params[0]
-            const calls = block?.blockStateCalls[0]?.calls ?? []
+            // SAFETY: this stub only reads blockStateCalls from eth_simulateV1 params it invented.
+            const calls = (block as SimulateBlock | undefined)?.blockStateCalls[0]?.calls ?? []
 
             return [
                 {
@@ -576,7 +576,7 @@ test('the second simulation runs on the calls about to be signed, after prepare 
                 return signature
             }),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            simulateQuoteCalls: async (input) => {
+            simulateQuoteCalls: async (input: { calls: Array<{ data?: Hex }> }) => {
                 order.push('sim')
                 simulated = input.calls[0]?.data
             },

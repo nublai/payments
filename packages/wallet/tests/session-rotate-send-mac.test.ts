@@ -10,9 +10,9 @@ import { decodeFunctionData, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
 import { JsonRpcClientError, type Call } from '@nubl/relayer-client'
-import { executeSignedCalls } from '../src/lib/execute-calls'
+import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { createSessionKeystore, ensureOwnerOnlyDirectory } from '../src/lib/keystore'
-import { executeSessionRotate, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -131,7 +131,7 @@ function decodeCalls(calls: Call[]) {
     }))
 }
 
-function baseDeps(extra: Partial<SessionRotateDeps> = {}): Partial<SessionRotateDeps> {
+function baseDeps<E>(extra?: E) {
     return {
         withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
         readKeystoreBundle: mock(async () => rootBundle()),

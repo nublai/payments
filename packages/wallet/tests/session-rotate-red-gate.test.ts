@@ -9,14 +9,15 @@ import { expect, mock, test } from 'bun:test'
 import { decodeFunctionData, getAddress, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
-import { executeSignedCalls } from '../src/lib/execute-calls'
-import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
+import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
+import { sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerProdDeployments, installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { parseJson } from './helpers/parse-json'
 import type { Call } from '@nubl/relayer-client'
 
-const account = '0x1111111111111111111111111111111111111111'
+const account: Address = '0x1111111111111111111111111111111111111111'
 
 const oldKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
 
@@ -26,7 +27,7 @@ const attackerKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6
 
 const siblingKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a'
 
-const rootPrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+const rootPrivateKey: Hex = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
 const oldAddress = privateKeyToAccount(oldKey).address
 
@@ -42,7 +43,7 @@ const approveSelector = '0x095ea7b3'
 
 const transferSelector = '0xa9059cbb'
 
-const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const usdc: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const keysByAddress: Record<string, Hex> = {
     [oldAddress.toLowerCase()]: oldKey,
@@ -1082,7 +1083,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
         const server = Bun.serve({
             port: 0,
             async fetch(request) {
-                const body: { method?: string; id?: number } = await request.json()
+                const body = parseJson<{ method?: string; id?: number }>(await request.text())
                 methods.push(body.method ?? '')
                 const id = body.id ?? 1
 
@@ -1150,7 +1151,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
                     },
                     {
                         from: account,
-                        calls: [{ target: account, value: 0n, data: '0x1234' }],
+                        calls: [{ target: account, value: 0n, data: '0x1234' as const }],
                         nonce: 1n,
                         signerPrivateKey: rootPrivateKey,
                         chainId: 8453,
@@ -1161,7 +1162,7 @@ test('an RPC that reports chain id 31337 does not unclamp a Base fee', async () 
                         rpcUrl: `http://127.0.0.1:${server.port}`,
                         now: 1_700_000_000n,
                         expiry: 1_700_000_060n,
-                        verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8',
+                        verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as const,
                     },
                 ),
             ).rejects.toThrow(/payment amount exceeds fee cap/)
@@ -1186,7 +1187,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
         const server = Bun.serve({
             port: 0,
             async fetch(request) {
-                const body: { method?: string; id?: number } = await request.json()
+                const body = parseJson<{ method?: string; id?: number }>(await request.text())
                 methods.push(body.method ?? '')
 
                 return Response.json({
@@ -1206,7 +1207,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
 
             const base = {
                 from: account,
-                calls: [{ target: account, value: 0n, data: '0x1234' }],
+                calls: [{ target: account, value: 0n, data: '0x1234' as const }],
                 nonce: 1n,
                 signerPrivateKey: rootPrivateKey,
                 chainId: 8453,
@@ -1217,7 +1218,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                 rpcUrl: `http://127.0.0.1:${server.port}`,
                 now: 1_700_000_000n,
                 expiry: 1_700_000_060n,
-                verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8',
+                verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as const,
             }
 
             const prepare = (quote: string) =>

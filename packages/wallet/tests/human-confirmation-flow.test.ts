@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { encodeFunctionResult, toFunctionSelector, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { executeSessionCreate } from '../src/lib/session-create'
+import { executeSessionCreate as executeSessionCreateImpl } from '../src/lib/session-create'
+import { executeSessionCreate } from './helpers/stub-execute'
 import { accountAbi } from '@nubl/contracts/abis'
 import { ANY_FUNCTION_SELECTOR, ANY_TARGET, INTENT_TYPES } from '@nubl/relayer-client'
 import { computeSessionKeyHash } from '../src/lib/session-common'
@@ -27,10 +28,10 @@ import {
     type LoginSessionKeystoreV2,
     type RelayerSessionKeystoreV2,
 } from '../src/lib/keystore'
-import { parseHex, repeatedHex } from './helpers/hex'
+import { hex, parseHex, repeatedHex } from './helpers/hex'
 import { parseJson } from './helpers/parse-json'
 
-type SessionCreateDepsArg = NonNullable<Parameters<typeof executeSessionCreate>[1]>
+type SessionCreateDepsArg = NonNullable<Parameters<typeof executeSessionCreateImpl>[1]>
 
 const walletDir = resolve(import.meta.dir, '..')
 
@@ -1180,7 +1181,7 @@ function encodeChainView(keys: ScriptedKey[]): { getKeys: Hex; spend: Hex } {
                     expiry: 0,
                     keyType: 0,
                     isSuperAdmin: false,
-                    publicKey: '0x',
+                    publicKey: hex('0x'),
                 })),
                 keys.map((key) => key.hash),
             ],

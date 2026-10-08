@@ -1,9 +1,9 @@
 import { expect, mock, test } from 'bun:test'
 import {
     assertCanExportPrivateKeys,
-    executeAccountExport,
     resolveAccountExportPassword,
 } from '../src/lib/account-export'
+import { executeAccountExport } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 
 function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRootKeystoreV2 {
