@@ -44,8 +44,10 @@ const fixture = JSON.parse(
     readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
 ) as {
     requestId: string
-    orderId: string
+    orderId: Hex
     orderData: {
+        solver: string
+        fees: unknown[]
         output: { payments: { recipient: string }[] }
         inputs: { refunds: { recipient: string }[] }[]
     }
@@ -762,6 +764,8 @@ test('yes does not re-prompt when a later quote would change calldata', async ()
     await ran.result
     expect(ran.confirmQuote).toHaveBeenCalledTimes(1)
     expect(n).toBe(1)
+
+    if (!ran.prepareCalls.mock.calls[0]?.[0].calls[0]) throw new Error('prepareCalls received no call')
     expect(ran.prepareCalls.mock.calls[0]?.[0].calls[0].data).toBe(multicall(USER, zeroAddress, '0x'))
 })
 
@@ -884,7 +888,7 @@ test('refuses a bridge-shaped quote with no order', async () => {
 
 test('refuses an order fee, a foreign solver, and output calls', async () => {
     const fee = patchedOrder((order) => {
-        ;(order as { fees: unknown[] }).fees = [
+        order.fees = [
             {
                 recipientChainId: 'base',
                 recipient: ATTACKER,
@@ -895,7 +899,7 @@ test('refuses an order fee, a foreign solver, and output calls', async () => {
         ]
     })
     const solver = patchedOrder((order) => {
-        ;(order as { solver: string }).solver = ATTACKER
+        order.solver = ATTACKER
     })
     const calls = patchedOrder((order) => {
         ;(order.output as { calls?: string[] }).calls = ['0xdeadbeef']
