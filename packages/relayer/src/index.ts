@@ -14,6 +14,7 @@ import type { MonitorJob, QueueJob } from './types/pool'
 import { validateEnv, validatePoolConfig, getChainIds } from './config'
 import { requestPaidUpgradeReconcile } from './rpc/methods/shared/paid-upgrade'
 import { logger, errorDetails, getErrorMessage } from './lib/logger'
+import { redactRpcResponse, redactSecrets } from './lib/redact'
 import { dispatch } from './rpc/dispatcher'
 import { createMethods } from './rpc/methods'
 import type { RpcContext } from './rpc/types'
@@ -138,7 +139,7 @@ app.post('/', async (c) => {
             return c.body(null, 204)
         }
 
-        return c.json(response)
+        return c.json(redactRpcResponse(response, c.env))
     } catch (error) {
         // JSON parse error
         logger.error(errorDetails(error as Error), 'JSON-RPC parse error')
@@ -172,9 +173,18 @@ app.get('/health', async (c) => {
 // ============================================================================
 
 app.onError((err, c) => {
-    logger.error(errorDetails(err), 'unhandled worker error')
+    logger.error(
+        {
+            errorName: err.name,
+            errorMessage: redactSecrets(err.message, c.env),
+            errorStack: err.stack && redactSecrets(err.stack, c.env),
+        },
+        'unhandled worker error',
+    )
 
-    return c.json({ success: false, error: err.message || 'Internal server error' }, 500)
+    const message = err.message ? redactSecrets(err.message, c.env) : 'Internal server error'
+
+    return c.json({ success: false, error: message }, 500)
 })
 
 app.notFound((c) => {

@@ -1,6 +1,7 @@
 import { env as workerEnv } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import worker from '../src/index'
+import { REDACTED } from '../src/lib/redact'
 import type { JsonRpcRequest } from '../src/rpc/types'
 
 const FAKE_KEY = 'fake-alchemy-key-0123456789abcdef'
@@ -68,7 +69,8 @@ describe('client-facing error text', () => {
             id: 1,
             error: { code: -32004, message: 'Simulation failed' },
         })
-    })
+        expect(JSON.parse(text).error.data.cause).toContain(`URL: ${REDACTED}`)
+    }, 20_000)
 
     it('onError omits the RPC URL and configured secrets', async () => {
         const throwingEnv = { ...env }
