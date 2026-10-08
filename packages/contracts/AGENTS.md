@@ -54,11 +54,11 @@ bun run dev
 # Base Sepolia (dev) - requires --account or env vars
 ./scripts/sh/deploy.sh dev --account deployer
 
-# Base Mainnet (stage) - requires --ledger or --account
-./scripts/sh/deploy.sh stage --ledger "m/44'/60'/0'/0/0" --verify
+# Base Sepolia (stage) - requires --owner and --ledger or --account
+./scripts/sh/deploy.sh stage --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
 
-# Base Mainnet (prod) - requires --ledger or --account
-./scripts/sh/deploy.sh prod --ledger "m/44'/60'/0'/0/0" --verify
+# Base Mainnet (prod) - requires --owner and --ledger or --account
+./scripts/sh/deploy.sh prod --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
 
 # Selective deployment
 ./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler

@@ -63,7 +63,7 @@ Usage: $0 [environment] [options]
 Environments (shortcuts):
   local          Deploy to local Anvil (chains 31337,41337)
   dev            Deploy to Base Sepolia (chain 84532)
-  stage          Deploy to Base Mainnet (chain 8453)
+  stage          Deploy to Base Sepolia (chain 84532)
   prod           Deploy to Base Mainnet (chain 8453)
 
 Or specify chain directly:
@@ -84,13 +84,15 @@ Authentication (one required for non-local):
 Contract Configuration:
   --funder <addr>          SimpleFunder funder address
   --owner <addr>           Owner address for contracts (SimpleFunder, SimpleSettler, etc.)
+                           Required outside local (or DEV_OWNER, STAGE_OWNER, PROD_OWNER).
+                           Must not be the deployer or funder address.
   --relayer-mnemonic <m>   Mnemonic for relayer signers
   --relayer-count <n>      Number of relayer signers (default: 10)
   --skip-relayer           Skip relayer setup phase
 
 LayerZero (optional):
   --lz-endpoint <addr>     LayerZero endpoint address
-  --lz-signer <addr>       LayerZero settler signer
+  --lz-signer <addr>       LayerZero settler signer (required, non-zero, with LayerZeroSettler)
 
 Gas Settings:
   --gas-price <gwei>       Gas price in gwei
@@ -302,21 +304,21 @@ if [[ -n "$ENV_SHORTCUT" ]]; then
             CONTEXT="${CONTEXT:-dev}"
             RELAYER_MNEMONIC="${RELAYER_MNEMONIC:-${DEV_RELAYER_MNEMONIC:-}}"
             FUNDER="${FUNDER:-${DEV_FUNDER:-}}"
-            OWNER="${OWNER:-${DEV_DEPLOYER_ADDRESS:-}}"
+            OWNER="${OWNER:-${DEV_OWNER:-}}"
             ;;
         stage)
-            CHAINS="${CHAINS:-8453}"
+            CHAINS="${CHAINS:-84532}"
             CONTEXT="${CONTEXT:-stage}"
             RELAYER_MNEMONIC="${RELAYER_MNEMONIC:-${STAGE_RELAYER_MNEMONIC:-}}"
             FUNDER="${FUNDER:-${STAGE_FUNDER:-}}"
-            OWNER="${OWNER:-${STAGE_DEPLOYER_ADDRESS:-}}"
+            OWNER="${OWNER:-${STAGE_OWNER:-}}"
             ;;
         prod)
             CHAINS="${CHAINS:-8453}"
             CONTEXT="${CONTEXT:-prod}"
             RELAYER_MNEMONIC="${RELAYER_MNEMONIC:-${PROD_RELAYER_MNEMONIC:-}}"
             FUNDER="${FUNDER:-${PROD_FUNDER:-}}"
-            OWNER="${OWNER:-${PROD_DEPLOYER_ADDRESS:-}}"
+            OWNER="${OWNER:-${PROD_OWNER:-}}"
             ;;
     esac
 fi
@@ -462,7 +464,7 @@ deploy_to_chain() {
 
     # LayerZero
     export LZ_ENDPOINT="${LZ_ENDPOINT:-}"
-    export LZ_SETTLER_SIGNER="${LZ_SIGNER:-0x0000000000000000000000000000000000000000}"
+    export LZ_SETTLER_SIGNER="${LZ_SIGNER:-}"
 
     # Each value is one array element. Spaces and metacharacters are not evaluated.
     # Foundry 1.5 selects the profile from FOUNDRY_PROFILE, set in clear_foundry_env.
@@ -505,7 +507,20 @@ deploy_to_chain() {
 
     refuse_bytecode_changing_flags "${forge_cmd[@]}"
 
-    echo -e "${YELLOW}Command:$(printf ' %q' "${forge_cmd[@]}")${NC}"
+    local -a shown_cmd=()
+    local arg mask_next=""
+    for arg in "${forge_cmd[@]}"; do
+        if [[ -n "$mask_next" ]]; then
+            shown_cmd+=("***")
+            mask_next=""
+            continue
+        fi
+        shown_cmd+=("$arg")
+        case "$arg" in
+            --private-key|--password) mask_next="true" ;;
+        esac
+    done
+    echo -e "${YELLOW}Command:$(printf ' %q' "${shown_cmd[@]}")${NC}"
     echo ""
 
     "${forge_cmd[@]}"
@@ -529,6 +544,44 @@ echo ""
 
 # Parse chain list
 IFS=',' read -ra CHAIN_ARRAY <<< "$CHAINS"
+
+# The deployer behind --private-key, --account, or --ledger is not known here;
+# DeployUnified refuses an owner equal to msg.sender.
+refuse_unsafe_owner() {
+    local chain_id needs_owner=""
+    for chain_id in "${CHAIN_ARRAY[@]}"; do
+        chain_id="${chain_id//[[:space:]]/}"
+        if [[ "$chain_id" != "31337" && "$chain_id" != "41337" ]]; then
+            needs_owner="true"
+        fi
+    done
+    [[ -n "$needs_owner" ]] || return 0
+    if [[ -z "$OWNER" ]]; then
+        echo -e "${RED}Error: owner is not set. Pass --owner <addr> (or DEV_OWNER, STAGE_OWNER, PROD_OWNER) outside local.${NC}" >&2
+        exit 1
+    fi
+    if [[ -n "$FUNDER" && "${OWNER,,}" == "${FUNDER,,}" ]]; then
+        echo -e "${RED}Error: owner equals the funder address. The owner must be a separate address.${NC}" >&2
+        exit 1
+    fi
+    if [[ -n "$SENDER" && "${OWNER,,}" == "${SENDER,,}" ]]; then
+        echo -e "${RED}Error: owner equals the deployer (--sender) address. The owner must be a separate address.${NC}" >&2
+        exit 1
+    fi
+}
+
+refuse_zero_lz_signer() {
+    if [[ -z "$LZ_ENDPOINT" && ",${CONTRACTS//[[:space:]]/}," != *",LayerZeroSettler,"* ]]; then
+        return 0
+    fi
+    if [[ "${LZ_SIGNER,,}" =~ ^(0x)?0*$ ]]; then
+        echo -e "${RED}Error: LayerZero signer is the zero address. Pass --lz-signer <addr>.${NC}" >&2
+        exit 1
+    fi
+}
+
+refuse_unsafe_owner
+refuse_zero_lz_signer
 
 # Show deployment plan
 echo -e "${YELLOW}Deployment Plan:${NC}"

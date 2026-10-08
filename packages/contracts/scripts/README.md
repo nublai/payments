@@ -50,7 +50,7 @@ Usage: ./scripts/sh/deploy.sh [environment] [options]
 Environments (shortcuts):
   local          Deploy to local Anvil (chains 31337,41337)
   dev            Deploy to Base Sepolia (chain 84532)
-  stage          Deploy to Base Mainnet (chain 8453)
+  stage          Deploy to Base Sepolia (chain 84532)
   prod           Deploy to Base Mainnet (chain 8453)
 
 Or specify chain directly:
@@ -78,7 +78,7 @@ Contract Configuration:
 
 LayerZero (optional):
   --lz-endpoint <addr>     LayerZero endpoint address
-  --lz-signer <addr>       LayerZero settler signer
+  --lz-signer <addr>       LayerZero settler signer (required, non-zero, with LayerZeroSettler)
 
 Gas Settings:
   --gas-price <gwei>       Gas price in gwei
@@ -110,8 +110,8 @@ Compiler:
 # Base Sepolia (dev) with keystore
 ./scripts/sh/deploy.sh dev --account deployer
 
-# Base Mainnet (stage) with Ledger and verification
-./scripts/sh/deploy.sh stage --ledger "m/44'/60'/0'/0/0" --verify
+# Base Sepolia (stage) with Ledger and verification
+./scripts/sh/deploy.sh stage --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
 
 # Deploy to Optimism
 ./scripts/sh/deploy.sh --chain 10 --account deployer
@@ -294,14 +294,14 @@ DEV_RELAYER_MNEMONIC=your dev mnemonic here
 # SimpleFunder funder address
 DEV_FUNDER=0x...
 
-# Deployer/owner address for contracts
-DEV_DEPLOYER_ADDRESS=0x...
+# Contract owner. Required outside local; must not be the deployer or funder address
+DEV_OWNER=0x...
 
 # RPC URL (optional, has default)
 RPC_84532=https://sepolia.base.org
 ```
 
-#### Stage Environment (Base Mainnet)
+#### Stage Environment (Base Sepolia)
 
 ```bash
 # Relayer mnemonic for stage
@@ -310,11 +310,11 @@ STAGE_RELAYER_MNEMONIC=your stage mnemonic here
 # SimpleFunder funder address
 STAGE_FUNDER=0x...
 
-# Deployer/owner address for contracts
-STAGE_DEPLOYER_ADDRESS=0x...
+# Contract owner. Required outside local; must not be the deployer or funder address
+STAGE_OWNER=0x...
 
 # RPC URL (optional, has default)
-RPC_8453=https://mainnet.base.org
+RPC_84532=https://sepolia.base.org
 ```
 
 #### Prod Environment (Base Mainnet)
@@ -326,8 +326,8 @@ PROD_RELAYER_MNEMONIC=your prod mnemonic here
 # SimpleFunder funder address
 PROD_FUNDER=0x...
 
-# Deployer/owner address for contracts
-PROD_DEPLOYER_ADDRESS=0x...
+# Contract owner. Required outside local; must not be the deployer or funder address
+PROD_OWNER=0x...
 
 # RPC URL (optional, has default)
 RPC_8453=https://mainnet.base.org
@@ -516,17 +516,17 @@ Ensure your `.env` file is properly configured for the target environment, or pr
 For dev:
 - `DEV_RELAYER_MNEMONIC` or `--relayer-mnemonic`
 - `DEV_FUNDER` or `--funder`
-- `DEV_DEPLOYER_ADDRESS` or `--owner`
+- `DEV_OWNER` or `--owner`
 
 For stage:
 - `STAGE_RELAYER_MNEMONIC` or `--relayer-mnemonic`
 - `STAGE_FUNDER` or `--funder`
-- `STAGE_DEPLOYER_ADDRESS` or `--owner`
+- `STAGE_OWNER` or `--owner`
 
 For prod:
 - `PROD_RELAYER_MNEMONIC` or `--relayer-mnemonic`
 - `PROD_FUNDER` or `--funder`
-- `PROD_DEPLOYER_ADDRESS` or `--owner`
+- `PROD_OWNER` or `--owner`
 
 Alternatively, skip relayer setup:
 ```bash
