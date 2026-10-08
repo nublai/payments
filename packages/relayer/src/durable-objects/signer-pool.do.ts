@@ -629,10 +629,18 @@ export class SignerPoolDO extends DurableObject<Env> {
             )
             .toArray()
         const row = rows[0]
-        if (!row || row.day_start !== dayStart) {
+        if (!row) {
             return { gasSpent: 0, heldGas: 0, failures: 0 }
         }
-        return { gasSpent: row.gas, heldGas: row.held, failures: row.failures }
+
+        // Holds reserved on an earlier day are still in flight. They carry
+        // into today's books, where they are settled or released.
+        const today = row.day_start === dayStart
+        return {
+            gasSpent: today ? row.gas : 0,
+            heldGas: row.held,
+            failures: today ? row.failures : 0,
+        }
     }
 
     private writeGasBooks(
