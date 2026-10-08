@@ -8,6 +8,22 @@ import {
     isFillTransactionUnsupportedError,
 } from '../src/durable-objects/signer.do'
 
+type SignAndBroadcastHost<EnsureClients> = {
+    ensureClients: EnsureClients
+    signAndBroadcastPrepared: (
+        this: { ensureClients: EnsureClients },
+        txParams: {
+            to: string
+            data: `0x${string}`
+            value: bigint
+            authorizationList?: SignedAuthorization[]
+        },
+        nonce: number,
+        chainId: number,
+        feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
+    ) => Promise<`0x${string}`>
+}
+
 describe('signer broadcast fallback helpers', () => {
     afterEach(() => {
         vi.restoreAllMocks()
@@ -108,16 +124,13 @@ describe('signer broadcast fallback helpers', () => {
                 account,
             })
 
-            const signer = Object.create(SignerDO.prototype) as {
-                ensureClients: typeof ensureClients
-            }
+            const signer = Object.create(SignerDO.prototype) as SignAndBroadcastHost<
+                typeof ensureClients
+            >
 
             signer.ensureClients = ensureClients
 
-            const signAndBroadcastPrepared = Reflect.get(
-                SignerDO.prototype,
-                'signAndBroadcastPrepared',
-            ) as (
+            const signAndBroadcastPrepared = signer.signAndBroadcastPrepared as (
                 this: { ensureClients: typeof ensureClients },
                 txParams: {
                     to: string
@@ -167,16 +180,13 @@ describe('signer broadcast fallback helpers', () => {
                 account,
             })
 
-            const signer = Object.create(SignerDO.prototype) as {
-                ensureClients: typeof ensureClients
-            }
+            const signer = Object.create(SignerDO.prototype) as SignAndBroadcastHost<
+                typeof ensureClients
+            >
 
             signer.ensureClients = ensureClients
 
-            const signAndBroadcastPrepared = Reflect.get(
-                SignerDO.prototype,
-                'signAndBroadcastPrepared',
-            ) as (
+            const signAndBroadcastPrepared = signer.signAndBroadcastPrepared as (
                 this: { ensureClients: typeof ensureClients },
                 txParams: { to: string; data: `0x${string}`; value: bigint },
                 nonce: number,
