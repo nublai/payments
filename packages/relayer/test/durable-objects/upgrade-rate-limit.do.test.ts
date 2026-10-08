@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 describe('SignerPoolDO upgrade rate limit', () => {
     it('allows five upgrades for one account and rejects the next', async () => {
@@ -385,5 +385,79 @@ describe('SignerPoolDO upgrade rate limit', () => {
         })
 
         expect(await tracked.json()).toMatchObject({ allowed: true, held: 500000 })
+    })
+
+    it('keeps holds reserved before UTC midnight on the books of the next day', async () => {
+        const poolName = 'pool-8453-paid-gas-midnight'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+
+        const post = async (body: { action: string; gas: string; hold?: string }) => {
+            const response = await stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind: 'paid-upgrade', chainId: 8453, ...body }),
+            })
+
+            return response.json()
+        }
+
+        const midnightMs = Date.UTC(2026, 9, 9)
+        const now = vi.spyOn(Date, 'now')
+
+        try {
+            now.mockReturnValue(midnightMs - 1_000)
+            expect(await post({ action: 'reserve-gas', gas: '500000' })).toMatchObject({
+                allowed: true,
+                held: 500000,
+            })
+            expect(await post({ action: 'reserve-gas', gas: '500000' })).toMatchObject({
+                allowed: true,
+                held: 1000000,
+            })
+
+            now.mockReturnValue(midnightMs + 1_000)
+            expect(
+                await post({ action: 'settle-gas', hold: '500000', gas: '300000' }),
+            ).toMatchObject({ allowed: true, gas: 300000, held: 500000 })
+
+            for (const held of [1000000, 1500000]) {
+                expect(await post({ action: 'reserve-gas', gas: '500000' })).toMatchObject({
+                    allowed: true,
+                    gas: 300000,
+                    held,
+                })
+            }
+
+            expect(await post({ action: 'reserve-gas', gas: '500000' })).toMatchObject({
+                allowed: false,
+                gas: 300000,
+                held: 1500000,
+            })
+
+            for (const held of [1000000, 500000, 0]) {
+                expect(await post({ action: 'release-gas', gas: '500000' })).toMatchObject({
+                    allowed: true,
+                    gas: 300000,
+                    held,
+                })
+            }
+
+            for (const held of [500000, 1000000, 1500000]) {
+                expect(await post({ action: 'reserve-gas', gas: '500000' })).toMatchObject({
+                    allowed: true,
+                    gas: 300000,
+                    held,
+                })
+            }
+
+            expect(await post({ action: 'reserve-gas', gas: '500000' })).toMatchObject({
+                allowed: false,
+                gas: 300000,
+                held: 1500000,
+            })
+        } finally {
+            now.mockRestore()
+        }
     })
 })

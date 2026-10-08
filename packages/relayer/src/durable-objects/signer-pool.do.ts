@@ -710,11 +710,20 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         const row = rows[0]
 
-        if (!row || row.day_start !== dayStart) {
+        if (!row) {
             return { gasSpent: 0, heldGas: 0, failures: 0 }
         }
 
-        return { gasSpent: row.gas, heldGas: row.held, failures: row.failures }
+        // Holds reserved on an earlier day are still in flight. They carry
+        // into today's books, where they are settled or released.
+        // A hold whose release never arrives (worker crash, swallowed release, or failed receipt wait and enqueue) stays until someone resets it by hand.
+        const today = row.day_start === dayStart
+
+        return {
+            gasSpent: today ? row.gas : 0,
+            heldGas: row.held,
+            failures: today ? row.failures : 0,
+        }
     }
 
     private writeGasBooks(

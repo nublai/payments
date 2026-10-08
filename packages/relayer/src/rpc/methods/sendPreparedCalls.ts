@@ -40,6 +40,7 @@ import {
     chainUsdcAddress,
     enqueuePaidUpgradeReceipt,
     assertPaidUpgradeOidcOwner,
+    PAID_UPGRADE_GAS_HOLD,
     paidUpgradeFieldsMatch,
     paidUpgradeFromQuote,
     paidUpgradeMaxPayment,
@@ -351,6 +352,15 @@ export async function handleSendPreparedCalls(
                 paidUpgrade.reservedAt,
             )
             await releasePaidUpgradeGas(env, chainId)
+        } else if (paidUpgrade) {
+            try {
+                await settlePaidUpgradeGas(env, chainId, { gasUsed: PAID_UPGRADE_GAS_HOLD, failure: false })
+            } catch (settleError) {
+                logger.error(
+                    { error: settleError, eoa: intent.eoa },
+                    'paid upgrade hold not settled after attempted broadcast',
+                )
+            }
         }
 
         logger.warn({ eoa: intent.eoa, error: error.error }, 'intent execution failed')
