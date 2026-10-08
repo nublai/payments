@@ -43,3 +43,7 @@ jobs:
       - name: Release follow-up checks
         working-directory: packages/contracts
         run: ./scripts/sh/test-release-followups.sh
+
+      - name: Deploy default checks
+        working-directory: packages/contracts
+        run: ./scripts/sh/test-deploy-defaults.sh
