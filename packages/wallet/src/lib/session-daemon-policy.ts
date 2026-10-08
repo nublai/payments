@@ -11,7 +11,7 @@ import {
     type EnvName,
 } from './network-config'
 import { PAID_FEE_CAP, QuotePaymentRejected, reviewQuotePayment } from './intent-payment'
-import { RelayQuoteRejected, reviewRelayIntentCalls } from './relay-allowlist'
+import { RelayQuoteRejected, relayEntryPoints, reviewRelayIntentCalls } from './relay-allowlist'
 import { isRecord } from './type-guards'
 
 export const ORCHESTRATOR_DOMAIN_NAME = 'Orchestrator'
@@ -41,6 +41,22 @@ export class PhraseLessSignError extends Error {
 
 function fail(message: string): never {
     throw new PhraseLessSignError(message)
+}
+
+export type SwapSignRefusalCode = 'MULTICHAIN_INTENT' | 'PRE_CALLS' | 'FUNDS_OUT' | 'SETTLER_CALL'
+
+export class SwapSignRefused extends Error {
+    readonly code: SwapSignRefusalCode
+
+    constructor(code: SwapSignRefusalCode, message: string) {
+        super(message)
+        this.name = 'SwapSignRefused'
+        this.code = code
+    }
+}
+
+function refuse(code: SwapSignRefusalCode, message: string): never {
+    throw new SwapSignRefused(code, message)
 }
 
 function asBigint(value: unknown, label: string): bigint {
@@ -250,10 +266,71 @@ export type SwapPaymentBounds = {
     recipient?: Address
 }
 
+const ERC20_TRANSFER_SELECTORS: Record<string, string> = {
+    '0xa9059cbb': 'transfer',
+    '0x23b872dd': 'transferFrom',
+}
+
+function settlerAddresses(chainId: number): Set<string> {
+    const settlers = new Set<string>()
+    for (const env of ['prod', 'stage', 'dev'] as const) {
+        const settler = getAddressesWithFallback(env, chainId)?.simpleSettler
+        if (settler && settler !== zeroAddress) settlers.add(settler.toLowerCase())
+    }
+    return settlers
+}
+
+function assertSingleChainSwapShape(message: Record<string, unknown>): void {
+    const settler =
+        message.settler === undefined ? zeroAddress : asAddress(message.settler, 'settler')
+    if (
+        message.multichain !== false ||
+        !Array.isArray(message.encodedFundTransfers) ||
+        message.encodedFundTransfers.length !== 0 ||
+        settler !== zeroAddress
+    ) {
+        refuse(
+            'MULTICHAIN_INTENT',
+            'Swap session refused a multichain or cross-chain intent. Only a single-chain swap is signed.',
+        )
+    }
+    if (!Array.isArray(message.encodedPreCalls) || message.encodedPreCalls.length !== 0) {
+        refuse('PRE_CALLS', 'Swap session refused an intent with pre-calls.')
+    }
+}
+
+function assertNoFundsOut(
+    chainId: number,
+    calls: readonly { to: Address; value: bigint; data: Hex }[],
+): void {
+    const settlers = settlerAddresses(chainId)
+    const relayTargets = new Set(relayEntryPoints(chainId).map((entry) => entry.target.toLowerCase()))
+    for (const call of calls) {
+        const target = call.to.toLowerCase()
+        if (settlers.has(target)) {
+            refuse('SETTLER_CALL', `Swap session refused a call to the settler ${call.to}.`)
+        }
+        const transfer = ERC20_TRANSFER_SELECTORS[selectorOf(call.data)]
+        if (transfer) {
+            refuse(
+                'FUNDS_OUT',
+                `Swap session refused ${transfer} on ${call.to}. A swap does not transfer tokens out.`,
+            )
+        }
+        if (call.value !== 0n && !relayTargets.has(target)) {
+            refuse(
+                'FUNDS_OUT',
+                `Swap session refused native value ${call.value} sent to ${call.to}, which is not a Relay contract.`,
+            )
+        }
+    }
+}
+
 /**
- * A phrase-confirmed swap session may sign only an Orchestrator intent whose
- * calls pass the relay quote reviewer and whose payment is the quote fee in
- * that chain's USDC, at most 5 USDC, paid to the expected recipient.
+ * A phrase-confirmed swap session may sign only a single-chain Orchestrator
+ * intent with no pre-calls, fund transfers, or settler, whose calls pass the
+ * relay quote reviewer and whose payment is the quote fee in that chain's
+ * USDC, at most 5 USDC, paid to the expected recipient.
  * Any other typed data is refused.
  */
 export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaymentBounds): void {
@@ -289,6 +366,7 @@ export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaym
     if (!isRecord(message) || !Array.isArray(message.calls)) {
         fail('Swap session refused an intent whose calls could not be read')
     }
+    assertSingleChainSwapShape(message)
     const user = asAddress(message.eoa, 'eoa')
     const calls: { to: Address; value: bigint; data: Hex }[] = []
     for (const call of message.calls) {
@@ -304,6 +382,7 @@ export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaym
     if (calls.length === 0) {
         fail('Swap session refused an intent with no calls')
     }
+    assertNoFundsOut(chainId, calls)
     try {
         reviewRelayIntentCalls({ chainId, user, calls })
     } catch (error) {
