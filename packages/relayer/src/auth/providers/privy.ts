@@ -74,7 +74,7 @@ async function upgradeAccountsFromRequest(
         .json()
         .catch(() => undefined)
 
-    const items = Array.isArray(body) ? body : body == null ? [] : [body]
+    const items = Array.isArray(body) ? body : (body === null || body === undefined) ? [] : [body]
     const accounts: Address[] = []
     let invalid = false
 

@@ -78,14 +78,15 @@ export function serializeContext(context: PrepareCallsContext): string {
 export function deserializeContext(serialized: string): PrepareCallsContext {
     const parsed: unknown = JSON.parse(serialized)
 
-    if (parsed == null || typeof parsed !== 'object' || !('quote' in parsed)) {
+    if (parsed === null || parsed === undefined || typeof parsed !== 'object' || !('quote' in parsed)) {
         throw new Error('Invalid PrepareCallsContext: expected { quote: { quotes: [...] } }')
     }
 
     const obj = parsed as Record<string, unknown>
 
     if (
-        obj.quote == null ||
+        obj.quote === null ||
+        obj.quote === undefined ||
         typeof obj.quote !== 'object' ||
         !('quotes' in obj.quote) ||
         !Array.isArray((obj.quote as Record<string, unknown>).quotes)
