@@ -86,7 +86,7 @@ else
 fi
 
 # A non-local deploy with no mnemonic must not pick up the test mnemonic as a default.
-run_deploy - dev --private-key 0x01 --dry-run || true
+run_deploy - dev --private-key 0x01 --dry-run --owner 0x000000000000000000000000000000000000a11c || true
 if grep -q "forge script \[84532\] mnemonic=$" "$tmp/calls"; then
     pass "dev deploy has no default mnemonic"
 else

@@ -103,20 +103,20 @@ contract DeployUnified is DeployBase, ReleaseRuntime {
 
         // SimpleFunder
         address funderAddr = _getEnvAddressOrDefault("FUNDER", deployerAddr);
-        address funderOwner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
+        address funderOwner = _owner(deployerAddr);
         bytes memory funderArgs = abi.encode(funderAddr, funderOwner);
         deployer.addWithArgs("SimpleFunder", funderArgs);
 
         // SimpleSettler
-        address settlerOwner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
+        address settlerOwner = _owner(deployerAddr);
         bytes memory settlerArgs = abi.encode(settlerOwner);
         deployer.addWithArgs("SimpleSettler", settlerArgs);
 
         // LayerZeroSettler (optional - only if endpoint is configured)
         bytes memory lzArgs;
         if (vm.envOr("LZ_ENDPOINT", address(0)) != address(0)) {
-            address lzOwner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
-            address lzSigner = vm.envAddress("LZ_SETTLER_SIGNER");
+            address lzSigner = _lzSigner();
+            address lzOwner = _owner(deployerAddr);
             lzArgs = abi.encode(_expectedLzEndpoint(), lzOwner, lzSigner);
             deployer.addWithArgs("LayerZeroSettler", lzArgs);
         }
@@ -156,6 +156,27 @@ contract DeployUnified is DeployBase, ReleaseRuntime {
         address defaultAddr
     ) internal view returns (address) {
         return vm.envOr(key, defaultAddr);
+    }
+
+    /// @notice Owner for SimpleFunder, SimpleSettler, and LayerZeroSettler (DEPLOYER_ADDRESS).
+    /// @dev Outside local chains the owner must be set and must not be the hot deployer
+    /// or funder key. Local Anvil defaults the owner to the deployer.
+    function _owner(address deployerAddr) internal view returns (address owner) {
+        owner = vm.envOr("DEPLOYER_ADDRESS", address(0));
+        if (block.chainid == 31_337 || block.chainid == 41_337) {
+            return owner == address(0) ? deployerAddr : owner;
+        }
+        require(owner != address(0), "owner not set: pass --owner outside local");
+        require(owner != deployerAddr, "owner equals the deployer address");
+        require(
+            owner != _getEnvAddressOrDefault("FUNDER", deployerAddr),
+            "owner equals the funder address"
+        );
+    }
+
+    function _lzSigner() internal view returns (address signer) {
+        signer = vm.envOr("LZ_SETTLER_SIGNER", address(0));
+        require(signer != address(0), "LZ_SETTLER_SIGNER is the zero address");
     }
 
     /// @notice Setup relayer if RELAYER_MNEMONIC is configured
@@ -332,7 +353,7 @@ contract DeployUnified is DeployBase, ReleaseRuntime {
         // SimpleFunder - uses env vars
         else if (name.eq("SimpleFunder")) {
             address funder = _getEnvAddressOrDefault("FUNDER", deployerAddr);
-            address owner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
+            address owner = _owner(deployerAddr);
             bytes memory args = abi.encode(funder, owner);
             deployer.addWithArgs("SimpleFunder", args);
             deployer.deployArgsQueue(deployerAddr);
@@ -343,7 +364,7 @@ contract DeployUnified is DeployBase, ReleaseRuntime {
         }
         // SimpleSettler - uses env vars
         else if (name.eq("SimpleSettler")) {
-            address owner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
+            address owner = _owner(deployerAddr);
             bytes memory args = abi.encode(owner);
             deployer.addWithArgs("SimpleSettler", args);
             deployer.deployArgsQueue(deployerAddr);
@@ -355,8 +376,8 @@ contract DeployUnified is DeployBase, ReleaseRuntime {
         // LayerZeroSettler - uses env vars
         else if (name.eq("LayerZeroSettler")) {
             address endpoint = _expectedLzEndpoint();
-            address owner = _getEnvAddressOrDefault("DEPLOYER_ADDRESS", deployerAddr);
-            address signer = vm.envAddress("LZ_SETTLER_SIGNER");
+            address signer = _lzSigner();
+            address owner = _owner(deployerAddr);
             bytes memory args = abi.encode(endpoint, owner, signer);
             deployer.addWithArgs("LayerZeroSettler", args);
             deployer.deployArgsQueue(deployerAddr);

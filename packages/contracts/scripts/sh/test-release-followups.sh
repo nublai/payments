@@ -308,7 +308,7 @@ foundry_env_unset() {
         FOUNDRY_OUT=/tmp/out-redirect \
         DAPP_OPTIMIZER_RUNS=500 \
         "$tmp/scripts/sh/deploy.sh" \
-        --chain 8453 --dry-run --skip-relayer \
+        --chain 8453 --dry-run --skip-relayer --owner 0x000000000000000000000000000000000000a11c \
         --rpc http://127.0.0.1:1 \
         --private-key 0xabc >"$tmp/deploy.out" 2>"$tmp/deploy.err"
     code=$?
@@ -406,7 +406,7 @@ quoted_forge_argv() {
     set +e
     PATH="$tmp/bin:$PATH" \
         "$tmp/scripts/sh/deploy.sh" \
-        --chain 8453 --dry-run --skip-relayer \
+        --chain 8453 --dry-run --skip-relayer --owner 0x000000000000000000000000000000000000a11c \
         --rpc 'http://127.0.0.1:1 --optimize false' \
         --private-key "0xabc;\$(touch $marker) --optimizer-runs 1" \
         --sender '0x1111111111111111111111111111111111111111 --via-ir' \
@@ -476,7 +476,7 @@ bytecode_flags_refused() {
     set +e
     PATH="$tmp/bin:$PATH" \
         "$tmp/scripts/sh/deploy.sh" \
-        --chain 8453 --dry-run --skip-relayer \
+        --chain 8453 --dry-run --skip-relayer --owner 0x000000000000000000000000000000000000a11c \
         --rpc http://127.0.0.1:1 \
         --private-key --optimize \
         >"$tmp/deploy.out" 2>"$tmp/deploy.err"
@@ -740,7 +740,7 @@ PY
     set +e
     RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
         --chain 8453 --rpc "$rpc" --context prod \
-        --contracts Account --skip-relayer --private-key "$pk" \
+        --contracts Account --skip-relayer --private-key "$pk" --owner 0x000000000000000000000000000000000000a11c \
         >"$tmp/mismatch.out" 2>"$tmp/mismatch.err"
     code=$?
     set -e
@@ -786,7 +786,7 @@ PY
     set +e
     RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
         --chain 8453 --rpc "$rpc" --context prod \
-        --contracts Account --skip-relayer --private-key "$pk" \
+        --contracts Account --skip-relayer --private-key "$pk" --owner 0x000000000000000000000000000000000000a11c \
         >"$tmp/deploy.out" 2>"$tmp/deploy.err"
     code=$?
     set -e
@@ -930,7 +930,7 @@ wrong_orchestrator_account_refused() {
     set +e
     RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
         --chain 8453 --rpc "$rpc" --context prod \
-        --contracts AccountProxy --skip-relayer --private-key "$pk" \
+        --contracts AccountProxy --skip-relayer --private-key "$pk" --owner 0x000000000000000000000000000000000000a11c \
         >"$tmp/proxy.out" 2>"$tmp/proxy.err"
     code=$?
     set -e
@@ -960,7 +960,7 @@ wrong_orchestrator_account_refused() {
     set +e
     RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
         --chain 8453 --rpc "$rpc" --context prod \
-        --contracts SimpleSettler --skip-relayer --private-key "$pk" \
+        --contracts SimpleSettler --skip-relayer --private-key "$pk" --owner 0x000000000000000000000000000000000000a11c \
         >"$tmp/post.out" 2>"$tmp/post.err"
     code=$?
     set -e
@@ -994,7 +994,7 @@ wrong_endpoint_lz_settler_refused() {
     local port=18555
     local rpc="http://127.0.0.1:${port}"
     local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-    local owner="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    local owner="0x000000000000000000000000000000000000a11c"
     local signer="0x0000000000000000000000000000000000005151"
     local endpoint="0x1a44076050125825900e736c501f859c50fE728c"
     local bad_endpoint="0x2222222222222222222222222222222222222222"
