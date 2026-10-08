@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from 'bun:test'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
+import { connect } from 'node:net'
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -10,7 +11,11 @@ import { executeSessionCreate } from '../src/lib/session-create'
 import { accountAbi } from '@nubl/contracts/abis'
 import { ANY_FUNCTION_SELECTOR, ANY_TARGET, INTENT_TYPES } from '@nubl/relayer-client'
 import { computeSessionKeyHash } from '../src/lib/session-common'
-import type { DaemonTypedData } from '../src/lib/session-daemon-protocol'
+import {
+    parseDaemonResponse,
+    type DaemonResponse,
+    type DaemonTypedData,
+} from '../src/lib/session-daemon-protocol'
 import {
     createRootKeystore,
     createSessionKeystore,
@@ -836,6 +841,59 @@ async function startDaemon(socketPath: string) {
     }
 }
 
+/** DaemonTypedData cannot express these partial Intent types; an untyped local caller of the socket can. */
+const partialIntentSignRequest = JSON.stringify({
+    id: 'partial-intent',
+    method: 'sign',
+    params: {
+        sessionName: 'default',
+        typedData: {
+            domain: {
+                name: 'Orchestrator',
+                version: '0.5.5',
+                chainId: 31337,
+                verifyingContract: '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC',
+            },
+            types: {
+                EIP712Domain: [
+                    { name: 'name', type: 'string' },
+                    { name: 'version', type: 'string' },
+                    { name: 'chainId', type: 'uint256' },
+                    { name: 'verifyingContract', type: 'address' },
+                ],
+                Intent: [
+                    { name: 'nonce', type: 'uint256' },
+                    { name: 'paymentToken', type: 'address' },
+                    { name: 'paymentMaxAmount', type: 'uint256' },
+                ],
+            },
+            primaryType: 'Intent',
+            message: {
+                nonce: '$bigint:1',
+                paymentToken: usdc,
+                paymentMaxAmount: '$bigint:1000000000',
+            },
+        },
+    },
+})
+
+function signRaw(socketPath: string, line: string): Promise<DaemonResponse> {
+    return new Promise((resolvePromise, reject) => {
+        const socket = connect(socketPath, () => socket.write(`${line}\n`))
+        let buffer = ''
+
+        socket.on('data', (chunk) => {
+            buffer += chunk.toString('utf8')
+            const newline = buffer.indexOf('\n')
+
+            if (newline === -1) return
+            socket.destroy()
+            resolvePromise(parseDaemonResponse(buffer.slice(0, newline)))
+        })
+        socket.on('error', reject)
+    })
+}
+
 test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator intent', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tw-h3-unlock-'))
     const socketPath = join(dir, 'session.sock')
@@ -1342,8 +1400,11 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
         if (listed?.ok) {
             expect(listed.result.keys.map((key) => key.name)).toContain('default')
         }
-        const signed = await daemon.client.sign('default', orchestratorIntent)
-        expect(signed?.ok).toBe(false)
+        const signed = await signRaw(socketPath, partialIntentSignRequest)
+        expect(signed.error).toEqual({
+            code: 'INVALID_REQUEST',
+            message: 'Phrase-less sessions can only sign Orchestrator intents',
+        })
         expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
     } finally {
         await daemon.stop()
@@ -1362,8 +1423,11 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
         expect(output).not.toContain(sessionPrivateKey)
         expect(output).toContain('"status":"complete"')
         expect(output).not.toContain('"isError":true')
-        const mcpSigned = await mcpDaemon.client.sign('default', orchestratorIntent)
-        expect(mcpSigned?.ok).toBe(false)
+        const mcpSigned = await signRaw(mcpSocket, partialIntentSignRequest)
+        expect(mcpSigned.error).toEqual({
+            code: 'INVALID_REQUEST',
+            message: 'Phrase-less sessions can only sign Orchestrator intents',
+        })
     } finally {
         await mcpDaemon.stop()
     }
