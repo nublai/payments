@@ -4,7 +4,7 @@
 - Commit: `c44ef22ca116d0ba62a3ff663a0bd13a3f3fa40b` (committed 2026-09-10)
 - Vendored: 2026-10-08
 - Scope: copied `src/` minus `*.test.ts`, unmodified. The `effect/` rules are copied but not enabled.
-- Upstream license: MIT, Copyright (c) 2026 Dillon Mulroy.
+- Upstream license: MIT, Copyright (c) 2026 Dillon Mulroy, vendored verbatim as [`LICENSE`](./LICENSE). It comes from the upstream repo root, not `src/`.
 
 Loaded by the root `.oxlintrc.json` through `jsPlugins` from `./tools/oxlint/anti-slop/index.ts`. Its only runtime import is `@oxlint/plugins`, pinned in the root `package.json`.
 
@@ -16,4 +16,4 @@ Do not install the npm package `oxlint-plugin-anti-slop`. That name is a 0.0.0 p
 
 ## Updating
 
-Copy `src/` from a new upstream commit, drop `*.test.ts`, keep `vendor/eslint-stylistic/LICENSE`, and update the commit and date above.
+Copy `src/` from a new upstream commit, drop `*.test.ts`, keep `LICENSE` (re-copied from the upstream repo root) and `vendor/eslint-stylistic/LICENSE`, and update the commit and date above.
