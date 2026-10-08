@@ -38,7 +38,7 @@ The bash deployment script is a chain-agnostic deployment tool supporting:
 - **Dry run mode** - Simulate without broadcasting
 - **Built-in chain support** - Optimism, Arbitrum, Polygon, Base (Sepolia/Mainnet), Anvil
 - **CREATE2 deterministic addresses** - Same address across chains
-- **Relayer setup automation** - Whitelist and fund relayers
+- **Relayer setup automation** - Whitelist and fund relayers (local Anvil only)
 - **Flexible authentication** - Keystore, Ledger, or private key
 - **Custom gas settings** - For congested networks
 
@@ -74,7 +74,7 @@ Contract Configuration:
   --owner <addr>           Owner address for contracts (SimpleFunder, SimpleSettler, etc.)
   --relayer-mnemonic <m>   Mnemonic for relayer signers
   --relayer-count <n>      Number of relayer signers (default: 10)
-  --skip-relayer           Skip relayer setup phase
+  --skip-relayer           Skip relayer setup phase (required outside local with a mnemonic)
 
 LayerZero (optional):
   --lz-endpoint <addr>     LayerZero endpoint address
@@ -259,7 +259,7 @@ Full deployment runs in 6 phases:
 2. **Account** - Depends on Orchestrator address
 3. **AccountProxy** - Uses LibEIP7702 (not CREATE2)
 4. **Config-driven** - SimpleFunder, SimpleSettler, LayerZeroSettler
-5. **Relayer setup** - Whitelist signers, fund on local
+5. **Relayer setup** - Local Anvil only: whitelist signers and fund SimpleFunder
 6. **Save deployments** - Write JSON files to `deployments/envs/`
 
 ## Configuration
@@ -288,7 +288,8 @@ RELAYER_COUNT=10
 #### Dev Environment (Base Sepolia)
 
 ```bash
-# Relayer mnemonic for dev
+# Relayer mnemonic for dev. deploy.sh refuses this unless --skip-relayer is passed;
+# the owner then calls SimpleFunder setGasWallet and setOrchestrators.
 DEV_RELAYER_MNEMONIC=your dev mnemonic here
 
 # SimpleFunder funder address
@@ -304,7 +305,8 @@ RPC_84532=https://sepolia.base.org
 #### Stage Environment (Base Sepolia)
 
 ```bash
-# Relayer mnemonic for stage
+# Relayer mnemonic for stage. deploy.sh refuses this unless --skip-relayer is passed;
+# the owner then calls SimpleFunder setGasWallet and setOrchestrators.
 STAGE_RELAYER_MNEMONIC=your stage mnemonic here
 
 # SimpleFunder funder address
@@ -320,7 +322,8 @@ RPC_84532=https://sepolia.base.org
 #### Prod Environment (Base Mainnet)
 
 ```bash
-# Relayer mnemonic for production
+# Relayer mnemonic for production. deploy.sh refuses this unless --skip-relayer is passed;
+# the owner then calls SimpleFunder setGasWallet and setOrchestrators.
 PROD_RELAYER_MNEMONIC=your prod mnemonic here
 
 # SimpleFunder funder address
@@ -374,8 +377,8 @@ All configuration can be overridden via flags:
 # Override owner address
 ./scripts/sh/deploy.sh prod --owner 0x456... --account deployer
 
-# Override relayer config
-./scripts/sh/deploy.sh --chain 10 --relayer-mnemonic "your mnemonic" --relayer-count 5 --account deployer
+# Override relayer config (local Anvil only)
+./scripts/sh/deploy.sh local --relayer-mnemonic "your mnemonic" --relayer-count 5
 
 # Override RPC URL
 ./scripts/sh/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
@@ -486,7 +489,9 @@ The script automatically handles local environment setup:
 
 ## Relayer Setup
 
-When relayer mnemonic is configured:
+Relayer setup runs only on local Anvil (31337, 41337). `setGasWallet` and `setOrchestrators` are owner-only, and this script sends them from the deployer. Outside local the owner is a separate address, so `deploy.sh` refuses a relayer mnemonic unless `--skip-relayer` is passed. After that deploy, the owner calls SimpleFunder `setGasWallet` and `setOrchestrators` with the relayer signer addresses and the Orchestrator.
+
+On local Anvil, when a relayer mnemonic is configured:
 1. Derives `RELAYER_COUNT` signer addresses from mnemonic
 2. Whitelists signers as gas wallets on SimpleFunder
 3. Whitelists Orchestrator on SimpleFunder
@@ -514,23 +519,20 @@ Common utilities:
 Ensure your `.env` file is properly configured for the target environment, or provide values via command-line flags.
 
 For dev:
-- `DEV_RELAYER_MNEMONIC` or `--relayer-mnemonic`
 - `DEV_FUNDER` or `--funder`
 - `DEV_OWNER` or `--owner`
 
 For stage:
-- `STAGE_RELAYER_MNEMONIC` or `--relayer-mnemonic`
 - `STAGE_FUNDER` or `--funder`
 - `STAGE_OWNER` or `--owner`
 
 For prod:
-- `PROD_RELAYER_MNEMONIC` or `--relayer-mnemonic`
 - `PROD_FUNDER` or `--funder`
 - `PROD_OWNER` or `--owner`
 
-Alternatively, skip relayer setup:
+Outside local, a relayer mnemonic (`DEV_RELAYER_MNEMONIC`, `STAGE_RELAYER_MNEMONIC`, `PROD_RELAYER_MNEMONIC`, or `--relayer-mnemonic`) is refused unless `--skip-relayer` is passed. Then the owner calls SimpleFunder `setGasWallet` and `setOrchestrators`:
 ```bash
-./scripts/sh/deploy.sh dev --skip-relayer --account deployer
+./scripts/sh/deploy.sh dev --owner 0x... --skip-relayer --account deployer
 ```
 
 ### "RPC URL not found for chain"

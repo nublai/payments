@@ -88,7 +88,7 @@ Contract Configuration:
                            Must not be the deployer or funder address.
   --relayer-mnemonic <m>   Mnemonic for relayer signers
   --relayer-count <n>      Number of relayer signers (default: 10)
-  --skip-relayer           Skip relayer setup phase
+  --skip-relayer           Skip relayer setup phase (required outside local with a mnemonic)
 
 LayerZero (optional):
   --lz-endpoint <addr>     LayerZero endpoint address
@@ -282,7 +282,7 @@ while [[ $# -gt 0 ]]; do
             usage
             ;;
         *)
-            echo -e "${RED}Unknown option: $1${NC}"
+            echo -e "${RED}Unknown option: ${1%%=*}${NC}"
             usage
             ;;
     esac
@@ -566,6 +566,10 @@ refuse_unsafe_owner() {
     fi
     if [[ -n "$SENDER" && "${OWNER,,}" == "${SENDER,,}" ]]; then
         echo -e "${RED}Error: owner equals the deployer (--sender) address. The owner must be a separate address.${NC}" >&2
+        exit 1
+    fi
+    if [[ -n "$RELAYER_MNEMONIC" && -z "$SKIP_RELAYER" ]]; then
+        echo -e "${RED}Error: relayer setup is owner-only and this script sends it from the deployer. Pass --skip-relayer outside local; the owner then calls SimpleFunder setGasWallet and setOrchestrators.${NC}" >&2
         exit 1
     fi
 }
