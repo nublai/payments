@@ -13,8 +13,8 @@ deployments/envs/local-verify-release-test/
 # Dotenv file
 .env
 
-# check in the generaged .env files
-!deployments/**/*/.env*
+# make-config output; addresses.json and envs/*/<chainId>/*.json are the source
+deployments/envs/*/.env*
 deployments/local*
 
 # Docs

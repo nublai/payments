@@ -7,13 +7,13 @@
  * upgrade budget before estimate or broadcast.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { encodeAbiParameters, type Address, type Hex } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
-import { formerProd8453Env } from '../former-prod-env'
+import { installFormerProd8453 } from '../former-prod-env'
 import { authMiddleware } from '../../src/auth/middleware'
 import type { AuthProvider } from '../../src/auth/types'
 import { dispatch } from '../../src/rpc/dispatcher'
@@ -130,7 +130,6 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
         RPC_URL: 'http://127.0.0.1:18545',
         RPC_8453: 'http://127.0.0.1:18545',
         CONTEXT: 'prod',
-        ...formerProd8453Env,
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
@@ -221,6 +220,14 @@ async function post(env: Env, body: unknown, userId: string) {
 
     return { json: JSON.parse(text) as { error?: { code?: number; message?: string } }, text }
 }
+
+let restoreDeployment: () => void
+
+beforeAll(() => {
+    restoreDeployment = installFormerProd8453()
+})
+
+afterAll(() => restoreDeployment())
 
 describe('C1 upgrade broadcast guards', () => {
     beforeEach(() => {

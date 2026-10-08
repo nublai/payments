@@ -1,22 +1,23 @@
+import { deployments } from '@nubl/contracts/deployments'
+
 /**
  * Former published addresses from deployments JSON, before those files were
  * zeroed. Tests that still exercise prod send/swap/escrow/delegate behavior
- * install them as chain-suffixed env. Production JSON stays the zero address
- * so a process without this env fails closed with "not deployed".
+ * write them into the bundled deployments JSON for every published context,
+ * as a first deploy would, and restore it afterwards. Env vars are not read
+ * off local chains, so the committed JSON stays the zero address and a
+ * process without this fixture fails closed with "not deployed".
  */
 
-const KEYS = {
-    orchestrator: 'ORCHESTRATOR',
-    simpleFunder: 'SIMPLE_FUNDER',
-    simulator: 'SIMULATOR',
-    account: 'ACCOUNT',
-    accountProxy: 'ACCOUNT_PROXY',
-    simpleSettler: 'SIMPLE_SETTLER',
-    escrow: 'ESCROW',
-    multiSigSigner: 'MULTI_SIG_SIGNER',
-} as const
-
-type Field = keyof typeof KEYS
+type Field =
+    | 'orchestrator'
+    | 'simpleFunder'
+    | 'simulator'
+    | 'account'
+    | 'accountProxy'
+    | 'simpleSettler'
+    | 'escrow'
+    | 'multiSigSigner'
 
 const FORMER: Record<number, Record<Field, string>> = {
     8453: {
@@ -64,30 +65,39 @@ const STAGE: Record<number, Record<Field, string>> = {
     },
 }
 
-function installChains(chains: Record<number, Record<Field, string>>): () => void {
-    const previous = new Map<string, string | undefined>()
+const PUBLISHED_CONTEXTS = ['prod', 'stage', 'dev'] as const
 
-    for (const [chainId, addresses] of Object.entries(chains)) {
-        for (const field of Object.keys(KEYS) as Field[]) {
-            const key = `${KEYS[field]}_${chainId}`
+type DeploymentBook = Record<string, Record<string, { addresses: Record<string, string> }>>
 
-            if (!previous.has(key)) previous.set(key, process.env[key])
-            process.env[key] = addresses[field]
+function installChains(
+    book: DeploymentBook,
+    chains: Record<number, Record<Field, string>>,
+): () => void {
+    const restores: Array<() => void> = []
+
+    for (const context of PUBLISHED_CONTEXTS) {
+        const byChain = (book[context] ??= {})
+
+        for (const [chainId, addresses] of Object.entries(chains)) {
+            const previous = byChain[chainId]
+            byChain[chainId] = { addresses: { ...addresses } }
+
+            restores.push(() => {
+                if (previous === undefined) delete byChain[chainId]
+                else byChain[chainId] = previous
+            })
         }
     }
 
     return () => {
-        for (const [key, value] of previous) {
-            if (value === undefined) delete process.env[key]
-            else process.env[key] = value
-        }
+        for (const restore of restores.reverse()) restore()
     }
 }
 
 export function installFormerProdDeployments(): () => void {
-    return installChains(FORMER)
+    return installChains(deployments, FORMER)
 }
 
 export function installFormerStageDeployments(): () => void {
-    return installChains(STAGE)
+    return installChains(deployments, STAGE)
 }

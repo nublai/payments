@@ -1,3 +1,5 @@
+import { installDeployment } from './deployment-fixture'
+
 /**
  * Former Base (8453) addresses, unsuffixed, for tests whose prod context
  * used to read deployments JSON. The JSON is the zero address until the
@@ -13,3 +15,8 @@ export const formerProd8453Env = {
     SIMPLE_SETTLER: '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE',
     SIMULATOR: '0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65',
 } as const
+
+/** Writes formerProd8453Env into the prod/8453 deployments JSON. Returns a restore function. */
+export function installFormerProd8453(): () => void {
+    return installDeployment('prod', 8453, formerProd8453Env)
+}

@@ -61,29 +61,29 @@ function resolveLocalOrPublished(
 
     if (fromJson) return getAddress(fromJson)
 
+    if (chainId !== 31337 && chainId !== 41337) {
+        throw new Error(
+            `No ${label} deployment for ${env}/${chainId}: addresses.json has no address. Contracts are not deployed. Refusing to continue.`,
+        )
+    }
+
     const key = `${envPrefix}_${chainId}`
     const fromProcess = process.env[key]?.trim()
 
     if (isUsableAddress(fromProcess)) return getAddress(fromProcess)
 
-    if (chainId === 31337 || chainId === 41337) {
-        const raw = readDeployEnvValue(key)
+    const raw = readDeployEnvValue(key)
 
-        if (isUsableAddress(raw)) return getAddress(raw)
-        throw new Error(
-            `No ${label} for local chain ${chainId}. Set ${key} from the local deploy env (packages/contracts/deployments/envs/local/.env).`,
-        )
-    }
-
+    if (isUsableAddress(raw)) return getAddress(raw)
     throw new Error(
-        `No ${label} deployment for ${env}/${chainId}. Contracts are not deployed. Refusing to continue.`,
+        `No ${label} for local chain ${chainId}. Set ${key} from the local deploy env (packages/contracts/deployments/envs/local/.env).`,
     )
 }
 
 /**
  * Orchestrator used as the EIP-712 verifying contract.
- * Published chains come from deployments JSON, then from ORCHESTRATOR_<chainId>.
- * Local Anvil (31337) also reads the local deploy env file.
+ * Published chains come from deployments JSON only.
+ * Local Anvil (31337, 41337) reads ORCHESTRATOR_<chainId> or the local deploy env file.
  */
 export function resolveOrchestratorAddress(env: EnvName, chainId: number): Address {
     return resolveLocalOrPublished(env, chainId, 'orchestrator', 'ORCHESTRATOR', 'orchestrator')

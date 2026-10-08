@@ -23,9 +23,10 @@ MAX_PENDING_TOTAL=1000
 MIN_SIGNER_BALANCE=0.01
 TARGET_SIGNER_BALANCE=0.01
 
-# Contract addresses (optional)
+# Contract addresses (optional, CONTEXT=local and chains 31337/41337 only)
 # Names match @nubl/contracts env var keys (no _ADDRESS suffix)
 # Use chain-suffixed keys when CHAIN_IDS is set
+# dev, stage, and prod read deployments JSON only; a zero address there throws
 # ORCHESTRATOR_31337=0x...
 # ACCOUNT_31337=0x...
 # ACCOUNT_PROXY_31337=0x...
