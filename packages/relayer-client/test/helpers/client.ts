@@ -33,5 +33,5 @@ export function createRelayerTestClient(params: {
             relayerUrl,
             authSigner: createRelayerTestAuthSigner(chain.id),
         }),
-    ) as RelayerTestClient
+    )
 }

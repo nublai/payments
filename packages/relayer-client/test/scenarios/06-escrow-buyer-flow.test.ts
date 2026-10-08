@@ -47,8 +47,9 @@ import {
     testChain,
 } from '../setup'
 import { setBalance, deal, getERC20Balance } from '../helpers/anvil'
-import { BASE_TOKENS } from '../helpers/tokens'
 import { createRelayerTestClient } from '../helpers/client'
+import { repeatedHex } from '../helpers/hex'
+import { BASE_TOKENS } from '../helpers/tokens'
 
 const USDC = BASE_TOKENS.USDC
 
@@ -130,7 +131,7 @@ describe('Escrow Buyer Flow', () => {
 
             await deal(buyer.address, USDC, USDC_AMOUNT)
 
-            const orderId = `0x${'ca'.repeat(32)}` as `0x${string}`
+            const orderId = repeatedHex('ca', 32)
             const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600) // 1 hour from now
             const chainId = testChain.id
 
@@ -230,7 +231,7 @@ describe('Escrow Buyer Flow', () => {
             const { account: buyer, privateKey: buyerKey } = await createDelegatedAccount()
             await deal(buyer.address, USDC, USDC_AMOUNT)
 
-            const orderId = `0x${'ef'.repeat(32)}` as `0x${string}`
+            const orderId = repeatedHex('ef', 32)
             // Deadline 10 seconds from now — we'll fast-forward past it
             const deadline = BigInt(Math.floor(Date.now() / 1000) + 10)
             const chainId = testChain.id

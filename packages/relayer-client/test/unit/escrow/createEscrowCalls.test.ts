@@ -1,20 +1,31 @@
 import { describe, it, expect } from 'vitest'
-import { decodeFunctionData, padHex } from 'viem'
+import { decodeFunctionData, padHex, type Hex } from 'viem'
 import { escrowAbi } from '@nubl/contracts/abis'
 import { createEscrowCalls } from '../../../src/escrow/createEscrowCalls.js'
 import type { CreateEscrowParams } from '../../../src/escrow/types.js'
+import { hex, repeatedHex } from '../../helpers/hex'
 
 const PARAMS: CreateEscrowParams = {
     buyer: '0x1111111111111111111111111111111111111111',
     seller: '0x2222222222222222222222222222222222222222',
     usdcAmount: 50_000_000n, // 50 USDC
     deadline: 1800000000n,
-    orderId: `0x${'ab'.repeat(32)}` as `0x${string}`,
+    orderId: repeatedHex('ab', 32),
     oracleAddress: '0x3333333333333333333333333333333333333333',
     usdcAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     escrowAddress: '0x5555555555555555555555555555555555555555',
     simpleSettlerAddress: '0x6666666666666666666666666666666666666666',
     chainId: 8453,
+}
+
+function escrowStructs(data: Hex) {
+    const decoded = decodeFunctionData({ abi: escrowAbi, data })
+
+    if (decoded.functionName !== 'escrow') {
+        throw new Error(`expected escrow, got ${decoded.functionName}`)
+    }
+
+    return decoded.args[0]
 }
 
 describe('createEscrowCalls', () => {
@@ -49,20 +60,7 @@ describe('createEscrowCalls', () => {
         const decoded = decodeFunctionData({ abi: escrowAbi, data: escrowCall.data })
         expect(decoded.functionName).toBe('escrow')
 
-        const [structs] = decoded.args as unknown as [
-            readonly {
-                depositor: string
-                recipient: string
-                token: string
-                escrowAmount: bigint
-                refundAmount: bigint
-                refundTimestamp: bigint
-                settler: string
-                sender: string
-                settlementId: `0x${string}`
-                senderChainId: bigint
-            }[],
-        ]
+        const structs = escrowStructs(escrowCall.data)
 
         expect(structs).toHaveLength(1)
 
@@ -81,24 +79,21 @@ describe('createEscrowCalls', () => {
 
     it('uses default zero salt when none provided', () => {
         const [, escrowCall] = createEscrowCalls(PARAMS)
-        const decoded = decodeFunctionData({ abi: escrowAbi, data: escrowCall.data })
-        const [structs] = decoded.args as unknown as [readonly { salt: `0x${string}` }[]]
+        const structs = escrowStructs(escrowCall.data)
         const defaultSalt = padHex('0x', { size: 12, dir: 'right' })
         expect(structs[0].salt.toLowerCase()).toBe(defaultSalt.toLowerCase())
     })
 
     it('respects explicit salt when provided', () => {
-        const salt = '0xdeadbeefcafe000000000000' as `0x${string}`
+        const salt = hex('0xdeadbeefcafe000000000000')
         const [, escrowCall] = createEscrowCalls({ ...PARAMS, salt })
-        const decoded = decodeFunctionData({ abi: escrowAbi, data: escrowCall.data })
-        const [structs] = decoded.args as unknown as [readonly { salt: `0x${string}` }[]]
+        const structs = escrowStructs(escrowCall.data)
         expect(structs[0].salt.toLowerCase()).toBe(salt.toLowerCase())
     })
 
     it('approve and escrow calls are consistent — same escrowAddress and amount', () => {
         const [approve, escrowCall] = createEscrowCalls(PARAMS)
-        const decoded = decodeFunctionData({ abi: escrowAbi, data: escrowCall.data })
-        const [structs] = decoded.args as unknown as [readonly { escrowAmount: bigint }[]]
+        const structs = escrowStructs(escrowCall.data)
 
         expect(approve.target.toLowerCase()).toBe(PARAMS.usdcAddress.toLowerCase())
         expect(structs[0].escrowAmount).toBe(PARAMS.usdcAmount)

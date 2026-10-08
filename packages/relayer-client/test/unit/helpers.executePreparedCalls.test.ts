@@ -1,18 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { zeroAddress, type Address, type Hex } from 'viem';
+import { zeroAddress, type Address } from 'viem';
 import { hashTypedData } from 'viem/utils';
 import { INTENT_TYPES, type Call } from '../../src/types.js';
 import type { PrepareCallsResponse } from '../../src/actions/prepareCalls.js';
 import { executePreparedCalls } from '../../src/helpers/executePreparedCalls.js';
 import { signedPaymentMaxForQuote } from '../../src/helpers/bindPreparedCalls.js';
+import { emptyHex, repeatedHex } from '../helpers/hex'
 
-const EOA = '0x1111111111111111111111111111111111111111' as Address;
+const EOA = '0x1111111111111111111111111111111111111111';
 
-const TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address;
+const TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address;
+const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8';
 
-const SIG = `0x${'11'.repeat(65)}` as Hex;
+const SIG = repeatedHex('11', 65);
 
 const CALLS: Call[] = [{ target: EOA, value: 0n, data: '0x' }];
 
@@ -38,8 +39,7 @@ function echoPrepared(input: {
     const messageCalls = input.calls.map((call) => ({
         to: call.target,
         value: call.value,
-        data: call.data ?? '0x',
-    }));
+        data: call.data ?? '0x' }));
 
     const message = {
         multichain: false,
@@ -50,11 +50,10 @@ function echoPrepared(input: {
         paymentToken,
         paymentMaxAmount: cap,
         combinedGas: 50_000n,
-        encodedPreCalls: [] as Hex[],
-        encodedFundTransfers: [] as Hex[],
+        encodedPreCalls: emptyHex(),
+        encodedFundTransfers: emptyHex(),
         settler: zeroAddress,
-        expiry,
-    };
+        expiry };
 
     return {
         digest: hashTypedData({
@@ -62,23 +61,19 @@ function echoPrepared(input: {
                 name: 'Orchestrator',
                 version: '0.5.5',
                 chainId,
-                verifyingContract: ORCHESTRATOR,
-            },
+                verifyingContract: ORCHESTRATOR },
             types: INTENT_TYPES,
             primaryType: 'Intent' as const,
-            message,
-        }),
+            message }),
         typedData: {
             domain: {
                 name: 'Orchestrator',
                 version: '0.5.5',
                 chainId,
-                verifyingContract: ORCHESTRATOR,
-            },
+                verifyingContract: ORCHESTRATOR },
             types: INTENT_TYPES,
             primaryType: 'Intent' as const,
-            message,
-        },
+            message },
         context: {
             quote: {
                 quotes: [
@@ -90,24 +85,18 @@ function echoPrepared(input: {
                             calls: messageCalls.map((call) => ({
                                 to: call.to,
                                 value: call.value.toString(),
-                                data: call.data,
-                            })),
+                                data: call.data })),
                             nonce: nonce.toString(),
                             combinedGas: '50000',
                             expiry: expiry.toString(),
                             payer,
                             paymentToken,
                             paymentMaxAmount: cap.toString(),
-                            settler: zeroAddress,
-                        },
-                        paymentAmount,
-                    },
+                            settler: zeroAddress },
+                        paymentAmount },
                 ],
-                signature: '0x' as Hex,
-                ttl: 2_000_000_000,
-            },
-        },
-    };
+                signature: '0x',
+                ttl: 2_000_000_000 } } };
 }
 
 function client(paymentAmount: string) {
@@ -115,28 +104,27 @@ function client(paymentAmount: string) {
         echoPrepared(input, paymentAmount),
     );
 
-    return {
+    // SAFETY: executePreparedCalls with skipWait and an explicit nonce only reads chain, relayerConfig, prepareCalls, and sendPreparedCalls; this double supplies those fields and is not a PublicClient.
+    const relayer = {
+        chain: { id: 8453 },
+        relayerConfig: { chainId: 8453 },
         prepareCalls,
-        relayer: {
-            chain: { id: 8453 },
-            relayerConfig: { chainId: 8453 },
-            prepareCalls,
-            sendPreparedCalls: vi.fn(async () => ({ id: 'bundle-1' })),
-        },
-    };
+        sendPreparedCalls: vi.fn(async () => ({ id: 'bundle-1' })),
+    } as never;
+
+    return { prepareCalls, relayer };
 }
 
 const signer = {
     type: 'typedData' as const,
-    signTypedData: vi.fn(async () => SIG),
-};
+    signTypedData: vi.fn(async () => SIG) };
 
 describe('executePreparedCalls fee cap', () => {
     it('clamps a caller cap above 5 USDC', async () => {
         const { prepareCalls, relayer } = client('1');
         const signTypedData = vi.fn(async (_typedData: PrepareCallsResponse['typedData']) => SIG);
         await executePreparedCalls({
-            client: relayer as never,
+            client: relayer,
             from: EOA,
             calls: CALLS,
             chainId: 8453,
@@ -146,13 +134,12 @@ describe('executePreparedCalls fee cap', () => {
             paymentToken: TOKEN,
             paymentMaxAmount: 100_000_000n,
             signer: { type: 'typedData', signTypedData },
-            skipWait: true,
-        });
+            skipWait: true });
         expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP);
 
-        const typed = signTypedData.mock.calls.at(-1)?.[0] as {
-            message: { paymentMaxAmount: bigint };
-        };
+        const typed = signTypedData.mock.calls.at(-1)?.[0];
+
+        if (!typed) throw new Error('expected signTypedData to be called');
 
         expect(typed.message.paymentMaxAmount).toBe(signedPaymentMaxForQuote(1n));
     });
@@ -161,7 +148,7 @@ describe('executePreparedCalls fee cap', () => {
         const { relayer } = client('50000000');
         await expect(
             executePreparedCalls({
-                client: relayer as never,
+                client: relayer,
                 from: EOA,
                 calls: CALLS,
                 chainId: 8453,
@@ -171,8 +158,7 @@ describe('executePreparedCalls fee cap', () => {
                 paymentToken: TOKEN,
                 paymentMaxAmount: 100_000_000n,
                 signer,
-                skipWait: true,
-            }),
+                skipWait: true }),
         ).rejects.toThrow(/payment amount exceeds fee cap/);
     });
 
@@ -180,7 +166,7 @@ describe('executePreparedCalls fee cap', () => {
         const { relayer } = client('1');
         await expect(
             executePreparedCalls({
-                client: relayer as never,
+                client: relayer,
                 from: EOA,
                 calls: CALLS,
                 chainId: 8453,
@@ -188,12 +174,11 @@ describe('executePreparedCalls fee cap', () => {
                 verifyingContract: ORCHESTRATOR,
                 paymentMaxAmount: 1001n,
                 signer,
-                skipWait: true,
-            }),
+                skipWait: true }),
         ).rejects.toThrow(/payer and paymentToken/);
         await expect(
             executePreparedCalls({
-                client: relayer as never,
+                client: relayer,
                 from: EOA,
                 calls: CALLS,
                 chainId: 8453,
@@ -202,12 +187,11 @@ describe('executePreparedCalls fee cap', () => {
                 payer: EOA,
                 paymentMaxAmount: 1001n,
                 signer,
-                skipWait: true,
-            }),
+                skipWait: true }),
         ).rejects.toThrow(/payer and paymentToken/);
         await expect(
             executePreparedCalls({
-                client: relayer as never,
+                client: relayer,
                 from: EOA,
                 calls: CALLS,
                 chainId: 8453,
@@ -216,8 +200,7 @@ describe('executePreparedCalls fee cap', () => {
                 paymentToken: TOKEN,
                 paymentMaxAmount: 1001n,
                 signer,
-                skipWait: true,
-            }),
+                skipWait: true }),
         ).rejects.toThrow(/payer and paymentToken/);
     });
 
@@ -225,7 +208,7 @@ describe('executePreparedCalls fee cap', () => {
         const { relayer } = client('1');
         await expect(
             executePreparedCalls({
-                client: relayer as never,
+                client: relayer,
                 from: EOA,
                 calls: CALLS,
                 chainId: 8453,
@@ -235,17 +218,16 @@ describe('executePreparedCalls fee cap', () => {
                 paymentToken: zeroAddress,
                 paymentMaxAmount: 100_000_000n,
                 signer,
-                skipWait: true,
-            }),
+                skipWait: true }),
         ).rejects.toThrow(/zero address/);
     });
 
     it('refuses a fee token that is not native USDC for the chain', async () => {
-        const wbtc = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' as Address;
+        const wbtc = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599';
         const { relayer } = client('1');
         await expect(
             executePreparedCalls({
-                client: relayer as never,
+                client: relayer,
                 from: EOA,
                 calls: CALLS,
                 chainId: 8453,
@@ -255,13 +237,12 @@ describe('executePreparedCalls fee cap', () => {
                 paymentToken: wbtc,
                 paymentMaxAmount: 1001n,
                 signer,
-                skipWait: true,
-            }),
+                skipWait: true }),
         ).rejects.toThrow(/native USDC/);
-        const usdce = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as Address;
+        const usdce = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
         await expect(
             executePreparedCalls({
-                client: relayer as never,
+                client: relayer,
                 from: EOA,
                 calls: CALLS,
                 chainId: 137,
@@ -271,8 +252,7 @@ describe('executePreparedCalls fee cap', () => {
                 paymentToken: usdce,
                 paymentMaxAmount: 1001n,
                 signer,
-                skipWait: true,
-            }),
+                skipWait: true }),
         ).rejects.toThrow(/native USDC/);
     });
 });

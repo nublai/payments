@@ -10,10 +10,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { createPublicClient, http, toHex, type Address } from 'viem'
+import { createPublicClient, http, toHex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
 import { relayerActions, waitForBundle, type EthHttpSigner } from '../../src'
+import { requiredAddr, requiredEnv } from '../helpers/env'
 
 const hasRequiredEnv = Boolean(
     process.env.RELAYER_URL &&
@@ -22,40 +23,53 @@ const hasRequiredEnv = Boolean(
     process.env.TEST_CHAIN_ID,
 )
 
+function remoteChainMeta(chainId: number) {
+    switch (chainId) {
+        case 8453:
+            return {
+                name: 'Base',
+                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
+            }
+        case 84532:
+            return {
+                name: 'Base Sepolia',
+                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
+            }
+        case 137:
+            return {
+                name: 'Polygon',
+                nativeCurrency: { decimals: 18, name: 'POL', symbol: 'POL' },
+            }
+        case 42161:
+            return {
+                name: 'Arbitrum',
+                nativeCurrency: { decimals: 18, name: 'ETH', symbol: 'ETH' },
+            }
+        case 31337:
+            return {
+                name: 'Anvil',
+                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
+            }
+        default:
+            return undefined
+    }
+}
+
 describe.skipIf(!hasRequiredEnv)('Remote Smoke: Delegation', () => {
     it('delegates one fresh account on remote Base chain', { timeout: 60_000 }, async () => {
-        const RPC_URL = process.env.RPC_URL as string
-        const RELAYER_URL = process.env.RELAYER_URL as string
+        const RPC_URL = requiredEnv('RPC_URL')
+        const RELAYER_URL = requiredEnv('RELAYER_URL')
         const TEST_CHAIN_ID = Number(process.env.TEST_CHAIN_ID)
-        const REMOTE_ACCOUNT_PROXY = process.env.REMOTE_ACCOUNT_PROXY as Address
+        const REMOTE_ACCOUNT_PROXY = requiredAddr('REMOTE_ACCOUNT_PROXY')
 
         expect([8453, 84532, 137, 42161, 31337]).toContain(TEST_CHAIN_ID)
 
-        const chainMetaById = {
-            8453: {
-                name: 'Base',
-                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
-            },
-            84532: {
-                name: 'Base Sepolia',
-                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
-            },
-            137: {
-                name: 'Polygon',
-                nativeCurrency: { decimals: 18, name: 'POL', symbol: 'POL' },
-            },
-            42161: {
-                name: 'Arbitrum',
-                nativeCurrency: { decimals: 18, name: 'ETH', symbol: 'ETH' },
-            },
-            31337: {
-                name: 'Anvil',
-                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
-            },
-        } as const
-
-        const chainMeta = chainMetaById[TEST_CHAIN_ID as keyof typeof chainMetaById]
+        const chainMeta = remoteChainMeta(TEST_CHAIN_ID)
         expect(chainMeta).toBeDefined()
+
+        if (!chainMeta) {
+            throw new Error(`Unsupported TEST_CHAIN_ID: ${TEST_CHAIN_ID}`)
+        }
 
         const privateKey = generatePrivateKey()
         const account = privateKeyToAccount(privateKey)

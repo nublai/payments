@@ -11,7 +11,6 @@ import {
     http,
     erc20Abi,
     type Address,
-    type Hex,
     encodeFunctionData,
     publicActions,
 } from 'viem'
@@ -59,7 +58,7 @@ function getRemoteWalletClient() {
     return createWalletClient({
         chain: testChain,
         transport: http(ANVIL_RPC_URL),
-        account: privateKeyToAccount(REMOTE_PRIVATE_KEY as Hex),
+        account: privateKeyToAccount(REMOTE_PRIVATE_KEY),
     })
 }
 

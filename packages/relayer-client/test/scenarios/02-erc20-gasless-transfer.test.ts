@@ -21,7 +21,7 @@ import {
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
-import { waitForBundle } from '../../src'
+import { waitForBundle, type PrepareCallsContext } from '../../src'
 import { ANVIL_RPC_URL, RELAYER_URL, TEST_CONTRACTS, testChain, MOCK_RECIPIENT } from '../setup'
 import { setBalance, deal, getERC20Balance } from '../helpers/anvil'
 import { BASE_TOKENS } from '../helpers/tokens'
@@ -45,8 +45,6 @@ describe('ERC20 Gasless Transfer', () => {
     const USDC_AMOUNT = parseUnits('100', USDC_UNITS) // 100 USDC (6 decimals)
     const ACCOUNT_CREATION_ETH = parseEther('0.1')
 
-    type QuoteContext = { quote?: { quotes?: Array<{ paymentAmount?: string }> } }
-
     const buildUsdcTransferCall = (to: Address, amount: bigint) => ({
         target: USDC,
         value: 0n,
@@ -57,8 +55,8 @@ describe('ERC20 Gasless Transfer', () => {
         }),
     })
 
-    const getQuotedPaymentAmount = (context: unknown) => {
-        const paymentAmount = (context as QuoteContext).quote?.quotes?.[0]?.paymentAmount
+    const getQuotedPaymentAmount = (context: PrepareCallsContext) => {
+        const paymentAmount = context.quote.quotes[0]?.paymentAmount
 
         return BigInt(paymentAmount ?? '0')
     }
@@ -192,18 +190,7 @@ describe('ERC20 Gasless Transfer', () => {
             const status = await waitForBundle(client, { id: result.id })
 
             if (status.status !== 'confirmed') {
-                const quote = (prepared.context as { quote?: { quotes?: Array<unknown> } }).quote
-                    ?.quotes?.[0] as
-                    | {
-                          intent?: { combinedGas?: string; encodedFundTransfers?: string[] }
-                          txGas?: number
-                          nativeFeeEstimate?: {
-                              maxFeePerGas?: number
-                              maxPriorityFeePerGas?: number
-                          }
-                          paymentAmount?: string
-                      }
-                    | undefined
+                const quote = prepared.context.quote.quotes[0]
 
                 throw new Error(
                     `Reimbursement bundle not confirmed: ${JSON.stringify(

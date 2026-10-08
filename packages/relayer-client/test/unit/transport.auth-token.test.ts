@@ -15,6 +15,12 @@ function successResponse(id: number, result: unknown = 'ok') {
     })
 }
 
+function fetchRequest(input: Request | URL | string): Request {
+    if (input instanceof Request) return input
+
+    throw new Error('expected fetch to receive a Request')
+}
+
 describe('createJsonRpcTransport bearer auth', () => {
     beforeEach(() => {
         signRequestMock.mockReset()
@@ -32,7 +38,7 @@ describe('createJsonRpcTransport bearer auth', () => {
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 expect(request).toBeInstanceOf(Request)
-                seenAuth = (request as Request).headers.get('Authorization')
+                seenAuth = fetchRequest(request).headers.get('Authorization')
 
                 return successResponse(1)
             }),
@@ -60,7 +66,7 @@ describe('createJsonRpcTransport bearer auth', () => {
         vi.stubGlobal(
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
-                seenAuth.push((request as Request).headers.get('Authorization'))
+                seenAuth.push(fetchRequest(request).headers.get('Authorization'))
 
                 return successResponse(seenAuth.length)
             }),
@@ -90,7 +96,7 @@ describe('createJsonRpcTransport bearer auth', () => {
         vi.stubGlobal(
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
-                seenAuth.push((request as Request).headers.get('Authorization'))
+                seenAuth.push(fetchRequest(request).headers.get('Authorization'))
 
                 return successResponse(seenAuth.length)
             }),
@@ -140,7 +146,7 @@ describe('createJsonRpcTransport bearer auth', () => {
         vi.stubGlobal(
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
-                seenAuth = (request as Request).headers.get('Authorization')
+                seenAuth = fetchRequest(request).headers.get('Authorization')
 
                 return successResponse(1)
             }),

@@ -1,22 +1,43 @@
 import { describe, it, expect } from 'vitest'
-import { decodeFunctionData } from 'viem'
+import { decodeFunctionData, type Hex } from 'viem'
 import { escrowAbi, simpleSettlerAbi } from '@nubl/contracts/abis'
 import { writeSettlementCalls } from '../../../src/escrow/writeSettlementCalls.js'
 import { refundEscrowCalls } from '../../../src/escrow/refundEscrowCalls.js'
+import { repeatedHex } from '../../helpers/hex'
 
-const ESCROW_ID = `0x${'11'.repeat(32)}` as `0x${string}`
+const ESCROW_ID = repeatedHex('11', 32)
 
-const SETTLEMENT_ID = `0x${'22'.repeat(32)}` as `0x${string}`
+const SETTLEMENT_ID = repeatedHex('22', 32)
 
-const ORACLE = '0x3333333333333333333333333333333333333333' as `0x${string}`
+const ORACLE = '0x3333333333333333333333333333333333333333'
 
-const SIMPLE_SETTLER = '0x4444444444444444444444444444444444444444' as `0x${string}`
+const SIMPLE_SETTLER = '0x4444444444444444444444444444444444444444'
 
-const ESCROW_ADDR = '0x5555555555555555555555555555555555555555' as `0x${string}`
+const ESCROW_ADDR = '0x5555555555555555555555555555555555555555'
 
-const SIGNATURE = `0x${'aa'.repeat(65)}` as `0x${string}`
+const SIGNATURE = repeatedHex('aa', 65)
 
 const CHAIN_ID = 8453
+
+function settlerWriteArgs(data: Hex) {
+    const decoded = decodeFunctionData({ abi: simpleSettlerAbi, data })
+
+    if (decoded.functionName !== 'write') {
+        throw new Error(`expected write, got ${decoded.functionName}`)
+    }
+
+    return decoded.args
+}
+
+function escrowIds(data: Hex, functionName: 'settle' | 'refund') {
+    const decoded = decodeFunctionData({ abi: escrowAbi, data })
+
+    if (decoded.functionName !== functionName) {
+        throw new Error(`expected ${functionName}, got ${decoded.functionName}`)
+    }
+
+    return decoded.args[0]
+}
 
 describe('writeSettlementCalls', () => {
     const calls = writeSettlementCalls({
@@ -42,12 +63,7 @@ describe('writeSettlementCalls', () => {
         const decoded = decodeFunctionData({ abi: simpleSettlerAbi, data: calls[0].data })
         expect(decoded.functionName).toBe('write')
 
-        const [sender, settlementId, chainId] = decoded.args as [
-            `0x${string}`,
-            `0x${string}`,
-            bigint,
-            `0x${string}`,
-        ]
+        const [sender, settlementId, chainId] = settlerWriteArgs(calls[0].data)
 
         expect(sender.toLowerCase()).toBe(ORACLE.toLowerCase())
         expect(settlementId.toLowerCase()).toBe(SETTLEMENT_ID.toLowerCase())
@@ -62,7 +78,7 @@ describe('writeSettlementCalls', () => {
     it('second call encodes Escrow.settle() with correct escrowId', () => {
         const decoded = decodeFunctionData({ abi: escrowAbi, data: calls[1].data })
         expect(decoded.functionName).toBe('settle')
-        const [ids] = decoded.args as [readonly `0x${string}`[]]
+        const ids = escrowIds(calls[1].data, 'settle')
         expect(ids[0].toLowerCase()).toBe(ESCROW_ID.toLowerCase())
     })
 })
@@ -82,7 +98,7 @@ describe('refundEscrowCalls', () => {
     it('encodes Escrow.refund() with correct escrowId', () => {
         const decoded = decodeFunctionData({ abi: escrowAbi, data: calls[0].data })
         expect(decoded.functionName).toBe('refund')
-        const [ids] = decoded.args as [readonly `0x${string}`[]]
+        const ids = escrowIds(calls[0].data, 'refund')
         expect(ids[0].toLowerCase()).toBe(ESCROW_ID.toLowerCase())
     })
 })
