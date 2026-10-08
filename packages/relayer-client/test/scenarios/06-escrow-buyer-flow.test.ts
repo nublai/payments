@@ -54,6 +54,10 @@ describe('Escrow Buyer Flow', () => {
         accountProxy,
     } = TEST_CONTRACTS
 
+    if (!escrowAddress || !simpleSettlerAddress) {
+        throw new Error('Escrow scenario needs escrow and simpleSettler addresses (crosschain mode)')
+    }
+
     const client = createRelayerTestClient({
         chain: testChain,
         rpcUrl: ANVIL_RPC_URL,

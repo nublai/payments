@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { zeroAddress, type Address, type Hex } from 'viem';
 import { hashTypedData } from 'viem/utils';
 import { INTENT_TYPES, type Call } from '../../src/types.js';
+import type { PrepareCallsResponse } from '../../src/actions/prepareCalls.js';
 import { executePreparedCalls } from '../../src/helpers/executePreparedCalls.js';
 import { signedPaymentMaxForQuote } from '../../src/helpers/bindPreparedCalls.js';
 
@@ -124,7 +125,7 @@ const signer = {
 describe('executePreparedCalls fee cap', () => {
     it('clamps a caller cap above 5 USDC', async () => {
         const { prepareCalls, relayer } = client('1');
-        const signTypedData = vi.fn(async () => SIG);
+        const signTypedData = vi.fn(async (_typedData: PrepareCallsResponse['typedData']) => SIG);
         await executePreparedCalls({
             client: relayer as never,
             from: EOA,
