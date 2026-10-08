@@ -1141,9 +1141,9 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
         message: expect.stringContaining('Quote changed materially too many times'),
     })
 
-    if (!(caught instanceof Error)) throw caught
+    const driftMessage = String(caught instanceof Error ? caught.message : '')
 
-    expect(caught.message.includes('--yes')).toBe(false)
+    expect(driftMessage.includes('--yes')).toBe(false)
 
     expect(confirmQuote).toHaveBeenCalledTimes(3)
     expect(getQuote).toHaveBeenCalledTimes(4)
