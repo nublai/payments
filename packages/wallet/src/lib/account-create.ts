@@ -128,7 +128,7 @@ type DelegateResult = {
     txHash?: string
 }
 
-type AccountCreateDeps = {
+export type AccountCreateDeps = {
     generatePrivateKey: typeof generatePrivateKey
     createRootKeystore: typeof createRootKeystore
     createSessionKeystore: typeof createSessionKeystore

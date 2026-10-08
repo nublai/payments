@@ -1,6 +1,5 @@
 import type { Env } from '../../src/types/env'
 import type { QueueJob } from '../../src/types/pool'
-import { widen } from './widen'
 
 /** Methods these tests actually call on a Durable Object namespace. */
 export type NamespaceIdAndGet = {
@@ -21,7 +20,7 @@ export type NamespaceIdAndGet = {
 /** Tests only call idFromName/get on this Durable Object namespace. */
 export function namespaceStub<T>(stub: NamespaceIdAndGet): T {
     // SAFETY: these tests only call idFromName/get; other DurableObjectNamespace methods are unused.
-    return widen<T, NamespaceIdAndGet>(stub) as T
+    return stub as T
 }
 
 export type QueueTestMessage = {
@@ -56,7 +55,7 @@ export function queueBatch(messages: QueueTestMessage[]): MessageBatch<QueueJob>
     }
 
     // SAFETY: handleQueue only reads messages and calls ack/retry; retired/null bodies are not MonitorJob.
-    return widen<MessageBatch<QueueJob>, typeof batch>(batch) as MessageBatch<QueueJob>
+    return batch as unknown as MessageBatch<QueueJob>
 }
 
 /** Real Response for stubs that only read ok and json(). */

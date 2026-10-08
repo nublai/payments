@@ -1468,6 +1468,7 @@ test('executeAccountSwap validates named session network against requested env a
                 yes: true,
             },
             {
+                // SAFETY: sessionRef.dir is the only field this mismatch case reads; the rest is a complete testKeystoreBundle.
                 readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => ({
                     ...makeKeystoreBundle(),
                     root: {
@@ -1476,7 +1477,7 @@ test('executeAccountSwap validates named session network against requested env a
                             dir: 'sessions',
                         },
                     },
-                })),
+                })) as unknown as AccountSwapDeps['readKeystoreBundle'],
                 readSessionKeystoreFile: mock(async () =>
                     makeSessionKeystore({
                         network: {

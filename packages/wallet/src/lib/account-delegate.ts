@@ -89,7 +89,7 @@ export type AccountDelegateResult = {
     hasFailures: boolean
 }
 
-type AccountDelegateDeps = {
+export type AccountDelegateDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     decryptRootKeystore: typeof decryptRootKeystore
     decryptSessionKeystore: typeof decryptSessionKeystore

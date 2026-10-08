@@ -12,7 +12,7 @@ afterAll(() => {
 })
 
 import type { Address } from 'viem'
-import { type AccountSendDeps, type AccountSendOptions } from '../src/lib/account-send'
+import { type AccountSendOptions } from '../src/lib/account-send'
 import { executeAccountSend } from './helpers/stub-execute'
 import { confirmedBundle } from './helpers/bundle-status'
 import { testKeystoreBundle } from './helpers/keystore-bundle'

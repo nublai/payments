@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IntentNonceDO } from '../../src/durable-objects/intent-nonce.do'
-import { widen } from '../helpers/widen'
 
 interface SqlResult {
     toArray(): unknown[]
@@ -167,7 +166,7 @@ function createIntentNonceDO(): IntentNonceDO {
     nonceDO.sql = sql
 
     // SAFETY: Object.create plus ctx/sql is the IntentNonceDO surface these tests call.
-    return widen<IntentNonceDO, typeof nonceDO>(nonceDO) as IntentNonceDO
+    return nonceDO as unknown as IntentNonceDO
 }
 
 async function doRequest<T>(

@@ -12,7 +12,7 @@ import {
     executeSessionRevoke,
     executeSessionRotate,
 } from './helpers/stub-execute'
-import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { sealRotationMarker } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { parseAddr } from './helpers/hex'

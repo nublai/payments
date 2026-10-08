@@ -79,7 +79,7 @@ export type AccountUpdatePasswordResult = {
     }
 }
 
-type AccountUpdatePasswordDeps = {
+export type AccountUpdatePasswordDeps = {
     withKeystoreLock: typeof withKeystoreLock
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile

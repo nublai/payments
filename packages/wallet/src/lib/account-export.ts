@@ -67,7 +67,7 @@ export type AccountExportResult = {
     }
 }
 
-type AccountExportDeps = {
+export type AccountExportDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     decryptRootKeystore: typeof decryptRootKeystore
     decryptSessionKeystore: typeof decryptSessionKeystore

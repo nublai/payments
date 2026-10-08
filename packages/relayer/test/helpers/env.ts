@@ -1,5 +1,4 @@
 import type { Env } from '../../src/types/env'
-import { widen } from './widen'
 
 /** Empty Durable Object / Queue binding. Unit tests that build Env never call these. */
 export function unusedBinding<T>(): T {
@@ -50,7 +49,7 @@ export type TestBindingStub = {
 /** Namespace or queue stub that only implements the methods a test calls. */
 export function stubNamespace<T>(stub: TestBindingStub): T {
     // SAFETY: these tests only call the methods they install on this stub.
-    return widen<T, TestBindingStub>(stub) as T
+    return stub as T
 }
 
 export type TestQueueMessage = {
@@ -78,7 +77,5 @@ export function queueBatch(messages: TestQueueMessage[]): MessageBatch<import('.
     }
 
     // SAFETY: handleQueue only reads messages[].body/attempts/ack/retry; retired fulfillment bodies are not MonitorJob.
-    return widen<MessageBatch<import('../../src/types/pool').QueueJob>, typeof batch>(
-        batch,
-    ) as MessageBatch<import('../../src/types/pool').QueueJob>
+    return batch as unknown as MessageBatch<import('../../src/types/pool').QueueJob>
 }
