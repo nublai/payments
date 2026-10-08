@@ -106,7 +106,8 @@ class FakeSqlStorage {
             this.drafts.set(key, {
                 draft_id: String(args[1]),
                 nonce: String(args[2]),
-                draft_key: args[3] == null ? null : String(args[3]),
+                draft_key:
+                    (args[3] === null || args[3] === undefined) ? null : String(args[3]),
                 created_at_ms: Number(args[4]),
                 expires_at_ms: Number(args[5]),
             })

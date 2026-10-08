@@ -683,7 +683,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
             // A nonce we are still watching can be replaced after this hash
             // disappears. Release only once something else has consumed it.
-            if (prior.nonce != null && input.nonceConsumed !== true) {
+            if (prior.nonce !== null && prior.nonce !== undefined && input.nonceConsumed !== true) {
                 return { allowed: true, gas: gasSpent, held: heldGas, failures }
             }
 
@@ -781,7 +781,7 @@ export class SignerPoolDO extends DurableObject<Env> {
     private hasPendingSibling(sql: SqlStorage, txHash: string): boolean {
         const row = this.pendingReceipt(sql, txHash)
 
-        if (!row || row.nonce == null || !row.signer_name) return false
+        if (!row || row.nonce === null || row.nonce === undefined || !row.signer_name) return false
 
         const siblings = sql
             .exec<{ tx_hash: string }>(
@@ -801,7 +801,7 @@ export class SignerPoolDO extends DurableObject<Env> {
     private closePaidUpgradeGroup(sql: SqlStorage, txHash: string, status: 'settled' | 'released'): void {
         const row = this.pendingReceipt(sql, txHash)
 
-        if (!row || row.nonce == null || !row.signer_name) return
+        if (!row || row.nonce === null || row.nonce === undefined || !row.signer_name) return
         sql.exec(
             `UPDATE paid_upgrade_pending_receipt
              SET status = ?
@@ -859,7 +859,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 continue
             }
 
-            if (row.nonce == null || !row.signer_name) {
+            if (row.nonce === null || row.nonce === undefined || !row.signer_name) {
                 this.consumePaidUpgradeGas({
                     action: 'reconcile-receipt',
                     chainId: row.chain_id,

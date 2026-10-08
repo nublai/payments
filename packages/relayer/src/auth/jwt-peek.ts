@@ -13,7 +13,7 @@ export function peekJwtHasAudience(token: string): boolean {
 
     if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'aud')) return false
 
-    return payload.aud != null
+    return payload.aud !== null && payload.aud !== undefined
 }
 
 function peekJwtPayload(token: string): { iss?: unknown; aud?: unknown } | undefined {

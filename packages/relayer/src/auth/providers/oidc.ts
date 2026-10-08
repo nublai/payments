@@ -77,7 +77,7 @@ function parseBearerToken(
 function audienceMatches(payload: JWTPayload, clientId: string): boolean {
     const audience = payload.aud
 
-    if (audience == null) {
+    if (audience === null || audience === undefined) {
         return payload.client_id === clientId
     }
 
@@ -94,7 +94,7 @@ function parseWalletsClaim(payload: JWTPayload, claimName: string): Address[] | 
     if (!Object.prototype.hasOwnProperty.call(payload, claimName)) return []
     const raw = payload[claimName]
 
-    if (raw == null) return []
+    if (raw === null || raw === undefined) return []
     const items = Array.isArray(raw) ? raw : [raw]
 
     if (items.length > MAX_WALLETS_CLAIM) return 'invalid'
