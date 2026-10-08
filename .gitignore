@@ -1,12 +1,11 @@
 node_modules/
 **/dist/
 
-# Secret env files. The committed address books under
-# packages/contracts/deployments/envs stay tracked.
+# Secret env files. make-config also writes .env and .env.vite under
+# packages/contracts/deployments/envs; those are generated, not committed.
 .env
 **/.env
 !**/.env.example
-!packages/contracts/deployments/envs/**/.env
 
 .dev.vars
 **/.dev.vars

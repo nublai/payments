@@ -191,29 +191,48 @@ export function getAddressesFromEnv(opts?: EnvOpts): ContractAddresses | undefin
   return addresses
 }
 
-// Get addresses with env var fallback for local contexts
+export function isLocalDeployment(context: string, chainId: number): boolean {
+  return context.startsWith('local') || chainId === 31337 || chainId === 41337
+}
+
+// JSON is the only source for dev, stage, and prod: a zero or missing address
+// there means not deployed, whatever the env holds. Env vars (written by
+// make-config to envs/local/.env) apply to local contexts and Anvil chains only.
 export function getAddressesWithFallback(
   context: string,
   chainId: number,
   opts?: EnvOpts
 ): ContractAddresses | undefined {
-  // Try JSON first. A zero address in the file is not a deployment.
   const fromJson = getAddresses(context, chainId)
 
   if (fromJson) return fromJson
 
-  // Chain-suffixed env (ORCHESTRATOR_8453 and the other seven keys) applies
-  // on every chain. Unsuffixed env stays local-only so a bare ORCHESTRATOR
-  // does not make a published chain look deployed.
-  const chainSpecific = getAddressesFromEnvForChain(chainId, opts)
+  if (!isLocalDeployment(context, chainId)) return undefined
 
-  if (chainSpecific) return chainSpecific
+  return getAddressesFromEnvForChain(chainId, opts) ?? getAddressesFromEnv(opts)
+}
 
-  if (context.startsWith('local') || chainId === 31337 || chainId === 41337) {
-    return getAddressesFromEnv(opts)
-  }
+// Same lookup as getAddressesWithFallback, but throws naming the first
+// contract without an address.
+export function requireAddresses(
+  context: string,
+  chainId: number,
+  opts?: EnvOpts
+): ContractAddresses {
+  const addresses = getAddressesWithFallback(context, chainId, opts)
 
-  return undefined
+  if (addresses) return addresses
+
+  const fromJson = getDeployment(context, chainId)?.addresses
+
+  const missing =
+    requiredAddressKeys.find((key) => !isDeployedAddress(fromJson?.[key])) ?? requiredAddressKeys[0]
+
+  const source = isLocalDeployment(context, chainId)
+    ? `addresses.json or ${envKeys[missing]}_${chainId}`
+    : 'addresses.json (zero or missing)'
+
+  throw new Error(`${missing} is not deployed for ${context}/${chainId}: no address in ${source}`)
 }
 
 export function getChainIdForDeployment(context: string): number {

@@ -3,13 +3,13 @@
  * inside that /56 spend the whole per-chain upgrade budget.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
 import { mnemonicToAccount } from 'viem/accounts'
 import type { Address, Hex } from 'viem'
 import { hashAuthorization } from 'viem/utils'
 
-import { formerProd8453Env } from '../former-prod-env'
+import { installFormerProd8453 } from '../former-prod-env'
 import { authMiddleware } from '../../src/auth/middleware'
 import type { AuthProvider } from '../../src/auth/types'
 import { dispatch } from '../../src/rpc/dispatcher'
@@ -152,7 +152,6 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
         RPC_URL: 'http://127.0.0.1:18545',
         RPC_8453: 'http://127.0.0.1:18545',
         CONTEXT: 'prod',
-        ...formerProd8453Env,
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
@@ -175,6 +174,14 @@ function createApp() {
 
     return app
 }
+
+let restoreDeployment: () => void
+
+beforeAll(() => {
+    restoreDeployment = installFormerProd8453()
+})
+
+afterAll(() => restoreDeployment())
 
 describe('upgrade IPv6 /56 buckets', () => {
     beforeEach(() => {

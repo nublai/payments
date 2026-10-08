@@ -2,10 +2,23 @@
  * Unit tests for capabilities RPC method
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest'
 import { handleGetCapabilities } from '../../src/rpc/methods/getCapabilities'
 import type { RpcContext } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
+import { installDeployment } from '../deployment-fixture'
+
+// Installed into the prod/8453 deployments JSON below, and kept in env.
+const ADDRESSES_8453 = {
+    ACCOUNT_8453: '0xAccount',
+    ACCOUNT_PROXY_8453: '0xAccountProxy',
+    ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
+    SIMPLE_FUNDER_8453: '0xSimpleFunder',
+    SIMULATOR_8453: '0xSimulator',
+    SIMPLE_SETTLER_8453: '0xSimpleSettler',
+    ESCROW_8453: '0xEscrow',
+    MULTI_SIG_SIGNER_8453: '0xMultiSigSigner',
+}
 
 // Create mock environment
 const createMockEnv = () => ({
@@ -20,16 +33,8 @@ const createMockEnv = () => ({
     ORCHESTRATOR: '0x3456789012345678901234567890123456789012',
     SIMPLE_FUNDER: '0xSimpleFunder',
     SIMULATOR: '0xSimulator',
-    // Chain-suffixed so prod/8453 resolves after the JSON was zeroed.
     // Unsuffixed placeholders stay incomplete, so an unknown chain still skips.
-    ACCOUNT_8453: '0xAccount',
-    ACCOUNT_PROXY_8453: '0xAccountProxy',
-    ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
-    SIMPLE_FUNDER_8453: '0xSimpleFunder',
-    SIMULATOR_8453: '0xSimulator',
-    SIMPLE_SETTLER_8453: '0xSimpleSettler',
-    ESCROW_8453: '0xEscrow',
-    MULTI_SIG_SIGNER_8453: '0xMultiSigSigner',
+    ...ADDRESSES_8453,
     SIGNER_POOL: {
         idFromName: vi.fn().mockReturnValue('pool-id'),
         get: vi.fn().mockReturnValue({
@@ -72,6 +77,14 @@ const createMockEnv = () => ({
 const createMockCtx = (env = createMockEnv()): RpcContext => ({
     env: env as Partial<Env>,
 })
+
+let restoreDeployment: () => void
+
+beforeAll(() => {
+    restoreDeployment = installDeployment('prod', 8453, ADDRESSES_8453)
+})
+
+afterAll(() => restoreDeployment())
 
 describe('wallet_getCapabilities', () => {
     it('should return contracts and fees per chain (spec-compliant)', async () => {

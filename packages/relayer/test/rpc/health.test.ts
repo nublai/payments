@@ -2,23 +2,29 @@
  * Unit tests for health RPC methods
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest'
 import { handleHealth, handleLive, handleReady } from '../../src/rpc/methods/health'
 import type { RpcContext } from '../../src/rpc/types'
+import { installDeployment } from '../deployment-fixture'
+
+// Installed into the prod/8453 deployments JSON below, and kept in env.
+const ADDRESSES_8453 = {
+    ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
+    SIMPLE_FUNDER_8453: '0x4567890123456789012345678901234567890123',
+    SIMULATOR_8453: '0x5678901234567890123456789012345678901234',
+    ACCOUNT_8453: '0x1234567890123456789012345678901234567890',
+    ACCOUNT_PROXY_8453: '0x2345678901234567890123456789012345678901',
+    SIMPLE_SETTLER_8453: '0x6789012345678901234567890123456789012345',
+    ESCROW_8453: '0x7890123456789012345678901234567890123456',
+    MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
+}
 
 // Mock RPC context
 const createMockCtx = (overrides: Partial<RpcContext> = {}): RpcContext => ({
     env: {
         RPC_URL: 'https://example.com/rpc',
         CHAIN_IDS: '8453',
-        ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
-        SIMPLE_FUNDER_8453: '0x4567890123456789012345678901234567890123',
-        SIMULATOR_8453: '0x5678901234567890123456789012345678901234',
-        ACCOUNT_8453: '0x1234567890123456789012345678901234567890',
-        ACCOUNT_PROXY_8453: '0x2345678901234567890123456789012345678901',
-        SIMPLE_SETTLER_8453: '0x6789012345678901234567890123456789012345',
-        ESCROW_8453: '0x7890123456789012345678901234567890123456',
-        MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
+        ...ADDRESSES_8453,
         SIGNER_POOL: {
             idFromName: vi.fn().mockReturnValue('pool-id'),
             get: vi.fn().mockReturnValue({
@@ -31,6 +37,14 @@ const createMockCtx = (overrides: Partial<RpcContext> = {}): RpcContext => ({
     },
     ...overrides,
 })
+
+let restoreDeployment: () => void
+
+beforeAll(() => {
+    restoreDeployment = installDeployment('prod', 8453, ADDRESSES_8453)
+})
+
+afterAll(() => restoreDeployment())
 
 describe('wallet_health', () => {
     it('should return "ok" string', async () => {

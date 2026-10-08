@@ -8,13 +8,13 @@
  * for eth_sendRawTransaction.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Hono } from 'hono'
 import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { hashAuthorization } from 'viem/utils'
 
-import { formerProd8453Env } from '../former-prod-env'
+import { installFormerProd8453 } from '../former-prod-env'
 import { authMiddleware } from '../../src/auth/middleware'
 import type { AuthProvider } from '../../src/auth/types'
 import { dispatch } from '../../src/rpc/dispatcher'
@@ -93,7 +93,6 @@ function createEnv(
         RPC_URL,
         RPC_8453: RPC_URL,
         CONTEXT: 'prod',
-        ...formerProd8453Env,
         AUTH_PROTECTED_METHODS: 'wallet_sendPreparedCalls',
         ERC8128_ENABLED: 'false',
         PRIVY_ENABLED: 'false',
@@ -201,6 +200,14 @@ function expectNoLeak(text: string) {
     expect(text).not.toContain(RAW_TX)
     expect(text).not.toContain('eth_sendRawTransaction')
 }
+
+let restoreDeployment: () => void
+
+beforeAll(() => {
+    restoreDeployment = installFormerProd8453()
+})
+
+afterAll(() => restoreDeployment())
 
 describe('C1 wallet_upgradeAccount', () => {
     it('unauthenticated wallet_upgradeAccount does not broadcast and does not leak the RPC URL or raw transaction', async () => {
