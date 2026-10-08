@@ -56,20 +56,24 @@ export const DEFINITIVE_PRE_BROADCAST_REFUSAL_CODES: ReadonlySet<number> = new S
 
 export function isDefinitivePreBroadcastRefusal(error: unknown): boolean {
     const code = jsonRpcCode(error)
+
     return code !== undefined && DEFINITIVE_PRE_BROADCAST_REFUSAL_CODES.has(code)
 }
 
 function jsonRpcCode(error: unknown): number | undefined {
     if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
     const code = (error as { code?: unknown }).code
+
     return typeof code === 'number' && Number.isInteger(code) ? code : undefined
 }
 
 function bundleIdFromSendError(error: unknown): string | undefined {
     if (typeof error !== 'object' || error === null) return undefined
     const data = (error as { data?: unknown }).data
+
     if (typeof data !== 'object' || data === null || !('bundleId' in data)) return undefined
     const id = (data as { bundleId?: unknown }).bundleId
+
     return typeof id === 'string' && id.length > 0 ? id : undefined
 }
 
@@ -78,7 +82,9 @@ function markPossiblySubmitted(error: unknown): Error {
     const tagged = error instanceof Error ? error : new Error(String(error))
     const marked = tagged as Error & { rotationPossiblySubmitted?: boolean; bundleId?: string }
     marked.rotationPossiblySubmitted = true
+
     if (bundleId) marked.bundleId = bundleId
+
     return marked
 }
 
@@ -162,19 +168,24 @@ export async function executeSignedCalls(
     const localFeeChain = params.chainId === 31337 || params.chainId === 41337
     const zeroFee = localFeeChain
     refuseLonePayerOrToken(params.payer, params.paymentToken, params.paymentMaxAmount)
+
     if (params.paymentMaxAmount !== undefined) {
         requirePayerAndToken(params.payer, params.paymentToken)
     }
+
     const ceiling =
         params.paymentMaxAmount === undefined
             ? policy.paymentMaxAmount
             : zeroFee
               ? params.paymentMaxAmount
               : clampPaymentCeiling(params.paymentMaxAmount, PAID_FEE_CAP)
+
     const payer = params.payer ?? policy.payer
     const paymentToken = params.paymentToken ?? policy.paymentToken
+
     if (!localFeeChain) assertOffLocalFeeToken(params.chainId, payer, paymentToken)
     const payment = { payer, paymentToken, paymentMaxAmount: ceiling }
+
     const combinedGasCeiling =
         params.combinedGasCeiling ??
         (process.env.NODE_ENV === 'test' || !params.rpcUrl
@@ -199,18 +210,22 @@ export async function executeSignedCalls(
         })
 
     let prepared = await prepare(ceiling)
+
     let signedCap = resolveSignedFeeCap({
         paymentAmount: firstQuotePaymentAmount(prepared),
         ceiling,
         zeroFee,
     })
+
     if (signedCap !== ceiling) {
         prepared = await prepare(signedCap)
+
         const again = resolveSignedFeeCap({
             paymentAmount: firstQuotePaymentAmount(prepared),
             ceiling,
             zeroFee,
         })
+
         if (again !== signedCap) {
             throw new PreparedCallsBindingError(
                 'Refusing to sign prepared calls: fee cap does not match the quote',
@@ -220,6 +235,7 @@ export async function executeSignedCalls(
 
     const verifyingContract =
         params.verifyingContract ?? resolveOrchestratorAddress(params.env, params.chainId)
+
     const bound = bindPreparedCalls(prepared, {
         from: params.from,
         calls: params.calls,
@@ -251,6 +267,7 @@ export async function executeSignedCalls(
     // The signed intent is handed to the relayer here. After this call, only a
     // definitive pre-broadcast refusal means the transaction was not broadcast.
     let submission: { id: string }
+
     try {
         submission = await deps.sendPreparedCalls({
             context: prepared.context,
@@ -264,10 +281,13 @@ export async function executeSignedCalls(
     const tagBundle = (error: unknown): unknown => {
         if (error instanceof Error) {
             ;(error as Error & { bundleId?: string }).bundleId = submission.id
+
             return error
         }
+
         const wrapped = new Error(String(error)) as Error & { bundleId?: string }
         wrapped.bundleId = submission.id
+
         return wrapped
     }
 
@@ -280,6 +300,7 @@ export async function executeSignedCalls(
     }
 
     let finalStatus: BundleStatusResponse
+
     try {
         finalStatus = await deps.waitForBundle({ id: submission.id })
     } catch (error) {
