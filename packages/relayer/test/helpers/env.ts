@@ -7,7 +7,7 @@ export function unusedBinding<T>(): T {
     return {} as T
 }
 
-const DEFAULT_MNEMONIC = 'test test test test test test test test test test junk'
+const DEFAULT_MNEMONIC = 'test test test test test test test test test test test junk'
 
 /** Minimal Env with unused DO/queue bindings. Override any field the test needs. */
 export function testEnv(overrides: Partial<Env> = {}): Env {
