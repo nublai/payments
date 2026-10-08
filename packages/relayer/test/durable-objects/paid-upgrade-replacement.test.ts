@@ -73,7 +73,7 @@ describe('paid upgrade stale replacement', () => {
         const seen: Array<{ paidUpgrade?: boolean; gas?: bigint }> = []
         let estimate = 456_207n
 
-        const signer = Object.create(SignerDO.prototype) as SignerDO & {
+        const signer = Object.create(SignerDO.prototype) as {
             sql: { exec: (query: string, ...args: unknown[]) => { toArray: () => PendingRow[] } }
             env: Env
             ctx: { id: { name: string } }

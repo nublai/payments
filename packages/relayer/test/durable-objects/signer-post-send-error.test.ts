@@ -85,7 +85,7 @@ describe('post-send signer errors', () => {
         }
 
         const seen: string[] = []
-        const pool = Object.create(SignerPoolDO.prototype) as SignerPoolDO & {
+        const pool = Object.create(SignerPoolDO.prototype) as Pick<SignerPoolDO, 'sendTransaction'> & {
             env: Env
             ctx: { id: { name: string } }
             getAllCapacities: () => Promise<IndexedCapacityInfo[]>
