@@ -1,4 +1,4 @@
-import { getAddress, hashStruct, type Address, type Hex } from 'viem'
+import { getAddress, hashStruct, type Address, type Hex, type TypedData } from 'viem'
 
 /**
  * Deposit ids are the EIP-712 struct hash of Relay's v1 Order, which the
@@ -26,7 +26,7 @@ import { getAddress, hashStruct, type Address, type Hex } from 'viem'
  * file is a different type; live quotes still use version `"v1"`.
  */
 
-const ORDER_EIP712_TYPES = {
+const ORDER_EIP712_TYPES: TypedData = {
     Order: [
         { name: 'version', type: 'string' },
         { name: 'solverChainId', type: 'string' },

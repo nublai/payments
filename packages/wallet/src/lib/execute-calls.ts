@@ -13,7 +13,7 @@ import {
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
-import type { Address, type Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from './gas-ceiling'
 import {
     discloseFeeCap,

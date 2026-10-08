@@ -110,6 +110,10 @@ type SubmittedRotationIntent = RotationIntentBase & {
 }
 
 type RotationIntent = PendingRotationIntent | SubmittedRotationIntent
+
+/** Mutable holder so a callback's reassignment is visible to code typed after it. */
+type RotationIntentCell = { intent: RotationIntent }
+
 type PendingRotationIntentPayload = Omit<PendingRotationIntent, 'fileName'>
 type SubmittedRotationIntentPayload = Omit<SubmittedRotationIntent, 'fileName'>
 type RotationIntentPayload = PendingRotationIntentPayload | SubmittedRotationIntentPayload
@@ -442,7 +446,7 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
     const permissions = parseRotationPermissions(maybe.permissions)
     const mac = parseMarkerMac(maybe.mac)
     const macKdf = parseMarkerMacKdf(maybe.macKdf)
-    const bound = {
+    const bound: Omit<RotationIntentBase, 'fileName'> = {
         oldSessionName: maybe.oldSessionName,
         newSessionName: maybe.newSessionName,
         chain: maybe.chain,
@@ -1831,6 +1835,7 @@ export async function executeSessionRotate(
 
             if (!skipSelectedAuthorize) {
             const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
+            const live: RotationIntentCell = { intent }
 
             try {
                 const submission = await deps.executeSignedCalls(
@@ -1866,13 +1871,13 @@ export async function executeSessionRotate(
                         env: signedNetwork.env,
                         rpcUrl: signedNetwork.rpcUrl,
                         onBundleSubmitted: async (id) => {
-                            intent = await writeBoundRotationIntent(
+                            live.intent = await writeBoundRotationIntent(
                                 deps,
                                 keystorePath,
                                 bundle.root.sessionRef.dir,
-                                markRotationIntentSubmitted(intent, id),
+                                markRotationIntentSubmitted(live.intent, id),
                                 options.password,
-                                intent.fileName,
+                                live.intent.fileName,
                             )
                         },
                     },
@@ -1883,11 +1888,11 @@ export async function executeSessionRotate(
             } catch (error) {
                 const submittedId =
                     bundleWaitTimeoutId(error) ??
-                    (intent.status === 'submitted' ? intent.bundleId : undefined)
+                    (live.intent.status === 'submitted' ? live.intent.bundleId : undefined)
                 if (submittedId || isPossiblySubmittedRotation(error)) {
-                    if (intent.status !== 'submitted' || intent.bundleId !== submittedId) {
-                        const current = intent
-                        intent = await writeBoundRotationIntent(
+                    if (live.intent.status !== 'submitted' || live.intent.bundleId !== submittedId) {
+                        const current = live.intent
+                        live.intent = await writeBoundRotationIntent(
                             deps,
                             keystorePath,
                             bundle.root.sessionRef.dir,
@@ -1900,7 +1905,7 @@ export async function executeSessionRotate(
                 }
                 await deps.unlink(newSessionPath).catch(() => undefined)
                 await deps
-                    .deleteRotationIntent(keystorePath, bundle.root.sessionRef.dir, intent.fileName)
+                    .deleteRotationIntent(keystorePath, bundle.root.sessionRef.dir, live.intent.fileName)
                     .catch(() => undefined)
                 throw new SessionRotateError(
                     'ROTATION_FAILED',
@@ -1910,6 +1915,8 @@ export async function executeSessionRotate(
                     },
                 )
             }
+
+            intent = live.intent
             if (!bundleId) {
                 throw new SessionRotateError(
                     'ROTATION_FAILED',
