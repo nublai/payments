@@ -74,15 +74,7 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
     expect(secrets?.ok).toBe(false)
     expect(JSON.stringify(secrets)).not.toContain(TEST_PRIVATE_KEY)
 
-    const typedData = {
-        domain: { name: 'session-daemon-test' },
-        types: {
-            EIP712Domain: [{ name: 'name', type: 'string' }],
-            Intent: [{ name: 'nonce', type: 'uint256' }],
-        },
-        primaryType: 'Intent' as const,
-        message: { nonce: 1n },
-    }
+    const typedData = orchestratorIntent(account.address, '0x')
 
     const signed = await client.sign('default', typedData)
     expect(signed?.ok).toBe(true)
@@ -191,14 +183,14 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
         })
         expect(load?.ok).toBe(true)
 
-        const arbitrary = {
-            domain: { name: 'session-daemon-test' },
-            types: {
-                EIP712Domain: [{ name: 'name', type: 'string' }],
-                Intent: [{ name: 'nonce', type: 'uint256' }],
+        const arbitrary: DaemonTypedData = {
+            ...orchestratorIntent(account.address, '0x'),
+            domain: {
+                name: 'session-daemon-test',
+                version: '1',
+                chainId: 8453,
+                verifyingContract: zeroAddress,
             },
-            primaryType: 'Intent' as const,
-            message: { nonce: 1n },
         }
         const refused = await client.sign('swap', arbitrary)
         expect(refused?.ok).toBe(false)

@@ -52,7 +52,7 @@ test('protocol parses success and error responses', () => {
         '{"id":"b","error":{"code":"SESSION_NOT_FOUND","message":"missing"}}',
     )
     expect('error' in err).toBe(true)
-    if ('error' in err) {
+    if (err.error !== undefined) {
         expect(err.error.code).toBe('SESSION_NOT_FOUND')
     }
 })

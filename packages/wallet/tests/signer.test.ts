@@ -3,8 +3,10 @@ import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { privateKeyToAccount } from 'viem/accounts'
+import { INTENT_TYPES, type PrepareCallsResponse } from '@nubl/relayer-client'
 import { runSessionDaemon } from '../src/lib/session-daemon'
 import { SessionDaemonClient } from '../src/lib/session-daemon-client'
+import type { RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import {
     resolveSessionSigner,
     SessionSignerDaemonError,
@@ -35,19 +37,34 @@ afterEach(() => {
     }
 })
 
-function makeTypedData() {
+function makeTypedData(): PrepareCallsResponse['typedData'] {
     return {
-        domain: { name: 'signer-test' },
-        types: {
-            EIP712Domain: [{ name: 'name', type: 'string' }],
-            Intent: [{ name: 'nonce', type: 'uint256' }],
+        domain: {
+            name: 'signer-test',
+            version: '1',
+            chainId: 8453,
+            verifyingContract: '0x2222222222222222222222222222222222222222',
         },
-        primaryType: 'Intent' as const,
-        message: { nonce: 1n },
+        types: INTENT_TYPES,
+        primaryType: 'Intent',
+        message: {
+            multichain: false,
+            eoa: '0x1111111111111111111111111111111111111111',
+            calls: [],
+            nonce: 1n,
+            payer: '0x0000000000000000000000000000000000000000',
+            paymentToken: '0x0000000000000000000000000000000000000000',
+            paymentMaxAmount: 0n,
+            combinedGas: 0n,
+            encodedPreCalls: [],
+            encodedFundTransfers: [],
+            settler: '0x0000000000000000000000000000000000000000',
+            expiry: 0n,
+        },
     }
 }
 
-function makeSessionKeystore(sessionAddress: string) {
+function makeSessionKeystore(sessionAddress: string): RelayerSessionKeystoreV2 {
     return {
         version: 2,
         name: 'default',
@@ -60,7 +77,7 @@ function makeSessionKeystore(sessionAddress: string) {
             chainId: 8453,
         },
         kdf: {
-            name: 'argon2id' as const,
+            name: 'argon2id',
             params: {
                 memoryCost: 19456,
                 timeCost: 2,
@@ -69,7 +86,7 @@ function makeSessionKeystore(sessionAddress: string) {
                 salt: 'Zm9v',
             },
         },
-        crypto: { algorithm: 'aes-256-gcm' as const },
+        crypto: { algorithm: 'aes-256-gcm' },
         addresses: {
             delegated: '0x1111111111111111111111111111111111111111',
             session: sessionAddress,
