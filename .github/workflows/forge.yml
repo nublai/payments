@@ -43,3 +43,7 @@ jobs:
       - name: Release follow-up checks
         working-directory: packages/contracts
         run: ./scripts/sh/test-release-followups.sh
+
+      - name: Relayer mnemonic checks
+        working-directory: packages/contracts
+        run: ./scripts/sh/test-relayer-mnemonic.sh
