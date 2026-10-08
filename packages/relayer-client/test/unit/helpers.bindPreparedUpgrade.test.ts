@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { encodeAbiParameters, getAddress, parseAbiParameters, zeroAddress } from 'viem'
+import {
+    encodeAbiParameters,
+    getAddress,
+    parseAbiParameters,
+    zeroAddress,
+    type Address,
+    type Hex,
+} from 'viem'
+import { hex, repeatedHex } from '../helpers/hex.js'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
 import {
     bindPreparedUpgrade,
@@ -9,11 +17,11 @@ import {
 } from '../../src/helpers/bindPreparedUpgrade.js'
 import type { AuthorizeKey } from '../../src/actions/upgradeAccount.js'
 
-const ACCOUNT = '0x1111111111111111111111111111111111111111'
+const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 
-const PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
+const PROXY: Address = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
+const ORCHESTRATOR: Address = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
 const ATTACKER = getAddress('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF')
 
@@ -25,7 +33,7 @@ const KEY: AuthorizeKey = {
     expiry: '0',
     type: 'secp256k1',
     role: 'normal',
-    publicKey: `0x${'ab'.repeat(32)}`,
+    publicKey: repeatedHex('ab', 32),
     permissions: [
         {
             type: 'call',
@@ -135,7 +143,10 @@ describe('bindPreparedUpgrade', () => {
 
     it('refuses an attacker call in the SignedCall', () => {
         const prepared = honestPrepared()
-        const calls = [{ to: ATTACKER, value: 0n, data: '0xdeadbeef' }]
+
+        const calls: Array<{ to: Address; value: bigint; data: Hex }> = [
+            { to: ATTACKER, value: 0n, data: hex('0xdeadbeef') },
+        ]
 
         const executionData = encodeAbiParameters(
             parseAbiParameters('(address to, uint256 value, bytes data)[]'),
