@@ -47,7 +47,7 @@ function createEnv(
     overrides: Partial<Env> = {},
     options: { upgradeAllowed?: boolean } = {},
 ): Env {
-    const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
         const bodyText = typeof init?.body === 'string' ? init.body : ''
         let parsed: { type?: string } | null = null
         if (bodyText) {

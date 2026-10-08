@@ -69,6 +69,8 @@ describe('wallet_getCallsHistory', () => {
         const result = await client.getCallsHistory({ address })
 
         expect(result.success).toBe(true)
+
+        if (!result.success) throw new Error(result.error)
         expect(result.items).toEqual([])
         expect(result.total).toBe(0)
     })
@@ -83,6 +85,8 @@ describe('wallet_getCallsHistory', () => {
         const history = await client.getCallsHistory({ address: account.address })
 
         expect(history.success).toBe(true)
+
+        if (!history.success) throw new Error(history.error)
         expect(history.total).toBeGreaterThanOrEqual(1)
 
         const found = history.items!.find((item) => item.id === bundleId)
@@ -101,6 +105,8 @@ describe('wallet_getCallsHistory', () => {
 
         const page1 = await client.getCallsHistory({ address: account.address, limit: 1 })
         expect(page1.success).toBe(true)
+
+        if (!page1.success) throw new Error(page1.error)
         expect(page1.items!.length).toBe(1)
         expect(page1.total).toBe(2)
 
@@ -110,6 +116,8 @@ describe('wallet_getCallsHistory', () => {
             offset: 1,
         })
         expect(page2.success).toBe(true)
+
+        if (!page2.success) throw new Error(page2.error)
         expect(page2.items!.length).toBe(1)
         expect(page2.total).toBe(2)
 

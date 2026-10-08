@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
-import type { Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import { executeAccountDelegate, resolveAccountDelegatePassword } from '../src/lib/account-delegate'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+
+const ROOT_ADDRESS: Address = '0x1111111111111111111111111111111111111111'
 
 let restoreFormerProdDeployments = () => {}
 beforeAll(() => {
@@ -24,7 +26,7 @@ function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRo
             chainId: 8453,
         },
         addresses: {
-            root: '0x1111111111111111111111111111111111111111',
+            root: ROOT_ADDRESS,
         },
         sessionRef: {
             active: 'default',
@@ -200,7 +202,7 @@ test('executeAccountDelegate delegates or skips already delegated chains', async
                 network.chainId === 8453 ? ('0x' as Hex) : ('0xef0100' as Hex),
             ),
             delegateAccount: mock(async () => ({
-                accountAddress: root.addresses.root,
+                accountAddress: ROOT_ADDRESS,
                 txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as Hex,
             })),
             writeRootKeystoreFile,
@@ -250,7 +252,7 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
                     throw new Error('Delegation failed: rpc error')
                 }
                 return {
-                    accountAddress: root.addresses.root,
+                    accountAddress: ROOT_ADDRESS,
                     txHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Hex,
                 }
             }),

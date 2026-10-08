@@ -1,10 +1,19 @@
 import { expect, mock, test } from 'bun:test'
-import { getAddress } from 'viem'
+import { getAddress, zeroAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { executeSessionList } from '../src/lib/session-list'
 import { executeSessionRevoke } from '../src/lib/session-revoke'
 import type { AnySessionKeystore, KeystoreBundle, RelayerRootKeystoreV2 } from '../src/lib/keystore'
+import type { ExecuteSignedCallsResult } from '../src/lib/execute-calls'
+import type { FeeCapDisclosure } from '../src/lib/intent-payment'
+
+const feeCap: FeeCapDisclosure = {
+    token: zeroAddress,
+    symbol: 'none',
+    amountUsdc: '0',
+    expiresIn: '1h',
+}
 
 function makeRoot(activeSession: string): RelayerRootKeystoreV2 {
     return {
@@ -241,24 +250,41 @@ test('executeSessionRevoke cleans agent channels before surfacing unverified rev
                     active: false,
                     pidPath: '/tmp/sessions/bot.listen.pid',
                 })),
-                getKeys: mock(async () => ({ '0x2105': [{ hash: sessionKeyHash }] })),
+                getKeys: mock(async () => ({
+                    '0x2105': [
+                        {
+                            hash: sessionKeyHash,
+                            expiry: '0x0' as const,
+                            type: 'secp256k1' as const,
+                            role: 'normal' as const,
+                            publicKey: '0x' as const,
+                            permissions: [],
+                        },
+                    ],
+                })),
                 decryptRootKeystore: mock(async () => ({
                     rootPrivateKey:
                         '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
                 })),
                 readNonce: mock(async () => 1n),
-                executeSignedCalls: mock(async () => ({
-                    id: 'bundle-1',
-                    finalStatus: {
-                        success: true,
-                        status: 'confirmed',
-                        statusCode: 200,
-                        receipt: {
-                            transactionHash:
-                                '0x1111111111111111111111111111111111111111111111111111111111111111',
+                executeSignedCalls: mock(
+                    async (): Promise<ExecuteSignedCallsResult> => ({
+                        id: 'bundle-1',
+                        finalStatus: {
+                            success: true,
+                            status: 'confirmed',
+                            statusCode: 200,
+                            receipt: {
+                                transactionHash:
+                                    '0x1111111111111111111111111111111111111111111111111111111111111111',
+                                blockNumber: '0x1',
+                                gasUsed: '0x0',
+                                status: 'success',
+                            },
                         },
-                    },
-                })),
+                        feeCap,
+                    }),
+                ),
                 sleep: mock(async () => undefined),
                 readAgentChannelRegistry: mock(async () => ({
                     version: 1 as const,

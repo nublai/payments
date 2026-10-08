@@ -127,7 +127,7 @@ describe('Intent Expiry Validation', () => {
             types: prepared.typedData.types,
             primaryType: 'Intent',
             message: {
-                ...(prepared.typedData.message as Record<string, unknown>),
+                ...prepared.typedData.message,
                 expiry: expiredExpiry,
             },
         })
@@ -178,7 +178,7 @@ describe('Intent Expiry Validation', () => {
             types: prepared.typedData.types,
             primaryType: 'Intent',
             message: {
-                ...(prepared.typedData.message as Record<string, unknown>),
+                ...prepared.typedData.message,
                 expiry: soonExpiry,
             },
         })

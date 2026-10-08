@@ -603,8 +603,10 @@ test('a symlink marker is ignored, and a pending resume keeps the original custo
             status?: string
             permissions?: {
                 kind?: string
+                target?: string
                 selectors?: string[]
                 spendLimit?: string
+                spendPeriod?: string
             }
         }
         expect(marker.status).toBe('pending')
@@ -1219,7 +1221,7 @@ test('dev on Base clamps a 100 USDC caller cap to 5 USDC before prepare and befo
                     waitForBundle: mock(async () => ({
                         success: true,
                         statusCode: 200,
-                        status: 'confirmed',
+                        status: 'confirmed' as const,
                     })),
                 },
                 base,
