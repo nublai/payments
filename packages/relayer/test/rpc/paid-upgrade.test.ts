@@ -65,6 +65,7 @@ const rpc = {
     rateThrow: false,
     gasThrow: false,
     failBroadcast: false,
+    broadcastAttempted: false,
     gasBudget: 2_000_000n,
     receiptMissing: false,
 }
@@ -153,7 +154,10 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     }
     if (rpc.failBroadcast) {
         return Promise.resolve(
-            jsonResponse({ error: 'broadcast failed', broadcastAttempted: false }, false),
+            jsonResponse(
+                { error: 'broadcast failed', broadcastAttempted: rpc.broadcastAttempted },
+                false,
+            ),
         )
     }
     captures.push(body)
@@ -423,6 +427,7 @@ beforeEach(() => {
     rpc.rateThrow = false
     rpc.gasThrow = false
     rpc.failBroadcast = false
+    rpc.broadcastAttempted = false
     rpc.gasBudget = 2_000_000n
     rpc.receiptMissing = false
     rpcCalls.length = 0
@@ -688,6 +693,19 @@ describe('paid upgrade send refusals', () => {
         expect(captures).toHaveLength(0)
         expect(gasLog.map((entry) => entry.action)).toEqual(['reserve-gas', 'release-gas'])
         expect(gasHeld).toBe(0n)
+    })
+
+    it('settles the full hold as spent gas when a broadcast may have been attempted', async () => {
+        rpc.failBroadcast = true
+        rpc.broadcastAttempted = true
+        const { params } = await signedParams()
+        await expect(handleSendPreparedCalls(params, createCtx())).rejects.toThrow('broadcast failed')
+        expect(captures).toHaveLength(0)
+        expect(gasLog.map((entry) => entry.action)).toEqual(['reserve-gas', 'settle-gas'])
+        expect(gasLog[1]).toMatchObject({ hold: '500000', gas: '500000', failure: false })
+        expect(gasLog[1]?.txHash).toBeUndefined()
+        expect(gasHeld).toBe(0n)
+        expect(gasSpent).toBe(500_000n)
     })
 
     it('simulates the execute from the relayer signer that will broadcast', async () => {
