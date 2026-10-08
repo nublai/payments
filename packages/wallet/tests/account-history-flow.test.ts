@@ -1,5 +1,47 @@
 import { expect, mock, test } from 'bun:test'
 import { executeAccountHistory } from '../src/lib/account-history'
+import type { KeystoreBundle } from '../src/lib/keystore'
+
+const network = {
+    env: 'prod',
+    relayerUrl: 'http://127.0.0.1:8787',
+    rpcUrl: 'https://mainnet.base.org',
+    chainId: 8453,
+}
+
+const kdf: KeystoreBundle['root']['kdf'] = {
+    name: 'argon2id',
+    params: { memoryCost: 19456, timeCost: 2, parallelism: 1, hashLength: 32, salt: 'dGVzdA==' },
+}
+
+const bundle: KeystoreBundle = {
+    rootPath: '/tmp/alice.json',
+    sessionPath: '/tmp/sessions/default.json',
+    root: {
+        version: 2,
+        createdAt: '2026-02-26T00:00:00.000Z',
+        network,
+        addresses: { root: '0x1111111111111111111111111111111111111111' },
+        sessionRef: { active: 'default', dir: 'sessions' },
+        kdf,
+        crypto: { algorithm: 'aes-256-gcm' },
+        secrets: { rootPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' } },
+    },
+    session: {
+        version: 2,
+        createdAt: '2026-02-26T00:00:00.000Z',
+        name: 'default',
+        checkpoint: 'complete',
+        network,
+        kdf,
+        crypto: { algorithm: 'aes-256-gcm' },
+        addresses: {
+            session: '0x2222222222222222222222222222222222222222',
+            delegated: '0x1111111111111111111111111111111111111111',
+        },
+        secrets: { sessionPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' } },
+    },
+}
 
 test('executeAccountHistory uses root EOA from keystore when no address override', async () => {
     const getCallsHistory = mock(async () => ({
@@ -14,9 +56,7 @@ test('executeAccountHistory uses root EOA from keystore when no address override
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(async () => ({
-                root: { addresses: { root: '0x1111111111111111111111111111111111111111' } },
-            })),
+            readKeystoreBundle: mock(async () => bundle),
             getCallsHistory,
         },
     )

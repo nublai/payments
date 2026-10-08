@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { executeEscrowStatus } from '../src/lib/escrow-status'
-import { EscrowError } from '../src/lib/escrow-common'
+import { EscrowError, type ResolveEscrowChainNetworkContractsResult } from '../src/lib/escrow-common'
+import type { ChainName, EnvName } from '../src/lib/network-config'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
@@ -11,7 +12,7 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const VALID_ESCROW_ID = '0x' + '00'.repeat(32)
+const VALID_ESCROW_ID = `0x${'00'.repeat(32)}` as const
 
 test('executeEscrowStatus rejects invalid escrowId with INVALID_ARGUMENT', async () => {
     await expect(
@@ -57,23 +58,26 @@ test('executeEscrowStatus returns status shape with mocked getEscrowStatus', asy
             chain: 'base',
         },
         {
-            resolveEscrowChainNetworkContracts: mock((env, chain) => {
-                const chainName = chain ?? 'base'
-                return {
-                    chain: chainName,
-                    network: {
-                        chainId: 8453,
-                        rpcUrl: 'https://mainnet.base.org',
-                        relayerUrl: 'https://relayer.example.com',
-                        env: 'prod',
-                    },
-                    contracts: {
-                        escrowAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-                        simpleSettlerAddress: '0xssssssssssssssssssssssssssssssssssssssss',
-                        usdcAddress: '0xuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu',
-                    },
-                }
-            }),
+            resolveEscrowChainNetworkContracts: mock(
+                (_env: EnvName, chain?: ChainName): ResolveEscrowChainNetworkContractsResult => {
+                    const chainName = chain ?? 'base'
+
+                    return {
+                        chain: chainName,
+                        network: {
+                            chainId: 8453,
+                            rpcUrl: 'https://mainnet.base.org',
+                            relayerUrl: 'https://relayer.example.com',
+                            env: 'prod',
+                        },
+                        contracts: {
+                            escrowAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                            simpleSettlerAddress: '0xssssssssssssssssssssssssssssssssssssssss',
+                            usdcAddress: '0xuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu',
+                        },
+                    }
+                },
+            ),
             getEscrowStatus,
         },
     )
@@ -94,7 +98,7 @@ test('executeEscrowStatus maps getEscrowStatus errors via toEscrowError', async 
             escrowId: VALID_ESCROW_ID,
         },
         {
-            resolveEscrowChainNetworkContracts: mock(() => ({
+            resolveEscrowChainNetworkContracts: mock((): ResolveEscrowChainNetworkContractsResult => ({
                 chain: 'base',
                 network: {
                     chainId: 8453,

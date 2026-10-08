@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'bun:test'
 import { executeAccountAddress } from '../src/lib/account-address'
-import { LoginProfileError } from '../src/lib/keystore'
+import { LoginProfileError, type LoginSessionKeystoreV2 } from '../src/lib/keystore'
 
 test('executeAccountAddress returns root address from keystore bundle', async () => {
     const result = await executeAccountAddress(
@@ -47,7 +47,7 @@ test('executeAccountAddress maps invalid profile name to AccountAddressError', a
 })
 
 test('executeAccountAddress falls back to delegated address for login profiles', async () => {
-    const readSessionKeystoreFile = mock(async () => ({
+    const readSessionKeystoreFile = mock(async (_path: string): Promise<LoginSessionKeystoreV2> => ({
         version: 2,
         createdAt: new Date().toISOString(),
         name: 'default',

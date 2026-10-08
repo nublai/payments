@@ -4,8 +4,36 @@ import { expect, mock, test } from 'bun:test'
 import { dirname, join } from 'node:path'
 import { privateKeyToAccount } from 'viem/accounts'
 import { getDefaultKeystorePath } from '../src/lib/account-create'
-import type { LoginSessionKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import type {
+    AnySessionKeystore,
+    createSessionKeystore,
+    LoginSessionKeystoreV2,
+    RelayerSessionKeystoreV2,
+} from '../src/lib/keystore'
 import { executeLogin, executeLogout, LoginError } from '../src/lib/login'
+
+type SessionKeystoreInputs = typeof createSessionKeystore extends {
+    (input: infer RelayerInput): Promise<RelayerSessionKeystoreV2>
+    (input: infer LoginInput): Promise<LoginSessionKeystoreV2>
+}
+    ? { relayer: RelayerInput; login: LoginInput }
+    : never
+
+function createsLoginSessionKeystore(
+    createLogin: (input: SessionKeystoreInputs['login']) => Promise<LoginSessionKeystoreV2>,
+): typeof createSessionKeystore {
+    function create(input: SessionKeystoreInputs['relayer']): Promise<RelayerSessionKeystoreV2>
+    function create(input: SessionKeystoreInputs['login']): Promise<LoginSessionKeystoreV2>
+    async function create(
+        input: SessionKeystoreInputs['relayer'] | SessionKeystoreInputs['login'],
+    ): Promise<AnySessionKeystore> {
+        if (input.kind !== 'login') throw new Error('login must request a login session')
+
+        return createLogin(input)
+    }
+
+    return create
+}
 
 const SESSION_PRIVATE_KEY =
     '0x59c6995e998f97a5a0044966f0945388cf6f64f6b5f8a6d4f7e7a3fa8f8ff7f0' as const
@@ -104,7 +132,11 @@ test('executeLogin creates a login session keystore and writes session.json', as
     const profile = 'login-test'
     const profileDir = dirname(getDefaultKeystorePath('prod', profile))
     const sessionPath = join(profileDir, 'session.json')
-    const createSessionKeystore = mock(async () => makeLoginSessionKeystore())
+
+    const createSessionKeystore = mock(
+        async (_input: SessionKeystoreInputs['login']) => makeLoginSessionKeystore(),
+    )
+
     const writeSessionKeystoreFile = mock(async () => {})
 
     const result = await executeLogin(
@@ -122,7 +154,7 @@ test('executeLogin creates a login session keystore and writes session.json', as
             readSessionKeystoreFile: mock(async () => {
                 throw new Error('ENOENT: no such file or directory')
             }),
-            createSessionKeystore,
+            createSessionKeystore: createsLoginSessionKeystore(createSessionKeystore),
             writeSessionKeystoreFile,
         },
     )
@@ -206,7 +238,9 @@ test('executeLogin allows re-login by overwriting existing login session', async
                 throw new Error('ENOENT: no such file or directory')
             }),
             readSessionKeystoreFile: mock(async () => makeLoginSessionKeystore()),
-            createSessionKeystore: mock(async () => makeLoginSessionKeystore()),
+            createSessionKeystore: createsLoginSessionKeystore(
+                mock(async () => makeLoginSessionKeystore()),
+            ),
             writeSessionKeystoreFile,
         },
     )
