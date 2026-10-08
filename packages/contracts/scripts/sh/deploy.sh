@@ -49,7 +49,7 @@ DEFAULT_RPC_10="https://mainnet.optimism.io"
 DEFAULT_RPC_42161="https://arb1.arbitrum.io/rpc"
 DEFAULT_RPC_137="https://polygon-rpc.com"
 
-DEFAULT_RELAYER_MNEMONIC="test test test test test test test test test test test junk"
+ANVIL_TEST_MNEMONIC="test test test test test test test test test test test junk"
 DEFAULT_RELAYER_COUNT=10
 DEFAULT_LOCAL_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
@@ -297,7 +297,7 @@ if [[ -n "$ENV_SHORTCUT" ]]; then
             CHAINS="${CHAINS:-31337,41337}"
             CONTEXT="${CONTEXT:-local}"
             PRIVATE_KEY="${PRIVATE_KEY:-${LOCAL_PRIVATE_KEY:-$DEFAULT_LOCAL_PRIVATE_KEY}}"
-            RELAYER_MNEMONIC="${RELAYER_MNEMONIC:-${RELAYER_MNEMONIC:-$DEFAULT_RELAYER_MNEMONIC}}"
+            RELAYER_MNEMONIC="${RELAYER_MNEMONIC:-$ANVIL_TEST_MNEMONIC}"
             ;;
         dev)
             CHAINS="${CHAINS:-84532}"
@@ -329,6 +329,19 @@ fi
 if [[ -z "$CHAINS" ]]; then
     echo -e "${RED}Error: No chain specified. Use environment shortcut or --chain${NC}"
     usage
+fi
+
+# Signers derived from the public test mnemonic have public keys. Only local
+# Anvil (31337, 41337) may whitelist them as SimpleFunder gas wallets.
+if [[ -z "$SKIP_RELAYER" && "$RELAYER_MNEMONIC" == "$ANVIL_TEST_MNEMONIC" ]]; then
+    IFS=',' read -ra mnemonic_chains <<< "$CHAINS"
+    for mnemonic_chain in "${mnemonic_chains[@]}"; do
+        mnemonic_chain="${mnemonic_chain// /}"
+        if [[ "$mnemonic_chain" != "31337" && "$mnemonic_chain" != "41337" ]]; then
+            echo -e "${RED}Error: refusing the public test mnemonic on chain ${mnemonic_chain}. Set a private relayer mnemonic or use --skip-relayer.${NC}" >&2
+            exit 1
+        fi
+    done
 fi
 
 # =============================================================================

@@ -278,8 +278,9 @@ Copy `.env.example` to `.env` and set your values. Command-line flags override t
 # Anvil private key (default provided)
 LOCAL_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 
-# Test mnemonic for relayer signers (default provided)
-RELAYER_MNEMONIC=test test test test test test test test test test test junk
+# Relayer mnemonic (leave empty). deploy.sh local uses the public Anvil test
+# mnemonic and refuses that mnemonic on any chain other than 31337 and 41337.
+RELAYER_MNEMONIC=
 
 # Number of relayer signers to derive
 RELAYER_COUNT=10

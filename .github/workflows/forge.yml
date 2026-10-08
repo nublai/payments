@@ -47,3 +47,7 @@ jobs:
       - name: Deploy default checks
         working-directory: packages/contracts
         run: ./scripts/sh/test-deploy-defaults.sh
+
+      - name: Relayer mnemonic checks
+        working-directory: packages/contracts
+        run: ./scripts/sh/test-relayer-mnemonic.sh
