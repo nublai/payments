@@ -22,6 +22,9 @@
         "tools/oxlint/anti-slop/**",
         "packages/wallet/src/lib/execute-calls.ts"
     ],
+    "categories": {
+        "correctness": "error"
+    },
     "rules": {
         "oxc/no-accumulating-spread": "error",
         "anti-slop/no-array-filter-map": "warn",
@@ -44,6 +47,7 @@
         "anti-slop/require-safety-comment-for-type-assertion": "warn",
         "eqeqeq": "warn",
         "no-console": "off",
-        "no-unused-vars": "warn"
+        "no-unused-vars": "warn",
+        "no-unsafe-optional-chaining": "warn"
     }
 }
