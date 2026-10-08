@@ -22,10 +22,13 @@ import {
     erc20Abi,
     http,
     zeroAddress,
+    type Account,
     type Address,
     type Hex,
     type PublicClient,
     type TransactionReceipt,
+    type Transport,
+    type WalletClient,
 } from 'viem'
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts'
 import { hashAuthorization } from 'viem/utils'
@@ -784,7 +787,7 @@ async function main(): Promise<void> {
         const burner = await deployBytecode(wallet, publicClient, BURNER_BYTECODE)
         const gasBomb = await deployBytecode(wallet, publicClient, GAS_BOMB_BYTECODE)
         const heavyOwner = privateKeyToAccount(generatePrivateKey())
-        await fundAndApprove(wallet, publicClient, heavyOwner.address, relayer.address)
+        await fundAndApprove(wallet, publicClient, heavyOwner.address)
 
         const heavyNonceBefore = await publicClient.getTransactionCount({
             address: relayer.address,
@@ -852,7 +855,7 @@ async function main(): Promise<void> {
 
         const bombOwner = privateKeyToAccount(generatePrivateKey())
         const bombHelper = privateKeyToAccount(generatePrivateKey())
-        await fundAndApprove(wallet, publicClient, bombOwner.address, relayer.address)
+        await fundAndApprove(wallet, publicClient, bombOwner.address)
 
         const helperFunded = await fetch(RPC_URL, {
             method: 'POST',
@@ -1050,7 +1053,7 @@ const GAS_BOMB_BYTECODE =
     '0x6080604052348015600e575f5ffd5b50604580601a5f395ff3fe60806040525b6113885a1160055700fea26469706673582212209c62d81a64e8ae9e7363a468b7838b1978378a04080cd49131c4b68d3a139f1d64736f6c634300081c0033' as Hex
 
 async function deployBytecode(
-    wallet: ReturnType<typeof createWalletClient>,
+    wallet: WalletClient<Transport, typeof chain, Account>,
     publicClient: PublicClient,
     bytecode: Hex,
 ): Promise<Address> {
@@ -1062,10 +1065,9 @@ async function deployBytecode(
 }
 
 async function fundAndApprove(
-    wallet: ReturnType<typeof createWalletClient>,
+    wallet: WalletClient<Transport, typeof chain, Account>,
     publicClient: PublicClient,
     owner: Address,
-    spender: Address,
 ): Promise<void> {
     const funded = await fetch(RPC_URL, {
         method: 'POST',

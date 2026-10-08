@@ -12,7 +12,7 @@ afterAll(() => {
 })
 
 import type { Address } from 'viem'
-import { executeAccountSend } from '../src/lib/account-send'
+import { executeAccountSend, type AccountSendOptions } from '../src/lib/account-send'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 /** Wallet-chosen cap. Kept literal so this file loads on the pre-fix commit. */
@@ -82,7 +82,7 @@ function sendDeps(prepareCalls: ReturnType<typeof mock>, signTypedData = mock(as
     }
 }
 
-const sendOptions = {
+const sendOptions: AccountSendOptions = {
     env: 'prod' as const,
     amount: '1',
     recipient: '0x2222222222222222222222222222222222222222',
@@ -114,7 +114,11 @@ test('prod send signs a non-zero quote at or under the wallet fee cap', async ()
 
     const prepareCalls = mock(async (input) => {
         const prepared = matchingPreparedCalls(input)
-        prepared.context.quote.quotes[0].paymentAmount = '250000'
+        const quote = prepared.context.quote.quotes[0]
+
+        if (!quote) throw new Error('prepared fixture has no quote')
+
+        quote.paymentAmount = '250000'
 
         return prepared
     })
@@ -133,7 +137,11 @@ test('prod send refuses a quote payment above the wallet fee cap', async () => {
 
     const prepareCalls = mock(async (input) => {
         const prepared = matchingPreparedCalls(input)
-        prepared.context.quote.quotes[0].paymentAmount = (PAID_FEE_CAP + 1n).toString()
+        const quote = prepared.context.quote.quotes[0]
+
+        if (!quote) throw new Error('prepared fixture has no quote')
+
+        quote.paymentAmount = (PAID_FEE_CAP + 1n).toString()
 
         return prepared
     })

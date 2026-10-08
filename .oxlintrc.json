@@ -19,8 +19,7 @@
         ".claude/**",
         ".agents/**",
         ".pi/**",
-        "tools/oxlint/anti-slop/**",
-        "packages/wallet/src/lib/execute-calls.ts"
+        "tools/oxlint/anti-slop/**"
     ],
     "categories": {
         "correctness": "error"

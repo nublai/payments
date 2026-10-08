@@ -244,6 +244,7 @@ export class SignerPoolDO extends DurableObject<Env> {
             | 'enqueue-receipt'
             | 'reconcile-receipt'
             | 'reconcile-pending'
+            | 'track-replacement'
         kind?: UpgradeRateKind | 'paid-upgrade'
         chainId?: number
         account?: string
@@ -501,7 +502,7 @@ export class SignerPoolDO extends DurableObject<Env> {
 
                 const books = this.readGasBooks(sql, dayStart)
 
-                return { allowed: true, gas: books.gasSpent, held: books.held, failures: books.failures }
+                return { allowed: true, gas: books.gasSpent, held: books.heldGas, failures: books.failures }
             })
         }
 

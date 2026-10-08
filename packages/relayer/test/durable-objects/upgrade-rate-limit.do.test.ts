@@ -348,4 +348,42 @@ describe('SignerPoolDO upgrade rate limit', () => {
 
         expect(await missing.json()).toMatchObject({ allowed: true, gas: 0, held: 500000 })
     })
+
+    it('reports the held gas amount after a hold when a replacement is tracked', async () => {
+        const poolName = 'pool-8453-paid-track-held'
+        const id = env.SIGNER_POOL.idFromName(poolName)
+        const stub = env.SIGNER_POOL.get(id)
+        const original = `0x${'a1'.repeat(32)}`
+        const replacement = `0x${'b2'.repeat(32)}`
+        const endpoint = `http://do/upgrade-rate-limit?poolName=${poolName}`
+
+        const reserved = await stub.fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                kind: 'paid-upgrade',
+                chainId: 8453,
+                action: 'reserve-gas',
+                gas: '500000',
+            }),
+        })
+
+        expect(await reserved.json()).toMatchObject({ allowed: true, held: 500000 })
+
+        const tracked = await stub.fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                kind: 'paid-upgrade',
+                chainId: 8453,
+                nonce: 9,
+                signerName: 'signer-8453-0',
+                action: 'track-replacement',
+                txHash: replacement,
+                priorHash: original,
+            }),
+        })
+
+        expect(await tracked.json()).toMatchObject({ allowed: true, held: 500000 })
+    })
 })

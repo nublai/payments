@@ -249,7 +249,7 @@ export async function executeSessionUnlock(
     const decrypted = await deps.decryptSessionKeystore(sessionKeystore, options.password)
     let encryptionDeviceHex: `0x${string}` | undefined
 
-    if (options.device) {
+    if (options.device && isAgentKeystore(sessionKeystore)) {
         const exportedDevice = await deps.decryptAgentDevice(sessionKeystore, options.password)
         encryptionDeviceHex = `0x${Buffer.from(toBinary(ExportedDeviceSchema, exportedDevice)).toString('hex')}`
     }

@@ -2,9 +2,9 @@ import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { zeroAddress, type Address, type Hex } from 'viem'
 import { hashTypedData } from 'viem/utils'
-import { INTENT_TYPES, type Call } from '@nubl/relayer-client'
+import { INTENT_TYPES, type Call, type PrepareCallsResponse } from '@nubl/relayer-client'
 import { executeAccountSend } from '../src/lib/account-send'
-import { executeSignedCalls } from '../src/lib/execute-calls'
+import { executeSignedCalls, type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
 import { discloseFeeCap } from '../src/lib/intent-payment'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from '../src/lib/gas-ceiling'
 import { getEnvRelayerUrl, getUsdcAddressByChainId } from '../src/lib/network-config'
@@ -58,9 +58,13 @@ type PrepareInput = {
     paymentMaxAmount?: bigint
 }
 
+type Quote = PrepareCallsResponse['context']['quote']['quotes'][number]
+
+type SignTypedDataInput = Parameters<ExecuteSignedCallsDeps['signTypedData']>[0]
+
 function preparedQuote(
     input: PrepareInput,
-    paymentAmount: unknown,
+    paymentAmount: string | undefined,
     chainId: number,
     capOverride?: bigint,
     orchestrator: Address = ORCHESTRATOR,
@@ -98,7 +102,7 @@ function preparedQuote(
         verifyingContract: orchestrator,
     }
 
-    const quote: Record<string, unknown> = {
+    const quoteWithoutPayment: Omit<Quote, 'paymentAmount'> = {
         chainId: `0x${chainId.toString(16)}`,
         orchestrator,
         intent: {
@@ -125,7 +129,11 @@ function preparedQuote(
         assetDeficits: [],
     }
 
-    if (paymentAmount !== undefined) quote.paymentAmount = paymentAmount
+    // SAFETY: an undefined paymentAmount deliberately models a malformed relayer quote that executeSignedCalls must refuse at runtime.
+    const quote: Quote =
+        paymentAmount === undefined
+            ? (quoteWithoutPayment as Quote)
+            : { ...quoteWithoutPayment, paymentAmount }
 
     return {
         digest: hashTypedData({
@@ -153,7 +161,7 @@ function preparedQuote(
 function signingHarness(
     prepare: (input: PrepareInput) => ReturnType<typeof preparedQuote>,
 ) {
-    const signTypedData = mock(async () => SIG)
+    const signTypedData = mock(async (_input: SignTypedDataInput) => SIG)
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
     const prepareCalls = mock(async (input: PrepareInput) => prepare(input))
 

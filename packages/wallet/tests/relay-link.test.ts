@@ -11,6 +11,14 @@ import {
     type RelayQuoteResponse,
 } from '../src/lib/relay-link'
 
+type FetchInput = Parameters<typeof fetch>[0]
+
+type FetchImpl = (input: FetchInput, init?: RequestInit) => Promise<Response>
+
+function withPreconnect<T extends FetchImpl>(fn: T): T & Pick<typeof fetch, 'preconnect'> {
+    return Object.assign(fn, { preconnect: fetch.preconnect })
+}
+
 test('getRelayLinkBaseUrl uses mainnet relay.link for prod and stage', () => {
     expect(getRelayLinkBaseUrl('prod')).toBe('https://api.relay.link')
     expect(getRelayLinkBaseUrl('stage')).toBe('https://api.relay.link')
@@ -123,7 +131,7 @@ test('extractRequestId prefers top-level value and falls back to check endpoint'
 
 test('getQuote normalizes a successful response', async () => {
     const fetchMock = mock(
-        async () =>
+        async (_input: FetchInput, _init?: RequestInit) =>
             new Response(
                 JSON.stringify({
                     requestId: 'request-1',
@@ -166,7 +174,7 @@ test('getQuote normalizes a successful response', async () => {
             tradeType: 'EXACT_INPUT',
             slippageTolerance: '50',
         },
-        { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+        { fetch: withPreconnect(fetchMock), baseUrl: 'https://api.relay.link' },
     )
 
     expect(quote.requestId).toBe('request-1')
@@ -179,7 +187,7 @@ test('getQuote normalizes a successful response', async () => {
 
 test('getQuote surfaces relay.link API errors', async () => {
     const fetchMock = mock(
-        async () =>
+        async (_input: FetchInput, _init?: RequestInit) =>
             new Response(JSON.stringify({ statusCode: 429, message: 'rate limited' }), {
                 status: 429,
             }),
@@ -197,7 +205,7 @@ test('getQuote surfaces relay.link API errors', async () => {
                 tradeType: 'EXACT_INPUT',
                 slippageTolerance: '50',
             },
-            { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+            { fetch: withPreconnect(fetchMock), baseUrl: 'https://api.relay.link' },
         ),
     ).rejects.toMatchObject({
         name: 'RelayLinkError',
@@ -209,7 +217,7 @@ test('getQuote surfaces relay.link API errors', async () => {
 
 test('getQuote rejects invalid calldata in relay steps', async () => {
     const fetchMock = mock(
-        async () =>
+        async (_input: FetchInput, _init?: RequestInit) =>
             new Response(
                 JSON.stringify({
                     steps: [
@@ -246,7 +254,7 @@ test('getQuote rejects invalid calldata in relay steps', async () => {
                 tradeType: 'EXACT_INPUT',
                 slippageTolerance: '50',
             },
-            { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+            { fetch: withPreconnect(fetchMock), baseUrl: 'https://api.relay.link' },
         ),
     ).rejects.toMatchObject({
         name: 'RelayLinkError',
@@ -257,7 +265,7 @@ test('getQuote rejects invalid calldata in relay steps', async () => {
 
 test('getQuote rejects unknown step item statuses', async () => {
     const fetchMock = mock(
-        async () =>
+        async (_input: FetchInput, _init?: RequestInit) =>
             new Response(
                 JSON.stringify({
                     steps: [
@@ -294,7 +302,7 @@ test('getQuote rejects unknown step item statuses', async () => {
                 tradeType: 'EXACT_INPUT',
                 slippageTolerance: '50',
             },
-            { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+            { fetch: withPreconnect(fetchMock), baseUrl: 'https://api.relay.link' },
         ),
     ).rejects.toMatchObject({
         name: 'RelayLinkError',
@@ -305,7 +313,7 @@ test('getQuote rejects unknown step item statuses', async () => {
 
 test('getQuote rejects step items without a valid to address', async () => {
     const fetchMock = mock(
-        async () =>
+        async (_input: FetchInput, _init?: RequestInit) =>
             new Response(
                 JSON.stringify({
                     steps: [
@@ -341,7 +349,7 @@ test('getQuote rejects step items without a valid to address', async () => {
                 tradeType: 'EXACT_INPUT',
                 slippageTolerance: '50',
             },
-            { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+            { fetch: withPreconnect(fetchMock), baseUrl: 'https://api.relay.link' },
         ),
     ).rejects.toMatchObject({
         name: 'RelayLinkError',
@@ -351,7 +359,7 @@ test('getQuote rejects step items without a valid to address', async () => {
 })
 
 test('getQuote rejects array payloads where an object response is expected', async () => {
-    const fetchMock = mock(async () => new Response(JSON.stringify([]), { status: 200 }))
+    const fetchMock = mock(async (_input: FetchInput, _init?: RequestInit) => new Response(JSON.stringify([]), { status: 200 }))
 
     await expect(
         getQuote(
@@ -365,7 +373,7 @@ test('getQuote rejects array payloads where an object response is expected', asy
                 tradeType: 'EXACT_INPUT',
                 slippageTolerance: '50',
             },
-            { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+            { fetch: withPreconnect(fetchMock), baseUrl: 'https://api.relay.link' },
         ),
     ).rejects.toMatchObject({
         name: 'RelayLinkError',
@@ -376,7 +384,7 @@ test('getQuote rejects array payloads where an object response is expected', asy
 
 test('getIntentStatus parses status responses', async () => {
     const fetchMock = mock(
-        async () =>
+        async (_input: FetchInput, _init?: RequestInit) =>
             new Response(
                 JSON.stringify({
                     requestId: 'request-1',
@@ -390,7 +398,7 @@ test('getIntentStatus parses status responses', async () => {
     )
 
     const status = await getIntentStatus('request-1', {
-        fetch: fetchMock as typeof fetch,
+        fetch: withPreconnect(fetchMock),
         baseUrl: 'https://api.relay.link',
     })
 
@@ -405,7 +413,7 @@ test('getIntentStatus parses status responses', async () => {
 })
 
 test('getQuote refuses a redirect', async () => {
-    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+    const fetchMock = mock(async (_url: FetchInput, init?: RequestInit) => {
         expect(init?.redirect).toBe('error')
 
         return new Response('{}', {
@@ -426,7 +434,7 @@ test('getQuote refuses a redirect', async () => {
                 tradeType: 'EXACT_INPUT',
                 slippageTolerance: '50',
             },
-            { fetch: fetchMock as typeof fetch, baseUrl: 'https://api.relay.link' },
+            { fetch: withPreconnect(fetchMock), baseUrl: 'https://api.relay.link' },
         ),
     ).rejects.toMatchObject({
         message: expect.stringContaining('redirect'),
@@ -434,7 +442,7 @@ test('getQuote refuses a redirect', async () => {
 })
 
 test('getIntentStatus refuses a redirect', async () => {
-    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+    const fetchMock = mock(async (_url: FetchInput, init?: RequestInit) => {
         expect(init?.redirect).toBe('error')
 
         return {
@@ -448,7 +456,7 @@ test('getIntentStatus refuses a redirect', async () => {
 
     await expect(
         getIntentStatus('request-1', {
-            fetch: fetchMock as typeof fetch,
+            fetch: withPreconnect(fetchMock),
             baseUrl: 'https://api.relay.link',
         }),
     ).rejects.toMatchObject({
@@ -457,7 +465,7 @@ test('getIntentStatus refuses a redirect', async () => {
 })
 
 test('pollIntentStatus uses stepped intervals until terminal success', async () => {
-    const fetchMock = mock(async () => {
+    const fetchMock = mock(async (_input: FetchInput, _init?: RequestInit) => {
         const statuses = [
             { status: 'waiting' },
             { status: 'pending' },
@@ -484,7 +492,7 @@ test('pollIntentStatus uses stepped intervals until terminal success', async () 
             ],
         },
         {
-            fetch: fetchMock as typeof fetch,
+            fetch: withPreconnect(fetchMock),
             sleep: sleepMock,
             baseUrl: 'https://api.relay.link',
         },
@@ -496,7 +504,7 @@ test('pollIntentStatus uses stepped intervals until terminal success', async () 
 
 test('pollIntentStatus throws on timeout with latest status details', async () => {
     const fetchMock = mock(
-        async () => new Response(JSON.stringify({ status: 'pending' }), { status: 200 }),
+        async (_input: FetchInput, _init?: RequestInit) => new Response(JSON.stringify({ status: 'pending' }), { status: 200 }),
     )
 
     const sleepMock = mock(async (_ms: number) => {})
@@ -514,7 +522,7 @@ test('pollIntentStatus throws on timeout with latest status details', async () =
                     intervals: [{ untilMs: 1_000, everyMs: 10 }],
                 },
                 {
-                    fetch: fetchMock as typeof fetch,
+                    fetch: withPreconnect(fetchMock),
                     sleep: sleepMock,
                     baseUrl: 'https://api.relay.link',
                 },

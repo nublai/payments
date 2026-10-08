@@ -8,6 +8,7 @@ import type {
     RelayerSessionKeystoreV2,
 } from '../src/lib/keystore'
 import { LoginProfileError, SessionOnlyProfileError } from '../src/lib/keystore'
+import type { SessionDaemonClient } from '../src/lib/session-daemon-client'
 import { executeSessionUnlock } from '../src/lib/session-unlock'
 
 const TEST_PRIVATE_KEY =
@@ -70,13 +71,13 @@ function makeAgentSessionKeystore(): AgentSessionKeystoreV2 {
 test('executeSessionUnlock --device sends encryption device + kind to daemon', async () => {
     const exportedDevice = create(ExportedDeviceSchema, {
         pickleKey: 'pickle-key',
-        pickledAccount: new Uint8Array([1, 2, 3]),
+        pickledAccount: 'pickled-account',
         hybridGroupSessions: [],
     })
 
     const expectedDeviceHex = `0x${Buffer.from(toBinary(ExportedDeviceSchema, exportedDevice)).toString('hex')}`
 
-    const loadKey = mock(async () => ({
+    const loadKey = mock(async (_input: Parameters<SessionDaemonClient['loadKey']>[0]) => ({
         ok: true as const,
         result: {
             name: 'agent-alice',

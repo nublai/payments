@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RelayerPublicClient } from '../../src/types.js'
 import { getCallsHistory } from '../../src/actions/getCallsHistory.js'
 
+type CapturedRequest = { payload: { params?: unknown[] } | null }
+
 function createClient(): RelayerPublicClient {
     return {
         relayerConfig: {
@@ -20,13 +22,13 @@ afterEach(() => {
 
 describe('getCallsHistory action', () => {
     it('does not scope chainIds when caller omits chainId', async () => {
-        let payload: { params?: unknown[] } | null = null
+        const captured: CapturedRequest = { payload: null }
 
         vi.stubGlobal(
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 if (request instanceof Request) {
-                    payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
+                    captured.payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
                 }
 
                 return new Response(
@@ -45,19 +47,19 @@ describe('getCallsHistory action', () => {
         })
 
         expect(result.success).toBe(true)
-        const rpcParams = (payload?.params?.[0] ?? {}) as Record<string, unknown>
+        const rpcParams = (captured.payload?.params?.[0] ?? {}) as Record<string, unknown>
         expect(rpcParams).toEqual({ address: '0x1234567890123456789012345678901234567890' })
         expect(rpcParams.chainIds).toBeUndefined()
     })
 
     it('encodes each explicit chainId when caller sets multiple chainIds', async () => {
-        let payload: { params?: unknown[] } | null = null
+        const captured: CapturedRequest = { payload: null }
 
         vi.stubGlobal(
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 if (request instanceof Request) {
-                    payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
+                    captured.payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
                 }
 
                 return new Response(
@@ -88,7 +90,7 @@ describe('getCallsHistory action', () => {
         }
 
         expect(result.items).toEqual([{ id: 'bundle-1', chainId: 10, createdAt: 123 }])
-        const rpcParams = (payload?.params?.[0] ?? {}) as Record<string, unknown>
+        const rpcParams = (captured.payload?.params?.[0] ?? {}) as Record<string, unknown>
         expect(rpcParams).toEqual({
             address: '0x1234567890123456789012345678901234567890',
             chainIds: ['0xa'],
@@ -98,13 +100,13 @@ describe('getCallsHistory action', () => {
     })
 
     it('scopes chainIds when caller explicitly sets chainIds', async () => {
-        let payload: { params?: unknown[] } | null = null
+        const captured: CapturedRequest = { payload: null }
 
         vi.stubGlobal(
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 if (request instanceof Request) {
-                    payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
+                    captured.payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
                 }
 
                 return new Response(
@@ -127,7 +129,7 @@ describe('getCallsHistory action', () => {
         })
 
         expect(result.success).toBe(true)
-        const rpcParams = (payload?.params?.[0] ?? {}) as Record<string, unknown>
+        const rpcParams = (captured.payload?.params?.[0] ?? {}) as Record<string, unknown>
         expect(rpcParams).toEqual({
             address: '0x1234567890123456789012345678901234567890',
             chainIds: ['0xa', '0x2105'],

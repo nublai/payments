@@ -142,8 +142,11 @@ async function postJson(relayerUrl: string, body: string, options?: JsonRpcTrans
           })
         : await fetch(request, { redirect: 'manual' })
 
+    // Workers' Response.type omits 'opaqueredirect'; browser and Node fetch can return it.
+    const responseType: string = response.type
+
     if (
-        response.type === 'opaqueredirect' ||
+        responseType === 'opaqueredirect' ||
         (response.status >= 300 && response.status < 400)
     ) {
         throw new Error(

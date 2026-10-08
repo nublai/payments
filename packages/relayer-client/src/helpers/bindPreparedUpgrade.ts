@@ -201,7 +201,7 @@ function sameTypes(
         !!actual &&
         actual.length === expected.length &&
         actual.every(
-            (field, index) => field.name === expected[index].name && field.type === expected[index].type,
+            (field, index) => field.name === expected[index]?.name && field.type === expected[index]?.type,
         )
     )
 }
@@ -325,9 +325,10 @@ export function bindPreparedUpgrade(
 
     if (gotCalls.length !== calls.length) refuse('call count does not match')
 
-    for (let index = 0; index < calls.length; index++) {
+    for (const [index, wanted] of calls.entries()) {
         const got = gotCalls[index]
-        const wanted = calls[index]
+
+        if (got === undefined) refuse('call count does not match')
 
         if (getAddress(got.to ?? '0x') !== wanted.to) refuse(`call target does not match (call ${index})`)
 

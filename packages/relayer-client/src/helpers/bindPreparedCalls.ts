@@ -283,7 +283,7 @@ function readHexList(value: unknown, label: string): Hex[] {
 function sameHexList(actual: readonly Hex[], expected: readonly Hex[]): boolean {
     if (actual.length !== expected.length) return false
 
-    return actual.every((item, index) => item.toLowerCase() === expected[index].toLowerCase())
+    return actual.every((item, index) => item.toLowerCase() === expected[index]?.toLowerCase())
 }
 
 function readCalls(value: unknown, label: string): NormalizedCall[] {
@@ -308,7 +308,7 @@ function typesMatch(types: PrepareCallsResponse['typedData']['types']): boolean 
     ) =>
         !!actual &&
         actual.length === expected.length &&
-        actual.every((field, index) => field.name === expected[index].name && field.type === expected[index].type)
+        actual.every((field, index) => field.name === expected[index]?.name && field.type === expected[index]?.type)
 
     return sameFields(types?.Intent, INTENT_TYPES.Intent) && sameFields(types?.Call, INTENT_TYPES.Call)
 }
@@ -378,9 +378,10 @@ function assertCallsMatch(
         refuse(source === 'quote' ? 'quote does not match the signed intent' : 'call count does not match')
     }
 
-    for (let index = 0; index < actual.length; index++) {
+    for (const [index, got] of actual.entries()) {
         const wanted = expectedCalls[index]
-        const got = actual[index]
+
+        if (wanted === undefined) refuse('call count does not match')
         const targetMatches = got.to === getAddress(wanted.target)
         const valueMatches = got.value === wanted.value
         const dataMatches = got.data === (wanted.data ?? '0x').toLowerCase()

@@ -72,7 +72,7 @@ export type PermissionsRevokeResult = {
         statusCode: number
     }
     txHash?: Hex
-    feeCap: ExecuteSignedCallsResult['feeCap']
+    feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
 type PermissionsRevokeDeps = {

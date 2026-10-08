@@ -11,9 +11,35 @@ import {
     resolveSessionKeystorePath,
     writeRootKeystoreFile,
     writeSessionKeystoreFile,
+    type RelayerSessionKeystoreV2,
 } from '../src/lib/keystore'
 import { executeSessionExport, resolveSessionExportPasswords } from '../src/lib/session-export'
 import { executeSessionImport } from '../src/lib/session-import'
+
+const importedSession: RelayerSessionKeystoreV2 = {
+    version: 2,
+    createdAt: '2026-03-02T00:00:00.000Z',
+    name: 'worker-1',
+    checkpoint: 'authorized',
+    network: {
+        env: 'prod',
+        relayerUrl: 'https://relayer.example',
+        rpcUrl: 'https://rpc.example',
+        chainId: 8453,
+    },
+    kdf: {
+        name: 'argon2id',
+        params: { memoryCost: 19456, timeCost: 2, parallelism: 1, hashLength: 32, salt: 'dGVzdA==' },
+    },
+    crypto: { algorithm: 'aes-256-gcm' },
+    addresses: {
+        session: '0x3333333333333333333333333333333333333333',
+        delegated: '0x1111111111111111111111111111111111111111',
+    },
+    secrets: {
+        sessionPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' },
+    },
+}
 
 test('executeSessionExport re-encrypts a session into output file', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'relayer-cli-session-export-'))
@@ -126,7 +152,7 @@ test('executeSessionImport stores non-prod session profiles under env directory'
             env: 'dev',
         } as any,
         {
-            readSessionKeystoreFile: mock(async () => ({ version: 2 })),
+            readSessionKeystoreFile: mock(async () => importedSession),
             writeSessionKeystoreFile: mock(async () => {}),
             access: accessMock,
             mkdir: mock(async () => undefined),
@@ -149,7 +175,7 @@ test('executeSessionImport keeps profile path aligned with default keystore reso
             env,
         } as any,
         {
-            readSessionKeystoreFile: mock(async () => ({ version: 2 })),
+            readSessionKeystoreFile: mock(async () => importedSession),
             writeSessionKeystoreFile: mock(async () => {}),
             access: mock(async () => {
                 throw new Error('ENOENT: no such file or directory')

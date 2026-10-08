@@ -1,6 +1,8 @@
 import { expect, mock, test } from 'bun:test'
 import { accountAbi } from '@nubl/contracts/abis'
-import { decodeFunctionData, encodeAbiParameters, parseAbiParameters, type Hex } from 'viem'
+import { decodeFunctionData, encodeAbiParameters, parseAbiParameters, toHex, zeroAddress, type Hex } from 'viem'
+import type { ExecuteSignedCallsDeps, ExecuteSignedCallsParams } from '../src/lib/execute-calls'
+import type { FeeCapDisclosure } from '../src/lib/intent-payment'
 import {
     PermissionsError,
     parseKeyHash,
@@ -16,6 +18,13 @@ import { executePermissionsShow } from '../src/lib/permissions-show'
 const accountAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
 const keyHash = parseKeyHash('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+
+const feeCap: FeeCapDisclosure = {
+    token: zeroAddress,
+    symbol: 'none',
+    amountUsdc: '0',
+    expiresIn: '1h',
+}
 
 function makeSecpPublicKey(address: `0x${string}`): Hex {
     return encodeAbiParameters(parseAbiParameters('address'), [address])
@@ -88,7 +97,7 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
                 async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
             ),
             readNonce: mock(async () => 9n),
-            executeSignedCalls: mock(async (_deps, params) => {
+            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
@@ -99,6 +108,7 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
                         statusCode: 200,
                         receipt: { transactionHash: '0x' + '22'.repeat(32) },
                     } as any,
+                    feeCap,
                 }
             }),
         },
@@ -191,7 +201,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
                 async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
             ),
             readNonce: mock(async () => 10n),
-            executeSignedCalls: mock(async (_deps, params) => {
+            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
@@ -201,6 +211,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
                         status: 'confirmed',
                         statusCode: 200,
                     } as any,
+                    feeCap,
                 }
             }),
         },
@@ -300,8 +311,8 @@ test('executePermissionsShow derives external address and emits deterministic ru
                                 type: 'spend',
                                 token: '0x5555555555555555555555555555555555555555',
                                 period: 'day',
-                                limit: '1000000',
-                                spent: '200000',
+                                limit: toHex(1000000),
+                                spent: toHex(200000),
                             },
                         ],
                     }),
@@ -351,8 +362,8 @@ test('executePermissionsList returns spend usage summary ids and hashes', async 
                                 type: 'spend',
                                 token: '0x5555555555555555555555555555555555555555',
                                 period: 'day',
-                                limit: '900000',
-                                spent: '100000',
+                                limit: toHex(900000),
+                                spent: toHex(100000),
                             },
                         ],
                     }),
@@ -417,6 +428,7 @@ test('executePermissionsRevoke surfaces send failure diagnostics', async () => {
                             },
                         },
                     } as any,
+                    feeCap,
                 })),
             },
         ),
@@ -471,7 +483,7 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
                 async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
             ),
             readNonce: mock(async () => 5n),
-            executeSignedCalls: mock(async (_deps, params) => {
+            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
@@ -482,6 +494,7 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
                         statusCode: 200,
                         receipt: { transactionHash: '0x' + '33'.repeat(32) },
                     } as any,
+                    feeCap,
                 }
             }),
         },
@@ -584,8 +597,8 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
                 type: 'spend',
                 token: '0x5555555555555555555555555555555555555555',
                 period: 'day',
-                limit: '1000000',
-                spent: '0',
+                limit: toHex(1000000),
+                spent: toHex(0),
             },
         ],
     })
@@ -621,7 +634,7 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
                 async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
             ),
             readNonce: mock(async () => 10n),
-            executeSignedCalls: mock(async (_deps, params) => {
+            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 for (const call of params.calls) {
                     capturedCalls.push(call.data)
                 }
@@ -633,6 +646,7 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
                         status: 'confirmed',
                         statusCode: 200,
                     } as any,
+                    feeCap,
                 }
             }),
         },
@@ -751,7 +765,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
                 async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
             ),
             readNonce: mock(async () => 10n),
-            executeSignedCalls: mock(async (_deps, params) => {
+            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
@@ -761,6 +775,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
                         status: 'confirmed',
                         statusCode: 200,
                     } as any,
+                    feeCap,
                 }
             }),
         },

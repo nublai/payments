@@ -25,7 +25,7 @@ export async function pollBundleStatus(
     options?: PollBundleStatusOptions,
 ): Promise<BundleStatusResponse> {
     return waitForBundle(client, {
-        bundleId,
+        id: bundleId,
         intervalMs: options?.intervalMs,
         timeoutMs: options?.timeoutMs,
     })

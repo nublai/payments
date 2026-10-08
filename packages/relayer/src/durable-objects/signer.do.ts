@@ -41,7 +41,6 @@ import type {
     RelayTransaction,
     CapacityInfo,
     SendResult,
-    SignerError,
     SignerErrorCode,
     MonitorJob,
     SignerMaintenanceResult,

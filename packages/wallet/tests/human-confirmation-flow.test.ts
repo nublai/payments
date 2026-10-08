@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from 'bun:test'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
+import { connect } from 'node:net'
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -8,15 +9,26 @@ import { encodeFunctionResult, toFunctionSelector, type Address, type Hex } from
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { executeSessionCreate } from '../src/lib/session-create'
 import { accountAbi } from '@nubl/contracts/abis'
-import { ANY_FUNCTION_SELECTOR, ANY_TARGET } from '@nubl/relayer-client'
+import { ANY_FUNCTION_SELECTOR, ANY_TARGET, INTENT_TYPES } from '@nubl/relayer-client'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import {
+    parseDaemonResponse,
+    type DaemonResponse,
+    type DaemonTypedData,
+} from '../src/lib/session-daemon-protocol'
 import {
     createRootKeystore,
     createSessionKeystore,
     writeRootKeystoreFile,
     writeSessionKeystoreFile,
     resolveSessionKeystorePath,
+    type AnySessionKeystore,
+    type KeystoreBundle,
+    type LoginSessionKeystoreV2,
+    type RelayerSessionKeystoreV2,
 } from '../src/lib/keystore'
+
+type SessionCreateDepsArg = NonNullable<Parameters<typeof executeSessionCreate>[1]>
 
 const walletDir = resolve(import.meta.dir, '..')
 
@@ -846,31 +858,28 @@ const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const increaseAllowance = '0x39509351'
 
-const orchestratorIntent = {
+const orchestratorIntent: DaemonTypedData = {
     domain: {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: 31337,
         verifyingContract: '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC',
     },
-    types: {
-        EIP712Domain: [
-            { name: 'name', type: 'string' },
-            { name: 'version', type: 'string' },
-            { name: 'chainId', type: 'uint256' },
-            { name: 'verifyingContract', type: 'address' },
-        ],
-        Intent: [
-            { name: 'nonce', type: 'uint256' },
-            { name: 'paymentToken', type: 'address' },
-            { name: 'paymentMaxAmount', type: 'uint256' },
-        ],
-    },
-    primaryType: 'Intent' as const,
+    types: INTENT_TYPES,
+    primaryType: 'Intent',
     message: {
+        multichain: false,
+        eoa: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        calls: [],
         nonce: 1n,
-        paymentToken: usdc as `0x${string}`,
+        payer: '0x0000000000000000000000000000000000000000',
+        paymentToken: usdc,
         paymentMaxAmount: 1_000_000_000n,
+        combinedGas: 0n,
+        encodedPreCalls: [],
+        encodedFundTransfers: [],
+        settler: '0x0000000000000000000000000000000000000000',
+        expiry: 0n,
     },
 }
 
@@ -890,6 +899,59 @@ async function startDaemon(socketPath: string) {
             else process.env.TW_AGENT_SOCK = previous
         },
     }
+}
+
+/** DaemonTypedData cannot express these partial Intent types; an untyped local caller of the socket can. */
+const partialIntentSignRequest = JSON.stringify({
+    id: 'partial-intent',
+    method: 'sign',
+    params: {
+        sessionName: 'default',
+        typedData: {
+            domain: {
+                name: 'Orchestrator',
+                version: '0.5.5',
+                chainId: 31337,
+                verifyingContract: '0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC',
+            },
+            types: {
+                EIP712Domain: [
+                    { name: 'name', type: 'string' },
+                    { name: 'version', type: 'string' },
+                    { name: 'chainId', type: 'uint256' },
+                    { name: 'verifyingContract', type: 'address' },
+                ],
+                Intent: [
+                    { name: 'nonce', type: 'uint256' },
+                    { name: 'paymentToken', type: 'address' },
+                    { name: 'paymentMaxAmount', type: 'uint256' },
+                ],
+            },
+            primaryType: 'Intent',
+            message: {
+                nonce: '$bigint:1',
+                paymentToken: usdc,
+                paymentMaxAmount: '$bigint:1000000000',
+            },
+        },
+    },
+})
+
+function signRaw(socketPath: string, line: string): Promise<DaemonResponse> {
+    return new Promise((resolvePromise, reject) => {
+        const socket = connect(socketPath, () => socket.write(`${line}\n`))
+        let buffer = ''
+
+        socket.on('data', (chunk) => {
+            buffer += chunk.toString('utf8')
+            const newline = buffer.indexOf('\n')
+
+            if (newline === -1) return
+            socket.destroy()
+            resolvePromise(parseDaemonResponse(buffer.slice(0, newline)))
+        })
+        socket.on('error', reject)
+    })
 }
 
 test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator intent', async () => {
@@ -1113,7 +1175,7 @@ function encodeChainView(keys: ScriptedKey[]): { getKeys: Hex; spend: Hex } {
             functionName: 'getKeys',
             result: [
                 keys.map(() => ({
-                    expiry: 0n,
+                    expiry: 0,
                     keyType: 0,
                     isSuperAdmin: false,
                     publicKey: '0x' as Hex,
@@ -1448,8 +1510,11 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
             expect(listed.result.keys.map((key) => key.name)).toContain('default')
         }
 
-        const signed = await daemon.client.sign('default', orchestratorIntent)
-        expect(signed?.ok).toBe(false)
+        const signed = await signRaw(socketPath, partialIntentSignRequest)
+        expect(signed.error).toEqual({
+            code: 'INVALID_REQUEST',
+            message: 'Phrase-less sessions can only sign Orchestrator intents',
+        })
         expect(JSON.stringify(signed)).not.toContain(sessionPrivateKey)
     } finally {
         await daemon.stop()
@@ -1470,8 +1535,11 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
         expect(output).not.toContain(sessionPrivateKey)
         expect(output).toContain('"status":"complete"')
         expect(output).not.toContain('"isError":true')
-        const mcpSigned = await mcpDaemon.client.sign('default', orchestratorIntent)
-        expect(mcpSigned?.ok).toBe(false)
+        const mcpSigned = await signRaw(mcpSocket, partialIntentSignRequest)
+        expect(mcpSigned.error).toEqual({
+            code: 'INVALID_REQUEST',
+            message: 'Phrase-less sessions can only sign Orchestrator intents',
+        })
     } finally {
         await mcpDaemon.stop()
     }
@@ -1617,30 +1685,34 @@ test('two session creates started together authorize at most one 10 USDC/day key
     const hashA = computeSessionKeyHash(privateKeyToAccount(keyA).address)
     const hashB = computeSessionKeyHash(privateKeyToAccount(keyB).address)
 
-    const bundle = {
+    const bundle: KeystoreBundle = {
+        rootPath: keystorePathForRace,
+        sessionPath: resolveSessionKeystorePath(keystorePathForRace),
         root: {
+            ...delegatedRoot,
             sessionRef: { active: 'default', dir: 'sessions' },
             addresses: {
                 root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
                 delegated: account,
             },
         },
-    } as const
+        session: seededSession,
+    }
 
-    function makeSession(name: string, key: Hex) {
+    function makeSession(name: string, key: Hex): RelayerSessionKeystoreV2 {
         return {
-            version: 2 as const,
+            version: 2,
             createdAt: new Date().toISOString(),
             name,
-            checkpoint: 'initialized' as const,
+            checkpoint: 'initialized',
             network: {
-                env: 'dev' as const,
+                env: 'dev',
                 relayerUrl: 'http://127.0.0.1:8787',
                 rpcUrl: 'http://127.0.0.1:8545',
                 chainId: 31337,
             },
             kdf: {
-                name: 'argon2id' as const,
+                name: 'argon2id',
                 params: {
                     memoryCost: 19456,
                     timeCost: 2,
@@ -1649,37 +1721,76 @@ test('two session creates started together authorize at most one 10 USDC/day key
                     salt: 'c2FsdA==',
                 },
             },
-            crypto: { algorithm: 'aes-256-gcm' as const },
+            crypto: { algorithm: 'aes-256-gcm' },
             addresses: { session: privateKeyToAccount(key).address, delegated: account },
             secrets: { sessionPrivateKey: { nonce: 'n', ciphertext: 'c', tag: 't' } },
         }
     }
 
-    const depsFor = (key: Hex) => ({
-        readKeystoreBundle: async () => bundle,
-        fileExists: async () => false,
-        generatePrivateKey: () => key,
-        createSessionKeystore: async (input: { name: string }) => makeSession(input.name, key),
-        writeSessionKeystoreFile: async () => {},
-        decryptRootKeystore: async () => ({ rootPrivateKey: `0x${'11'.repeat(32)}` as const }),
-        readNonce: async () => 1n,
-        executeSignedCalls: async () => {
-            authorizeCount += 1
-            daily = 10_000_000n
+    const depsFor = (key: Hex): SessionCreateDepsArg => {
+        function fakeCreateSessionKeystore(input: {
+            name?: string
+            kind?: undefined
+        }): Promise<RelayerSessionKeystoreV2>
+        function fakeCreateSessionKeystore(input: {
+            name?: string
+            kind: 'login'
+        }): Promise<LoginSessionKeystoreV2>
+        async function fakeCreateSessionKeystore(input: {
+            name?: string
+            kind?: 'login'
+        }): Promise<AnySessionKeystore> {
+            const session = makeSession(input.name ?? '', key)
 
-            return {
-                id: `bundle-${authorizeCount}`,
-                finalStatus: {
-                    success: true,
-                    status: 'confirmed',
-                    statusCode: 200,
-                    receipt: { transactionHash: `0x${'11'.repeat(32)}` as const },
-                },
-            }
-        },
-        getKeys: async () => ({ '0x7a69': [{ hash: hashA }, { hash: hashB }] }),
-        sleep: async () => {},
-    })
+            return input.kind === 'login' ? { ...session, kind: 'login' } : session
+        }
+
+        return {
+            readKeystoreBundle: async () => bundle,
+            fileExists: async () => false,
+            generatePrivateKey: () => key,
+            createSessionKeystore: fakeCreateSessionKeystore,
+            writeSessionKeystoreFile: async () => {},
+            decryptRootKeystore: async () => ({ rootPrivateKey: `0x${'11'.repeat(32)}` as const }),
+            readNonce: async () => 1n,
+            executeSignedCalls: async () => {
+                authorizeCount += 1
+                daily = 10_000_000n
+
+                return {
+                    id: `bundle-${authorizeCount}`,
+                    finalStatus: {
+                        success: true,
+                        status: 'confirmed',
+                        statusCode: 200,
+                        receipt: {
+                            transactionHash: `0x${'11'.repeat(32)}`,
+                            blockNumber: '0x1',
+                            gasUsed: '0x0',
+                            status: 'success',
+                        },
+                    },
+                    feeCap: {
+                        token: '0x0000000000000000000000000000000000000000',
+                        symbol: 'none',
+                        amountUsdc: '0',
+                        expiresIn: '1h',
+                    },
+                }
+            },
+            getKeys: async () => ({
+                '0x7a69': [hashA, hashB].map((hash) => ({
+                    hash,
+                    expiry: '0x0',
+                    type: 'secp256k1',
+                    role: 'normal',
+                    publicKey: '0x',
+                    permissions: [],
+                })),
+            }),
+            sleep: async () => {},
+        }
+    }
 
     try {
         const results = await Promise.allSettled([

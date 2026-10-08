@@ -38,6 +38,8 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<unkn
     return payload.result
 }
 
+type DeployReceipt = { contractAddress?: string; status?: string } | null
+
 async function deploy(url: string, bytecode: Hex): Promise<Address> {
     const hash = (await rpc(url, 'eth_sendTransaction', [
         {
@@ -47,10 +49,10 @@ async function deploy(url: string, bytecode: Hex): Promise<Address> {
         },
     ])) as string
 
-    let tx: { contractAddress?: string; status?: string } | null = null
+    let tx: DeployReceipt = null
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
-        tx = (await rpc(url, 'eth_getTransactionReceipt', [hash])) as typeof tx
+        tx = (await rpc(url, 'eth_getTransactionReceipt', [hash])) as DeployReceipt
 
         if (tx) break
         await sleep(50)

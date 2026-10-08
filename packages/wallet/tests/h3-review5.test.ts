@@ -14,9 +14,10 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
-import { INTENT_TYPES } from '@nubl/relayer-client'
+import { INTENT_TYPES, type GetKeysResponse } from '@nubl/relayer-client'
 import { runSessionDaemon } from '../src/lib/session-daemon'
 import { SessionDaemonClient } from '../src/lib/session-daemon-client'
+import type { DaemonTypedData } from '../src/lib/session-daemon-protocol'
 import { executePermissionsRevoke } from '../src/lib/permissions-revoke'
 import { parseKeyHash } from '../src/lib/permissions-common'
 import { executeSessionUnlock } from '../src/lib/session-unlock'
@@ -52,7 +53,7 @@ function transfer(amount: bigint): Hex {
 function orchestratorIntent(
     calls: { to: Address; value: bigint; data: Hex }[],
     paymentMaxAmount = 0n,
-) {
+): DaemonTypedData {
     return {
         domain: {
             name: 'Orchestrator',
@@ -60,15 +61,7 @@ function orchestratorIntent(
             chainId: 31337,
             verifyingContract: ORCHESTRATOR,
         },
-        types: {
-            EIP712Domain: [
-                { name: 'name', type: 'string' },
-                { name: 'version', type: 'string' },
-                { name: 'chainId', type: 'uint256' },
-                { name: 'verifyingContract', type: 'address' },
-            ],
-            ...INTENT_TYPES,
-        },
+        types: INTENT_TYPES,
         primaryType: 'Intent' as const,
         message: {
             multichain: false,
@@ -140,13 +133,8 @@ test('a phrase-less session refuses non-Orchestrator typed data and signMessage'
 
     try {
         const other = await client.sign('default', {
+            ...orchestratorIntent([]),
             domain: { name: 'session-daemon-test', version: '1', chainId: 8453, verifyingContract: ORCHESTRATOR },
-            types: {
-                EIP712Domain: [{ name: 'name', type: 'string' }],
-                Intent: [{ name: 'nonce', type: 'uint256' }],
-            },
-            primaryType: 'Intent',
-            message: { nonce: 1n },
         })
 
         expect(other?.ok).toBe(false)
@@ -288,7 +276,7 @@ test('permissions revoke without the phrase refuses to drop the USDC spend rule'
                 })) as never,
                 listSessionNames: mock(async () => []),
                 readSessionKeystoreFile: mock(async () => ({}) as never),
-                getKeys: mock(async () => ({
+                getKeys: mock(async (): Promise<GetKeysResponse> => ({
                     '0x7a69': [
                         {
                             hash: keyHash,
@@ -302,8 +290,8 @@ test('permissions revoke without the phrase refuses to drop the USDC spend rule'
                                     type: 'spend',
                                     token: USDC,
                                     period: 'day',
-                                    limit: '10000000',
-                                    spent: '0',
+                                    limit: '0x989680',
+                                    spent: '0x0',
                                 },
                             ],
                         },
@@ -340,7 +328,8 @@ function packCall(target: string, selector: string): Hex {
 
 function installRpcRedirect(hosts: Record<string, string>): () => void {
     const original = globalThis.fetch
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+
+    const redirected = async (input: string | URL | Request, init?: RequestInit) => {
         const url =
             typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
 
@@ -358,6 +347,8 @@ function installRpcRedirect(hosts: Record<string, string>): () => void {
             body,
         })
     }
+
+    globalThis.fetch = Object.assign(redirected, { preconnect: original.preconnect })
 
     return () => {
         globalThis.fetch = original
@@ -391,7 +382,7 @@ async function serveChain(input: {
                     result: [
                         [
                             {
-                                expiry: 0n,
+                                expiry: 0,
                                 keyType: 0,
                                 isSuperAdmin: false,
                                 publicKey: '0x' as Hex,

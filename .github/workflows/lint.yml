@@ -35,3 +35,13 @@ jobs:
 
       - name: Lint
         run: bun run lint
+
+      # tsc resolves @nubl/contracts and @nubl/relayer-client through their dist/.
+      - name: Build contracts
+        run: bun run --cwd packages/contracts build
+
+      - name: Build relayer-client
+        run: bun run --cwd packages/relayer-client build
+
+      - name: Typecheck
+        run: bun run typecheck

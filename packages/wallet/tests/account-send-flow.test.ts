@@ -16,7 +16,12 @@ import {
     executeAccountSend,
     resolveAccountSendPassword,
 } from '../src/lib/account-send'
-import { LoginProfileError, SessionOnlyProfileError } from '../src/lib/keystore'
+import {
+    LoginProfileError,
+    SessionOnlyProfileError,
+    type LoginSessionKeystoreV2,
+    type RelayerSessionKeystoreV2,
+} from '../src/lib/keystore'
 import { RecipientResolutionError } from '../src/lib/recipient-resolver'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
@@ -443,7 +448,7 @@ test('executeAccountSend classifies empty recipient as invalid recipient', async
 })
 
 test('executeAccountSend supports --session-file direct mode', async () => {
-    const readSessionKeystoreFile = mock(async () => ({
+    const readSessionKeystoreFile = mock(async (_path: string): Promise<RelayerSessionKeystoreV2> => ({
         version: 2,
         createdAt: '2026-03-02T00:00:00.000Z',
         name: 'worker-1',
@@ -518,7 +523,7 @@ test('executeAccountSend supports --session-file direct mode', async () => {
 })
 
 test('executeAccountSend supports --session local selection mode', async () => {
-    const readSessionKeystoreFile = mock(async (path: string) => {
+    const readSessionKeystoreFile = mock(async (path: string): Promise<RelayerSessionKeystoreV2> => {
         if (path.endsWith('/sessions/worker-2.json')) {
             return {
                 version: 2,
@@ -688,7 +693,7 @@ test('executeAccountSend rejects --session-file chain mismatch', async () => {
                 sessionFile: '/tmp/worker-1.session.json',
             },
             {
-                readSessionKeystoreFile: mock(async () => ({
+                readSessionKeystoreFile: mock(async (_path: string): Promise<RelayerSessionKeystoreV2> => ({
                     version: 2,
                     createdAt: '2026-03-02T00:00:00.000Z',
                     name: 'worker-1',
@@ -740,7 +745,7 @@ test('executeAccountSend preserves chain mismatch errors in session-only profile
                 readKeystoreBundle: mock(async () => {
                     throw new SessionOnlyProfileError('/tmp/default.keystore.json')
                 }),
-                readSessionKeystoreFile: mock(async () => ({
+                readSessionKeystoreFile: mock(async (_path: string): Promise<RelayerSessionKeystoreV2> => ({
                     version: 2,
                     createdAt: '2026-03-02T00:00:00.000Z',
                     name: 'worker-1',
@@ -792,7 +797,7 @@ test('executeAccountSend preserves chain mismatch errors for login-profile fallb
                 readKeystoreBundle: mock(async () => {
                     throw new LoginProfileError()
                 }),
-                readSessionKeystoreFile: mock(async () => ({
+                readSessionKeystoreFile: mock(async (_path: string): Promise<LoginSessionKeystoreV2> => ({
                     version: 2,
                     createdAt: '2026-03-02T00:00:00.000Z',
                     name: 'worker-1',

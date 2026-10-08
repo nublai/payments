@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env, runInDurableObject } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 
 import { walletBindingStub } from '../../src/auth/wallet-binding-client'
@@ -176,5 +176,56 @@ describe('WalletBindingDO', () => {
 
         const accounts = await store.accountsFor(ISSUER, 'sub-many')
         expect(accounts).toEqual([firstAddress, secondAddress])
+    })
+
+    it('purges an expired binding and keeps a live one when the runtime calls alarm', async () => {
+        const store = stub()
+        const nowSeconds = Math.floor(Date.now() / 1000)
+
+        const live = await store.issueNonce({
+            issuer: ISSUER,
+            subject: 'sub-alarm-live',
+            address: '0x10000000000000000000000000000000000000a1',
+            chainId: 31337,
+            nowSeconds,
+            ttlSeconds: 3600,
+        })
+
+        const expired = await store.issueNonce({
+            issuer: ISSUER,
+            subject: 'sub-alarm-expired',
+            address: '0x10000000000000000000000000000000000000a2',
+            chainId: 31337,
+            nowSeconds: nowSeconds - 120,
+            ttlSeconds: 60,
+        })
+
+        expect(live.ok).toBe(true)
+        expect(expired.ok).toBe(true)
+
+        if (!live.ok || !expired.ok) return
+        expect(expired.expiresAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000))
+        expect(live.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000))
+
+        const seen = await runInDurableObject(store, async (instance, state) => {
+            const listed = () =>
+                state.storage.sql
+                    .exec<{ nonce: string }>(
+                        `SELECT nonce FROM bind_nonces WHERE nonce = ? OR nonce = ? ORDER BY nonce ASC`,
+                        expired.nonce,
+                        live.nonce,
+                    )
+                    .toArray()
+                    .map((row) => row.nonce)
+
+            const before = listed()
+
+            await instance.alarm({ scheduledTime: Date.now(), retryCount: 0, isRetry: false })
+
+            return { before, after: listed() }
+        })
+
+        expect(seen.before).toEqual([expired.nonce, live.nonce].sort())
+        expect(seen.after).toEqual([live.nonce])
     })
 })

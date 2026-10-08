@@ -38,7 +38,14 @@ import {
     writeSettlementCalls,
     refundEscrowCalls,
 } from '../../src'
-import { ANVIL_RPC_URL, RELAYER_URL, TEST_CONTRACTS, TEST_ACCOUNTS, testChain } from '../setup'
+import {
+    ANVIL_RPC_URL,
+    RELAYER_URL,
+    TEST_CHAIN_ID,
+    TEST_CONTRACTS,
+    TEST_ACCOUNTS,
+    testChain,
+} from '../setup'
 import { setBalance, deal, getERC20Balance } from '../helpers/anvil'
 import { BASE_TOKENS } from '../helpers/tokens'
 import { createRelayerTestClient } from '../helpers/client'
@@ -55,6 +62,18 @@ describe('Escrow Buyer Flow', () => {
         simpleSettler: simpleSettlerAddress,
         accountProxy,
     } = TEST_CONTRACTS
+
+    if (!escrowAddress || !simpleSettlerAddress) {
+        const missing = [
+            escrowAddress ? '' : `ESCROW_${TEST_CHAIN_ID}`,
+            simpleSettlerAddress ? '' : `SIMPLE_SETTLER_${TEST_CHAIN_ID}`,
+        ].filter((name) => name !== '')
+
+        throw new Error(
+            `Escrow scenario is missing ${missing.join(' and ')}. ` +
+                'Run make-config so contracts/deployments/envs/local/.env sets them.',
+        )
+    }
 
     const client = createRelayerTestClient({
         chain: testChain,
