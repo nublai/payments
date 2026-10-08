@@ -19,6 +19,7 @@ export async function handleGetCallsStatus(
     const env = ctx.env as Env
 
     const firstParam = unwrapParams<unknown>(params)
+
     const bundleId =
         typeof firstParam === 'string' ? firstParam : (firstParam as { id?: string })?.id
 
@@ -32,6 +33,7 @@ export async function handleGetCallsStatus(
 
     if (typeof firstParam === 'object' && firstParam) {
         const maybeChainId = (firstParam as { chain_id?: string }).chain_id
+
         if (maybeChainId) {
             chainIdsToCheck = [parseHexChainId(maybeChainId, 'chain_id')]
         }

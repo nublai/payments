@@ -45,12 +45,16 @@ export function authProviderFromIdentity(identity: IdentityProvider): AuthProvid
         },
         async verify(request: Request, ctx: IdentityContext): Promise<AuthResult> {
             const result = await identity.verify(request, ctx)
+
             if (!result.ok) return result
             const success: AuthSuccess = { ok: true, userId: result.userId }
+
             if (result.issuer) success.issuer = result.issuer
+
             if (result.boundAccounts.length > 0) {
                 success.boundAccounts = result.boundAccounts
             }
+
             return success
         },
     }

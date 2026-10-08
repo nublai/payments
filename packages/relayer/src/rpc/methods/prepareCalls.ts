@@ -59,15 +59,18 @@ export async function handlePrepareCalls(
     if (!typedParams?.from) {
         throw new RpcError(INVALID_PARAMS, 'Missing required parameter: from')
     }
+
     if (!typedParams?.calls || !Array.isArray(typedParams.calls)) {
         throw new RpcError(INVALID_PARAMS, 'Missing or invalid parameter: calls')
     }
+
     if (!typedParams?.chain_id) {
         throw new RpcError(INVALID_PARAMS, 'Missing required parameter: chain_id')
     }
 
     const requestedChainId = parseHexChainId(typedParams.chain_id, 'chain_id')
     const supportedChainIds = getChainIds(env)
+
     if (supportedChainIds.length > 0 && !supportedChainIds.includes(requestedChainId)) {
         throw new RpcError(INVALID_PARAMS, `Unsupported chain ID: ${requestedChainId}`)
     }
@@ -79,6 +82,7 @@ export async function handlePrepareCalls(
         env.INTENT_NONCE_MANAGER,
         requestedChainId,
     )
+
     const gasConfig = getGasConfig(env)
     const relayerService = new RelayerService(config, logger, intentNonceProvider, gasConfig)
 
@@ -104,16 +108,21 @@ export async function handlePrepareCalls(
     }))
 
     const requestedUpgrade = typedParams.capabilities?.accountUpgrade
+
     if (requestedUpgrade) {
         assertPaidUpgradeEnabled(env)
         assertPaidUpgradeOidcOwner(typedParams.from)
     }
+
     const paidUpgradeIp = requestedUpgrade
         ? requirePaidUpgradeClientIp(ctx.request, env)
         : 'unknown'
+
     let upgradePreCallEncoding: Hex[] | undefined
+
     if (requestedUpgrade) {
         await assertPaidUpgradeRateCapacity(env, config.chainId, typedParams.from, paidUpgradeIp)
+
         // Encode before simulation so the digest and the gas estimate include the pre-call.
         // Signature, delegation, fee, and balance are checked again once the fee is known.
         try {
@@ -150,6 +159,7 @@ export async function handlePrepareCalls(
         }
 
         const rawError = result.error ?? 'Failed to prepare calls'
+
         if (rawError.toLowerCase().startsWith('simulation failed')) {
             const cause = rawError.replace(/^simulation failed:\s*/i, '').trim()
             throw new RpcError(SIMULATION_FAILED, 'Simulation failed', {
@@ -164,6 +174,7 @@ export async function handlePrepareCalls(
     const publicClient = createPublicClient({ transport: http(config.rpcUrl) })
 
     const txGas = BigInt(result.txGas ?? '100000')
+
     if (requestedUpgrade) {
         try {
             paidUpgradeSignedGas(txGas)
@@ -171,7 +182,9 @@ export async function handlePrepareCalls(
             throw new RpcError(INVALID_PARAMS, 'Paid upgrade gas limit exceeds the reserved hold')
         }
     }
+
     let feeEstimate
+
     try {
         feeEstimate = await getFeeEstimate(publicClient, txGas, feeConfig)
     } catch (error) {
@@ -181,6 +194,7 @@ export async function handlePrepareCalls(
 
     const priceConfig = getPriceOracleConfig(env)
     const chainAssetsConfig = getChainAssetsConfig(config.chainId)
+
     if (!chainAssetsConfig) {
         throw new RpcError(SERVICE_UNAVAILABLE, `Missing assets config for chain ${config.chainId}`)
     }
@@ -188,6 +202,7 @@ export async function handlePrepareCalls(
     const nativeAssetUid = Object.entries(chainAssetsConfig.assets).find(
         ([, asset]) => asset.address === zeroAddress,
     )?.[0]
+
     if (!nativeAssetUid) {
         throw new RpcError(
             SERVICE_UNAVAILABLE,
@@ -196,6 +211,7 @@ export async function handlePrepareCalls(
     }
 
     const nativeUsdPrice = await getUsdPrice(nativeAssetUid, priceConfig)
+
     if (!nativeUsdPrice) {
         throw new RpcError(
             SERVICE_UNAVAILABLE,
@@ -214,6 +230,7 @@ export async function handlePrepareCalls(
 
     if (paymentEnabled && paymentToken && paymentToken !== zeroAddress) {
         const normalizedPaymentToken = paymentToken.toLowerCase()
+
         const assetEntry = Object.entries(chainAssetsConfig.assets ?? {}).find(
             ([, asset]) => asset.address.toLowerCase() === normalizedPaymentToken,
         )
@@ -223,6 +240,7 @@ export async function handlePrepareCalls(
         }
 
         const [assetUid, assetConfig] = assetEntry
+
         if (!assetConfig.feeToken) {
             throw new RpcError(
                 INVALID_PARAMS,
@@ -232,6 +250,7 @@ export async function handlePrepareCalls(
 
         paymentTokenDecimals = assetConfig.decimals
         const tokenUsdPrice = await getUsdPrice(assetUid, priceConfig)
+
         if (!tokenUsdPrice) {
             throw new RpcError(
                 SERVICE_UNAVAILABLE,
@@ -251,6 +270,7 @@ export async function handlePrepareCalls(
 
     const claimedSession = sessionAddressFromEncodedKey(typedParams.session_key)
     let authSigner = typedParams.from
+
     if (claimedSession && claimedSession.toLowerCase() !== typedParams.from.toLowerCase()) {
         const onChain = await isOnChainAccountKey(
             publicClient,
@@ -258,15 +278,19 @@ export async function handlePrepareCalls(
             claimedSession,
             Math.floor(Date.now() / 1000),
         )
+
         if (onChain) authSigner = claimedSession
     }
 
     let accountUpgrade: Quote['accountUpgrade']
+
     if (requestedUpgrade) {
         if (paymentAmount <= 0n) {
             throw new RpcError(INVALID_PARAMS, 'Paid upgrade fee must be greater than zero')
         }
+
         let clientMax: bigint | undefined
+
         if (paymentMaxAmount !== undefined && paymentMaxAmount !== '') {
             try {
                 clientMax = BigInt(paymentMaxAmount)
@@ -274,11 +298,13 @@ export async function handlePrepareCalls(
                 throw new RpcError(INVALID_PARAMS, 'Paid upgrade paymentMaxAmount is required')
             }
         }
+
         const clamped = clampPaidUpgradePaymentMax({
             paymentAmount,
             clientMax,
             ceiling: paidUpgradeMaxPayment(env),
         })
+
         paymentMaxAmount = clamped.toString()
         result.typedData.message = {
             ...result.typedData.message,
@@ -290,6 +316,7 @@ export async function handlePrepareCalls(
             primaryType: 'Intent',
             message: result.typedData.message,
         })
+
         const checked = await assertPaidUpgrade({
             eoa: typedParams.from,
             payer,
@@ -305,6 +332,7 @@ export async function handlePrepareCalls(
             paymentAmount,
             publicClient,
         })
+
         accountUpgrade = checked.quote
         upgradePreCallEncoding = checked.encodedPreCalls
     }
@@ -350,6 +378,7 @@ export async function handlePrepareCalls(
     }
 
     const ttl = Math.floor(Date.now() / 1000) + feeConfig.quoteTtlSeconds
+
     const signedQuotes: SignedQuotes = {
         quotes: [quote],
         signature: '0x',
@@ -357,6 +386,7 @@ export async function handlePrepareCalls(
     }
 
     const quoteSecret = quoteSigningSecret(env)
+
     if (!quoteSecret) {
         if (!isLocalDevContext(env)) {
             throw new RpcError(
@@ -386,6 +416,7 @@ export async function handlePrepareCalls(
     }
 
     const message: Record<string, unknown> = {}
+
     for (const [key, value] of Object.entries(result.typedData.message)) {
         if (typeof value === 'bigint') {
             message[key] = value.toString()

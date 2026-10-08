@@ -9,16 +9,21 @@ import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+
 const BASE_USDC = getAddress(resolveIntentPayment('prod', 8453, USER).paymentToken)
 
 const EMPTY_ROUTER_CALL: Hex = encodeFunctionData({
@@ -142,6 +147,7 @@ async function installedBound(input: {
             simulateQuoteCalls: async () => {},
             installQuoteSpendLimit: async (value) => {
                 bound = value.bound
+
                 return async () => {}
             },
             readAllowance: async () => 0n,
@@ -175,7 +181,9 @@ async function installedBound(input: {
             })) as any,
         },
     )
+
     if (!bound) throw new Error('installQuoteSpendLimit was not called')
+
     return bound
 }
 
@@ -188,12 +196,14 @@ test('a USDC-input swap leaves room for the USDC fee cap in the USDC minute slot
 
 test('an ETH-input swap paying a USDC fee gets the fee cap in the USDC minute slot', async () => {
     const amount = 10n ** 15n
+
     const bound = await installedBound({
         fromToken: 'ETH',
         toToken: 'USDC',
         amount: '0.001',
         value: amount,
     })
+
     expect(getAddress(bound.usdc)).toBe(BASE_USDC)
     expect(bound.usdcLimit).toBe(PAID_FEE_CAP)
     expect(bound.nativeLimit).toBe(amount)

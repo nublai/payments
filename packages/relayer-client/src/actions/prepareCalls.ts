@@ -123,6 +123,7 @@ export async function prepareCalls(
     if (resolvedNonce === undefined && params.noncePolicy !== 'draft') {
         const nonceSeqKey = params.seqKey ?? 0n
         const connectedChainId = await client.getChainId().catch(() => undefined)
+
         const isTargetChainConnected =
             connectedChainId === undefined || connectedChainId === chainId
 

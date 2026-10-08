@@ -53,6 +53,7 @@ function makeBaseSessionKeystore(): RelayerSessionKeystoreV2 {
 
 function makeAgentSessionKeystore(): AgentSessionKeystoreV2 {
     const base = makeBaseSessionKeystore()
+
     return {
         ...base,
         kind: 'agent',
@@ -73,7 +74,9 @@ test('executeSessionUnlock --device sends encryption device + kind to daemon', a
         pickledAccount: 'pickled-account',
         hybridGroupSessions: [],
     })
+
     const expectedDeviceHex = `0x${Buffer.from(toBinary(ExportedDeviceSchema, exportedDevice)).toString('hex')}`
+
     const loadKey = mock(async (_input: Parameters<SessionDaemonClient['loadKey']>[0]) => ({
         ok: true as const,
         result: {
@@ -82,6 +85,7 @@ test('executeSessionUnlock --device sends encryption device + kind to daemon', a
             expiresAt: Date.now() + 60_000,
         },
     }))
+
     const bundle: KeystoreBundle = {
         rootPath: '/tmp/default.keystore.json',
         sessionPath: '/tmp/sessions/default.json',
@@ -192,6 +196,7 @@ test('executeSessionUnlock --device rejects non-agent sessions', async () => {
         },
         session: makeBaseSessionKeystore(),
     }
+
     await expect(
         executeSessionUnlock(
             {
@@ -227,6 +232,7 @@ test('executeSessionUnlock --device rejects non-agent sessions', async () => {
 
 test('executeSessionUnlock does not decrypt or load a key when chain permissions are elevated', async () => {
     const decryptSessionKeystore = mock(async () => ({ sessionPrivateKey: TEST_PRIVATE_KEY }))
+
     const loadKey = mock(async () => ({
         ok: true as const,
         result: {
@@ -235,6 +241,7 @@ test('executeSessionUnlock does not decrypt or load a key when chain permissions
             expiresAt: 1,
         },
     }))
+
     const bundle: KeystoreBundle = {
         rootPath: '/tmp/default.keystore.json',
         sessionPath: '/tmp/sessions/default.json',
@@ -270,6 +277,7 @@ test('executeSessionUnlock does not decrypt or load a key when chain permissions
         },
         session: makeBaseSessionKeystore(),
     }
+
     await expect(
         executeSessionUnlock(
             {
@@ -300,7 +308,9 @@ test('executeSessionUnlock falls back to session.json for login profiles', async
             expiresAt: Date.now() + 60_000,
         },
     }))
+
     const readSessionKeystoreFile = mock(async () => makeBaseSessionKeystore())
+
     const result = await executeSessionUnlock(
         {
             env: 'prod',
@@ -359,7 +369,9 @@ test('executeSessionUnlock falls back to session.json for SessionOnlyProfileErro
             expiresAt: Date.now() + 60_000,
         },
     }))
+
     const readSessionKeystoreFile = mock(async () => makeBaseSessionKeystore())
+
     const result = await executeSessionUnlock(
         {
             env: 'prod',

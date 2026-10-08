@@ -41,12 +41,15 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
     }
 
     const chainIds = getChainIds(env)
+
     if (chainIds.length === 0) {
         missing.push('CHAIN_IDS')
+
         return { valid: false, missing }
     }
 
     const context = env.CONTEXT ?? 'prod'
+
     for (const chainId of chainIds) {
         // Ensure RPC configured
         try {
@@ -71,6 +74,7 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
         if (!env.PRIVY_APP_ID) {
             missing.push('PRIVY_APP_ID')
         }
+
         if (!env.PRIVY_APP_SECRET) {
             missing.push('PRIVY_APP_SECRET')
         }
@@ -78,6 +82,7 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
 
     if (isOidcEnabled(env)) {
         const oidc = readOidcConfig(env)
+
         if (!oidc.ok) {
             for (const key of oidc.missing) missing.push(key)
         }
@@ -101,7 +106,9 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
 /** Anything other than local must name a non-zero fee recipient. Local may omit it. */
 function isPaidFeeRecipient(value: string | undefined): boolean {
     const text = value?.trim()
+
     if (!text || !isAddress(text, { strict: false })) return false
+
     return getAddress(text) !== zeroAddress
 }
 
@@ -112,16 +119,19 @@ export function validatePoolConfig(env: Env): { valid: boolean; errors: string[]
     const errors: string[] = []
 
     const signerCount = parseInt(env.RELAYER_COUNT ?? '1', 10)
+
     if (isNaN(signerCount) || signerCount < 1 || signerCount > 100) {
         errors.push('RELAYER_COUNT must be a number between 1 and 100')
     }
 
     const maxPendingPerSigner = parseInt(env.MAX_PENDING_PER_SIGNER ?? '16', 10)
+
     if (isNaN(maxPendingPerSigner) || maxPendingPerSigner < 1) {
         errors.push('MAX_PENDING_PER_SIGNER must be a positive number')
     }
 
     const maxPendingTotal = parseInt(env.MAX_PENDING_TOTAL ?? '1000', 10)
+
     if (isNaN(maxPendingTotal) || maxPendingTotal < signerCount) {
         errors.push('MAX_PENDING_TOTAL must be >= RELAYER_COUNT')
     }
@@ -129,6 +139,7 @@ export function validatePoolConfig(env: Env): { valid: boolean; errors: string[]
     if (env.MIN_SIGNER_BALANCE) {
         try {
             const minBalance = BigInt(env.MIN_SIGNER_BALANCE)
+
             if (minBalance < 0n) {
                 errors.push('MIN_SIGNER_BALANCE must be non-negative')
             }
@@ -140,6 +151,7 @@ export function validatePoolConfig(env: Env): { valid: boolean; errors: string[]
                     const targetBalanceWei = BigInt(
                         (parseFloat(env.TARGET_SIGNER_BALANCE) * 1e18).toString(),
                     )
+
                     if (targetBalanceWei <= minBalance) {
                         errors.push(
                             `TARGET_SIGNER_BALANCE (${env.TARGET_SIGNER_BALANCE} ETH) must be greater than MIN_SIGNER_BALANCE (${env.MIN_SIGNER_BALANCE} wei)`,

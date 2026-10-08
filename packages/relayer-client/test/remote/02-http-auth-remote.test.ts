@@ -104,7 +104,9 @@ function getChainMeta(chainId: number): ChainMeta {
     } as const
 
     const chainMeta = chainMetaById[chainId as keyof typeof chainMetaById]
+
     if (!chainMeta) throw new Error(`Unsupported TEST_CHAIN_ID: ${chainId}`)
+
     return chainMeta
 }
 
@@ -115,6 +117,7 @@ async function bootstrapPrivyUserWithWallet(): Promise<PrivyBootstrap> {
     const appSecret = process.env.PRIVY_APP_SECRET as string
 
     const walletAuthorizationPrivateKey = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY?.trim()
+
     if (!walletAuthorizationPrivateKey) {
         throw new Error('Missing PRIVY_AUTHORIZATION_PRIVATE_KEY for Privy wallet signing flow')
     }
@@ -136,6 +139,7 @@ async function bootstrapPrivyUserWithWallet(): Promise<PrivyBootstrap> {
     let wallet: PrivyWalletInfo
 
     const explicitWalletId = process.env.PRIVY_TEST_WALLET_ID?.trim()
+
     if (explicitWalletId) {
         const candidate = await privy.walletApi.getWallet({ id: explicitWalletId })
         wallet = { id: candidate.id, address: candidate.address as Address }
@@ -145,6 +149,7 @@ async function bootstrapPrivyUserWithWallet(): Promise<PrivyBootstrap> {
             chainType: 'ethereum',
             policyIds: [],
         })
+
         wallet = { id: created.id, address: created.address as Address }
     }
 
@@ -175,6 +180,7 @@ function authSignatureFromRsv(input: {
     yParity: number
 }): `0x${string}` {
     const parity = input.yParity >= 27 ? input.yParity - 27 : input.yParity
+
     return concat([input.r, input.s, toHex(parity, { size: 1 })])
 }
 
@@ -235,6 +241,7 @@ async function delegatePrivyWallet(params: {
     )
 
     expect(upgraded.success).toBe(true)
+
     if (upgraded.txHash) {
         expect(upgraded.txHash.startsWith('0x')).toBe(true)
     }
@@ -314,6 +321,7 @@ async function createDelegatedErc8128Context() {
         signerKey,
         delegation,
     })
+
     expect(upgraded.success).toBe(true)
 
     const prepared = await client.prepareCalls({
@@ -425,6 +433,7 @@ describe('Remote Smoke: HTTP auth', () => {
     describe.skipIf(!hasErc8128Env)('ERC-8128', () => {
         it('authorized: valid ERC-8128 signature calls wallet_sendPreparedCalls', async () => {
             const delegated = await createDelegatedErc8128Context()
+
             const transport = createJsonRpcTransport(process.env.RELAYER_URL as string, {
                 httpAuth: { signer: delegated.signer },
             })

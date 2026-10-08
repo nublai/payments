@@ -66,13 +66,17 @@ function plannedTokenLimits(bound: QuoteSpendBound): { token: Address; limit: bi
         { token: zeroAddress, limit: bound.nativeLimit },
         { token: getAddress(bound.usdc), limit: bound.usdcLimit },
     ]
+
     const seen = new Set(tokens.map((entry) => entry.token.toLowerCase()))
+
     for (const token of bound.frozenTokens) {
         const address = getAddress(token)
+
         if (seen.has(address.toLowerCase())) continue
         seen.add(address.toLowerCase())
         tokens.push({ token: address, limit: 0n })
     }
+
     return tokens
 }
 
@@ -90,23 +94,30 @@ export function planQuoteSpendSlots(input: {
     assertLimit(input.bound.usdcLimit, 'USDC')
     const planned = plannedTokenLimits(input.bound)
     const seen = new Set(planned.map((entry) => entry.token.toLowerCase()))
+
     for (const balance of input.balances) {
         const token = getAddress(balance.token)
+
         if (balance.balance <= 0n) continue
+
         if (seen.has(token.toLowerCase())) continue
+
         const hasPeriod = input.spendInfos.some(
             (info) => getAddress(info.token).toLowerCase() === token.toLowerCase(),
         )
+
         if (hasPeriod) continue
         seen.add(token.toLowerCase())
         planned.push({ token, limit: 0n })
     }
+
     return planned.map((entry) => {
         const minute = input.spendInfos.find(
             (info) =>
                 getAddress(info.token).toLowerCase() === entry.token.toLowerCase() &&
                 Number(info.period) === 0,
         )
+
         return {
             token: entry.token,
             installedLimit: entry.limit,
@@ -123,6 +134,7 @@ function spendCall(input: {
     limit?: bigint
 }): Call {
     const period = toSpendPeriodEnum(QUOTE_SPEND_PERIOD)
+
     return {
         target: getAddress(input.account),
         value: 0n,
@@ -144,6 +156,7 @@ export function quoteSpendSetCalls(input: {
 }): Call[] {
     return input.slots.map((slot) => {
         assertLimit(slot.installedLimit, slot.token)
+
         return spendCall({
             account: input.account,
             keyHash: input.keyHash,
@@ -169,11 +182,13 @@ export function quoteSpendRestoreCalls(input: {
                 mode: 'remove',
             })
         }
+
         if (slot.previousLimit < 0n) {
             throw new QuoteSpendError(
                 `${slot.token} previous minute limit cannot be restored.`,
             )
         }
+
         return spendCall({
             account: input.account,
             keyHash: input.keyHash,
@@ -194,6 +209,7 @@ export function quoteSpendRestoreCalls(input: {
 export function quoteSpendCalls(bound: QuoteSpendBound, mode: 'set' | 'remove'): Call[] {
     assertLimit(bound.nativeLimit, 'Native')
     assertLimit(bound.usdcLimit, 'USDC')
+
     return plannedTokenLimits(bound).map((entry) =>
         spendCall({
             account: bound.account,

@@ -17,6 +17,7 @@ describe('paid upgrade quote cap', () => {
         for (const amount of [1n, 300_000n, 1_357_262n, 1_396_031n]) {
             expect(signedPaymentMaxForQuote(amount)).toBe(clientCap(amount))
         }
+
         expect(signedPaymentMaxForQuote(300_000n)).toBe(315_000n)
     })
 

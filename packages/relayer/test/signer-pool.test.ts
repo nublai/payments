@@ -25,6 +25,7 @@ interface IndexedCapacityInfo {
 function shuffle<T>(array: T[]): void {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
+
         ;[array[i], array[j]] = [array[j], array[i]]
     }
 }
@@ -231,6 +232,7 @@ describe('SignerPool capacity-based selection', () => {
 
         // Run multiple times to verify ordering varies for ties
         const firstIndices = new Set<number>()
+
         for (let i = 0; i < 20; i++) {
             const result = selectCandidates([...capacities])
             firstIndices.add(result[0].index)

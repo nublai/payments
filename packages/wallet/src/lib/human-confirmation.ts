@@ -17,13 +17,20 @@ export class HumanConfirmationError extends Error {
 }
 
 export const CONFIRM_SEND_PHRASE = 'SEND USDC'
+
 export const CONFIRM_FULL_ACCESS_PHRASE = 'CREATE FULL ACCESS SESSION'
+
 /** Dedicated swap session. Not a wildcard. MCP and non-TTY callers cannot supply it. */
 export const CONFIRM_SWAP_SESSION_PHRASE = 'CREATE SWAP SESSION'
+
 export const CONFIRM_ROTATE_FULL_ACCESS_PHRASE = 'ROTATE FULL ACCESS SESSION'
+
 export const CONFIRM_UNLOCK_FULL_ACCESS_PHRASE = 'UNLOCK FULL ACCESS SESSION'
+
 export const CONFIRM_REVOKE_FULL_ACCESS_PHRASE = 'REVOKE FULL ACCESS SESSION'
+
 export const CONFIRM_PASSKEY_PHRASE = 'AUTHORIZE PASSKEY'
+
 export const CONFIRM_ORACLE_SIGN_PHRASE = 'SIGN ESCROW SETTLEMENT'
 
 export function isMcpCaller(argv: readonly string[] = process.argv): boolean {
@@ -58,11 +65,13 @@ export async function requireHumanConfirmation(input: {
 }): Promise<void> {
     const mcp = input.mcp ?? isMcpCaller()
     const interactive = input.interactive ?? isInteractiveTerminal()
+
     if (mcp || !interactive) {
         throw new HumanConfirmationError(humanConfirmationMessage(input.operation, input.phrase))
     }
 
     const confirmed = await input.prompt(input.phrase)
+
     if (!confirmed) {
         throw new HumanConfirmationError(
             `HUMAN_CONFIRMATION_REQUIRED: confirmation did not match. Type "${input.phrase}" exactly.`,
@@ -77,14 +86,17 @@ export function promptTerminalPhrase(expectedPhrase: string): Promise<boolean> {
         output: process.stderr,
         terminal: true,
     })
+
     return new Promise((resolve, reject) => {
         let settled = false
+
         const finish = (fn: () => void) => {
             if (settled) return
             settled = true
             rl.close()
             fn()
         }
+
         rl.once('line', (line) => {
             finish(() => resolve(line.trim() === expectedPhrase))
         })

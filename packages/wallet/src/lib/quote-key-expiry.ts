@@ -68,12 +68,15 @@ export function planQuoteKeyExpiry(input: {
     currentExpiry: bigint
 }): QuoteKeyExpiryPlan {
     const installed = input.now + QUOTE_KEY_EXPIRY_SECONDS
+
     if (installed > 2n ** 40n - 1n) {
         throw new Error('Quote key expiry does not fit in uint40.')
     }
+
     if (input.currentExpiry !== 0n && input.currentExpiry <= installed) {
         return { previous: input.currentExpiry, installed: input.currentExpiry, changed: false }
     }
+
     return { previous: input.currentExpiry, installed, changed: true }
 }
 
@@ -117,30 +120,39 @@ export function expectedInstalledKey(input: {
  */
 export function quoteKeyDifferences(installed: QuoteKeySnapshot, live: QuoteKeySnapshot): string[] {
     const differences: string[] = []
+
     if (installed.expiry !== live.expiry) {
         differences.push(`expiry: expected ${installed.expiry}, found ${live.expiry}`)
     }
+
     if (installed.publicKey.toLowerCase() !== live.publicKey.toLowerCase()) {
         differences.push(`publicKey: expected ${installed.publicKey}, found ${live.publicKey}`)
     }
+
     if (installed.keyType !== live.keyType) {
         differences.push(`keyType: expected ${installed.keyType}, found ${live.keyType}`)
     }
+
     if (installed.isSuperAdmin !== live.isSuperAdmin) {
         differences.push(
             `isSuperAdmin: expected ${installed.isSuperAdmin}, found ${live.isSuperAdmin}`,
         )
     }
+
     const expectedPermissions = formatPermissions(installed.permissions)
     const foundPermissions = formatPermissions(live.permissions)
+
     if (expectedPermissions !== foundPermissions) {
         differences.push(`permissions: expected ${expectedPermissions}, found ${foundPermissions}`)
     }
+
     const expectedLimits = formatLimits(installed.limits)
     const foundLimits = formatLimits(live.limits)
+
     if (expectedLimits !== foundLimits) {
         differences.push(`limits: expected ${expectedLimits}, found ${foundLimits}`)
     }
+
     return differences
 }
 
@@ -161,12 +173,16 @@ export function restoreQuoteKeyExpiryCall(input: {
     differences?: string[]
 }): Call[] {
     if (!input.previous || !input.keyStillExists) return []
+
     if (!input.installed || !input.live) return []
     const differences = quoteKeyDifferences(input.installed, input.live)
+
     if (differences.length > 0) {
         input.differences?.push(...differences)
+
         return []
     }
+
     return [
         authorizeKeyExpiryCall({
             account: input.account,
@@ -205,12 +221,15 @@ export function permissionsAfterInstall(
     grants: readonly QuoteKeyPermission[],
 ): QuoteKeyPermission[] {
     const permissions = current.map(normalizePermission)
+
     for (const grant of grants) {
         const normalized = normalizePermission(grant)
         const id = permissionId(normalized)
+
         if (permissions.some((permission) => permissionId(permission) === id)) continue
         permissions.push(normalized)
     }
+
     return permissions
 }
 
@@ -229,6 +248,7 @@ function grantsStillPresent(
     live: readonly QuoteKeyPermission[],
 ): boolean {
     const present = new Set(live.map((permission) => permissionId(normalizePermission(permission))))
+
     return grants.every((grant) => present.has(permissionId(normalizePermission(grant))))
 }
 
@@ -241,17 +261,22 @@ function expectedMinuteSlots(
         period: limit.period,
         limit: limit.limit,
     }))
+
     for (const slot of minuteSlots) {
         const token = getAddress(slot.token)
+
         const index = limits.findIndex(
             (limit) => limit.token.toLowerCase() === token.toLowerCase() && limit.period === 0,
         )
+
         if (index >= 0) {
             limits[index] = { token, period: 0, limit: slot.installedLimit }
             continue
         }
+
         limits.push({ token, period: 0, limit: slot.installedLimit })
     }
+
     return limits
 }
 
@@ -268,6 +293,7 @@ function permissionId(permission: QuoteKeyPermission): string {
 
 function formatPermissions(permissions: readonly QuoteKeyPermission[]): string {
     if (permissions.length === 0) return 'none'
+
     return permissions
         .map((permission) => permissionId(normalizePermission(permission)))
         .sort()
@@ -276,9 +302,11 @@ function formatPermissions(permissions: readonly QuoteKeyPermission[]): string {
 
 function formatLimits(limits: readonly QuoteKeyLimit[]): string {
     if (limits.length === 0) return 'none'
+
     return limits
         .map((limit) => {
             const period = SPEND_PERIODS[limit.period] ?? String(limit.period)
+
             return `${getAddress(limit.token).toLowerCase()} ${period} ${limit.limit}`
         })
         .sort()

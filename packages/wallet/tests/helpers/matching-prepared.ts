@@ -15,11 +15,13 @@ export function matchingPreparedCalls(input: {
     paymentMaxAmount?: bigint
 }) {
     const verifyingContract = resolveOrchestratorAddress(input.network.env, input.network.chainId)
+
     const messageCalls = input.calls.map((call) => ({
         to: call.target,
         value: call.value,
         data: call.data,
     }))
+
     const message = {
         multichain: false,
         eoa: input.from,
@@ -34,12 +36,14 @@ export function matchingPreparedCalls(input: {
         settler: zeroAddress,
         expiry: input.expiry ?? 1_900_000_000n,
     }
+
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: input.network.chainId,
         verifyingContract,
     }
+
     return {
         digest: hashTypedData({
             domain,

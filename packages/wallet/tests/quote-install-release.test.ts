@@ -15,15 +15,20 @@ import {
 } from '../src/lib/quote-spend-pending'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
+
 const PUBLIC_KEY = '0x1234' as Hex
+
 const KEY_HASH = `0x${'ab'.repeat(32)}` as Hex
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const APPROVE = '0x095ea7b3' as Hex
 
 function chainClient(): PublicClient {
     return {
         async readContract(args: { functionName: string }) {
             if (args.functionName === 'spendInfos') return []
+
             if (args.functionName === 'getKey') {
                 return {
                     expiry: 0,
@@ -32,7 +37,9 @@ function chainClient(): PublicClient {
                     publicKey: PUBLIC_KEY,
                 }
             }
+
             if (args.functionName === 'canExecutePackedInfos') return []
+
             if (args.functionName === 'balanceOf') return 0n
             throw new Error(`unexpected read ${args.functionName}`)
         },
@@ -51,6 +58,7 @@ test('the release callback finishes an install inside withoutQuoteSpendRecovery'
     let recoveryTouched = false
 
     expect(quoteSpendRecoverySuspended()).toBe(false)
+
     const release = await installTrackedQuoteSpendLimit(
         {
             bound: {
@@ -75,16 +83,20 @@ test('the release callback finishes an install inside withoutQuoteSpendRecovery'
             client: chainClient(),
             readMinuteLimits: async (record) => {
                 const limits = new Map<string, bigint | null>()
+
                 for (const slot of record.slots) {
                     limits.set(slot.token.toLowerCase(), BigInt(slot.installedLimit))
                 }
+
                 return limits
             },
             readQuoteKey: async (record: PendingQuoteLimitRecord) => {
                 const expiry = record.keyExpiry
+
                 if (!expiry?.permissions || !expiry.limits) {
                     throw new Error('install did not store the key snapshot')
                 }
+
                 return {
                     status: 'live' as const,
                     key: {
@@ -108,6 +120,7 @@ test('the release callback finishes an install inside withoutQuoteSpendRecovery'
                     password: 'test',
                     readMinuteLimits: async () => {
                         recoveryTouched = true
+
                         return new Map()
                     },
                     submit: async () => {

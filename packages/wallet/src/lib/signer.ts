@@ -22,11 +22,13 @@ function unwrapDaemonSignature(response: SessionDaemonRpcResponse<Hex>): Hex {
         if (response !== null && response.error.code === DAEMON_ERROR_CODES.SESSION_EXPIRED) {
             throw new SessionSignerExpiredError(SESSION_EXPIRED_MESSAGE)
         }
+
         throw new SessionSignerDaemonError(
             response?.error?.message ?? 'Session daemon is unavailable',
             response?.error?.code,
         )
     }
+
     return response.result
 }
 
@@ -76,6 +78,7 @@ export async function resolveSessionSigner(opts: {
     if (ping?.ok) {
         const list = await client.list()
         const expectedAddress = getAddress(opts.sessionKeystore.addresses.session)
+
         if (
             list?.ok &&
             list.result.keys.some(
@@ -85,6 +88,7 @@ export async function resolveSessionSigner(opts: {
             )
         ) {
             const address = expectedAddress
+
             const authSigner: EthHttpSigner = {
                 address,
                 chainId: opts.chainId,

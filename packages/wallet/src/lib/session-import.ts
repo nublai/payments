@@ -68,6 +68,7 @@ function resolveProfileDir(profile: string, env: EnvName): string {
         if (error instanceof Error) {
             throw new SessionImportError('SESSION_IMPORT_FAILED', error.message, { cause: error })
         }
+
         throw new SessionImportError(
             'SESSION_IMPORT_FAILED',
             'Failed to resolve profile directory',
@@ -114,6 +115,7 @@ export async function executeSessionImport(
         }
 
         await deps.writeSessionKeystoreFile(targetPath, session, { overwrite: true })
+
         return {
             type: 'session_import',
             status: 'complete',
@@ -129,6 +131,7 @@ export async function executeSessionImport(
 function toSessionImportError(error: unknown, context: { input: string }): SessionImportError {
     if (error instanceof SessionImportError) return error
     const message = error instanceof Error ? error.message : String(error)
+
     if (message.includes('ENOENT') || message.toLowerCase().includes('no such file')) {
         return new SessionImportError(
             'KEYSTORE_NOT_FOUND',
@@ -136,5 +139,6 @@ function toSessionImportError(error: unknown, context: { input: string }): Sessi
             { cause: error },
         )
     }
+
     return new SessionImportError('UNKNOWN', message, { cause: error })
 }

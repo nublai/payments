@@ -55,7 +55,9 @@ import {
 } from './shared/paid-upgrade'
 
 export type { SendPreparedCallsParams, SendPreparedCallsResult } from '../schema/sendPreparedCalls'
+
 export type { SignedQuotes, Quote, QuoteIntent } from '../schema/prepareCalls'
+
 export { getSignerName, hashQuotes, buildIntentFromParams }
 
 /**
@@ -68,7 +70,9 @@ function rpcCodeForPoolSendFailure(error: {
     broadcastAttempted?: boolean
 }): number {
     if (error.broadcastAttempted === true) return SERVICE_UNAVAILABLE
+
     if (error.code === 'INTENT_EXPIRED') return INTENT_EXPIRED
+
     return SERVICE_UNAVAILABLE
 }
 
@@ -80,6 +84,7 @@ function getSeqKeyForDraftMark(
         if (seqKeyFromContext) {
             return BigInt(seqKeyFromContext)
         }
+
         return BigInt(intentNonce) >> 64n
     } catch {
         return null
@@ -101,6 +106,7 @@ function echoedUpgradeMatches(
     if (!echo?.authorization || !echo.preCall) return false
     const authorization = echo.authorization
     const preCall = echo.preCall
+
     if (
         !authorization.contractAddress ||
         !Number.isInteger(authorization.chainId) ||
@@ -113,6 +119,7 @@ function echoedUpgradeMatches(
     ) {
         return false
     }
+
     return paidUpgradeFieldsMatch(
         { authorization, preCall },
         quoted,
@@ -134,6 +141,7 @@ async function bindPaidUpgrade(args: {
     quote: Quote
 }): Promise<{ reservedAt: number; authorization: SignedAuthorization } | undefined> {
     const upgrade = paidUpgradeFromQuote(args.quote)
+
     if (!upgrade) return undefined
 
     if (
@@ -144,6 +152,7 @@ async function bindPaidUpgrade(args: {
     }
 
     let paymentAmount: bigint
+
     try {
         paymentAmount = BigInt(args.intent.paymentAmount ?? '0')
     } catch {
@@ -151,6 +160,7 @@ async function bindPaidUpgrade(args: {
     }
 
     const publicClient = createPublicClient({ transport: http(args.config.rpcUrl) })
+
     const checked = await assertPaidUpgrade({
         eoa: args.intent.eoa,
         payer: args.intent.payer,
@@ -182,6 +192,7 @@ async function bindPaidUpgrade(args: {
         args.intent.eoa,
         args.ip,
     )
+
     try {
         await assertPaidUpgradeSimulation({
             publicClient,
@@ -198,6 +209,7 @@ async function bindPaidUpgrade(args: {
             (error.code === INVALID_SIGNATURE ||
                 error.code === INSUFFICIENT_FUNDS ||
                 error.code === CONTRACT_ERROR)
+
         if (!stored) {
             await releasePaidUpgradeRateLimit(
                 args.env,
@@ -207,8 +219,10 @@ async function bindPaidUpgrade(args: {
                 reservedAt,
             )
         }
+
         throw error
     }
+
     return { reservedAt, authorization: checked.authorization }
 }
 
@@ -225,6 +239,7 @@ export async function handleSendPreparedCalls(
     if (!typedParams?.context) {
         throw new RpcError(INVALID_PARAMS, 'Missing required parameter: context')
     }
+
     if (!typedParams?.signature) {
         throw new RpcError(INVALID_PARAMS, 'Missing required parameter: signature')
     }
@@ -233,24 +248,31 @@ export async function handleSendPreparedCalls(
 
     if ('quote' in context && context.quote) {
         const paidQuote = context.quote.quotes?.[0]
+
         if (paidQuote && paidUpgradeFromQuote(paidQuote)) {
             assertPaidUpgradeEnabled(env)
             assertPaidUpgradeOidcOwner(paidQuote.intent?.eoa ?? '')
         }
+
         const quoteError = await validateQuote(context.quote, env)
+
         if (quoteError) throw quoteError
         const callerError = await assertErc8128BoundToQuotes(env, ctx.auth, context.quote.quotes)
+
         if (callerError) throw callerError
     }
 
     const chainId = getChainIdFromContext(context)
     const supportedChainIds = getChainIds(env)
+
     if (supportedChainIds.length > 0 && !supportedChainIds.includes(chainId)) {
         throw new RpcError(INVALID_PARAMS, `Unsupported chain ID: ${chainId}`)
     }
+
     const config = getChainConfig(env, chainId)
 
     let bundleId: string
+
     if ('quote' in context && context.quote) {
         bundleId = hashQuotes(context.quote, config)
     } else {
@@ -266,10 +288,12 @@ export async function handleSendPreparedCalls(
     }
 
     const quoted = 'quote' in context && context.quote ? context.quote.quotes[0] : undefined
+
     const paidUpgradeIp =
         quoted && paidUpgradeFromQuote(quoted)
             ? requirePaidUpgradeClientIp(ctx.request, env)
             : 'unknown'
+
     const paidUpgrade = quoted
         ? await bindPaidUpgrade({
               env,
@@ -281,12 +305,14 @@ export async function handleSendPreparedCalls(
               quote: quoted,
           })
         : undefined
+
     if (paidUpgrade) {
         tx.authorization = paidUpgrade.authorization
     }
 
     const pool = getSignerPool(env, chainId)
     let response: Response
+
     try {
         response = await pool.fetch(`http://do/send?poolName=pool-${chainId}`, {
             method: 'POST',
@@ -306,6 +332,7 @@ export async function handleSendPreparedCalls(
             logger.error({ error, eoa: intent.eoa }, 'paid upgrade pool unavailable')
             throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
         }
+
         throw error
     }
 
@@ -315,6 +342,7 @@ export async function handleSendPreparedCalls(
             code?: string
             broadcastAttempted?: boolean
         }
+
         if (paidUpgrade && error.broadcastAttempted === false) {
             await releasePaidUpgradeRateLimit(
                 env,
@@ -334,20 +362,25 @@ export async function handleSendPreparedCalls(
                 )
             }
         }
+
         logger.warn({ eoa: intent.eoa, error: error.error }, 'intent execution failed')
 
         throw new RpcError(rpcCodeForPoolSendFailure(error), error.error)
     }
 
     const result = (await response.json()) as SendResult
+
     if (paidUpgrade) {
         try {
             const receiptClient = createPublicClient({ transport: http(config.rpcUrl) })
+
             const receipt = await receiptClient.waitForTransactionReceipt({
                 hash: result.txHash,
                 timeout: paidUpgradeReceiptWaitMs(env),
             })
+
             const outcome = paidUpgradeReceiptOutcome(receipt)
+
             if (outcome.failure) {
                 logger.warn(
                     {
@@ -360,6 +393,7 @@ export async function handleSendPreparedCalls(
                     'paid upgrade receipt stored an intent error',
                 )
             }
+
             await settlePaidUpgradeGas(env, chainId, {
                 gasUsed: outcome.gasUsed,
                 failure: outcome.failure,
@@ -370,6 +404,7 @@ export async function handleSendPreparedCalls(
                 { error, eoa: intent.eoa, txHash: result.txHash },
                 'paid upgrade receipt was not settled; gas hold remains until reconcile',
             )
+
             try {
                 await enqueuePaidUpgradeReceipt(env, chainId, result.txHash, {
                     nonce: result.nonce,
@@ -383,6 +418,7 @@ export async function handleSendPreparedCalls(
             }
         }
     }
+
     logger.info(
         { eoa: intent.eoa, txHash: result.txHash, signer: result.signer, bundleId },
         'intent submitted successfully',
@@ -390,14 +426,17 @@ export async function handleSendPreparedCalls(
 
     if ('quote' in context && context.draft?.id) {
         const seqKey = getSeqKeyForDraftMark(intent.nonce, context.draft.seqKey)
+
         if (seqKey !== null) {
             const intentNonceProvider = createIntentNonceProvider(env.INTENT_NONCE_MANAGER, chainId)
+
             try {
                 const draftStatus = await intentNonceProvider.markSubmitted(
                     intent.eoa,
                     seqKey,
                     context.draft.id,
                 )
+
                 logger.debug(
                     { eoa: intent.eoa, bundleId, draftId: context.draft.id, draftStatus },
                     'intent draft submit transition applied',
@@ -435,6 +474,7 @@ export async function handleSendPreparedCalls(
                     signerName: result.signerName,
                 }),
             })
+
             if (!addBundleResponse.ok) {
                 logger.error(
                     {
@@ -454,6 +494,7 @@ export async function handleSendPreparedCalls(
             if ('quote' in context && context.quote?.quotes?.length) {
                 const quote = context.quote.quotes[0]
                 const telemetry = quote?.telemetry
+
                 if (telemetry?.combinedGas || telemetry?.simulationGas || telemetry?.txGas) {
                     try {
                         const telemetryResponse = await bundleStatus.fetch(
@@ -472,6 +513,7 @@ export async function handleSendPreparedCalls(
                                 }),
                             },
                         )
+
                         if (!telemetryResponse.ok) {
                             logger.warn(
                                 {
@@ -505,6 +547,7 @@ export async function handleSendPreparedCalls(
             if (error instanceof RpcError) {
                 throw error
             }
+
             logger.warn(
                 {
                     category: 'bundle_tracking_persist_failed',
@@ -543,6 +586,7 @@ export async function handleBatchSendPreparedCalls(
         draftId?: string
         draftSeqKey?: bigint
     }> = []
+
     const validationErrors: Map<string | number | null, RpcError> = new Map()
 
     for (const req of requests) {
@@ -555,6 +599,7 @@ export async function handleBatchSendPreparedCalls(
             )
             continue
         }
+
         if (!typedParams?.signature) {
             validationErrors.set(
                 req.id,
@@ -565,19 +610,23 @@ export async function handleBatchSendPreparedCalls(
 
         if ('quote' in typedParams.context && typedParams.context.quote) {
             const quoteError = await validateQuote(typedParams.context.quote, env)
+
             if (quoteError) {
                 validationErrors.set(req.id, quoteError)
                 continue
             }
+
             const callerError = await assertErc8128BoundToQuotes(
                 env,
                 ctx.auth,
                 typedParams.context.quote.quotes,
             )
+
             if (callerError) {
                 validationErrors.set(req.id, callerError)
                 continue
             }
+
             if (typedParams.context.quote.quotes.some((quote) => quote.accountUpgrade)) {
                 validationErrors.set(
                     req.id,
@@ -589,6 +638,7 @@ export async function handleBatchSendPreparedCalls(
 
         const chainId = getChainIdFromContext(typedParams.context)
         const supportedChainIds = getChainIds(env)
+
         if (supportedChainIds.length > 0 && !supportedChainIds.includes(chainId)) {
             validationErrors.set(
                 req.id,
@@ -599,6 +649,7 @@ export async function handleBatchSendPreparedCalls(
 
         const intent = buildIntentFromParams(typedParams)
         const config = getChainConfig(env, chainId)
+
         const bundleId =
             'quote' in typedParams.context && typedParams.context.quote
                 ? hashQuotes(typedParams.context.quote, config)
@@ -630,12 +681,14 @@ export async function handleBatchSendPreparedCalls(
     }
 
     const distinctChainIds = Array.from(new Set(parsedRequests.map((r) => r.chainId)))
+
     if (distinctChainIds.length > 1) {
         return requests.map((r) => ({
             id: r.id,
             error: new RpcError(INVALID_PARAMS, 'Mixed chainIds in batch not supported'),
         }))
     }
+
     const batchChainId = distinctChainIds[0]
 
     const batchTx: BatchExecuteIntentTransaction = {
@@ -645,6 +698,7 @@ export async function handleBatchSendPreparedCalls(
     }
 
     const pool = getSignerPool(env, batchChainId)
+
     const response = await pool.fetch(`http://do/send?poolName=pool-${batchChainId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -657,6 +711,7 @@ export async function handleBatchSendPreparedCalls(
             code?: string
             broadcastAttempted?: boolean
         }
+
         logger.warn(
             { count: parsedRequests.length, error: error.error },
             'batch intent execution failed',
@@ -666,9 +721,11 @@ export async function handleBatchSendPreparedCalls(
 
         return requests.map((req) => {
             const validationError = validationErrors.get(req.id)
+
             if (validationError) {
                 return { id: req.id, error: validationError }
             }
+
             return { id: req.id, error: new RpcError(errorCode, error.error) }
         })
     }
@@ -684,6 +741,7 @@ export async function handleBatchSendPreparedCalls(
     )
 
     const intentNonceProvider = createIntentNonceProvider(env.INTENT_NONCE_MANAGER, batchChainId)
+
     for (const request of parsedRequests) {
         if (!request.draftId || request.draftSeqKey === undefined) {
             continue
@@ -695,6 +753,7 @@ export async function handleBatchSendPreparedCalls(
                 request.draftSeqKey,
                 request.draftId,
             )
+
             logger.debug(
                 {
                     eoa: request.intent.eoa,
@@ -734,6 +793,7 @@ export async function handleBatchSendPreparedCalls(
                         signerName: result.signerName,
                     }),
                 })
+
                 if (!addBundleResponse.ok) {
                     logger.error(
                         {
@@ -774,15 +834,19 @@ export async function handleBatchSendPreparedCalls(
 
     return requests.map((req) => {
         const validationError = validationErrors.get(req.id)
+
         if (validationError) {
             return { id: req.id, error: validationError }
         }
+
         const bundleTrackingError = bundleTrackingErrors.get(req.id)
+
         if (bundleTrackingError) {
             return { id: req.id, error: bundleTrackingError }
         }
 
         const successResult = parsedRequests.find((r) => r.id === req.id)
+
         if (successResult) {
             return { id: req.id, result: { id: successResult.bundleId } }
         }
@@ -796,5 +860,6 @@ export async function handleBatchSendPreparedCalls(
  */
 export function canOptimizeBatch(requests: Array<{ method: string; params?: unknown }>): boolean {
     if (requests.length <= 1) return false
+
     return requests.every((r) => r.method === 'wallet_sendPreparedCalls')
 }

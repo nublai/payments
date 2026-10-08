@@ -33,6 +33,7 @@ describe('createJsonRpcTransport bearer auth', () => {
             vi.fn(async (request: Request | URL | string) => {
                 expect(request).toBeInstanceOf(Request)
                 seenAuth = (request as Request).headers.get('Authorization')
+
                 return successResponse(1)
             }),
         )
@@ -60,6 +61,7 @@ describe('createJsonRpcTransport bearer auth', () => {
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 seenAuth.push((request as Request).headers.get('Authorization'))
+
                 return successResponse(seenAuth.length)
             }),
         )
@@ -89,6 +91,7 @@ describe('createJsonRpcTransport bearer auth', () => {
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 seenAuth.push((request as Request).headers.get('Authorization'))
+
                 return successResponse(seenAuth.length)
             }),
         )
@@ -128,6 +131,7 @@ describe('createJsonRpcTransport bearer auth', () => {
     it('keeps bearer header when httpAuth signing is also configured', async () => {
         signRequestMock.mockImplementation(async (request: Request) => {
             expect(request.headers.get('Authorization')).toBe('Bearer token_signed')
+
             return request
         })
 
@@ -137,6 +141,7 @@ describe('createJsonRpcTransport bearer auth', () => {
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 seenAuth = (request as Request).headers.get('Authorization')
+
                 return successResponse(1)
             }),
         )

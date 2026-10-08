@@ -34,9 +34,11 @@ export async function jsonRpcRequest<T>(
         }
 
         const payload = (await response.json()) as JsonRpcResponse<T>
+
         if (payload.error) {
             throw new Error(`RPC method failed: ${method}`)
         }
+
         if (payload.result === undefined) {
             throw new Error(`RPC returned no result: ${method}`)
         }

@@ -133,6 +133,7 @@ describe('post-broadcast Intent expired text', () => {
             code: SERVICE_UNAVAILABLE,
         })
         await expect(handleSendPreparedCalls(createParams(), ctx)).rejects.toBeInstanceOf(RpcError)
+
         try {
             await handleSendPreparedCalls(createParams(), ctx)
         } catch (error) {
@@ -147,6 +148,7 @@ describe('post-broadcast Intent expired text', () => {
             code: 'INTENT_EXPIRED',
             broadcastAttempted: true,
         })
+
         await expect(handleSendPreparedCalls(createParams(), ctx)).rejects.toMatchObject({
             code: SERVICE_UNAVAILABLE,
         })
@@ -154,10 +156,12 @@ describe('post-broadcast Intent expired text', () => {
 
     it('classifies the same broadcast failure in a batch as service unavailable', async () => {
         const ctx = createMockCtx(broadcastIntentExpired)
+
         const results = await handleBatchSendPreparedCalls(
             [{ id: 1, params: createParams() }],
             ctx,
         )
+
         expect(results).toHaveLength(1)
         const error = results[0]?.error
         expect(error).toBeInstanceOf(RpcError)
@@ -172,6 +176,7 @@ describe('post-broadcast Intent expired text', () => {
             code: 'INTENT_EXPIRED',
             broadcastAttempted: false,
         })
+
         await expect(handleSendPreparedCalls(createParams(), ctx)).rejects.toMatchObject({
             code: INTENT_EXPIRED,
         })

@@ -33,6 +33,7 @@ export async function getCapabilities(
 ): Promise<CapabilitiesResponse> {
     try {
         const transport = createRelayerTransport(client)
+
         const rpcParams =
             params?.chainIds && params.chainIds.length > 0
                 ? {
@@ -40,6 +41,7 @@ export async function getCapabilities(
                       chains: params.chainIds.map((id) => `0x${id.toString(16)}`),
                   }
                 : params
+
         const result = await transport.request<RpcGetCapabilitiesResult>(
             'wallet_getCapabilities',
             rpcParams,
@@ -86,9 +88,11 @@ export async function getCapabilities(
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
+
         if (/https/i.test(message)) {
             throw error instanceof Error ? error : new Error(message)
         }
+
         return {
             success: false,
             error: message,

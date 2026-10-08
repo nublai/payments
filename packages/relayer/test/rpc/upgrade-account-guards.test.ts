@@ -34,9 +34,13 @@ import {
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
 
 const CHAIN_ID = 8453
+
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+
 const BOMB_DELEGATION = '0x000000000000000000000000000000000000dEaD' as Address
+
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const OTHER_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e141207b4c24b44a4361' as Hex
 
 interface RateBody {
@@ -59,9 +63,11 @@ function providerFor(userId: string): AuthProvider {
 
 function createEnv(capture: unknown[], store: Map<string, number>): Env {
     const now = 1_700_000_100
+
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
         const bodyText = typeof init?.body === 'string' ? init.body : ''
         let parsed: { type?: string } & RateBody = {}
+
         if (bodyText) {
             try {
                 parsed = JSON.parse(bodyText) as { type?: string } & RateBody
@@ -72,6 +78,7 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
 
         if (parsed.type === 'create-account') {
             capture.push(parsed)
+
             return {
                 ok: false,
                 json: async () => ({ error: 'execution reverted', broadcastAttempted: false }),
@@ -85,21 +92,25 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity,
         })
+
         if (parsed.action === 'release') {
             releaseRateLimit(
                 store,
                 buckets,
                 typeof parsed.reservedAt === 'number' ? parsed.reservedAt : now,
             )
+
             return {
                 ok: true,
                 json: async () => ({ allowed: true }),
             } as unknown as Response
         }
+
         const allowed =
             parsed.action === 'peek'
                 ? peekRateLimit(store, buckets, now).allowed
                 : consumeRateLimit(store, buckets, now).allowed
+
         return {
             ok: true,
             json: async () => ({ allowed, reservedAt: now }),
@@ -131,12 +142,15 @@ function createApp(providers: AuthProvider[]) {
     app.use('*', authMiddleware({ providers }))
     app.post('/', async (c) => {
         const body = await c.req.json()
+
         const response = await dispatch(body, createMethods(c.env), {
             env: c.env,
             request: c.req.raw,
         })
+
         return c.json(response)
     })
+
     return app
 }
 
@@ -182,6 +196,7 @@ function upgradeBody(args: {
 
 async function signAuth(key: Hex, delegation: Address, nonce: number): Promise<Hex> {
     const account = privateKeyToAccount(key)
+
     return account.sign({
         hash: hashAuthorization({
             contractAddress: delegation,
@@ -201,7 +216,9 @@ async function post(env: Env, body: unknown, userId: string) {
         },
         env,
     )
+
     const text = await response.text()
+
     return { json: JSON.parse(text) as { error?: { code?: number; message?: string } }, text }
 }
 
@@ -210,6 +227,7 @@ describe('C1 upgrade broadcast guards', () => {
         vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
             const body = typeof init?.body === 'string' ? init.body : ''
             const result = body.includes('eth_getTransactionCount') ? '0x0' : '0x'
+
             return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' },
@@ -225,6 +243,7 @@ describe('C1 upgrade broadcast guards', () => {
         const owner = privateKeyToAccount(OWNER_KEY)
         const auth = await signAuth(OWNER_KEY, BOMB_DELEGATION, 0)
         const capture: unknown[] = []
+
         const result = await post(
             createEnv(capture, new Map()),
             upgradeBody({
@@ -245,6 +264,7 @@ describe('C1 upgrade broadcast guards', () => {
         const owner = privateKeyToAccount(OWNER_KEY)
         const auth = await signAuth(OWNER_KEY, ACCOUNT_PROXY, 7)
         const capture: unknown[] = []
+
         const result = await post(
             createEnv(capture, new Map()),
             upgradeBody({
@@ -267,6 +287,7 @@ describe('C1 upgrade broadcast guards', () => {
         const other = privateKeyToAccount(OTHER_KEY)
         const auth = await signAuth(OWNER_KEY, ACCOUNT_PROXY, 0)
         const capture: unknown[] = []
+
         const result = await post(
             createEnv(capture, new Map()),
             upgradeBody({
@@ -287,6 +308,7 @@ describe('C1 upgrade broadcast guards', () => {
         const owner = privateKeyToAccount(OWNER_KEY)
         const auth = await signAuth(OWNER_KEY, ACCOUNT_PROXY, 0)
         const capture: unknown[] = []
+
         const result = await post(
             createEnv(capture, new Map()),
             upgradeBody({
@@ -310,6 +332,7 @@ describe('C1 upgrade broadcast guards', () => {
         const env = createEnv(capture, new Map())
         const config = getChainConfig(env, CHAIN_ID)
         const publicKey = encodeAbiParameters([{ type: 'address' }], [owner.address])
+
         const { calls, executionData } = buildKeyInitializationData(
             [
                 {
@@ -328,6 +351,7 @@ describe('C1 upgrade broadcast guards', () => {
             ],
             owner.address,
         )
+
         const exec = await owner.signTypedData({
             domain: getSignedCallDomain(config.chainId, config.contracts.orchestrator),
             types: SIGNED_CALL_TYPES,
@@ -363,6 +387,7 @@ describe('C1 upgrade broadcast guards', () => {
         const auth = await signAuth(OWNER_KEY, ACCOUNT_PROXY, 0)
         const capture: unknown[] = []
         const env = createEnv(capture, new Map())
+
         const body = upgradeBody({
             account: owner.address,
             auth,
@@ -385,6 +410,7 @@ describe('C1 upgrade broadcast guards', () => {
             const key = generatePrivateKey()
             const account = privateKeyToAccount(key)
             const auth = await signAuth(key, ACCOUNT_PROXY, 0)
+
             for (let attempt = 0; attempt < 5; attempt++) {
                 await post(
                     env,
@@ -401,6 +427,7 @@ describe('C1 upgrade broadcast guards', () => {
         const freshKey = generatePrivateKey()
         const fresh = privateKeyToAccount(freshKey)
         const before = capture.length
+
         const result = await post(
             env,
             upgradeBody({

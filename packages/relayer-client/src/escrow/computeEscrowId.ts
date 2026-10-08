@@ -6,5 +6,6 @@ import { buildEscrowStruct, ESCROW_STRUCT_ABI } from './buildEscrowStruct.js'
 export function computeEscrowId(params: CreateEscrowParams): Hex {
     const escrowStruct = buildEscrowStruct(params)
     const encoded = encodeAbiParameters(ESCROW_STRUCT_ABI, [escrowStruct])
+
     return keccak256(encoded)
 }

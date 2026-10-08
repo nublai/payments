@@ -19,11 +19,13 @@ import { getChainNameByChainId, resolveNetworkConfig, type EnvName } from './net
 export function getAuthUrl(env: EnvName): string | undefined {
     const key = env === 'prod' ? 'AUTH_URL_PROD' : env === 'stage' ? 'AUTH_URL_STAGE' : 'AUTH_URL_DEV'
     const value = process.env[key]?.trim()
+
     return value || undefined
 }
 
 export function authUrlUnsetMessage(env: EnvName): string {
     const key = env === 'prod' ? 'AUTH_URL_PROD' : env === 'stage' ? 'AUTH_URL_STAGE' : 'AUTH_URL_DEV'
+
     return `Login URL is unset. Set ${key} to the browser auth URL for the ${env} environment.`
 }
 
@@ -101,9 +103,11 @@ function getDefaultDeps(): LoginDeps {
 
 function parseHexToBytes(value: string): Uint8Array {
     const normalized = value.trim().startsWith('0x') ? value.trim().slice(2) : value.trim()
+
     if (!normalized || normalized.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(normalized)) {
         throw new LoginError('INVALID_TOKEN', 'Invalid token format. Paste the full hex token.')
     }
+
     return Uint8Array.from(Buffer.from(normalized, 'hex'))
 }
 
@@ -115,11 +119,13 @@ function toSafeNumber(value: bigint, field: string): number {
     if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER)) {
         throw new LoginError('INVALID_TOKEN', `${field} is out of supported range.`)
     }
+
     return Number(value)
 }
 
 function decodeWalletSessionToken(input: { tokenHex: string; env: EnvName }) {
     let decoded
+
     try {
         decoded = fromBinary(WalletSessionTokenSchema, parseHexToBytes(input.tokenHex))
     } catch (error) {
@@ -131,21 +137,27 @@ function decodeWalletSessionToken(input: { tokenHex: string; env: EnvName }) {
     if (decoded.sessionPrivateKey.length !== 32) {
         throw new LoginError('INVALID_TOKEN', 'Invalid token: session private key is malformed.')
     }
+
     if (decoded.accountAddress.length !== 20) {
         throw new LoginError('INVALID_TOKEN', 'Invalid token: account address is malformed.')
     }
+
     if (decoded.delegateSig.length === 0) {
         throw new LoginError('INVALID_TOKEN', 'Invalid token: missing delegate signature.')
     }
+
     if (!decoded.bearerToken) {
         throw new LoginError('INVALID_TOKEN', 'Invalid token: missing bearer token.')
     }
 
     const chainId = toSafeNumber(decoded.chainId, 'chain_id')
+
     if (chainId <= 0) {
         throw new LoginError('INVALID_TOKEN', 'Invalid token: chain_id must be positive.')
     }
+
     const chainName = getChainNameByChainId(chainId)
+
     if (!chainName) {
         throw new LoginError(
             'UNSUPPORTED_CHAIN',
@@ -154,6 +166,7 @@ function decodeWalletSessionToken(input: { tokenHex: string; env: EnvName }) {
     }
 
     const expiryEpochMs = toSafeNumber(decoded.expiryEpochMs, 'expiry_epoch_ms')
+
     if (expiryEpochMs <= Date.now()) {
         throw new LoginError('TOKEN_EXPIRED', 'Token has expired. Generate a new login token.')
     }
@@ -162,9 +175,11 @@ function decodeWalletSessionToken(input: { tokenHex: string; env: EnvName }) {
         decoded.delegateExpiryEpochMs,
         'delegate_expiry_epoch_ms',
     )
+
     if (delegateExpiryEpochMs <= 0) {
         throw new LoginError('INVALID_TOKEN', 'Invalid token: delegate expiry is missing.')
     }
+
     if (delegateExpiryEpochMs <= Date.now()) {
         throw new LoginError('TOKEN_EXPIRED', 'Token has expired. Generate a new login token.')
     }
@@ -198,6 +213,7 @@ function resolveProfilePaths(
     sessionPath: string
 } {
     const profileDir = dirname(getDefaultKeystorePath(env, profile))
+
     return {
         profileDir,
         rootPath: join(profileDir, 'default.keystore.json'),
@@ -226,25 +242,30 @@ export async function executeLogin(
             if (error instanceof LoginError) {
                 throw error
             }
+
             if (!isMissingFileError(error)) {
                 throw error
             }
         }
 
         let overwrite = false
+
         try {
             const existing = await deps.readSessionKeystoreFile(sessionPath)
+
             if (!isLoginKeystore(existing)) {
                 throw new LoginError(
                     'PROFILE_CONFLICT',
                     'Profile has an imported session. Use a different --profile name.',
                 )
             }
+
             overwrite = true
         } catch (error) {
             if (error instanceof LoginError) {
                 throw error
             }
+
             if (!isMissingFileError(error)) {
                 throw error
             }
@@ -286,6 +307,7 @@ export async function executeLogin(
         if (error instanceof LoginError) {
             throw error
         }
+
         const message = error instanceof Error ? error.message : String(error)
         throw new LoginError('LOGIN_FAILED', message, { cause: error })
     }
@@ -300,6 +322,7 @@ export async function executeLogout(
 
     try {
         const sessionKeystore = await deps.readSessionKeystoreFile(sessionPath)
+
         if (!isLoginKeystore(sessionKeystore)) {
             throw new LoginError(
                 'NOT_LOGIN_PROFILE',
@@ -308,8 +331,10 @@ export async function executeLogout(
         }
 
         await deps.rm(sessionPath)
+
         try {
             const entries = await deps.readdir(profileDir)
+
             if (entries.length === 0) {
                 await deps.rm(profileDir)
             }
@@ -333,6 +358,7 @@ export async function executeLogout(
         if (error instanceof LoginError) {
             throw error
         }
+
         if (isMissingFileError(error)) {
             throw new LoginError(
                 'NOT_LOGIN_PROFILE',
@@ -340,6 +366,7 @@ export async function executeLogout(
                 { cause: error },
             )
         }
+
         const message = error instanceof Error ? error.message : String(error)
         throw new LoginError('LOGIN_FAILED', message, { cause: error })
     }

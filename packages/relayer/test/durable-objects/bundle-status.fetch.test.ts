@@ -63,6 +63,7 @@ describe('BundleStatusDO fetch route retirement', () => {
         ['POST', '/complete_refund'],
     ])('returns 404 for retired route %s %s', async (method, path) => {
         const doStub = createDoStub()
+
         const requestInit =
             method === 'POST'
                 ? {
@@ -186,6 +187,7 @@ describe('BundleStatusDO fetch route retirement', () => {
                 'https://example.com/get_bundles_by_eoa?eoa=0x1234567890123456789012345678901234567890&limit=0&offset=0',
             ),
         )
+
         expect(badLimit.status).toBe(400)
 
         const badOffset = await BundleStatusDO.prototype.fetch.call(
@@ -194,6 +196,7 @@ describe('BundleStatusDO fetch route retirement', () => {
                 'https://example.com/get_bundles_by_eoa?eoa=0x1234567890123456789012345678901234567890&limit=20&offset=-1',
             ),
         )
+
         expect(badOffset.status).toBe(400)
     })
 })

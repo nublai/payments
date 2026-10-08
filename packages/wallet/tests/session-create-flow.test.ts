@@ -49,6 +49,7 @@ function returnsRelayerSessionKeystore(
 
 function makeSessionKeystore(sessionPrivateKey: `0x${string}`): RelayerSessionKeystoreV2 {
     const sessionAddress = privateKeyToAccount(sessionPrivateKey).address
+
     return {
         version: 2,
         createdAt: new Date().toISOString(),
@@ -129,8 +130,10 @@ test('executeSessionCreate with noPermissions sends only authorize and omits per
     const sessionKeystore = makeSessionKeystore(sessionPrivateKey)
     const sessionAddress = getAddress(sessionKeystore.addresses.session)
     const sessionKeyHash = computeSessionKeyHash(sessionAddress)
+
     const executeSignedCalls = mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams): Promise<ExecuteSignedCallsResult> => {
         expect(params.calls).toHaveLength(1)
+
         return {
             id: 'bundle-1',
             finalStatus: {
@@ -190,12 +193,14 @@ test('executeSessionCreate passes expiry to authorize call data', async () => {
     const sessionKeystore = makeSessionKeystore(sessionPrivateKey)
     const sessionAddress = getAddress(sessionKeystore.addresses.session)
     const sessionKeyHash = computeSessionKeyHash(sessionAddress)
+
     const executeSignedCalls = mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams): Promise<ExecuteSignedCallsResult> => {
         const authorizeCall = params.calls[0]
 
         if (!authorizeCall) throw new Error('expected an authorize call')
 
         expect(authorizeCall.data).toBeDefined()
+
         return {
             id: 'bundle-1',
             finalStatus: {

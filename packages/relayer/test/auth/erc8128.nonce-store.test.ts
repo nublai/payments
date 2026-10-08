@@ -8,6 +8,7 @@ describe('createHttpAuthNonceStore', () => {
         const consumeNonce = vi.fn(async (_replayKey: string, _ttlSeconds: number) => true)
         const get = vi.fn(() => ({ consumeNonce }))
         const idFromName = vi.fn(() => 'nonce-do-id')
+
         const env = {
             HTTP_AUTH_NONCE_MANAGER: {
                 idFromName,
@@ -28,7 +29,9 @@ describe('createHttpAuthNonceStore', () => {
         const consumeNonce = vi.fn(async () => {
             throw new Error('rpc unavailable')
         })
+
         const idFromName = vi.fn(() => 'nonce-do-id')
+
         const env = {
             HTTP_AUTH_NONCE_MANAGER: {
                 idFromName,

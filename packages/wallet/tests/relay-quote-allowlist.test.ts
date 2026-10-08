@@ -8,21 +8,31 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+
 const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+
 const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31' as Address
+
 const MULTICALL = '0xcd6e13f7' as Hex
+
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const multicallAbi = [
     {
         name: 'multicall',
@@ -46,11 +56,13 @@ const multicallAbi = [
         outputs: [],
     },
 ] as const
+
 const EMPTY_MULTICALL = encodeFunctionData({
     abi: multicallAbi,
     functionName: 'multicall',
     args: [[], USER, zeroAddress, '0x'],
 })
+
 const SIGNATURE =
     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const
 
@@ -150,10 +162,13 @@ function runQuote(input: {
     simulateQuoteCalls?: () => Promise<void>
 }) {
     const signTypedData = mock(async () => SIGNATURE)
+
     const prepareCalls = mock(async (input: Parameters<typeof matchingPreparedCalls>[0]) =>
         matchingPreparedCalls(input),
     )
+
     const confirmQuote = input.confirmQuote ? mock(input.confirmQuote) : mock(async () => true)
+
     const result = executeAccountSwap(
         {
             env: input.env ?? 'prod',
@@ -215,6 +230,7 @@ function runQuote(input: {
             })) as any,
         },
     )
+
     return { result, signTypedData, prepareCalls, confirmQuote }
 }
 
@@ -278,6 +294,7 @@ test('executeAccountSwap refuses an unknown relay target before signing', async 
     const ran = runQuote({
         quote: quoteWithCall({ to: ATTACKER, data: MULTICALL }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(ATTACKER),
@@ -289,6 +306,7 @@ test('executeAccountSwap refuses an allowlisted target with an unknown selector'
     const ran = runQuote({
         quote: quoteWithCall({ to: ROUTER, data: '0xdeadbeef' }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('0xdeadbeef'),
@@ -302,9 +320,11 @@ test('executeAccountSwap refuses approve to a spender that is not allowlisted', 
         functionName: 'approve',
         args: [ATTACKER, 5_000000n],
     })
+
     const ran = runQuote({
         quote: quoteWithCall({ to: USDC, data }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(ATTACKER),
@@ -318,10 +338,12 @@ test('executeAccountSwap refuses approve above the quoted input amount', async (
         functionName: 'approve',
         args: [APPROVAL_PROXY, 5_000001n],
     })
+
     const ran = runQuote({
         quote: quoteWithCall({ to: USDC, data, currencyInAmount: '5000000' }),
         amount: '5',
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('above the quoted input'),
@@ -335,9 +357,11 @@ test('executeAccountSwap refuses increaseAllowance before signing', async () => 
         functionName: 'increaseAllowance',
         args: [APPROVAL_PROXY, 1n],
     })
+
     const ran = runQuote({
         quote: quoteWithCall({ to: USDC, data }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('increaseAllowance (0x39509351)'),
@@ -349,6 +373,7 @@ test('executeAccountSwap refuses a signature step before signing', async () => {
     const ran = runQuote({
         quote: quoteWithCall({ to: ROUTER, data: MULTICALL, kind: 'signature' }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('signature steps'),
@@ -361,6 +386,7 @@ test('executeAccountSwap refuses a chain mismatch before signing', async () => {
         quote: quoteWithCall({ to: ROUTER, data: MULTICALL, chainId: 137 }),
         sourceChain: 'base',
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('expected source chain base (8453)'),
@@ -372,6 +398,7 @@ test('executeAccountSwap refuses native value on a token quote', async () => {
     const ran = runQuote({
         quote: quoteWithCall({ to: ROUTER, data: MULTICALL, value: '1' }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('native value'),
@@ -384,6 +411,7 @@ test('executeAccountSwap signs an allowlisted quote and still confirms when yes 
         quote: quoteWithCall({ to: ROUTER, data: EMPTY_MULTICALL }),
         yes: true,
     })
+
     const result = await ran.result
     const { signTypedData, prepareCalls, confirmQuote } = ran
     expect(confirmQuote).toHaveBeenCalledTimes(1)
@@ -400,6 +428,7 @@ test('formatRelayQuoteCalls names the target, selector, approve spender, and val
         functionName: 'approve',
         args: [DEPOSITORY, 5_000000n],
     })
+
     const text = formatRelayQuoteCalls(
         quoteWithCall({
             to: USDC,
@@ -407,6 +436,7 @@ test('formatRelayQuoteCalls names the target, selector, approve spender, and val
             value: '0',
         }) as any,
     )
+
     expect(text).toContain('approve (0x095ea7b3)')
     expect(text).toContain('Relay Depository')
     expect(text).toContain(DEPOSITORY)
@@ -420,9 +450,11 @@ test('executeAccountSwap refuses transferFrom before signing', async () => {
         functionName: 'transferFrom',
         args: [ATTACKER, ATTACKER, 1n],
     })
+
     const ran = runQuote({
         quote: quoteWithCall({ to: USDC, data }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('transferFrom (0x23b872dd)'),

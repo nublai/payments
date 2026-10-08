@@ -217,9 +217,11 @@ export class BundleStatusDO extends DurableObject<Env> {
         `)
 
         const migrationName = 'bundle_gas_telemetry_eoa_lowercase_v1'
+
         const existing = this.sql
             .exec('SELECT name FROM schema_migrations WHERE name = ?', migrationName)
             .toArray()
+
         if (existing.length > 0) {
             return
         }
@@ -262,6 +264,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                 )
             } catch (error) {
                 const message = getErrorMessage(error)
+
                 // Safe to ignore races/duplicate additions; rethrow anything else.
                 if (!message.includes('duplicate column name')) {
                     throw error
@@ -297,10 +300,13 @@ export class BundleStatusDO extends DurableObject<Env> {
 
     private getChainIdFromName(): number {
         const name = this.ctx.id.name
+
         if (!name) return 0
         const parts = name.split('-')
+
         if (parts.length !== 3 || parts[0] !== 'bundle' || parts[1] !== 'status') return 0
         const chainId = Number.parseInt(parts[2], 10)
+
         return Number.isFinite(chainId) ? chainId : 0
     }
 
@@ -309,6 +315,7 @@ export class BundleStatusDO extends DurableObject<Env> {
             this.env.BUNDLE_UNRESOLVED_SLA_MS ?? String(DEFAULT_BUNDLE_UNRESOLVED_SLA_MS),
             10,
         )
+
         return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BUNDLE_UNRESOLVED_SLA_MS
     }
 
@@ -320,7 +327,9 @@ export class BundleStatusDO extends DurableObject<Env> {
             const signerId = this.env.SIGNER.idFromName(signerName)
             const signer = this.env.SIGNER.get(signerId)
             const response = await signer.fetch(`http://do/get_tx_status?txId=${txId}`)
+
             if (!response.ok) return null
+
             return (await response.json()) as TxStatusResponse
         } catch (error) {
             logger.warn(
@@ -332,6 +341,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                 },
                 'failed to fetch transaction status from signer',
             )
+
             return null
         }
     }
@@ -346,8 +356,10 @@ export class BundleStatusDO extends DurableObject<Env> {
 
         for (let index = 0; index < maxSigners; index += 1) {
             const signerName = `signer-${chainId}-${index}`
+
             if (skipSignerName && signerName === skipSignerName) continue
             const txStatus = await this.fetchTxStatusFromSigner(txId, signerName)
+
             if (txStatus) {
                 return { txStatus, signerName }
             }
@@ -370,7 +382,9 @@ export class BundleStatusDO extends DurableObject<Env> {
                     txId: string
                     signerName?: string
                 }
+
                 await this.add_bundle_tx(body.bundleId, body.txId, body.signerName)
+
                 return Response.json({ success: true })
             }
 
@@ -384,64 +398,82 @@ export class BundleStatusDO extends DurableObject<Env> {
                     combinedGas?: string
                     txGas?: string
                 }
+
                 await this.upsertBundleTelemetry(body)
+
                 return Response.json({ success: true })
             }
 
             if (request.method === 'GET' && path === '/get_bundle_status') {
                 const bundleId = url.searchParams.get('bundleId')
+
                 if (!bundleId) {
                     return Response.json({ error: 'Missing bundleId parameter' }, { status: 400 })
                 }
+
                 const result = await this.get_bundle_status(bundleId)
+
                 return Response.json(result)
             }
 
             // Reverse lookup: get bundleId from txId
             if (request.method === 'GET' && path === '/get_bundle_id_by_tx') {
                 const txId = url.searchParams.get('txId')
+
                 if (!txId) {
                     return Response.json({ error: 'Missing txId parameter' }, { status: 400 })
                 }
+
                 const result = await this.getBundleIdByTxId(txId)
+
                 return Response.json(result)
             }
 
             if (request.method === 'GET' && path === '/get_bundle_telemetry') {
                 const bundleId = url.searchParams.get('bundleId')
+
                 if (!bundleId) {
                     return Response.json({ error: 'Missing bundleId parameter' }, { status: 400 })
                 }
+
                 const result = await this.getBundleTelemetry(bundleId)
+
                 return Response.json(result)
             }
 
             if (request.method === 'GET' && path === '/get_bundles_by_eoa') {
                 const eoa = url.searchParams.get('eoa')
+
                 if (!eoa) {
                     return Response.json({ error: 'Missing eoa parameter' }, { status: 400 })
                 }
+
                 const limit = Number(url.searchParams.get('limit') ?? '20')
                 const offset = Number(url.searchParams.get('offset') ?? '0')
+
                 if (!Number.isInteger(limit) || limit < 1) {
                     return Response.json(
                         { error: 'limit must be a positive integer' },
                         { status: 400 },
                     )
                 }
+
                 if (!Number.isInteger(offset) || offset < 0) {
                     return Response.json(
                         { error: 'offset must be a non-negative integer' },
                         { status: 400 },
                     )
                 }
+
                 const result = this.getBundlesByEoa(eoa, limit, offset)
+
                 return Response.json(result)
             }
 
             return Response.json({ error: 'Not found' }, { status: 404 })
         } catch (error) {
             const message = getErrorMessage(error)
+
             return Response.json({ error: message }, { status: 500 })
         }
     }
@@ -476,6 +508,7 @@ export class BundleStatusDO extends DurableObject<Env> {
             const pendingRows = this.sql
                 .exec('SELECT status FROM pending_bundles WHERE bundle_id = ?', bundleId)
                 .toArray()
+
             const finishedRows = this.sql
                 .exec('SELECT status FROM finished_bundles WHERE bundle_id = ?', bundleId)
                 .toArray()
@@ -501,6 +534,7 @@ export class BundleStatusDO extends DurableObject<Env> {
         // Query SignerDO for each transaction status
         const transactions: TxStatusResponse[] = []
         const chainId = this.getChainIdFromName()
+
         for (const row of txRows) {
             const txId = row.tx_id as string
             const signerName = row.signer_name as string | null
@@ -520,6 +554,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                 let txStatus = signerName
                     ? await this.fetchTxStatusFromSigner(txId, signerName)
                     : null
+
                 let resolvedSignerName: string | null = signerName
 
                 if (!txStatus && chainId > 0) {
@@ -528,6 +563,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                         chainId,
                         signerName ?? undefined,
                     )
+
                     txStatus = probed.txStatus
                     resolvedSignerName = probed.signerName
                 }
@@ -569,6 +605,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                         )
                     }
                 }
+
                 transactions.push(txStatus)
             } catch (error) {
                 logger.warn(
@@ -589,11 +626,15 @@ export class BundleStatusDO extends DurableObject<Env> {
         if (transactions.length === 0) {
             const oldestCreatedAt = txRows.reduce((oldest, row) => {
                 const createdAt = Number(row.created_at ?? 0)
+
                 if (!Number.isFinite(createdAt) || createdAt <= 0) return oldest
+
                 return Math.min(oldest, createdAt)
             }, Number.MAX_SAFE_INTEGER)
+
             const safeOldestCreatedAt =
                 oldestCreatedAt === Number.MAX_SAFE_INTEGER ? Date.now() : oldestCreatedAt
+
             const ageMs = Date.now() - safeOldestCreatedAt
             const unresolvedSlaMs = this.getBundleUnresolvedSlaMs()
 
@@ -610,6 +651,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                     },
                     'bundle unresolved beyond SLA; terminalizing as failed',
                 )
+
                 return {
                     bundleId,
                     status: 'failed',
@@ -632,6 +674,7 @@ export class BundleStatusDO extends DurableObject<Env> {
         const hasPending = transactions.some((tx) => tx.status === 'pending')
         const anyFailed = transactions.some((tx) => tx.status === 'failed')
         const anyReverted = receipts.some((r) => r.intent_error !== undefined)
+
         const allReverted =
             receipts.length > 0 && receipts.every((r) => r.intent_error !== undefined)
 
@@ -690,6 +733,7 @@ export class BundleStatusDO extends DurableObject<Env> {
      */
     private buildReceipt(tx: TxStatusResponse): BundleStatusResult['receipts'][0] {
         const intentError = this.extractIntentError(tx.logs)
+
         return {
             chain_id: `0x${tx.chainId.toString(16)}`,
             transaction_hash: tx.txHash,
@@ -712,6 +756,7 @@ export class BundleStatusDO extends DurableObject<Env> {
         for (const log of logs) {
             try {
                 const logEntry = log as { topics?: Hex[]; data?: Hex }
+
                 if (!logEntry.topics || logEntry.topics.length === 0) continue
 
                 const decoded = decodeEventLog({
@@ -722,6 +767,7 @@ export class BundleStatusDO extends DurableObject<Env> {
 
                 if (decoded.eventName === 'IntentExecuted') {
                     const args = decoded.args as { err?: Hex }
+
                     if (args.err && args.err !== '0x00000000') {
                         return args.err
                     }
@@ -787,6 +833,7 @@ export class BundleStatusDO extends DurableObject<Env> {
         if (rows.length === 0) return null
 
         const row = rows[0] as Record<string, unknown>
+
         return {
             bundleId: String(row.bundle_id),
             chainId: Number(row.chain_id),
@@ -805,9 +852,11 @@ export class BundleStatusDO extends DurableObject<Env> {
         offset: number,
     ): { items: Array<{ bundleId: string; chainId: number; createdAt: number }>; total: number } {
         const normalizedEoa = eoa.toLowerCase()
+
         const countRows = this.sql
             .exec('SELECT COUNT(*) as count FROM bundle_gas_telemetry WHERE eoa = ?', normalizedEoa)
             .toArray()
+
         const total = Number((countRows[0] as Record<string, unknown>).count ?? 0)
 
         const itemRows = this.sql
@@ -821,6 +870,7 @@ export class BundleStatusDO extends DurableObject<Env> {
 
         const items = itemRows.map((row) => {
             const r = row as Record<string, unknown>
+
             return {
                 bundleId: String(r.bundle_id),
                 chainId: Number(r.chain_id),

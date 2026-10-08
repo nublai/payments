@@ -129,10 +129,12 @@ test('executeAccountBalance preserves cause for invalid chain override', async (
         const balanceError = error as AccountBalanceError
         expect(balanceError.code).toBe('UNSUPPORTED_CHAIN')
         expect(balanceError.cause).toBeInstanceOf(Error)
+
         const causeMessage =
             balanceError.cause instanceof Error
                 ? balanceError.cause.message
                 : String(balanceError.cause)
+
         expect(causeMessage).toContain('Unsupported chain')
     }
 })

@@ -10,11 +10,13 @@ function parseBearerToken(
     request: Request,
 ): { ok: true; token: string } | { ok: false; message: string } {
     const header = request.headers.get('Authorization')
+
     if (!header) {
         return { ok: false, message: 'Missing Authorization header' }
     }
 
     const match = header.match(/^Bearer\s+(.+)$/i)
+
     if (!match || !match[1] || match[1].trim().length === 0) {
         return { ok: false, message: 'Invalid Authorization header format' }
     }
@@ -50,13 +52,17 @@ const UPGRADE_METHODS = new Set(['wallet_prepareUpgradeAccount', 'wallet_upgrade
 
 function upgradeAccountAddress(method: string, params: unknown): Address | 'invalid' | undefined {
     const first = Array.isArray(params) ? params[0] : params
+
     if (!first || typeof first !== 'object') return 'invalid'
     const record = first as Record<string, unknown>
+
     const raw =
         method === 'wallet_upgradeAccount'
             ? (record.context as { address?: unknown } | undefined)?.address
             : record.address
+
     if (typeof raw !== 'string' || !isAddress(raw)) return 'invalid'
+
     return getAddress(raw)
 }
 
@@ -67,6 +73,7 @@ async function upgradeAccountsFromRequest(
         .clone()
         .json()
         .catch(() => undefined)
+
     const items = Array.isArray(body) ? body : body == null ? [] : [body]
     const accounts: Address[] = []
     let invalid = false
@@ -74,12 +81,15 @@ async function upgradeAccountsFromRequest(
     for (const item of items) {
         if (!item || typeof item !== 'object') continue
         const method = (item as { method?: unknown }).method
+
         if (typeof method !== 'string' || !UPGRADE_METHODS.has(method)) continue
         const address = upgradeAccountAddress(method, (item as { params?: unknown }).params)
+
         if (address === 'invalid' || address === undefined) {
             invalid = true
             continue
         }
+
         if (!accounts.includes(address)) accounts.push(address)
     }
 
@@ -95,11 +105,13 @@ function linkedWalletMatches(
 ): boolean {
     const target = getAddress(account)
     const candidates: string[] = []
+
     for (const linked of user.linkedAccounts ?? []) {
         if (linked.type === 'wallet' && typeof linked.address === 'string') {
             candidates.push(linked.address)
         }
     }
+
     return candidates.some((candidate) => isAddress(candidate) && getAddress(candidate) === target)
 }
 
@@ -112,6 +124,7 @@ async function bindPrivyAccounts(
 > {
     for (const account of accounts) {
         const user = await client.getUserByWalletAddress(account)
+
         if (!user || user.id !== userId || !linkedWalletMatches(user, account)) {
             return {
                 ok: false,
@@ -126,6 +139,7 @@ async function bindPrivyAccounts(
 
 function requestFromIdentityInput(input: Request | string): Request {
     if (typeof input !== 'string') return input
+
     return new Request('https://relayer.local/', {
         headers: { Authorization: `Bearer ${input}` },
     })
@@ -155,6 +169,7 @@ export function createPrivyIdentityProvider(): IdentityProvider {
         async verify(input: Request | string, ctx: { env: Env; nowSeconds: number }): Promise<IdentityResult> {
             const request = requestFromIdentityInput(input)
             const parsed = parseBearerToken(request)
+
             if (!parsed.ok) {
                 return {
                     ok: false,
@@ -183,6 +198,7 @@ export function createPrivyIdentityProvider(): IdentityProvider {
             try {
                 const claims = await getClient(ctx.env).verifyAuthToken(parsed.token)
                 const claimsRecord = (claims ?? {}) as unknown as Record<string, unknown>
+
                 const tokenAppId =
                     typeof claimsRecord.appId === 'string'
                         ? claimsRecord.appId
@@ -199,6 +215,7 @@ export function createPrivyIdentityProvider(): IdentityProvider {
                 }
 
                 const upgradeAccounts = await upgradeAccountsFromRequest(request)
+
                 if (upgradeAccounts.invalid) {
                     return {
                         ok: false,
@@ -213,7 +230,9 @@ export function createPrivyIdentityProvider(): IdentityProvider {
                         claims.userId,
                         upgradeAccounts.accounts,
                     )
+
                     if (!linked.ok) return linked
+
                     return {
                         ok: true,
                         provider: 'privy',

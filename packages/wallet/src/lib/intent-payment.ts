@@ -27,12 +27,15 @@ export function resolveIntentPayment(
             paymentMaxAmount: 0n,
         }
     }
+
     const paymentToken = getUsdcAddressByChainId(chainId)
+
     if (!paymentToken) {
         throw new Error(
             `No USDC deployment for chain ${chainId}. Refusing to sign a zero fee cap.`,
         )
     }
+
     return {
         payer: from,
         paymentToken,
@@ -54,6 +57,7 @@ export function formatUsdcAmount(amount: bigint): string {
     const whole = value / 1_000_000n
     const fraction = (value % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '')
     const text = fraction.length > 0 ? `${whole}.${fraction}` : whole.toString()
+
     return negative ? `-${text}` : text
 }
 
@@ -86,32 +90,39 @@ export function reviewQuotePayment(input: {
     const recipient = getAddress(input.paymentRecipient)
     const feeToken = getAddress(input.feeToken)
     const expectedRecipient = getAddress(input.recipient)
+
     if (input.paymentAmount < 0n || input.feeAmount < 0n) {
         throw new QuotePaymentRejected('Payment amount is negative.')
     }
+
     if (input.paymentAmount === 0n && token === zeroAddress) {
         if (recipient !== zeroAddress && recipient !== expectedRecipient) {
             throw new QuotePaymentRejected(
                 `Payment recipient ${recipient} is not the expected recipient ${expectedRecipient}.`,
             )
         }
+
         return
     }
+
     if (token !== feeToken) {
         throw new QuotePaymentRejected(
             `Payment token ${token} is not the quote fee token ${feeToken}.`,
         )
     }
+
     if (input.paymentAmount > PAID_FEE_CAP || input.feeAmount > PAID_FEE_CAP) {
         throw new QuotePaymentRejected(
             `Payment amount ${input.paymentAmount} is over the 5 USDC ceiling (${PAID_FEE_CAP}).`,
         )
     }
+
     if (input.paymentAmount > input.feeAmount) {
         throw new QuotePaymentRejected(
             `Payment amount ${input.paymentAmount} is over the quote fee ${input.feeAmount}.`,
         )
     }
+
     if (recipient !== expectedRecipient) {
         throw new QuotePaymentRejected(
             `Payment recipient ${recipient} is not the expected recipient ${expectedRecipient}.`,
@@ -121,6 +132,7 @@ export function reviewQuotePayment(input: {
 
 export function discloseFeeCap(token: Address, amount: bigint): FeeCapDisclosure {
     const native = getAddress(token) === zeroAddress
+
     return {
         token,
         symbol: native ? 'none' : 'USDC',

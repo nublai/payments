@@ -1,7 +1,9 @@
 type DlogLogger = ((...args: unknown[]) => void) | undefined
 
 let customErrorLogger: DlogLogger
+
 let customWarnLogger: DlogLogger
+
 let customInfoLogger: DlogLogger
 
 export const setDlogErrorLogger = (logger: DlogLogger): void => {

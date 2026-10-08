@@ -29,6 +29,7 @@ describe('selectSignerForEoa', () => {
                 '0x2222222222222222222222222222222222222222',
                 '0x3333333333333333333333333333333333333333',
             ]
+
             const signerCount = 4
 
             // Store first results
@@ -45,6 +46,7 @@ describe('selectSignerForEoa', () => {
         it('different EOAs can map to the same signer', () => {
             // With enough EOAs, some will collide on the same signer
             const signerCount = 3
+
             const eoas: Address[] = Array.from(
                 { length: 20 },
                 (_, i) => `0x${i.toString(16).padStart(40, '0')}` as Address,
@@ -61,6 +63,7 @@ describe('selectSignerForEoa', () => {
     describe('distribution', () => {
         it('distributes EOAs roughly evenly across signers', () => {
             const signerCount = 5
+
             // Generate 100 random-ish EOAs
             const eoas: Address[] = Array.from(
                 { length: 100 },
@@ -68,6 +71,7 @@ describe('selectSignerForEoa', () => {
             )
 
             const counts = new Map<number, number>()
+
             for (const eoa of eoas) {
                 const signer = selectSignerForEoa(eoa, signerCount)
                 counts.set(signer, (counts.get(signer) ?? 0) + 1)
@@ -84,12 +88,14 @@ describe('selectSignerForEoa', () => {
 
         it('uses all signers with enough unique EOAs', () => {
             const signerCount = 10
+
             const eoas: Address[] = Array.from(
                 { length: 1000 },
                 (_, i) => `0x${i.toString(16).padStart(40, '0')}` as Address,
             )
 
             const usedSigners = new Set<number>()
+
             for (const eoa of eoas) {
                 usedSigners.add(selectSignerForEoa(eoa, signerCount))
             }
@@ -147,6 +153,7 @@ describe('selectSignerForEoa', () => {
     describe('specific EOA routing', () => {
         it('different EOAs route to different signers (probabilistic)', () => {
             const signerCount = 5
+
             const eoas: Address[] = [
                 '0x0000000000000000000000000000000000000001',
                 '0x0000000000000000000000000000000000000002',

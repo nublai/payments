@@ -59,6 +59,7 @@ describe('ERC20 Gasless Transfer', () => {
 
     const getQuotedPaymentAmount = (context: unknown) => {
         const paymentAmount = (context as QuoteContext).quote?.quotes?.[0]?.paymentAmount
+
         return BigInt(paymentAmount ?? '0')
     }
 
@@ -73,6 +74,7 @@ describe('ERC20 Gasless Transfer', () => {
         })
 
         const { domain, types, primaryType, message } = prepared.typedData
+
         return walletClient.signTypedData({
             domain,
             types,
@@ -107,6 +109,7 @@ describe('ERC20 Gasless Transfer', () => {
         const ethBefore = await client.getBalance({
             address: account.address,
         })
+
         const usdcBefore = await getERC20Balance(USDC, account.address)
         const recipientUsdcBefore = await getERC20Balance(USDC, MOCK_RECIPIENT)
 
@@ -120,12 +123,14 @@ describe('ERC20 Gasless Transfer', () => {
             from: account.address,
             calls: [transferCall],
         })
+
         const signature = await signPreparedCalls(account, prepared)
 
         const sendResult = await client.sendPreparedCalls({
             context: prepared.context,
             signature,
         })
+
         expect(sendResult.id).toBeDefined()
 
         // Wait for bundle to reach final status
@@ -164,6 +169,7 @@ describe('ERC20 Gasless Transfer', () => {
 
             // Get quote from relayer using prepareCalls. Set a high ceiling to get the quote, then verify it's acceptable.
             const maxPaymentCeiling = parseUnits('100', USDC_UNITS)
+
             const prepared = await client.prepareCalls({
                 from: account.address,
                 calls: [transferCall],
@@ -171,6 +177,7 @@ describe('ERC20 Gasless Transfer', () => {
                 paymentToken: USDC,
                 paymentMaxAmount: maxPaymentCeiling,
             })
+
             const quotedPayment = getQuotedPaymentAmount(prepared.context)
             expect(quotedPayment).toBeLessThan(parseUnits('50', USDC_UNITS))
             const signature = await signPreparedCalls(account, prepared)
@@ -179,9 +186,11 @@ describe('ERC20 Gasless Transfer', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(result.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: result.id })
+
             if (status.status !== 'confirmed') {
                 const quote = (prepared.context as { quote?: { quotes?: Array<unknown> } }).quote
                     ?.quotes?.[0] as
@@ -195,6 +204,7 @@ describe('ERC20 Gasless Transfer', () => {
                           paymentAmount?: string
                       }
                     | undefined
+
                 throw new Error(
                     `Reimbursement bundle not confirmed: ${JSON.stringify(
                         {
@@ -228,6 +238,7 @@ describe('ERC20 Gasless Transfer', () => {
                     )}`,
                 )
             }
+
             expect(status.status).toBe('confirmed')
 
             const ethAfter = await client.getBalance({ address: account.address })
@@ -267,12 +278,14 @@ describe('ERC20 Gasless Transfer', () => {
                 buildUsdcTransferCall(recipient2, amount2),
             ],
         })
+
         const signature = await signPreparedCalls(account, prepared)
 
         const sendResult = await client.sendPreparedCalls({
             context: prepared.context,
             signature,
         })
+
         expect(sendResult.id).toBeDefined()
 
         // Wait for bundle to reach final status

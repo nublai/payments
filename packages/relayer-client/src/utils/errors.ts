@@ -57,6 +57,7 @@ export type IntentErrorName = (typeof INTENT_ERRORS)[keyof typeof INTENT_ERRORS]
  */
 export function decodeIntentError(selector: Hex): IntentErrorName | undefined {
     const normalized = selector.toLowerCase() as keyof typeof INTENT_ERRORS
+
     return INTENT_ERRORS[normalized]
 }
 

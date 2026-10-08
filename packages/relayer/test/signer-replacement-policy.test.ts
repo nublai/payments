@@ -232,6 +232,7 @@ describe('replacement policy', () => {
     describe('withRecoveryOnError', () => {
         it('runs recovery and returns fallback when operation fails', async () => {
             const calls: string[] = []
+
             const result = await withRecoveryOnError(
                 async () => {
                     calls.push('run')

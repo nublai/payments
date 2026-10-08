@@ -8,20 +8,29 @@ import { reviewSwapSessionSignature } from '../src/lib/session-daemon-policy'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const EXPECTED = '0x4444444444444444444444444444444444444444' as Address
+
 const WRONG = '0x6666666666666666666666666666666666666666' as Address
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const OTHER = '0x5555555555555555555555555555555555555555' as Address
+
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+
 const FEE = 1_000_000n
 
 function routerMulticall(user: Address): Hex {

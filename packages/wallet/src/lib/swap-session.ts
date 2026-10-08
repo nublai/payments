@@ -23,6 +23,7 @@ import { toSpendPeriodEnum } from './session-common'
  */
 
 const APPROVE_SELECTOR = ERC20_SELECTORS.APPROVE
+
 const TRANSFER_SELECTOR = ERC20_SELECTORS.TRANSFER
 
 export class SwapSessionRejected extends Error {
@@ -48,17 +49,21 @@ type CallPermission = {
 
 export function swapSessionSpendTokens(chainId: number): Address[] {
     const tokens: Address[] = [zeroAddress]
+
     const extras = [
         getUsdcAddressByChainId(chainId),
         getUsdcAddressByChainId(chainId, true),
         WETH_BY_CHAIN[chainId],
     ]
+
     for (const extra of extras) {
         if (!extra) continue
         const address = getAddress(extra)
+
         if (tokens.some((token) => token.toLowerCase() === address.toLowerCase())) continue
         tokens.push(address)
     }
+
     return tokens
 }
 
@@ -80,18 +85,22 @@ function pairKey(target: string, selector: string): string {
 
 function callPairs(permissions: readonly CallPermission[]): { target: Address; selector: string }[] {
     const pairs: { target: Address; selector: string }[] = []
+
     for (const permission of permissions) {
         if (permission.type !== 'call') continue
+
         if (!permission.to || !permission.selector) {
             throw new SwapSessionRejected(
                 'This session has a call permission with no target or selector. Refusing to sign.',
             )
         }
+
         pairs.push({
             target: getAddress(permission.to),
             selector: permission.selector.toLowerCase(),
         })
     }
+
     return pairs
 }
 
@@ -104,19 +113,25 @@ export function isSwapSessionKey(
     chainId: number,
 ): boolean {
     const relay = relayEntryPoints(chainId)
+
     if (relay.length === 0) return false
     let pairs: { target: Address; selector: string }[]
+
     try {
         pairs = callPairs(permissions)
     } catch {
         return false
     }
+
     const have = new Set(pairs.map((pair) => pairKey(pair.target, pair.selector)))
+
     if (!relay.every((entry) => have.has(pairKey(entry.target, entry.selector)))) return false
     const relayKeys = new Set(relay.map((entry) => pairKey(entry.target, entry.selector)))
     const extras = pairs.filter((pair) => !relayKeys.has(pairKey(pair.target, pair.selector)))
+
     if (extras.length === 0) return true
     const token = extras[0]!.target.toLowerCase()
+
     return extras.every(
         (pair) =>
             pair.target.toLowerCase() === token &&
@@ -130,20 +145,25 @@ export function isExactRelaySession(
     chainId: number,
 ): boolean {
     const relay = relayEntryPoints(chainId)
+
     if (relay.length === 0) return false
     let pairs: { target: Address; selector: string }[]
+
     try {
         pairs = callPairs(permissions)
     } catch {
         return false
     }
+
     if (pairs.length !== relay.length) return false
     const have = new Set(pairs.map((pair) => pairKey(pair.target, pair.selector)))
+
     return relay.every((entry) => have.has(pairKey(entry.target, entry.selector)))
 }
 
 function selectorOf(data: string | undefined): string | undefined {
     if (!data?.startsWith('0x') || data.length < 10) return undefined
+
     return data.slice(0, 10).toLowerCase()
 }
 
@@ -161,13 +181,16 @@ export function planSwapSessionUse(input: {
 }): SwapCallGrant[] {
     const relay = relayEntryPoints(input.chainId)
     const chainLabel = input.chainLabel ?? String(input.chainId)
+
     if (relay.length === 0) {
         throw new SwapSessionRejected(
             `Chain ${chainLabel} has no relay.link contracts. Refusing to sign.`,
         )
     }
+
     const pairs = callPairs(input.permissions)
     const have = new Set(pairs.map((pair) => pairKey(pair.target, pair.selector)))
+
     for (const entry of relay) {
         if (have.has(pairKey(entry.target, entry.selector))) continue
         throw new SwapSessionRejected(
@@ -177,17 +200,22 @@ export function planSwapSessionUse(input: {
 
     const wanted: SwapCallGrant[] = []
     const inputToken = input.inputToken ? getAddress(input.inputToken) : undefined
+
     if (inputToken && inputToken !== zeroAddress) {
         for (const call of input.quoteCalls) {
             let target: Address
+
             try {
                 target = getAddress(call.target)
             } catch {
                 continue
             }
+
             if (target.toLowerCase() !== inputToken.toLowerCase()) continue
             const selector = selectorOf(call.data)
+
             if (selector !== APPROVE_SELECTOR && selector !== TRANSFER_SELECTOR) continue
+
             if (wanted.some((grant) => grant.selector.toLowerCase() === selector)) continue
             wanted.push({ target: inputToken, selector: selector as Hex })
         }
@@ -197,6 +225,7 @@ export function planSwapSessionUse(input: {
         ...relay.map((entry) => pairKey(entry.target, entry.selector)),
         ...wanted.map((grant) => pairKey(grant.target, grant.selector)),
     ])
+
     for (const pair of pairs) {
         if (allowed.has(pairKey(pair.target, pair.selector))) continue
         throw new SwapSessionRejected(
@@ -230,12 +259,15 @@ export function swapSessionInstallCalls(input: {
     chainId: number
 }): { calls: Call[]; entryPoints: RelayEntryPoint[]; spendTokens: Address[] } {
     const entryPoints = relayEntryPoints(input.chainId)
+
     if (entryPoints.length === 0) {
         throw new SwapSessionRejected(
             `Chain ${input.chainId} has no relay.link contracts. Refusing to create a swap session.`,
         )
     }
+
     const spendTokens = swapSessionSpendTokens(input.chainId)
+
     const calls: Call[] = [
         ...entryPoints.map((entry) => ({
             target: getAddress(input.account),
@@ -256,5 +288,6 @@ export function swapSessionInstallCalls(input: {
             }),
         })),
     ]
+
     return { calls, entryPoints, spendTokens }
 }

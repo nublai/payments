@@ -21,6 +21,7 @@ export function createChain(chainId: number, rpcUrl: string): Chain {
  */
 export function createRelayerPublicClient(chainId: number, rpcUrl: string): PublicClient {
     const chain = createChain(chainId, rpcUrl)
+
     return createPublicClient({
         chain,
         transport: http(rpcUrl),

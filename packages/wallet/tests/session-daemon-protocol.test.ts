@@ -46,6 +46,7 @@ test('protocol BigInt serialization is scoped to typedData only', () => {
 
     const parsed = parseDaemonRequest(serialized)
     expect(parsed.method).toBe('sign')
+
     if (parsed.method !== 'sign') {
         throw new Error('Expected sign method')
     }
@@ -62,7 +63,9 @@ test('protocol parses success and error responses', () => {
     const err = parseDaemonResponse(
         '{"id":"b","error":{"code":"SESSION_NOT_FOUND","message":"missing"}}',
     )
+
     expect('error' in err).toBe(true)
+
     if (err.error !== undefined) {
         expect(err.error.code).toBe('SESSION_NOT_FOUND')
     }
@@ -111,7 +114,9 @@ test('protocol parses loadKey optional agent fields and getSessionSecrets', () =
             },
         }),
     )
+
     expect(load.method).toBe('loadKey')
+
     if (load.method === 'loadKey') {
         expect(load.params.kind).toBe('agent')
         expect(load.params.encryptionDevice).toBe('0x1234')
@@ -120,6 +125,7 @@ test('protocol parses loadKey optional agent fields and getSessionSecrets', () =
     const getSecrets = parseDaemonRequest(
         '{"id":"sec-1","method":"getSessionSecrets","params":{"sessionName":"agent-alice"}}',
     )
+
     expect(getSecrets).toEqual({
         id: 'sec-1',
         method: 'getSessionSecrets',

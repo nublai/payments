@@ -129,8 +129,10 @@ test('executeAccountNonce preserves cause for invalid chain override', async () 
         const nonceError = error as AccountNonceError
         expect(nonceError.code).toBe('UNSUPPORTED_CHAIN')
         expect(nonceError.cause).toBeInstanceOf(Error)
+
         const causeMessage =
             nonceError.cause instanceof Error ? nonceError.cause.message : String(nonceError.cause)
+
         expect(causeMessage).toContain('Unsupported chain')
     }
 })

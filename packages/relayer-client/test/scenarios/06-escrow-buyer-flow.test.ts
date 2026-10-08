@@ -51,7 +51,9 @@ import { BASE_TOKENS } from '../helpers/tokens'
 import { createRelayerTestClient } from '../helpers/client'
 
 const USDC = BASE_TOKENS.USDC
+
 const USDC_AMOUNT = parseUnits('100', 6) // 100 USDC
+
 const ESCROW_AMOUNT = parseUnits('50', 6) // 50 USDC
 
 describe('Escrow Buyer Flow', () => {
@@ -93,7 +95,9 @@ describe('Escrow Buyer Flow', () => {
             chain: testChain,
             transport: http(ANVIL_RPC_URL),
         })
+
         const signature = await walletClient.signTypedData(prepared.typedData)
+
         return client.sendPreparedCalls({ context: prepared.context, signature })
     }
 
@@ -101,12 +105,15 @@ describe('Escrow Buyer Flow', () => {
         const privateKey = generatePrivateKey()
         const account = privateKeyToAccount(privateKey)
         await setBalance(account.address, parseEther('0.1'))
+
         const result = await client.upgradeAccount({
             accountAddress: account.address,
             signerKey: privateKey,
             delegation: accountProxy,
         })
+
         expect(result.success).toBe(true)
+
         return { account, privateKey }
     }
 
@@ -148,6 +155,7 @@ describe('Escrow Buyer Flow', () => {
                 from: buyer.address,
                 calls: createEscrowCalls(escrowParams),
             })
+
             const createResult = await signAndSubmit(privateKeyToAccount(buyerKey), createPrepared)
             const createStatus = await waitForBundle(client, { id: createResult.id })
             expect(createStatus.statusCode).toBe(200)
@@ -159,11 +167,13 @@ describe('Escrow Buyer Flow', () => {
             expect(escrowUsdcAfterCreate).toBe(escrowUsdcBefore + ESCROW_AMOUNT)
 
             const escrowId = computeEscrowId(escrowParams)
+
             const statusAfterCreate = await getEscrowStatus({
                 escrowId,
                 escrowAddress,
                 publicClient,
             })
+
             expect(statusAfterCreate.status).toBe('created')
 
             // Step 2: Oracle signs settlement
@@ -191,6 +201,7 @@ describe('Escrow Buyer Flow', () => {
                     escrowAddress,
                 }),
             })
+
             const settleResult = await signAndSubmit(privateKeyToAccount(botKey), settlePrepared)
             const settleStatus = await waitForBundle(client, { id: settleResult.id })
             expect(settleStatus.statusCode).toBe(200)
@@ -203,6 +214,7 @@ describe('Escrow Buyer Flow', () => {
                 escrowAddress,
                 publicClient,
             })
+
             expect(statusAfterSettle.status).toBe('finalized')
         },
     )
@@ -240,16 +252,19 @@ describe('Escrow Buyer Flow', () => {
                 from: buyer.address,
                 calls: createEscrowCalls(escrowParams),
             })
+
             const createResult = await signAndSubmit(privateKeyToAccount(buyerKey), createPrepared)
             const createStatus = await waitForBundle(client, { id: createResult.id })
             expect(createStatus.statusCode).toBe(200)
 
             const escrowId = computeEscrowId(escrowParams)
+
             const statusAfterCreate = await getEscrowStatus({
                 escrowId,
                 escrowAddress,
                 publicClient,
             })
+
             expect(statusAfterCreate.status).toBe('created')
 
             // Fast-forward past the deadline
@@ -258,16 +273,19 @@ describe('Escrow Buyer Flow', () => {
                 mode: 'anvil',
                 transport: http(ANVIL_RPC_URL),
             })
+
             await testClient.increaseTime({ seconds: 60 })
             await testClient.mine({ blocks: 1 })
 
             const buyerUsdcBeforeRefund = await getERC20Balance(USDC, buyer.address)
 
             const { account: botAccount, privateKey: botKey } = await createDelegatedAccount()
+
             const refundPrepared = await client.prepareCalls({
                 from: botAccount.address,
                 calls: refundEscrowCalls({ escrowId, escrowAddress }),
             })
+
             const refundResult = await signAndSubmit(privateKeyToAccount(botKey), refundPrepared)
             const refundStatus = await waitForBundle(client, { id: refundResult.id })
             expect(refundStatus.statusCode).toBe(200)
@@ -282,6 +300,7 @@ describe('Escrow Buyer Flow', () => {
                 escrowAddress,
                 publicClient,
             })
+
             expect(statusAfterRefund.status).toBe('finalized')
         },
     )

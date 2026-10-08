@@ -45,6 +45,7 @@ test('executeSessionExport re-encrypts a session into output file', async () => 
     const dir = await mkdtemp(join(tmpdir(), 'relayer-cli-session-export-'))
     const rootPath = join(dir, 'default.keystore.json')
     const outputPath = join(dir, 'worker-1.session.json')
+
     try {
         const root = await createRootKeystore({
             password: 'old',
@@ -56,8 +57,10 @@ test('executeSessionExport re-encrypts a session into output file', async () => 
             activeSession: 'default',
             sessionsDir: 'sessions',
         })
+
         root.addresses.delegated = root.addresses.root
         root.checkpoint = 'complete'
+
         const session = await createSessionKeystore({
             password: 'old',
             sessionPrivateKey: generatePrivateKey(),
@@ -66,6 +69,7 @@ test('executeSessionExport re-encrypts a session into output file', async () => 
             name: 'default',
             checkpoint: 'authorized',
         })
+
         await writeRootKeystoreFile(rootPath, root)
         await writeSessionKeystoreFile(
             resolveSessionKeystorePath(rootPath, 'default', 'sessions'),
@@ -80,6 +84,7 @@ test('executeSessionExport re-encrypts a session into output file', async () => 
             password: 'old',
             exportPassword: 'new',
         })
+
         expect(result.status).toBe('complete')
 
         const exportedRaw = JSON.parse(await readFile(outputPath, 'utf8'))
@@ -95,6 +100,7 @@ test('executeSessionImport installs a session-only profile file', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'relayer-cli-session-import-'))
     const inputPath = join(dir, 'worker-1.session.json')
     const profile = `worker-${Date.now()}`
+
     try {
         const network = {
             env: 'prod',
@@ -102,6 +108,7 @@ test('executeSessionImport installs a session-only profile file', async () => {
             rpcUrl: 'https://rpc.example',
             chainId: 8453,
         }
+
         const portable = await createSessionKeystore({
             password: 'pw',
             sessionPrivateKey: generatePrivateKey(),
@@ -110,12 +117,14 @@ test('executeSessionImport installs a session-only profile file', async () => {
             name: 'worker-1',
             checkpoint: 'authorized',
         })
+
         await writeSessionKeystoreFile(inputPath, portable, { overwrite: true })
 
         const result = await executeSessionImport({
             input: inputPath,
             profile,
         })
+
         expect(result.status).toBe('complete')
         expect(result.sessionPath.endsWith(`/profiles/${profile}/session.json`)).toBe(true)
     } finally {
@@ -130,6 +139,7 @@ test('executeSessionImport installs a session-only profile file', async () => {
 test('executeSessionImport stores non-prod session profiles under env directory', async () => {
     const profile = 'worker-dev'
     const inputPath = '/tmp/worker-dev.session.json'
+
     const accessMock = mock(async (path: string) => {
         // Simulate ENOENT for conflict checks.
         throw new Error(`ENOENT: no such file or directory, access '${path}'`)

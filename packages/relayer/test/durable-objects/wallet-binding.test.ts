@@ -5,6 +5,7 @@ import { walletBindingStub } from '../../src/auth/wallet-binding-client'
 import type { Env } from '../../src/types/env'
 
 const ISSUER = 'https://binding.example'
+
 const NOW = 1_700_000_000
 
 function stub() {
@@ -15,6 +16,7 @@ describe('WalletBindingDO', () => {
     it('refuses a second sub for the same address', async () => {
         const address = '0x1000000000000000000000000000000000000001'
         const store = stub()
+
         const first = await store.issueNonce({
             issuer: ISSUER,
             subject: 'sub-a',
@@ -23,6 +25,7 @@ describe('WalletBindingDO', () => {
             nowSeconds: NOW,
             ttlSeconds: 600,
         })
+
         const second = await store.issueNonce({
             issuer: ISSUER,
             subject: 'sub-b',
@@ -31,8 +34,10 @@ describe('WalletBindingDO', () => {
             nowSeconds: NOW,
             ttlSeconds: 600,
         })
+
         expect(first.ok).toBe(true)
         expect(second.ok).toBe(true)
+
         if (!first.ok || !second.ok) return
 
         const bound = await store.bind({
@@ -44,6 +49,7 @@ describe('WalletBindingDO', () => {
             expiry: first.expiresAt,
             nowSeconds: NOW,
         })
+
         const taken = await store.bind({
             nonce: second.nonce,
             issuer: ISSUER,
@@ -66,12 +72,14 @@ describe('WalletBindingDO', () => {
             nowSeconds: NOW,
             ttlSeconds: 600,
         })
+
         expect(later).toEqual({ ok: false, reason: 'address_taken' })
     })
 
     it('refuses a reused nonce and an expired nonce', async () => {
         const address = '0x1000000000000000000000000000000000000002'
         const store = stub()
+
         const issued = await store.issueNonce({
             issuer: ISSUER,
             subject: 'sub-reuse',
@@ -80,7 +88,9 @@ describe('WalletBindingDO', () => {
             nowSeconds: NOW,
             ttlSeconds: 600,
         })
+
         expect(issued.ok).toBe(true)
+
         if (!issued.ok) return
 
         const first = await store.bind({
@@ -92,6 +102,7 @@ describe('WalletBindingDO', () => {
             expiry: issued.expiresAt,
             nowSeconds: NOW,
         })
+
         const reused = await store.bind({
             nonce: issued.nonce,
             issuer: ISSUER,
@@ -101,6 +112,7 @@ describe('WalletBindingDO', () => {
             expiry: issued.expiresAt,
             nowSeconds: NOW + 1,
         })
+
         expect(first).toEqual({ ok: true })
         expect(reused).toEqual({ ok: false, reason: 'nonce_unknown' })
 
@@ -112,8 +124,11 @@ describe('WalletBindingDO', () => {
             nowSeconds: NOW,
             ttlSeconds: 600,
         })
+
         expect(expiring.ok).toBe(true)
+
         if (!expiring.ok) return
+
         const expired = await store.bind({
             nonce: expiring.nonce,
             issuer: ISSUER,
@@ -123,6 +138,7 @@ describe('WalletBindingDO', () => {
             expiry: expiring.expiresAt,
             nowSeconds: expiring.expiresAt,
         })
+
         expect(expired).toEqual({ ok: false, reason: 'nonce_expired' })
     })
 
@@ -130,6 +146,7 @@ describe('WalletBindingDO', () => {
         const store = stub()
         const firstAddress = '0x1000000000000000000000000000000000000004'
         const secondAddress = '0x1000000000000000000000000000000000000005'
+
         for (const address of [firstAddress, secondAddress]) {
             const issued = await store.issueNonce({
                 issuer: ISSUER,
@@ -139,8 +156,11 @@ describe('WalletBindingDO', () => {
                 nowSeconds: NOW,
                 ttlSeconds: 600,
             })
+
             expect(issued.ok).toBe(true)
+
             if (!issued.ok) return
+
             const bound = await store.bind({
                 nonce: issued.nonce,
                 issuer: ISSUER,
@@ -150,6 +170,7 @@ describe('WalletBindingDO', () => {
                 expiry: issued.expiresAt,
                 nowSeconds: NOW,
             })
+
             expect(bound).toEqual({ ok: true })
         }
 

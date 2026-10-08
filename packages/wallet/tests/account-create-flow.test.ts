@@ -143,6 +143,7 @@ test('resolveKeystorePath prefers explicit --keystore-path over --profile', () =
         keystorePath: '/tmp/explicit.json',
         name: 'alice',
     })
+
     expect(path).toBe('/tmp/explicit.json')
 })
 
@@ -166,6 +167,7 @@ test('getDefaultSessionPermissions is the narrow USDC and escrow set', () => {
         ESCROW_31337: process.env.ESCROW_31337,
         MULTI_SIG_SIGNER_31337: process.env.MULTI_SIG_SIGNER_31337,
     }
+
     process.env.ORCHESTRATOR_31337 = '0x2222222222222222222222222222222222222222'
     process.env.SIMPLE_FUNDER_31337 = '0x0000000000000000000000000000000000000004'
     process.env.SIMULATOR_31337 = '0x0000000000000000000000000000000000000005'
@@ -174,6 +176,7 @@ test('getDefaultSessionPermissions is the narrow USDC and escrow set', () => {
     process.env.SIMPLE_SETTLER_31337 = '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE'
     process.env.ESCROW_31337 = '0x05f9597eed844410b7c0746A1C584188d0644730'
     process.env.MULTI_SIG_SIGNER_31337 = '0x0000000000000000000000000000000000000008'
+
     try {
     const permissions = getDefaultSessionPermissions(31337, { env: 'dev' })
     expect(permissions.filter((permission) => permission.type === 'call')).toEqual([
@@ -261,13 +264,17 @@ test('assertAccountCreateCanInitialize allows existing keystore with --resume', 
 test('executeAccountCreate creates keystore and delegates', async () => {
     const rootPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
     const sessionPrivateKey =
         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex
+
     const rootAddress = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
     const sessionAddress = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC'
+
     const rootKeystore = makeRootKeystore({
         addresses: { root: rootAddress },
     })
+
     const sessionKeystore = makeSessionKeystore({
         addresses: {
             session: sessionAddress,
@@ -277,6 +284,7 @@ test('executeAccountCreate creates keystore and delegates', async () => {
 
     const writeRootKeystoreFile = mock(async () => {})
     const writeSessionKeystoreFile = mock(async () => {})
+
     const delegateAccount = mock(async () => ({
         accountAddress: rootAddress,
         txHash: '0xabc',
@@ -293,6 +301,7 @@ test('executeAccountCreate creates keystore and delegates', async () => {
     const result = await executeAccountCreate(options, {
         generatePrivateKey: mock(() => {
             generateCalls += 1
+
             return generateCalls === 1 ? rootPrivateKey : sessionPrivateKey
         }),
         createRootKeystore: mock(async () => rootKeystore),
@@ -394,6 +403,7 @@ test('resolveAccountCreatePassword throws typed error when no input source is av
 test('executeAccountCreate maps delegation failure to typed error', async () => {
     const rootPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
 
@@ -424,6 +434,7 @@ test('executeAccountCreate maps delegation failure to typed error', async () => 
 test('executeAccountCreate writes session keystore before delegation so resume remains possible', async () => {
     const rootPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
     const writeSessionKeystoreFile = mock(async () => {})
@@ -456,11 +467,13 @@ test('executeAccountCreate writes session keystore before delegation so resume r
 test('executeAccountCreate writes split root and session keystores', async () => {
     const rootPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
     const rootKeystore = makeRootKeystore({
         addresses: {
             root: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
         },
     })
+
     const sessionKeystore = makeSessionKeystore({
         addresses: {
             session: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
@@ -470,6 +483,7 @@ test('executeAccountCreate writes split root and session keystores', async () =>
 
     const writeRootKeystoreFile = mock(async () => {})
     const writeSessionKeystoreFile = mock(async () => {})
+
     const delegateAccount = mock(async () => ({
         accountAddress: rootKeystore.addresses.root,
         txHash: '0xabc',
@@ -501,12 +515,15 @@ test('executeAccountCreate writes split root and session keystores', async () =>
 test('executeAccountCreate resume loads split bundle and avoids key generation', async () => {
     const rootPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
     const sessionPrivateKey =
         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex
+
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
 
     const generateKey = mock(() => rootPrivateKey)
+
     const result = await executeAccountCreate(
         {
             env: 'dev',
@@ -540,6 +557,7 @@ test('executeAccountCreate resume loads split bundle and avoids key generation',
 test('executeAccountCreate surfaces session write errors before delegation', async () => {
     const rootPrivateKey =
         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
     await expect(

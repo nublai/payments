@@ -44,6 +44,7 @@ describe('wallet_verifySignature', () => {
             signer: createRelayerTestAuthSigner(testChain.id),
         },
     })
+
     const contracts = TEST_CONTRACTS
 
     it('should return valid=false for non-delegated account', async () => {
@@ -175,6 +176,7 @@ describe('wallet_verifySignature', () => {
             hash: erc1271Digest,
             privateKey: wrongPrivateKey,
         })
+
         const invalidSignature = serializeSignature(invalidSignatureObj)
 
         const chainId = `0x${(client.chain?.id ?? 31337).toString(16)}`
@@ -291,10 +293,12 @@ describe('wallet_verifySignature', () => {
             // #given - sign correctly with the normal key
             const originalDigest = keccak256(new TextEncoder().encode('test message'))
             const erc1271Digest = computeErc1271Digest(originalDigest, accountAddress.address)
+
             const signatureObj = await sign({
                 hash: erc1271Digest,
                 privateKey: normalKeyPrivateKey,
             })
+
             const signature = serializeSignature(signatureObj)
 
             const chainId = `0x${(client.chain?.id ?? 31337).toString(16)}`

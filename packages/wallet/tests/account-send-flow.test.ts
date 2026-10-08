@@ -2,12 +2,15 @@ import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
+
 import {
     AccountSendError,
     executeAccountSend,
@@ -63,8 +66,10 @@ test('executeAccountSend preserves cause for invalid chain override', async () =
         const sendError = error as AccountSendError
         expect(sendError.code).toBe('UNSUPPORTED_CHAIN')
         expect(sendError.cause).toBeInstanceOf(Error)
+
         const causeMessage =
             sendError.cause instanceof Error ? sendError.cause.message : String(sendError.cause)
+
         expect(causeMessage).toContain('Unsupported chain')
     }
 })
@@ -72,6 +77,7 @@ test('executeAccountSend preserves cause for invalid chain override', async () =
 test('executeAccountSend executes sponsored transfer flow', async () => {
     const prepareCalls = mock(async (input) => matchingPreparedCalls(input)) as unknown as any
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
+
     const result = await executeAccountSend(
         {
             env: 'prod',
@@ -472,6 +478,7 @@ test('executeAccountSend supports --session-file direct mode', async () => {
             sessionPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' },
         },
     }))
+
     const result = await executeAccountSend(
         {
             env: 'prod',
@@ -510,6 +517,7 @@ test('executeAccountSend supports --session-file direct mode', async () => {
             })) as unknown as any,
         },
     )
+
     expect(result.status).toBe('complete')
     expect(readSessionKeystoreFile).toHaveBeenCalledTimes(1)
 })
@@ -548,6 +556,7 @@ test('executeAccountSend supports --session local selection mode', async () => {
                 },
             }
         }
+
         throw new Error(`unexpected session path: ${path}`)
     })
 

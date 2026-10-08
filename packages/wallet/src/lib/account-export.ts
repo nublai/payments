@@ -6,6 +6,7 @@ import {
     readKeystoreBundle,
     type RelayerRootKeystoreV2,
 } from './keystore'
+
 type EnvName = 'prod' | 'stage' | 'dev'
 
 type AccountExportErrorCode =
@@ -100,6 +101,7 @@ export async function assertCanExportPrivateKeys(input: {
     }
 
     const confirmed = await input.promptForTypedConfirmation(PRIVATE_EXPORT_CONFIRMATION_PHRASE)
+
     if (!confirmed) {
         throw new AccountExportError(
             'PRIVATE_EXPORT_CONFIRMATION_FAILED',
@@ -153,6 +155,7 @@ export async function executeAccountExport(
             name: options.name,
         })
         const bundle = await deps.readKeystoreBundle(keystorePath)
+
         const result: AccountExportResult = {
             type: 'account_export',
             status: 'complete',
@@ -184,6 +187,7 @@ export async function executeAccountExport(
             rootPrivateKey: root.rootPrivateKey,
             sessionPrivateKey: session.sessionPrivateKey,
         }
+
         return result
     } catch (error) {
         throw toAccountExportError(error, { keystorePath })

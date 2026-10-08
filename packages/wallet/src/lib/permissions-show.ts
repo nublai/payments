@@ -89,6 +89,7 @@ function getDefaultDeps(): PermissionsShowDeps {
         readSessionKeystoreFile,
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address: account, chainIds: [chainId] })
         },
     }
@@ -123,9 +124,11 @@ function splitPermissions(permissions: PermissionInfo[]) {
             return entry.type === 'call'
         },
     )
+
     const spends = permissions.filter(
         (entry): entry is Extract<PermissionInfo, { type: 'spend' }> => entry.type === 'spend',
     )
+
     return { calls, spends }
 }
 
@@ -144,6 +147,7 @@ export async function executePermissionsShow(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const chain = selectDefaultChain(options.env, options.chain)
     const network = resolveNetworkConfig(options.env, chain)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -151,6 +155,7 @@ export async function executePermissionsShow(
     })
 
     const bundle = await deps.readKeystoreBundle(keystorePath)
+
     const accountAddress = bundle.root.addresses.delegated
         ? getAddress(bundle.root.addresses.delegated)
         : getAddress(bundle.root.addresses.root)
@@ -166,6 +171,7 @@ export async function executePermissionsShow(
         account: accountAddress,
         chainId: network.chainId,
     })
+
     const chainKeys = getChainKeys(keysResponse, network.chainId) as OnChainPermissionKey[]
 
     const selected = resolveSelectedKey({
@@ -186,6 +192,7 @@ export async function executePermissionsShow(
     const callPermissions = calls.map((permission) => {
         const target = getAddress(permission.to)
         const selector = normalizeHexLower(permission.selector)
+
         return {
             id: callRuleId(target, selector),
             hashId: callHashId(target, selector),

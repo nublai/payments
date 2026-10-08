@@ -15,8 +15,10 @@ export async function decryptAgentDevice(
     password: string,
 ): Promise<ExportedDevice> {
     const key = await deriveKeystoreKey(password, keystore.kdf.params)
+
     try {
         const binary = decryptBufferSecret(keystore.secrets.encryptionDevice, key)
+
         return fromBinary(ExportedDeviceSchema, binary)
     } finally {
         key.fill(0)
@@ -30,11 +32,13 @@ export async function finalizeAgentSessionKeystore(input: {
     namedChannels?: Record<string, AgentNamedChannelRecord>
 }): Promise<AgentSessionKeystoreV2> {
     const key = await deriveKeystoreKey(input.password, input.baseKeystore.kdf.params)
+
     try {
         const encryptionDevice = encryptBufferSecret(
             toBinary(ExportedDeviceSchema, input.exportedDevice),
             key,
         )
+
         return {
             ...input.baseKeystore,
             kind: 'agent',

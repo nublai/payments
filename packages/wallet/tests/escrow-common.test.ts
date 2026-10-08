@@ -103,6 +103,7 @@ test('toEscrowError handles non-Error throwables', () => {
 
 test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
+
     const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {
@@ -117,6 +118,7 @@ test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async (
             usdcAddress: zeroAddress,
         },
     }
+
     const baseOptions = {
         env: 'dev' as const,
         amount: '1',
@@ -124,7 +126,9 @@ test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async (
         oracle: '0x2222222222222222222222222222222222222222',
         keystorePath: '/tmp/keystore.json',
     }
+
     const zeroDurations = ['0m', '0h', '0d', '0w']
+
     for (const deadline of zeroDurations) {
         const err = await executeEscrowCreate(
             { ...baseOptions, deadline },
@@ -132,6 +136,7 @@ test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async (
                 resolveEscrowChainNetworkContracts: mock(() => mockChainNetworkContracts),
             },
         ).catch((e) => e)
+
         expect(err).toBeInstanceOf(EscrowError)
         expect((err as EscrowError).code).toBe('INVALID_ARGUMENT')
         expect((err as EscrowError).message).toMatch(/at least 1/)
@@ -140,6 +145,7 @@ test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async (
 
 test('executeEscrowCreate rejects malformed absolute deadline timestamps', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
+
     const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {
@@ -176,6 +182,7 @@ test('executeEscrowCreate rejects malformed absolute deadline timestamps', async
 
 test('executeEscrowCreate trims relative deadline input before validation', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
+
     const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {
@@ -215,6 +222,7 @@ test('resolveEscrowContracts refuses a zeroed non-local deployment', () => {
 
 test('executeEscrowSettle rejects mismatched oracle private key', async () => {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
+
     const mockChainNetworkContracts: ResolveEscrowChainNetworkContractsResult = {
         chain: 'base' as const,
         network: {

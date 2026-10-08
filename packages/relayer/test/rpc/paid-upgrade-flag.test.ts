@@ -41,6 +41,7 @@ vi.mock('../../src/services/relayer', async () => {
     const actual = await vi.importActual<typeof import('../../src/services/relayer')>(
         '../../src/services/relayer',
     )
+
     return {
         ...actual,
         RelayerService: vi.fn().mockImplementation(() => ({
@@ -54,6 +55,7 @@ vi.mock('../../src/services/fees', async () => {
     const actual = await vi.importActual<typeof import('../../src/services/fees')>(
         '../../src/services/fees',
     )
+
     return {
         ...actual,
         getFeeEstimate: vi.fn().mockResolvedValue({
@@ -70,6 +72,7 @@ vi.mock('../../src/services/price-oracle', async () => {
     const actual = await vi.importActual<typeof import('../../src/services/price-oracle')>(
         '../../src/services/price-oracle',
     )
+
     return {
         ...actual,
         getUsdPrice: vi.fn(async (assetUid: string) =>
@@ -79,12 +82,19 @@ vi.mock('../../src/services/price-oracle', async () => {
 })
 
 const CHAIN_ID = 8453
+
 const SECRET = 'paid-upgrade-flag-secret'
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const OWNER = privateKeyToAccount(OWNER_KEY).address
+
 const NATIVE_RATE = (3000n * 10n ** 18n).toString()
 
 const disabled = {
@@ -95,9 +105,13 @@ const disabled = {
 }
 
 const rateBodies: Array<Record<string, unknown>> = []
+
 const gasLog: Array<Record<string, unknown>> = []
+
 const rpcMethods: string[] = []
+
 let captures: unknown[] = []
+
 const rateStore = new Map<string, number>()
 
 function word(value: bigint): Hex {
@@ -111,31 +125,42 @@ function jsonResponse(body: unknown, ok = true): Response {
 function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
+
     if (url.includes('upgrade-rate-limit')) {
         if (typeof body.action === 'string' && body.action.endsWith('-gas')) {
             gasLog.push(body)
+
             return Promise.resolve(jsonResponse({ allowed: true, gas: 0 }))
         }
+
         if (body.action === 'enqueue-receipt') {
             gasLog.push(body)
+
             return Promise.resolve(jsonResponse({ allowed: true }))
         }
+
         rateBodies.push(body)
         const now = Math.floor(Date.now() / 1000)
+
         const buckets = paidUpgradeRateBuckets({
             chainId: CHAIN_ID,
             account: String(body.account ?? 'unknown'),
             ip: String(body.ip ?? 'unknown'),
             includeGlobal: body.action === 'reserve' || body.action === 'release',
         })
+
         if (body.action === 'peek') {
             return Promise.resolve(jsonResponse({ allowed: peekRateLimit(rateStore, buckets, now).allowed }))
         }
+
         if (body.action === 'release') return Promise.resolve(jsonResponse({ allowed: true }))
         const decision = consumeRateLimit(rateStore, buckets, now)
+
         return Promise.resolve(jsonResponse({ allowed: decision.allowed, reservedAt: now }))
     }
+
     captures.push(body)
+
     return Promise.resolve(
         jsonResponse({
             txHash: `0x${'ab'.repeat(32)}`,
@@ -178,16 +203,19 @@ async function upgradeQuote(): Promise<PaidUpgradeQuote> {
     const owner = privateKeyToAccount(OWNER_KEY)
     const session = privateKeyToAccount(generatePrivateKey())
     const publicKey = encodeAbiParameters([{ type: 'address' }], [session.address])
+
     const { calls, executionData } = buildKeyInitializationData(
         [{ expiry: '0', type: 'secp256k1', role: 'admin', publicKey, permissions: [] }],
         owner.address,
     )
+
     const preCallSignature = await owner.signTypedData({
         domain: getSignedCallDomain(CHAIN_ID, ORCHESTRATOR),
         types: SIGNED_CALL_TYPES,
         primaryType: 'SignedCall',
         message: { multichain: false, eoa: owner.address, calls, nonce: UPGRADE_PRECALL_NONCE },
     })
+
     return {
         authorization: {
             contractAddress: ACCOUNT_PROXY,
@@ -269,6 +297,7 @@ async function signedPaidSendParams(): Promise<unknown> {
     const encoded = [encodeSignedPreCall(upgrade.preCall)]
     const txGas = 100_000
     const maxFeePerGas = 1_000_000_000
+
     const paymentAmount = recomputeQuotePaymentAmount({
         txGas,
         maxFeePerGas,
@@ -276,6 +305,7 @@ async function signedPaidSendParams(): Promise<unknown> {
         paymentTokenDecimals: 6,
         nativeRate: NATIVE_RATE,
     })
+
     const quote: Quote = {
         chainId: '0x2105',
         intent: {
@@ -302,13 +332,16 @@ async function signedPaidSendParams(): Promise<unknown> {
         assetDeficits: [],
         accountUpgrade: upgrade,
     }
+
     const signed: SignedQuotes = {
         quotes: [quote],
         signature: '0x',
         ttl: Math.floor(Date.now() / 1000) + 300,
     }
+
     signed.signature = await signQuotes(signed, SECRET)
     const intent = quote.intent
+
     const digest = hashTypedData({
         domain: { name: 'Orchestrator', version: '0.5.5', chainId: CHAIN_ID, verifyingContract: ORCHESTRATOR },
         types: INTENT_TYPES,
@@ -328,6 +361,7 @@ async function signedPaidSendParams(): Promise<unknown> {
             expiry: BigInt(intent.expiry),
         },
     })
+
     return {
         context: { quote: signed },
         signature: await privateKeyToAccount(OWNER_KEY).sign({ hash: digest }),
@@ -375,13 +409,16 @@ beforeEach(() => {
     mockPrepareIntent.mockImplementation(async () => preparedIntent())
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+
         if (!url.includes('rpc.test')) throw new Error(`unexpected fetch ${url}`)
         const raw = init?.body ? JSON.parse(String(init.body)) : {}
         const batch = Array.isArray(raw) ? raw : [raw]
+
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
             rpcMethods.push(call.method ?? '')
             let result: unknown = '0x'
             const tx = call.params?.[0] as { authorizationList?: unknown } | undefined
+
             if (call.method === 'eth_getCode') result = '0x'
             else if (call.method === 'eth_getTransactionCount') result = '0x0'
             else if (call.method === 'eth_call' && tx?.authorizationList) result = word(0n)
@@ -405,8 +442,10 @@ beforeEach(() => {
                     type: '0x4',
                 }
             }
+
             return { jsonrpc: '2.0', id: call.id ?? 1, result }
         })
+
         return new Response(JSON.stringify(Array.isArray(raw) ? results : results[0]), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
@@ -437,10 +476,12 @@ describe('PAID_UPGRADE_ENABLED', () => {
         expect(prepared.context.quote.quotes[0]?.accountUpgrade).toBeDefined()
         expect(prepared.context.quote.signature).not.toBe('0x')
         resetSideEffects()
+
         const relayerSigned = {
             context: prepared.context,
             signature: await privateKeyToAccount(OWNER_KEY).sign({ hash: prepared.digest as Hex }),
         }
+
         await expect(handleSendPreparedCalls(relayerSigned, createCtx())).rejects.toMatchObject(
             disabled,
         )

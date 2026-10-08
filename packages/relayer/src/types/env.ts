@@ -263,15 +263,20 @@ function parseJsonRecord(envValue: string | undefined, label: string): Record<st
     if (!envValue) {
         return {}
     }
+
     try {
         const parsed = JSON.parse(envValue) as unknown
+
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             throw new Error('expected JSON object')
         }
+
         const record: Record<string, string> = {}
+
         for (const [key, value] of Object.entries(parsed)) {
             record[String(key)] = String(value)
         }
+
         return record
     } catch (error) {
         throw new Error(

@@ -42,5 +42,6 @@ export function computeErc1271Digest(originalDigest: Hex, accountAddress: Addres
  */
 export function wrapSignature(innerSignature: Hex, keyHash: Hex, prehash: boolean = false): Hex {
     const prehashByte = prehash ? '0x01' : '0x00'
+
     return concat([innerSignature, keyHash, prehashByte as Hex])
 }

@@ -5,11 +5,17 @@ import { encodeAbiParameters, encodeFunctionData, getAddress, type Address, type
 import { simulateRelayQuote } from '../src/lib/relay-simulate'
 
 const ANVIL = `${process.env.HOME}/.foundry/bin/anvil`
+
 const FORGE = `${process.env.HOME}/.foundry/bin/forge`
+
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+
 const RELAYER_SIGNER = '0x277b7440CE050d9e9e428d1f349E51D468c7eB7E' as Address
+
 const STAND_IN_ORIGIN = '0x9999999999999999999999999999999999999999' as Address
+
 const ROOT = new URL('./fixtures/sim-path/', import.meta.url).pathname
 
 function sleep(ms: number): Promise<void> {
@@ -22,10 +28,13 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<unkn
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     })
+
     const payload = (await response.json()) as { result?: unknown; error?: { message?: string } }
+
     if (payload.error) {
         throw new Error(payload.error.message ?? method)
     }
+
     return payload.result
 }
 
@@ -39,15 +48,20 @@ async function deploy(url: string, bytecode: Hex): Promise<Address> {
             gas: '0x1c9c380',
         },
     ])) as string
+
     let tx: DeployReceipt = null
+
     for (let attempt = 0; attempt < 20; attempt += 1) {
         tx = (await rpc(url, 'eth_getTransactionReceipt', [hash])) as DeployReceipt
+
         if (tx) break
         await sleep(50)
     }
+
     if (!tx?.contractAddress) {
         throw new Error(`deploy failed: ${JSON.stringify(tx)} hash ${hash}`)
     }
+
     return getAddress(tx.contractAddress)
 }
 
@@ -55,25 +69,30 @@ test(
     'unstubbed anvil simulation uses the orchestrator and a non-user origin',
     async () => {
         const build = spawn(FORGE, ['build', '--root', ROOT], { stdio: 'pipe' })
+
         const built = await new Promise<number>((resolve) => {
             build.on('exit', (code) => resolve(code ?? 1))
         })
+
         expect(built).toBe(0)
 
         const bytecode = (name: string): Hex => {
             const artifact = JSON.parse(
                 readFileSync(`${ROOT}out/SimPath.sol/${name}.json`, 'utf8'),
             ) as { bytecode: { object: string } }
+
             return artifact.bytecode.object as Hex
         }
 
         const port = 18547
         const url = `http://127.0.0.1:${port}`
+
         const anvil = spawn(
             ANVIL,
             ['--port', String(port), '--chain-id', '8453', '--hardfork', 'prague', '--silent'],
             { stdio: 'ignore' },
         )
+
         try {
             for (let attempt = 0; attempt < 50; attempt += 1) {
                 try {
@@ -84,6 +103,7 @@ test(
                     await sleep(100)
                 }
             }
+
             await rpc(url, 'anvil_impersonateAccount', [
                 '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
             ])
@@ -110,6 +130,7 @@ test(
                 functionName: 'mint',
                 args: [USER, 100n],
             })
+
             await rpc(url, 'eth_sendTransaction', [
                 {
                     from: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
@@ -133,6 +154,7 @@ test(
                 functionName: 'transfer',
                 args: [router, 5n],
             })
+
             const pay = (alwaysUser: boolean) =>
                 encodeFunctionData({
                     abi: [
@@ -159,10 +181,12 @@ test(
                 keyHash: `0x${'ab'.repeat(32)}` as Hex,
                 nonce: 0n,
             })
+
             const watches = [
                 { kind: 'erc20' as const, token: input, role: 'origin' as const },
                 { kind: 'erc20' as const, token: output, role: 'output' as const },
             ]
+
             await simulateRelayQuote({
                 rpcUrl: url,
                 chainId: 8453,

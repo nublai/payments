@@ -29,6 +29,7 @@ describe('account upgrade gas cap', () => {
             maxFeePerGas: 2_200_000_000n,
             maxPriorityFeePerGas: 1_000_000_000n,
         })
+
         expect(allowed.gas).toBe(46_018n)
         expect(allowed.gas).toBeLessThanOrEqual(ACCOUNT_UPGRADE_GAS_LIMIT)
     })
@@ -47,6 +48,7 @@ describe('account upgrade gas cap', () => {
             maxFeePerGas: ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
             maxPriorityFeePerGas: 1n,
         })
+
         expect(allowed.maxPriorityFeePerGas).toBe(1n)
     })
 })

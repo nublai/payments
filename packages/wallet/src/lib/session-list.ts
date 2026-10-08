@@ -77,6 +77,7 @@ function getDefaultDeps(): SessionListDeps {
         listSessionNames,
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address: account, chainIds: [chainId] })
         },
     }
@@ -95,6 +96,7 @@ export async function executeSessionList(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const chain = selectDefaultChain(options.env, options.chain)
     const network = resolveNetworkConfig(options.env, chain)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -102,6 +104,7 @@ export async function executeSessionList(
     })
 
     const bundle = await deps.readKeystoreBundle(keystorePath)
+
     const accountAddress = bundle.root.addresses.delegated
         ? getAddress(bundle.root.addresses.delegated)
         : getAddress(bundle.root.addresses.root)
@@ -111,11 +114,13 @@ export async function executeSessionList(
 
     for (const sessionNameRaw of sessionNames) {
         const sessionName = parseSessionName(sessionNameRaw)
+
         const sessionPath = resolveSessionKeystorePath(
             keystorePath,
             sessionName,
             bundle.root.sessionRef.dir,
         )
+
         const session = await deps.readSessionKeystoreFile(sessionPath)
         sessions.push({
             name: session.name,
@@ -133,7 +138,9 @@ export async function executeSessionList(
             account: accountAddress,
             chainId: network.chainId,
         })
+
         const chainKeys = getChainKeys(keys, network.chainId)
+
         const keysByHash = new Map<string, { expiry?: string }>(
             chainKeys
                 .filter((entry: { hash?: string }) => typeof entry.hash === 'string')
@@ -146,6 +153,7 @@ export async function executeSessionList(
         for (const session of sessions) {
             const onChainKey = keysByHash.get(session.keyHash.toLowerCase())
             session.onChainAuthorized = onChainKey !== undefined
+
             if (onChainKey && typeof onChainKey.expiry === 'string') {
                 session.expiry = Number(onChainKey.expiry)
             }

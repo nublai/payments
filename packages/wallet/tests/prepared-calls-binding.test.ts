@@ -15,16 +15,24 @@ import { executeSignedCalls, type ExecuteSignedCallsDeps } from '../src/lib/exec
 import { getEnvRelayerUrl } from '../src/lib/network-config'
 
 const EOA = '0x1111111111111111111111111111111111111111' as Address
+
 const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const TARGET = '0x2222222222222222222222222222222222222222' as Address
+
 const ATTACKER = '0x3333333333333333333333333333333333333333' as Address
+
 const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+
 const SIG =
     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as Hex
 
 const REQUESTED: Call[] = [{ target: TARGET, value: 1n, data: '0x1234' }]
+
 const NOW = 1_700_000_000n
+
 const EXPIRY = NOW + 60n
+
 const GAS_CEILING = 1_000_000n
 
 type IntentCall = { to: Address; value: bigint; data: Hex }
@@ -46,18 +54,21 @@ function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount =
         settler: zeroAddress,
         expiry: EXPIRY,
     }
+
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: 8453,
         verifyingContract: ORCHESTRATOR,
     }
+
     const digest = hashTypedData({
         domain,
         types: INTENT_TYPES,
         primaryType: 'Intent',
         message,
     })
+
     return {
         digest,
         typedData: {
@@ -143,6 +154,7 @@ function rehash(prepared: ReturnType<typeof makePrepared>) {
 function signingDeps(prepared: ReturnType<typeof makePrepared>) {
     const signTypedData = mock(async () => SIG)
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
+
     return {
         signTypedData,
         sendPreparedCalls,
@@ -200,6 +212,7 @@ test('executeSignedCalls signs when the prepared intent matches the request', as
     const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
     const signTypedData = mock(async () => SIG)
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
+
     const result = await executeSignedCalls(
         {
             prepareCalls: async () => prepared,
@@ -229,6 +242,7 @@ test('executeSignedCalls signs when the prepared intent matches the request', as
             combinedGasCeiling: GAS_CEILING,
         },
     )
+
     expect(signTypedData).toHaveBeenCalled()
     expect(sendPreparedCalls).toHaveBeenCalled()
     expect(result.id).toBe('bundle-1')
@@ -315,6 +329,7 @@ test('getEnvRelayerUrl refuses plain http for a non-loopback host off dev', () =
     process.env.RELAYER_URL_PROD = 'http://relayer.example'
     process.env.RELAYER_URL_STAGE = 'http://relayer.example'
     process.env.RELAYER_URL_DEV = 'http://relayer.example'
+
     try {
         expect(() => getEnvRelayerUrl('prod')).toThrow(/https/)
         expect(() => getEnvRelayerUrl('stage')).toThrow(/https/)
@@ -325,8 +340,10 @@ test('getEnvRelayerUrl refuses plain http for a non-loopback host off dev', () =
     } finally {
         if (previousProd === undefined) delete process.env.RELAYER_URL_PROD
         else process.env.RELAYER_URL_PROD = previousProd
+
         if (previousStage === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previousStage
+
         if (previousDev === undefined) delete process.env.RELAYER_URL_DEV
         else process.env.RELAYER_URL_DEV = previousDev
     }
@@ -426,19 +443,24 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
 
 test('createJsonRpcTransport does not follow a relayer redirect', async () => {
     let hopped = false
+
     const hopper = createServer((_req, res) => {
         hopped = true
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ok: true } }))
     })
+
     await new Promise<void>((resolve) => hopper.listen(0, '127.0.0.1', () => resolve()))
     const hopPort = (hopper.address() as { port: number }).port
+
     const redirector = createServer((_req, res) => {
         res.writeHead(307, { location: `http://127.0.0.1:${hopPort}/` })
         res.end()
     })
+
     await new Promise<void>((resolve) => redirector.listen(0, '127.0.0.1', () => resolve()))
     const port = (redirector.address() as { port: number }).port
+
     try {
         const transport = createJsonRpcTransport(`http://127.0.0.1:${port}`)
         await expect(transport.request('wallet_health')).rejects.toThrow(/redirect/i)
@@ -459,6 +481,7 @@ test('getCapabilities surfaces the https refusal', async () => {
             chainId: 8453,
         }),
     )
+
     await expect(client.getCapabilities()).rejects.toThrow(/https/)
 
     const devClient = createPublicClient({
@@ -471,6 +494,7 @@ test('getCapabilities surfaces the https refusal', async () => {
             allowInsecureHttp: true,
         }),
     )
+
     const devResult = await devClient.getCapabilities()
     expect(devResult.success).toBe(false)
     expect(devResult.error ?? '').not.toMatch(/https/)

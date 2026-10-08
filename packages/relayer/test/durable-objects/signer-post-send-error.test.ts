@@ -26,8 +26,11 @@ import {
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
 
 const CHAIN_ID = 8453
+
 const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+
 const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const NOW = 1_700_000_500
 
 interface RateBody {
@@ -67,10 +70,12 @@ describe('post-send signer errors', () => {
             ) {
                 throw new Error('post-send bookkeeping failed')
             }
+
             return originalJson.call(Response, data, init)
         }) as typeof Response.json
 
         let signerBody: { error?: string; broadcastAttempted?: boolean }
+
         try {
             const response = await signer.fetch(
                 new Request('http://do/send', {
@@ -79,17 +84,20 @@ describe('post-send signer errors', () => {
                     body: JSON.stringify({ id: 'tx-1', type: 'create-account' }),
                 }),
             )
+
             signerBody = (await response.json()) as typeof signerBody
         } finally {
             Response.json = originalJson
         }
 
         const seen: string[] = []
+
         const pool = Object.create(SignerPoolDO.prototype) as Pick<SignerPoolDO, 'sendTransaction'> & {
             env: Env
             ctx: { id: { name: string } }
             getAllCapacities: () => Promise<IndexedCapacityInfo[]>
         }
+
         pool.env = {
             RELAYER_COUNT: '2',
             SIGNER: {
@@ -97,9 +105,11 @@ describe('post-send signer errors', () => {
                 get: (name: string) => ({
                     fetch: async () => {
                         seen.push(String(name))
+
                         if (seen.length === 1) {
                             return Response.json(signerBody, { status: 500 })
                         }
+
                         return Response.json({
                             txHash: '0xdef',
                             nonce: 2,
@@ -129,6 +139,7 @@ describe('post-send signer errors', () => {
         ]
 
         let poolBroadcastAttempted: boolean | undefined
+
         try {
             await pool.sendTransaction({
                 id: 'tx-1',
@@ -156,6 +167,7 @@ describe('post-send signer errors', () => {
             })
         })
         const owner = privateKeyToAccount(OWNER_KEY)
+
         const auth = await owner.sign({
             hash: hashAuthorization({
                 contractAddress: ACCOUNT_PROXY,
@@ -163,24 +175,31 @@ describe('post-send signer errors', () => {
                 nonce: 0,
             }),
         })
+
         const store = new Map<string, number>()
         let releases = 0
+
         const env = createUpgradeEnv(store, () => {
             releases += 1
         }, signerBody)
+
         const app = new Hono<{ Bindings: Env }>()
+
         const provider: AuthProvider = {
             name: 'test',
             enabled: () => true,
             verify: async () => ({ ok: true, userId: owner.address }),
         }
+
         app.use('*', authMiddleware({ providers: [provider] }))
         app.post('/', async (c) => {
             const body = await c.req.json()
+
             const response = await dispatch(body, createMethods(c.env), {
                 env: c.env,
                 request: c.req.raw,
             })
+
             return c.json(response)
         })
         await app.request(
@@ -217,6 +236,7 @@ describe('post-send signer errors', () => {
             },
             env,
         )
+
         const identityKey = upgradeRateBuckets({
             kind: 'upgrade',
             chainId: CHAIN_ID,
@@ -249,6 +269,7 @@ function createUpgradeEnv(
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
         const bodyText = typeof init?.body === 'string' ? init.body : ''
         let parsed: RateBody = {}
+
         if (bodyText) {
             try {
                 parsed = JSON.parse(bodyText) as RateBody
@@ -271,6 +292,7 @@ function createUpgradeEnv(
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity,
         })
+
         if (parsed.action === 'release') {
             onRelease()
             releaseRateLimit(
@@ -278,12 +300,15 @@ function createUpgradeEnv(
                 buckets,
                 typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW,
             )
+
             return {
                 ok: true,
                 json: async () => ({ allowed: true }),
             } as unknown as Response
         }
+
         const allowed = consumeRateLimit(store, buckets, NOW).allowed
+
         return {
             ok: true,
             json: async () => ({ allowed, reservedAt: NOW }),

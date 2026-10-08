@@ -69,6 +69,7 @@ describe('chains config', () => {
                 RPC_URL: 'https://default.rpc',
                 RPC_84532: 'https://base-sepolia.rpc',
             }
+
             const rpc = getRpcUrl(env, 84532)
             expect(rpc).toBe('https://base-sepolia.rpc')
         })
@@ -77,6 +78,7 @@ describe('chains config', () => {
             const env = {
                 RPC_URL: 'https://default.rpc',
             }
+
             const rpc = getRpcUrl(env, 84532)
             expect(rpc).toBe('https://default.rpc')
         })
@@ -91,6 +93,7 @@ describe('chains config', () => {
             const env = {
                 RPC_84532: 'https://base-sepolia.rpc',
             }
+
             const rpc = getRpcUrl(env, '84532')
             expect(rpc).toBe('https://base-sepolia.rpc')
         })

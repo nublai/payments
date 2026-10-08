@@ -126,15 +126,18 @@ function getDefaultDeps(): PermissionsRevokeDeps {
         decryptRootKeystore,
         readNonce: async ({ network, account }) => {
             const client = createCliRelayerClient(network)
+
             return readAccountNonce(client, account)
         },
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address: account, chainIds: [chainId] })
         },
         executeSignedCalls,
         prepareCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.prepareCalls({
                 from: input.from,
                 chainId: input.network.chainId,
@@ -154,10 +157,12 @@ function getDefaultDeps(): PermissionsRevokeDeps {
         },
         sendPreparedCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.sendPreparedCalls({ context: input.context, signature: input.signature })
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return (await import('@nubl/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
@@ -170,6 +175,7 @@ function getDefaultDeps(): PermissionsRevokeDeps {
 
 function sameAddress(left: string | undefined, right: string): boolean {
     if (!left) return false
+
     try {
         return getAddress(left).toLowerCase() === getAddress(right).toLowerCase()
     } catch {
@@ -195,8 +201,10 @@ export async function revokeLeavesElevated(input: {
             account: input.account,
             keyHash: input.keyHash,
         })
+
         if (!guard.key) return true
         let remaining = guard.key.permissions
+
         if (input.all) {
             remaining = []
         } else if (input.rule) {
@@ -208,15 +216,18 @@ export async function revokeLeavesElevated(input: {
                         permission.selector?.toLowerCase() === parsed.selector.toLowerCase()
                     )
                 }
+
                 if (parsed.kind === 'spend' && permission.type === 'spend') {
                     return !(
                         sameAddress(permission.token, parsed.token) &&
                         permission.period === parsed.period
                     )
                 }
+
                 return true
             })
         }
+
         return accountStateRequiresPhrase({
             permissions: remaining,
             anyCalls: guard.anyCalls,
@@ -226,6 +237,7 @@ export async function revokeLeavesElevated(input: {
         })
     } catch (error) {
         if (error instanceof PermissionsError) throw error
+
         return true
     }
 }
@@ -273,6 +285,7 @@ export async function executePermissionsRevoke(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const chain = selectDefaultChain(options.env, options.chain)
     const network = resolveNetworkConfig(options.env, chain)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -281,6 +294,7 @@ export async function executePermissionsRevoke(
 
     return deps.withKeystoreLock(keystorePath, async () => {
         const bundle = await deps.readKeystoreBundle(keystorePath)
+
         const accountAddress = bundle.root.addresses.delegated
             ? getAddress(bundle.root.addresses.delegated)
             : getAddress(bundle.root.addresses.root)
@@ -362,6 +376,7 @@ export async function executePermissionsRevoke(
 
         if (options.rule) {
             const parsed = parseRuleId(options.rule)
+
             if (parsed.kind === 'call') {
                 calls.push({
                     target: accountAddress,
@@ -396,6 +411,7 @@ export async function executePermissionsRevoke(
                 rule: options.rule,
                 readSessionChainGuard: deps.readSessionChainGuard,
             })
+
             if (leavesElevated) {
                 throw new HumanConfirmationError(
                     humanConfirmationMessage(
@@ -424,10 +440,12 @@ export async function executePermissionsRevoke(
         }
 
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+
         const signedNetwork = {
             ...network,
             authSigner: createEthHttpSigner(decryptedRoot.rootPrivateKey, network.chainId),
         }
+
         const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
 
         const submission = await deps.executeSignedCalls(

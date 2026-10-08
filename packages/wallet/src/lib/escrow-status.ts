@@ -42,10 +42,12 @@ export async function executeEscrowStatus(
 ): Promise<EscrowStatusResult> {
     try {
         const deps = { ...getDefaultEscrowStatusDeps(), ...depsArg }
+
         const { chain, network, contracts } = deps.resolveEscrowChainNetworkContracts(
             options.env,
             options.chain,
         )
+
         const escrowId = parseEscrowId(options.escrowId)
 
         const publicClient = createPublicClient({
@@ -54,6 +56,7 @@ export async function executeEscrowStatus(
         })
 
         const getStatus = deps.getEscrowStatus ?? getEscrowStatus
+
         const result = await getStatus({
             escrowId,
             escrowAddress: contracts.escrowAddress,

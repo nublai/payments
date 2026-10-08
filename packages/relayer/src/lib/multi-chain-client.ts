@@ -28,11 +28,13 @@ function createChainConfig(chainId: number, rpcUrl: string): Chain {
 export function getChainRpcUrl(chainId: number, env: Partial<Env>): string {
     const chainSpecificKey = `RPC_${chainId}` as keyof Env
     const chainRpc = env[chainSpecificKey] as string | undefined
+
     if (chainRpc) {
         return chainRpc
     }
 
     const defaultRpc = env.RPC_URL
+
     if (defaultRpc) {
         return defaultRpc
     }
@@ -48,6 +50,7 @@ export function getChainRpcUrl(chainId: number, env: Partial<Env>): string {
  */
 export function getChainClient(chainId: number, env: Partial<Env>): PublicClient {
     const cached = publicClientCache.get(chainId)
+
     if (cached) {
         return cached
     }
@@ -61,5 +64,6 @@ export function getChainClient(chainId: number, env: Partial<Env>): PublicClient
     })
 
     publicClientCache.set(chainId, client)
+
     return client
 }

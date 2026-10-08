@@ -18,7 +18,9 @@ export type {
 } from '../schema/getCallsHistory'
 
 const DEFAULT_LIMIT = 20
+
 const MAX_LIMIT = 100
+
 const MAX_TARGET_SIZE = 1000
 
 interface BundleHistoryEntry {
@@ -61,9 +63,11 @@ function compareHistoryEntriesDesc(a: BundleHistoryEntry, b: BundleHistoryEntry)
     if (a.createdAt !== b.createdAt) {
         return b.createdAt - a.createdAt
     }
+
     if (a.chainId !== b.chainId) {
         return b.chainId - a.chainId
     }
+
     return b.bundleId.localeCompare(a.bundleId)
 }
 
@@ -116,9 +120,11 @@ export async function handleGetCallsHistory(
     if (!Number.isInteger(limit) || limit < 1) {
         throw new RpcError(INVALID_PARAMS, 'limit must be a positive integer')
     }
+
     if (!Number.isInteger(offset) || offset < 0) {
         throw new RpcError(INVALID_PARAMS, 'offset must be a non-negative integer')
     }
+
     if (offset + limit > MAX_TARGET_SIZE) {
         throw new RpcError(
             INVALID_PARAMS,
@@ -127,6 +133,7 @@ export async function handleGetCallsHistory(
     }
 
     let chainIdsToCheck: number[] = []
+
     if (typedParams?.chainIds && typedParams.chainIds.length > 0) {
         chainIdsToCheck = [
             ...new Set(typedParams.chainIds.map((value) => parseHexChainId(value, 'chainId'))),
@@ -141,19 +148,23 @@ export async function handleGetCallsHistory(
     let total = 0
 
     const bundleStatusNamespace = env.BUNDLE_STATUS_DO
+
     if (bundleStatusNamespace) {
         const chainResults: ChainQueryResult[] = await Promise.all(
             chainIdsToCheck.map(async (chainId) => {
                 try {
                     const doId = bundleStatusNamespace.idFromName(`bundle-status-${chainId}`)
+
                     const bundleStatusDo = bundleStatusNamespace.get(
                         doId,
                     ) as BundleStatusHistoryStub
+
                     const result = await bundleStatusDo.getBundlesByEoa(
                         normalizedAddress,
                         pageSize,
                         0,
                     )
+
                     return { ok: true, chainId, bundleStatusDo, result } as const
                 } catch (error) {
                     return { ok: false, chainId, error } as const
@@ -183,12 +194,14 @@ export async function handleGetCallsHistory(
     }
 
     const targetSize = offset + limit
+
     while (merged.length < targetSize) {
         const candidates: Array<{ state: ChainHistoryState; entry: BundleHistoryEntry }> = []
 
         for (let index = states.length - 1; index >= 0; index -= 1) {
             const state = states[index]
             let current: BundleHistoryEntry | null = null
+
             try {
                 current = await ensureCurrentEntry(state, normalizedAddress, pageSize)
             } catch (error) {
@@ -200,6 +213,7 @@ export async function handleGetCallsHistory(
                 states.splice(index, 1)
                 continue
             }
+
             if (current) {
                 candidates.push({ state, entry: current })
             }

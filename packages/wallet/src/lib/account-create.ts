@@ -27,6 +27,7 @@ import {
 } from './network-config'
 import { DEFAULT_SESSION_SPEND_LIMIT } from './session-common'
 import { delegateAccountWithAuthorizeKeys } from './delegation-utils'
+
 type AccountCreateErrorCode =
     | 'PASSWORD_REQUIRED'
     | 'INVALID_NAME'
@@ -38,8 +39,11 @@ type AccountCreateErrorCode =
 type NetworkDefaults = CliNetworkConfig
 
 const ESCROW_ESCROW_SELECTOR = '0x657061bf' as Hex
+
 const ESCROW_REFUND_SELECTOR = '0x6023fda5' as Hex
+
 const ESCROW_SETTLE_SELECTOR = '0xe7f921a2' as Hex
+
 const SIMPLE_SETTLER_WRITE_SELECTOR = '0x84523a30' as Hex
 
 /**
@@ -57,19 +61,23 @@ export function getDefaultSessionPermissions(
             'Cannot build the default session without a chain and env. Refusing a wildcard fallback.',
         )
     }
+
     const token = getUsdcAddressByChainId(chainId, options.legacy ?? false)
     const addresses = getAddressesWithFallback(options.env, chainId)
+
     if (!token || !addresses?.escrow || !addresses.simpleSettler) {
         throw new AccountCreateError(
             'UNKNOWN',
             `No USDC or Escrow address for chain ${chainId}. Contracts are not deployed. Refusing a wildcard session.`,
         )
     }
+
     const call = (to: Address, selector: Hex) => ({
         type: 'call' as const,
         to,
         selector,
     })
+
     return [
         call(token, ERC20_SELECTORS.TRANSFER),
         call(token, ERC20_SELECTORS.APPROVE),
@@ -175,15 +183,19 @@ function assertValidProfileName(name: string): void {
 export function getDefaultKeystorePath(env: EnvName, name = 'default'): string {
     assertValidProfileName(name)
     const base = [homedir(), '.config', 'agentic-payments', 'tw', 'profiles']
+
     if (name === 'default') {
         if (env === 'prod') {
             return join(...base, 'default', 'default.keystore.json')
         }
+
         return join(...base, env, 'default', 'default.keystore.json')
     }
+
     if (env === 'prod') {
         return join(...base, name, 'default.keystore.json')
     }
+
     return join(...base, env, name, 'default.keystore.json')
 }
 
@@ -195,11 +207,13 @@ export function resolveKeystorePath(input: {
     if (input.keystorePath) {
         return input.keystorePath
     }
+
     return getDefaultKeystorePath(input.env, input.name ?? 'default')
 }
 
 function resolveNetwork(options: AccountCreateOptions): NetworkDefaults {
     const defaults = resolveNetworkConfig(options.env, selectDefaultChain(options.env))
+
     return {
         env: options.env,
         relayerUrl: options.relayerUrl ?? defaults.relayerUrl,
@@ -210,6 +224,7 @@ function resolveNetwork(options: AccountCreateOptions): NetworkDefaults {
 
 async function defaultDelegateAccount(input: DelegateInput): Promise<DelegateResult> {
     const account = privateKeyToAccount(input.rootPrivateKey)
+
     const result = await delegateAccountWithAuthorizeKeys({
         rootPrivateKey: input.rootPrivateKey,
         sessionAddress: input.sessionAddress as `0x${string}`,
@@ -254,6 +269,7 @@ function buildResumeCommand(keystorePath: string): string {
 async function defaultPathExists(path: string): Promise<boolean> {
     try {
         await access(path, constants.F_OK)
+
         return true
     } catch {
         return false
@@ -269,6 +285,7 @@ export async function assertAccountCreateCanInitialize(
     }
 
     const pathExists = deps?.pathExists ?? defaultPathExists
+
     if (await pathExists(input.keystorePath)) {
         throw new AccountCreateError(
             'KEYSTORE_EXISTS',
@@ -358,6 +375,7 @@ export async function executeAccountCreate(
 ): Promise<AccountCreateResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
     const network = resolveNetwork(options)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         keystorePath: options.keystorePath,
@@ -377,10 +395,12 @@ export async function executeAccountCreate(
             sessionKeystorePath = bundle.sessionPath
 
             const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+
             const decryptedSession = await deps.decryptSessionKeystore(
                 bundle.session,
                 options.password,
             )
+
             rootPrivateKey = decryptedRoot.rootPrivateKey
             sessionPrivateKey = decryptedSession.sessionPrivateKey
 
@@ -429,6 +449,7 @@ export async function executeAccountCreate(
         }
 
         const sessionAddress = privateKeyToAccount(sessionPrivateKey).address
+
         const delegated = await deps.delegateAccount({
             rootPrivateKey,
             sessionAddress,
@@ -439,6 +460,7 @@ export async function executeAccountCreate(
         rootKeystore.addresses.delegated = delegated.accountAddress
         rootKeystore.checkpoint = 'complete'
         await deps.writeRootKeystoreFile(keystorePath, rootKeystore, { overwrite: true })
+
         if (sessionKeystore) {
             sessionKeystore.addresses.delegated = delegated.accountAddress
             await deps.writeSessionKeystoreFile(sessionKeystorePath, sessionKeystore, {

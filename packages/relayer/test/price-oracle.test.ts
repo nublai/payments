@@ -24,6 +24,7 @@ describe('price oracle', () => {
     beforeEach(() => {
         resetPriceRegistry()
         vi.restoreAllMocks()
+
         if (originalFetch === undefined) {
             originalFetch = globalThis.fetch
         }

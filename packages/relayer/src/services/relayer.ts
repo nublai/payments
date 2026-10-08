@@ -201,8 +201,10 @@ export function createIntentNonceProvider(
     chainId: number,
 ): IntentNonceProvider {
     const durableObjectNameFor = (eoa: Address): string => `${chainId}:${eoa.toLowerCase()}`
+
     const getStubForEoa = (eoa: Address): DurableObjectStub<IntentNonceDO> => {
         const id = durableObject.idFromName(durableObjectNameFor(eoa))
+
         return durableObject.get(id)
     }
 
@@ -212,6 +214,7 @@ export function createIntentNonceProvider(
         body: Record<string, string | undefined | null>,
     ): Promise<Response> => {
         const stub = getStubForEoa(eoa)
+
         return stub.fetch(
             new Request(`http://do/${path}`, {
                 method: 'POST',
@@ -248,6 +251,7 @@ export function createIntentNonceProvider(
                     error: string
                     conflictDraftId: string
                 }
+
                 return {
                     conflict: true,
                     error: body.error,
@@ -267,6 +271,7 @@ export function createIntentNonceProvider(
                 expiresAtMs: number
                 fromCache: boolean
             }
+
             return {
                 nonce: BigInt(data.nonce),
                 draftId: data.draftId,
@@ -295,6 +300,7 @@ export function createIntentNonceProvider(
                 ok: boolean
                 status: 'cleared' | 'not_found' | 'mismatch'
             }
+
             return data.status
         },
     }
@@ -319,7 +325,9 @@ const DEFAULT_GAS_CONFIG: GasConfig = {
 }
 
 const DEFAULT_INTENT_EXPIRY_SECONDS = 3600n
+
 const MAX_INTENT_EXPIRY_SECONDS_FROM_NOW = 365n * 24n * 60n * 60n // 1 year
+
 const MILLISECONDS_EPOCH_THRESHOLD = 1_000_000_000_000n // 13+ digits => likely ms
 
 /**
@@ -396,22 +404,28 @@ function extractRevertData(error: unknown): Hex | null {
 
         if (rawData && typeof rawData === 'object' && 'data' in rawData) {
             const nested = (rawData as { data?: unknown }).data
+
             if (isHex(nested)) {
                 return nested
             }
         }
 
         let current: unknown = error
+
         while (current) {
             const curr = current as { data?: unknown; cause?: unknown }
+
             if (isHex(curr.data)) {
                 return curr.data
             }
+
             current = curr.cause
         }
     } else if (typeof error === 'object' && error !== null) {
         const err = error as { data?: unknown; cause?: { data?: unknown } }
+
         if (isHex(err.data)) return err.data
+
         if (err.cause && isHex(err.cause.data)) return err.cause.data
     }
 
@@ -496,6 +510,7 @@ export class RelayerService {
                 'could not read on-chain nonce, accepting user-supplied nonce',
             )
         }
+
         return { success: true, nonce }
     }
 
@@ -515,6 +530,7 @@ export class RelayerService {
     > {
         const onChainSeq = await this.fetchOnChainSeq(eoa, seqKey)
         const safeOnChainSeq = onChainSeq ?? 0n
+
         const result = await this.intentNonceProvider!.acquireOrGetDraft(
             eoa,
             seqKey,
@@ -561,9 +577,11 @@ export class RelayerService {
                 functionName: 'getNonce',
                 args: [seqKey],
             })) as bigint
+
             return onChainNonce & ((1n << 64n) - 1n)
         } catch {
             this.logger.debug({ eoa }, 'could not read on-chain nonce for drift check')
+
             return null
         }
     }
@@ -595,19 +613,23 @@ export class RelayerService {
             const code = await this.publicClient.getCode({ address: request.eoa as Address })
 
             let delegationCode: Hex | undefined
+
             if (!isEip7702Delegated(code)) {
                 const delegation = request.delegation
+
                 if (!delegation) {
                     this.logger.warn(
                         { eoa: request.eoa, code: code ?? '0x' },
                         'account not delegated yet',
                     )
+
                     return {
                         success: false,
                         error: 'Account delegation pending',
                         errorCode: 'DELEGATION_PENDING',
                     }
                 }
+
                 if (
                     delegation.toLowerCase() !==
                     this.config.contracts.accountProxy.toLowerCase()
@@ -617,6 +639,7 @@ export class RelayerService {
                         error: 'Delegation target is not the account proxy',
                     }
                 }
+
                 delegationCode = eip7702DelegationCode(this.config.contracts.accountProxy)
             }
 
@@ -649,6 +672,7 @@ export class RelayerService {
             // simulation mode overrides isValid=true. This makes GuardedExecutor
             // run the session-key path (canExecute + _incrementSpent) for accurate gas.
             let signature: Hex = (request.signature ?? '0x') as Hex
+
             if (request.sessionKey && !request.signature) {
                 const keyHash = keccak256(
                     encodeAbiParameters(parseAbiParameters('uint8, bytes32'), [
@@ -656,6 +680,7 @@ export class RelayerService {
                         keccak256(request.sessionKey),
                     ]),
                 )
+
                 signature = concat([`0x${'00'.repeat(65)}` as Hex, keyHash, '0x00' as Hex])
             }
 
@@ -751,6 +776,7 @@ export class RelayerService {
                         { eoa: request.eoa, gasUsed: gasUsed.toString() },
                         'simulation passed',
                     )
+
                     return {
                         success: true,
                         gasUsed: gasUsed.toString(),
@@ -758,6 +784,7 @@ export class RelayerService {
                 }
 
                 this.logger.warn({ eoa: request.eoa }, 'simulator returned no data')
+
                 return {
                     success: false,
                     error: 'Simulator returned no data',
@@ -780,6 +807,7 @@ export class RelayerService {
 
                 const errorMessage =
                     callError instanceof Error ? callError.message : String(callError)
+
                 this.logger.warn(
                     {
                         eoa: request.eoa,
@@ -788,6 +816,7 @@ export class RelayerService {
                     },
                     'simulation error - no error data found',
                 )
+
                 return {
                     success: false,
                     error: `Simulation reverted: ${errorMessage}`,
@@ -823,6 +852,7 @@ export class RelayerService {
                 request.nonce,
                 request.prepareKey,
             )
+
             if (!nonceResult.success) {
                 return {
                     success: false,
@@ -830,6 +860,7 @@ export class RelayerService {
                     conflictDraftId: nonceResult.conflictDraftId,
                 }
             }
+
             const nonce = nonceResult.nonce
 
             const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
@@ -905,7 +936,9 @@ export class RelayerService {
                 // txGas = ((combinedGas + overhead + buffer) * 64/63) + intrinsic
                 const gasForForwarding =
                     combinedGas + this.gasConfig.orchestratorOverhead + this.gasConfig.txGasBuffer
+
                 txGas = (gasForForwarding * 64n) / 63n + intrinsicGas
+
                 // Authorization gas is charged on the type-4 tx, outside the
                 // simulator call. Pre-call gas is already inside simulationGas.
                 if (request.paidUpgradeDelegation) {
@@ -925,6 +958,7 @@ export class RelayerService {
                         },
                         'simulation failed, rejecting request',
                     )
+
                     return {
                         success: false,
                         error: `Simulation failed: ${simulationError}`,

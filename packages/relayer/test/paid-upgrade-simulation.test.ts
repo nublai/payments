@@ -18,7 +18,9 @@ vi.mock('../src/lib/viem-utils', () => ({
 import { RelayerService } from '../src/services/relayer'
 
 const EOA = '0x00000000000000000000000000000000000000aa' as Address
+
 const ACCOUNT_PROXY = '0x2345678901234567890123456789012345678901' as Address
+
 const OTHER = '0x00000000000000000000000000000000000000bb' as Address
 
 function relayer(): RelayerService {

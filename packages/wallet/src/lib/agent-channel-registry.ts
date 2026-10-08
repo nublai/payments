@@ -31,9 +31,11 @@ export async function readAgentChannelRegistry(
     rootKeystorePath: string,
 ): Promise<AgentChannelRegistryFile> {
     const path = resolveAgentChannelRegistryPath(rootKeystorePath)
+
     try {
         const raw = await readFile(path, 'utf8')
         const parsed = JSON.parse(raw) as unknown
+
         if (
             typeof parsed !== 'object' ||
             parsed === null ||
@@ -45,12 +47,15 @@ export async function readAgentChannelRegistry(
         ) {
             throw new Error(`Unsupported agent channel registry format at ${path}`)
         }
+
         const channels = (parsed as { channels: Record<string, unknown> }).channels
+
         for (const [key, value] of Object.entries(channels)) {
             if (typeof key !== 'string' || typeof value !== 'string') {
                 throw new Error(`Invalid agent channel registry entry at ${path}`)
             }
         }
+
         return parsed as AgentChannelRegistryFile
     } catch (error) {
         if (
@@ -61,6 +66,7 @@ export async function readAgentChannelRegistry(
         ) {
             return defaultRegistry()
         }
+
         throw error
     }
 }
@@ -82,6 +88,7 @@ export async function writeAgentChannelRegistry(
     }
 
     const file = await stat(path)
+
     if (file.size === 0) {
         await unlink(path)
         throw new Error(`Refusing to keep empty channel registry at ${path}`)

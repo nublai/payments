@@ -28,6 +28,7 @@ describe('Multichain Nonce Isolation', () => {
         chain: testChain,
         rpcUrl: ANVIL_RPC_URL,
     })
+
     const secondaryClient = createRelayerTestClient({
         chain: outputChain,
         rpcUrl: ANVIL_RPC_URL_ARB,
@@ -71,6 +72,7 @@ describe('Multichain Nonce Isolation', () => {
             primaryChainId: testChain.id,
             secondaryChainId: outputChain.id,
         })
+
         expect(primaryResult.success).toBe(true)
         expect(secondaryResult.success).toBe(true)
 
@@ -90,6 +92,7 @@ describe('Multichain Nonce Isolation', () => {
                 calls: [{ target: recipient, value: 0n, data: '0x' }],
             },
         })
+
         expect(primaryExecution.status.statusCode).toBe(200)
 
         const noncePrimaryAfterFirst = await getNonce(primaryClient, account.address)
@@ -108,6 +111,7 @@ describe('Multichain Nonce Isolation', () => {
                 calls: [{ target: recipient, value: 0n, data: '0x' }],
             },
         })
+
         expect(secondaryExecution.status.statusCode).toBe(200)
 
         const noncePrimaryFinal = await getNonce(primaryClient, account.address)
@@ -141,6 +145,7 @@ describe('Multichain Nonce Isolation', () => {
                 primaryChainId: testChain.id,
                 secondaryChainId: outputChain.id,
             })
+
             expect(primaryResult.success).toBe(true)
             expect(secondaryResult.success).toBe(true)
 
@@ -156,6 +161,7 @@ describe('Multichain Nonce Isolation', () => {
                     calls: [{ target: recipient, value: 0n, data: '0x' }],
                 },
             })
+
             expect(primaryExecution.status.statusCode).toBe(200)
 
             const noncePrimary = await getNonce(primaryClient, account.address)

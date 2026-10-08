@@ -5,5 +5,6 @@ import type { Env } from '../../../types/env'
  */
 export function getSignerPool(env: Env, chainId: number): DurableObjectStub {
     const poolId = env.SIGNER_POOL.idFromName(`pool-${chainId}`)
+
     return env.SIGNER_POOL.get(poolId)
 }

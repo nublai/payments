@@ -14,20 +14,29 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
 
 const USER = '0x1111111111111111111111111111111111111111' as Address
+
 const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+
 const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+
 const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+
 const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31' as Address
+
 const EXECUTION = {
     orchestrator: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address,
     delegation: '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address,
@@ -38,6 +47,7 @@ const EXECUTION = {
 
 const SIGNATURE =
     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const
+
 const CAP = 5_000000n
 
 const fixture = JSON.parse(
@@ -147,6 +157,7 @@ function depositNative(depositor: Address, id: Hex): Hex {
 
 function depositErc20(depositor: Address, token: Address, amount: bigint, id: Hex): Hex {
     const amountWord = amount.toString(16).padStart(64, '0')
+
     return `0xe8017952${word(depositor)}${word(token)}${amountWord}${id.slice(2).padStart(64, '0')}` as Hex
 }
 
@@ -187,6 +198,7 @@ function quoteWith(items: { to: Address; data: Hex; value?: string }[], extra?: 
 
 function liveQuote(input?: { order?: unknown; orderId?: string; depositData?: Hex }) {
     const order = input?.order ?? fixture.orderData
+
     return quoteWith(
         [
             {
@@ -225,24 +237,31 @@ function getAddressSafe(value: string): Address {
 function patchedOrder(patch: (order: typeof fixture.orderData) => void) {
     const order = structuredClone(fixture.orderData)
     patch(order)
+
     return { order, hash: hashRelayOrder(order) }
 }
 
 function scriptedBalances(input: { before: bigint[]; after: bigint[]; revert?: boolean }) {
     let reads = 0
+
     return async (method: string, params: unknown[]) => {
         if (method === 'eth_getBalance' || method === 'eth_call') {
             const wordValue = input.before[reads]
+
             if (wordValue === undefined) {
                 throw new Error(`unexpected balance read ${reads} via ${method}`)
             }
+
             reads += 1
+
             return `0x${wordValue.toString(16)}`
         }
+
         if (method === 'eth_simulateV1') {
             const block = params[0] as { blockStateCalls: { calls: unknown[] }[] }
             const calls = block.blockStateCalls[0]?.calls ?? []
             const probeStart = calls.length - input.after.length
+
             return [
                 {
                     calls: calls.map((_, index) => ({
@@ -255,6 +274,7 @@ function scriptedBalances(input: { before: bigint[]; after: bigint[]; revert?: b
                 },
             ]
         }
+
         throw new Error(`unexpected rpc method ${method}`)
     }
 }
@@ -284,12 +304,16 @@ function run(input: {
 }) {
     const signTypedData = mock(async () => {
         input.events?.push('sign')
+
         return SIGNATURE
     })
+
     const prepareCalls = mock(async (input: Parameters<typeof matchingPreparedCalls>[0]) =>
         matchingPreparedCalls(input),
     )
+
     const confirmQuote = input.confirmQuote ? mock(input.confirmQuote) : mock(async () => true)
+
     const result = executeAccountSwap(
         {
             env: 'prod',
@@ -356,6 +380,7 @@ function run(input: {
                 input.installQuoteSpendLimit ??
                 (async () => {
                     input.events?.push('install')
+
                     return async () => {
                         input.events?.push('release')
                     }
@@ -383,6 +408,7 @@ function run(input: {
                 }))) as any,
         },
     )
+
     return { result, signTypedData, prepareCalls, confirmQuote }
 }
 
@@ -425,6 +451,7 @@ test('refuses an inner USDC.transfer inside transferAndMulticall', async () => {
             }),
         },
     ])
+
     expect(() =>
         reviewRelayQuote(quote as any, {
             sourceChainId: 8453,
@@ -450,6 +477,7 @@ test('refuses a hostile refundTo on multicall', async () => {
     const ran = run({
         quote: quoteWith([{ to: ROUTER, data: multicall(ATTACKER, zeroAddress) }]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`refunds to ${ATTACKER}`),
@@ -461,6 +489,7 @@ test('refuses a hostile nftRecipient on multicall', async () => {
     const ran = run({
         quote: quoteWith([{ to: ROUTER, data: multicall(USER, ATTACKER) }]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`sends NFTs to ${ATTACKER}`),
@@ -472,6 +501,7 @@ test('refuses a hostile refundTo on transferAndMulticall', async () => {
     const ran = run({
         quote: quoteWith([{ to: APPROVAL_PROXY, data: transferAndMulticall({ refundTo: ATTACKER }) }]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`refunds to ${ATTACKER}`),
@@ -485,6 +515,7 @@ test('refuses a hostile nftRecipient on transferAndMulticall', async () => {
             { to: APPROVAL_PROXY, data: transferAndMulticall({ nftRecipient: ATTACKER }) },
         ]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`sends NFTs to ${ATTACKER}`),
@@ -496,6 +527,7 @@ test('allows a zero refundTo and nftRecipient', async () => {
     const ran = run({
         quote: quoteWith([{ to: ROUTER, data: multicall(zeroAddress, zeroAddress) }]),
     })
+
     await ran.result
     expect(ran.signTypedData).toHaveBeenCalledTimes(1)
 })
@@ -506,6 +538,7 @@ test('refuses a hostile depositor on depositNative', async () => {
             { to: DEPOSITORY, data: depositNative(ATTACKER, fixture.orderId as Hex) },
         ]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`deposits for ${ATTACKER}`),
@@ -522,6 +555,7 @@ test('refuses a hostile depositor on depositErc20', async () => {
             },
         ]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`deposits for ${ATTACKER}`),
@@ -547,6 +581,7 @@ test('refuses a deposit id that is the request id instead of the order hash', as
         toToken: 'USDC',
         destinationChain: 'polygon',
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(
@@ -571,6 +606,7 @@ test('signs the live quote whose deposit id is the order hash', async () => {
         // The fixture minimum is about 2% under the shown amount.
         slippage: 2.5,
     })
+
     const result = await ran.result
     expect(ran.confirmQuote).toHaveBeenCalledTimes(1)
     expect(ran.signTypedData).toHaveBeenCalledTimes(1)
@@ -579,6 +615,7 @@ test('signs the live quote whose deposit id is the order hash', async () => {
 
 test('confirmation text shows refundTo and the decoded inner calls', () => {
     const cleanup = '0x9bb43718' as Hex
+
     const quote = quoteWith([
         {
             to: APPROVAL_PROXY,
@@ -590,6 +627,7 @@ test('confirmation text shows refundTo and the decoded inner calls', () => {
             }),
         },
     ])
+
     const text = formatRelayQuoteCalls(quote as any)
     expect(text).toContain(`refundTo ${USER}`)
     expect(text).toContain(`nftRecipient ${zeroAddress}`)
@@ -601,6 +639,7 @@ test('refuses a hostile output payment recipient', async () => {
     const patched = patchedOrder((order) => {
         order.output.payments[0]!.recipient = ATTACKER
     })
+
     const ran = run({
         quote: liveQuote({
             order: patched.order,
@@ -610,6 +649,7 @@ test('refuses a hostile output payment recipient', async () => {
         toToken: 'USDC',
         destinationChain: 'polygon',
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`pays ${ATTACKER}`),
@@ -621,6 +661,7 @@ test('refuses a hostile order refund recipient', async () => {
     const patched = patchedOrder((order) => {
         order.inputs[0]!.refunds[0]!.recipient = ATTACKER
     })
+
     const ran = run({
         quote: liveQuote({
             order: patched.order,
@@ -630,6 +671,7 @@ test('refuses a hostile order refund recipient', async () => {
         toToken: 'USDC',
         destinationChain: 'polygon',
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`refunds the order to ${ATTACKER}`),
@@ -641,6 +683,7 @@ test('signs when the output recipient is the bridge recipient the user passed', 
     const patched = patchedOrder((order) => {
         order.output.payments[0]!.recipient = ATTACKER
     })
+
     const ran = run({
         quote: liveQuote({
             order: patched.order,
@@ -653,6 +696,7 @@ test('signs when the output recipient is the bridge recipient the user passed', 
         // The fixture minimum is about 2% under the shown amount.
         slippage: 2.5,
     })
+
     await ran.result
     expect(ran.signTypedData).toHaveBeenCalledTimes(1)
 })
@@ -674,6 +718,7 @@ test('refuses a USDC pull on an ETH quote', async () => {
         balance: 10n ** 18n,
         getKeys: async () => ethKeys(),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`pulls ${USDC}, which is not the quoted input token`),
@@ -683,12 +728,14 @@ test('refuses a USDC pull on an ETH quote', async () => {
 
 test('refuses two transferAndMulticall pulls that each equal the cap', async () => {
     const pull = transferAndMulticall({ amount: CAP })
+
     const ran = run({
         quote: quoteWith([
             { to: APPROVAL_PROXY, data: pull },
             { to: APPROVAL_PROXY, data: pull },
         ]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`pulls ${CAP * 2n} base units, above the quoted input`),
@@ -703,6 +750,7 @@ test('refuses two approves that each equal the cap', async () => {
             { to: USDC, data: approve(DEPOSITORY, CAP) },
         ]),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining(`approves ${CAP * 2n} base units, above the quoted input`),
@@ -717,6 +765,7 @@ test('signs one approve and one pull that each equal the cap', async () => {
             { to: APPROVAL_PROXY, data: transferAndMulticall({ amount: CAP }) },
         ]),
     })
+
     await ran.result
     expect(ran.signTypedData).toHaveBeenCalledTimes(1)
 })
@@ -729,19 +778,23 @@ test('re-prompts when calldata changes after confirmation', async () => {
     let nowIndex = 0
     const originalNow = Date.now
     Date.now = () => nowValues[Math.min(nowIndex++, nowValues.length - 1)] ?? 31_000
+
     const ran = run({
         yes: false,
         getQuote: async () => {
             const quote = n === 0 ? first : second
             n += 1
+
             return quote
         },
     })
+
     try {
         await ran.result
     } finally {
         Date.now = originalNow
     }
+
     expect(ran.confirmQuote).toHaveBeenCalledTimes(2)
     expect(n).toBe(2)
     expect(ran.prepareCalls.mock.calls[0]?.[0].calls).toEqual([
@@ -753,14 +806,17 @@ test('yes does not re-prompt when a later quote would change calldata', async ()
     const first = quoteWith([{ to: ROUTER, data: multicall(USER, zeroAddress, '0x') }])
     const second = quoteWith([{ to: ROUTER, data: multicall(USER, zeroAddress, '0x01') }])
     let n = 0
+
     const ran = run({
         yes: true,
         getQuote: async () => {
             const quote = n === 0 ? first : second
             n += 1
+
             return quote
         },
     })
+
     await ran.result
     expect(ran.confirmQuote).toHaveBeenCalledTimes(1)
     expect(n).toBe(1)
@@ -771,10 +827,12 @@ test('yes does not re-prompt when a later quote would change calldata', async ()
 
 test('refuses a simulation that drops an unspent balance', async () => {
     const quote = liveQuote()
+
     const request = scriptedBalances({
         before: [10_000000n, 10n ** 18n],
         after: [CAP, 10n ** 18n - 1n],
     })
+
     await expect(
         simulateRelayQuote({
             rpcUrl: 'http://127.0.0.1:1',
@@ -812,6 +870,7 @@ test('refuses a simulation that drops an unspent balance', async () => {
                 }),
             }),
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('would lower 0x4200000000000000000000000000000000000006'),
@@ -865,6 +924,7 @@ test('refuses minimumAmount 0 even when the outer call is allowlisted', async ()
             currencyOut: { amount: '2500000', amountFormatted: '2.5', minimumAmount: '0' },
         },
     })
+
     const ran = run({ quote })
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
@@ -879,6 +939,7 @@ test('refuses a bridge-shaped quote with no order', async () => {
         toToken: 'USDC',
         destinationChain: 'polygon',
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('missing an order'),
@@ -898,12 +959,15 @@ test('refuses an order fee, a foreign solver, and output calls', async () => {
             },
         ]
     })
+
     const solver = patchedOrder((order) => {
         order.solver = ATTACKER
     })
+
     const calls = patchedOrder((order) => {
         ;(order.output as { calls?: string[] }).calls = ['0xdeadbeef']
     })
+
     for (const [patched, message] of [
         [fee, `fee pays ${ATTACKER}`],
         [solver, `solver ${ATTACKER}`],
@@ -919,6 +983,7 @@ test('refuses an order fee, a foreign solver, and output calls', async () => {
             destinationChain: 'polygon',
             slippage: 2.5,
         })
+
         await expect(ran.result).rejects.toMatchObject({
             code: 'QUOTE_FAILED',
             message: expect.stringContaining(message),
@@ -929,11 +994,13 @@ test('refuses an order fee, a foreign solver, and output calls', async () => {
 
 test('refuses a standing WETH allowance to the router', async () => {
     const weth = '0x4200000000000000000000000000000000000006'
+
     const ran = run({
         quote: quoteWith([{ to: ROUTER, data: multicall(USER, zeroAddress) }]),
         readAllowance: async ({ token, spender }) =>
             token.toLowerCase() === weth && spender.toLowerCase() === ROUTER.toLowerCase() ? 1n : 0n,
     })
+
     await expect(ran.result).rejects.toMatchObject({
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('standing allowance'),
@@ -944,6 +1011,7 @@ test('refuses a standing WETH allowance to the router', async () => {
 test('installs the quoted spend limit before signing and simulates twice', async () => {
     const events: string[] = []
     let simulations = 0
+
     const ran = run({
         quote: quoteWith([{ to: ROUTER, data: multicall(USER, zeroAddress) }]),
         events,
@@ -956,11 +1024,13 @@ test('installs the quoted spend limit before signing and simulates twice', async
             expect(value.bound.nativeLimit).toBe(0n)
             expect(value.bound.usdcLimit).not.toBe(2n ** 256n - 1n)
             expect(value.bound.nativeLimit).not.toBe(2n ** 256n - 1n)
+
             return async () => {
                 events.push('release')
             }
         },
     })
+
     await ran.result
     expect(simulations).toBe(2)
     expect(events).toEqual(['install', 'sign', 'release'])
@@ -968,6 +1038,7 @@ test('installs the quoted spend limit before signing and simulates twice', async
 
 test('quote spend calldata is a minute limit equal to the input, never uint256 max', () => {
     const weth = '0x4200000000000000000000000000000000000006' as Address
+
     const calls = quoteSpendCalls(
         {
             keyHash: EXECUTION.keyHash,
@@ -979,6 +1050,7 @@ test('quote spend calldata is a minute limit equal to the input, never uint256 m
         },
         'set',
     )
+
     const decoded = calls.map((call) => decodeFunctionData({ abi: accountAbi, data: call.data }))
     expect(calls.every((call) => call.target === USER)).toBe(true)
     expect(decoded.every((row) => row.functionName === 'setSpendLimit')).toBe(true)
@@ -987,9 +1059,11 @@ test('quote spend calldata is a minute limit equal to the input, never uint256 m
     expect(decoded[1]?.args?.[3]).toBe(0n)
     expect(decoded[2]?.args?.[3]).toBe(0n)
     expect(decoded[2]?.args?.[1]).toBe(weth)
+
     for (const call of calls) {
         expect(call.data.toLowerCase().includes('f'.repeat(64))).toBe(false)
     }
+
     expect(formatQuotedBuy({ amountFormatted: '2.5', amount: '2500000', minimumAmount: '0' })).toBe(
         'minimum unavailable',
     )

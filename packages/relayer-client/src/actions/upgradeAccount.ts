@@ -93,20 +93,25 @@ const DELEGATION_CODE_PREFIX = '0xef0100'
 
 function readOrchestratorAddress(chainId: number): Address {
     const raw = process.env[`ORCHESTRATOR_${chainId}`]?.trim()
+
     if (!raw) {
         throw new PreparedCallsBindingError(
             `Refusing to sign account upgrade: set ORCHESTRATOR_${chainId} or pass orchestrator`,
         )
     }
+
     return getAddress(raw)
 }
+
 const DEFAULT_DELEGATION_CONFIRMATION_TIMEOUT_MS = 15_000
+
 const DEFAULT_DELEGATION_CONFIRMATION_INTERVAL_MS = 500
 
 function normalizeTxHash(value: unknown): Hex | undefined {
     if (typeof value !== 'string') return undefined
 
     const withoutPrefix = value.startsWith('0x') ? value.slice(2) : value
+
     if (!/^[a-fA-F0-9]{64}$/.test(withoutPrefix)) return undefined
 
     return `0x${withoutPrefix}` as Hex
@@ -114,6 +119,7 @@ function normalizeTxHash(value: unknown): Hex | undefined {
 
 function isDelegationConfirmationRace(error: unknown): boolean {
     if (!(error instanceof Error)) return false
+
     return error.message.includes('Delegation not confirmed after transaction mined')
 }
 
@@ -122,12 +128,14 @@ function getTxHashFromError(error: unknown): Hex | undefined {
         if (error.data && typeof error.data === 'object') {
             const maybeTxHash = (error.data as { txHash?: unknown }).txHash
             const normalizedTxHash = normalizeTxHash(maybeTxHash)
+
             if (normalizedTxHash) return normalizedTxHash
         }
     }
 
     if (!(error instanceof Error)) return undefined
     const match = error.message.match(/(?:0x)?[a-fA-F0-9]{64}/)
+
     return match ? normalizeTxHash(match[0]) : undefined
 }
 
@@ -142,6 +150,7 @@ async function waitForDelegationCode(
     while (Date.now() - startTime < timeoutMs) {
         try {
             const code = await client.getCode({ address: accountAddress })
+
             if (code && code.startsWith(DELEGATION_CODE_PREFIX)) {
                 return true
             }
@@ -198,6 +207,7 @@ export async function upgradeAccount(
             if (!params.walletClient.account) {
                 throw new Error('WalletClient must have an account configured')
             }
+
             account = params.walletClient.account as Account
             walletClientForTypedData = params.walletClient
         } else {
@@ -206,14 +216,18 @@ export async function upgradeAccount(
 
         const transport = createRelayerTransport(client)
         const chainId = params.chainId ?? client.relayerConfig.chainId ?? client.chain?.id
+
         if (chainId === undefined) {
             throw new PreparedCallsBindingError(
                 'Refusing to sign account upgrade: chainId is required',
             )
         }
+
         const orchestrator =
             params.orchestrator ?? readOrchestratorAddress(chainId)
+
         const authorizeKeys = params.authorizeKeys ?? []
+
         const authorizationNonce = await client.getTransactionCount({
             address: params.accountAddress,
             blockTag: 'pending',
@@ -245,12 +259,14 @@ export async function upgradeAccount(
         if (!('sign' in account) || typeof account.sign !== 'function') {
             throw new Error('Account must support sign method')
         }
+
         const authSignature = await account.sign({
             hash: bound.authDigest,
         })
 
         // Step 3: Sign the locally rebuilt SignedCall, not the relayer typed data.
         let execSignature: Hex
+
         if (bound.executionData !== '0x') {
             if (walletClientForTypedData) {
                 execSignature = await walletClientForTypedData.signTypedData({
@@ -291,6 +307,7 @@ export async function upgradeAccount(
     } catch (error) {
         if (isDelegationConfirmationRace(error)) {
             const recovered = await waitForDelegationCode(client, params.accountAddress)
+
             if (recovered) {
                 return {
                     success: true,

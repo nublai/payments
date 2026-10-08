@@ -53,6 +53,7 @@ export function pendingQuoteLimitPath(keystorePath: string): string {
 export async function pendingQuoteLimitExists(keystorePath: string): Promise<boolean> {
     try {
         await access(pendingQuoteLimitPath(keystorePath))
+
         return true
     } catch {
         return false
@@ -64,29 +65,37 @@ export async function readPendingQuoteLimit(
 ): Promise<PendingQuoteLimitRecord | undefined> {
     const path = pendingQuoteLimitPath(keystorePath)
     let text: string
+
     try {
         text = await readFile(path, 'utf8')
     } catch (error) {
         if (isEnoent(error)) return undefined
         throw error
     }
+
     const parsed = JSON.parse(text) as PendingQuoteLimitRecord
+
     if (parsed.version !== PENDING_QUOTE_LIMIT_VERSION) {
         throw new Error(`Unsupported pending quote limit at ${path}.`)
     }
+
     if (!isAddress(parsed.account) || !Array.isArray(parsed.slots)) {
         throw new Error(`Pending quote limit at ${path} is incomplete.`)
     }
+
     if (parsed.callGrants !== undefined && !Array.isArray(parsed.callGrants)) {
         throw new Error(`Pending quote limit at ${path} has invalid call grants.`)
     }
+
     for (const grant of parsed.callGrants ?? []) {
         if (!isAddress(grant.target) || !isHex(grant.selector) || grant.selector.length !== 10) {
             throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
         }
     }
+
     if (parsed.keyExpiry !== undefined) {
         const expiry = parsed.keyExpiry
+
         if (
             typeof expiry.previous !== 'string' ||
             typeof expiry.installed !== 'string' ||
@@ -98,9 +107,11 @@ export async function readPendingQuoteLimit(
         ) {
             throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
         }
+
         if (expiry.permissions !== undefined && !Array.isArray(expiry.permissions)) {
             throw new Error(`Pending quote limit at ${path} has invalid key permissions.`)
         }
+
         for (const permission of expiry.permissions ?? []) {
             if (
                 !isAddress(permission.target) ||
@@ -110,9 +121,11 @@ export async function readPendingQuoteLimit(
                 throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
             }
         }
+
         if (expiry.limits !== undefined && !Array.isArray(expiry.limits)) {
             throw new Error(`Pending quote limit at ${path} has invalid key limits.`)
         }
+
         for (const limit of expiry.limits ?? []) {
             if (
                 !isAddress(limit.token) ||
@@ -125,6 +138,7 @@ export async function readPendingQuoteLimit(
             }
         }
     }
+
     return parsed
 }
 
@@ -204,21 +218,27 @@ export function restoreCallsForChain(input: {
     minuteLimits: ReadonlyMap<string, bigint | null>
 }): { calls: ReturnType<typeof quoteSpendRestoreCalls>; unexpected: string | undefined } {
     const slots: { token: Address; previousLimit: bigint | null }[] = []
+
     for (const slot of slotsFromPending(input.record)) {
         const current = input.minuteLimits.get(slot.token.toLowerCase()) ?? null
+
         if (current === slot.installedLimit) {
             slots.push({ token: slot.token, previousLimit: slot.previousLimit })
             continue
         }
+
         const alreadyRestored =
             (slot.previousLimit === null && current === null) ||
             (slot.previousLimit !== null && current === slot.previousLimit)
+
         if (alreadyRestored) continue
+
         return {
             calls: [],
             unexpected: `minute limit for ${slot.token} is ${current?.toString() ?? 'unset'}, not the quote limit ${slot.installedLimit.toString()} or the previous limit ${slot.previousLimit?.toString() ?? 'unset'}`,
         }
     }
+
     return {
         calls: quoteSpendRestoreCalls({
             keyHash: input.record.keyHash,

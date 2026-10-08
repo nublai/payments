@@ -27,6 +27,7 @@ describe('Batch Execution', () => {
         rpcUrl: ANVIL_RPC_URL,
         relayerUrl: RELAYER_URL,
     })
+
     const transport = createJsonRpcTransport(RELAYER_URL, {
         httpAuth: {
             signer: createRelayerTestAuthSigner(testChain.id),
@@ -96,6 +97,7 @@ describe('Batch Execution', () => {
         async () => {
             // #given - Create 3 delegated accounts
             const accounts = []
+
             for (let i = 0; i < 3; i++) {
                 accounts.push(await createDelegatedAccountWithRetry())
             }
@@ -155,6 +157,7 @@ describe('Batch Execution', () => {
     it('should return individual bundle IDs for status tracking', { timeout: 60000 }, async () => {
         // #given - Create 2 accounts
         const accounts = []
+
         for (let i = 0; i < 2; i++) {
             accounts.push(await createDelegatedAccountWithRetry())
         }

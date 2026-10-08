@@ -46,10 +46,13 @@ interface AcquireOrGetDraftConflict {
 type DraftMutationStatus = 'cleared' | 'not_found' | 'mismatch'
 
 const MAX_SEQ_KEY = 2n ** 192n
+
 const MAX_SEQ = 2n ** 64n
 
 const DEFAULT_DRAFT_TTL_MS = 10 * 60 * 1000
+
 const MIN_DRAFT_TTL_MS = 60 * 1000
+
 const MAX_DRAFT_TTL_MS = 60 * 60 * 1000
 
 function toNonceRow(row: Record<string, unknown>): NonceRow {
@@ -72,6 +75,7 @@ function toPendingDraftRow(row: Record<string, unknown>): PendingDraftRow {
 
 function getSeqFromRows(rows: unknown[]): bigint {
     if (rows.length === 0) return 0n
+
     return BigInt(String((rows[0] as Record<string, unknown>).seq))
 }
 
@@ -81,8 +85,11 @@ function coerceDraftTtlMs(value: unknown): number {
     }
 
     const rounded = Math.floor(value)
+
     if (rounded < MIN_DRAFT_TTL_MS) return MIN_DRAFT_TTL_MS
+
     if (rounded > MAX_DRAFT_TTL_MS) return MAX_DRAFT_TTL_MS
+
     return rounded
 }
 
@@ -132,6 +139,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     // Acquire the next nonce for a sequence key
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
@@ -140,6 +148,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const nonce = this.acquireNonce(seqKeyBigInt)
+
                     return Response.json({ nonce: nonce.toString() })
                 }
 
@@ -147,6 +156,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     // Get current nonce without incrementing
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
@@ -155,6 +165,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const nonce = this.peekNonce(seqKeyBigInt)
+
                     return Response.json({ nonce: nonce.toString() })
                 }
 
@@ -166,6 +177,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
@@ -174,6 +186,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     this.syncNonce(seqKeyBigInt, BigInt(confirmedSeq))
+
                     return Response.json({ ok: true })
                 }
 
@@ -181,6 +194,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     // Get all tracked nonces and pending drafts
                     const rows = this.sql.exec('SELECT seq_key, seq FROM nonces').toArray()
                     const nonces: Record<string, string> = {}
+
                     for (const row of rows) {
                         const typed = toNonceRow(row as Record<string, unknown>)
                         nonces[typed.seq_key] = typed.seq
@@ -191,6 +205,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                             'SELECT seq_key, draft_id, nonce, draft_key, created_at_ms, expires_at_ms FROM pending_drafts',
                         )
                         .toArray()
+
                     const drafts: Record<
                         string,
                         {
@@ -201,6 +216,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                             expiresAtMs: number
                         }
                     > = {}
+
                     for (const row of draftsRows) {
                         const typed = toPendingDraftRow(row as Record<string, unknown>)
                         drafts[typed.seq_key] = {
@@ -219,6 +235,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     // Reset a specific sequence key
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
@@ -227,6 +244,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     this.resetNonce(seqKeyBigInt)
+
                     return Response.json({ ok: true })
                 }
 
@@ -237,7 +255,9 @@ export class IntentNonceDO extends DurableObject<Env> {
                         seqKey: string
                         onChainSeq: string
                     }
+
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
@@ -246,6 +266,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const onChainSeqBigInt = this.parseSeq(onChainSeq)
+
                     if (onChainSeqBigInt === null) {
                         return Response.json(
                             {
@@ -259,6 +280,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                         seqKeyBigInt,
                         onChainSeqBigInt,
                     )
+
                     return Response.json({ nonce: nonce.toString(), synced })
                 }
 
@@ -271,6 +293,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
@@ -279,6 +302,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const onChainSeqBigInt = this.parseSeq(onChainSeq)
+
                     if (onChainSeqBigInt === null) {
                         return Response.json(
                             {
@@ -292,6 +316,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                         draftKey,
                         draftTtlMs: coerceDraftTtlMs(draftTtlMs),
                     })
+
                     if ('error' in result) {
                         return Response.json(
                             {
@@ -318,17 +343,20 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
                             { status: 400 },
                         )
                     }
+
                     if (!draftId || typeof draftId !== 'string') {
                         return Response.json({ error: 'draftId is required' }, { status: 400 })
                     }
 
                     const status = this.markSubmitted(seqKeyBigInt, draftId)
+
                     return Response.json({ ok: true, status })
                 }
 
@@ -339,6 +367,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
+
                     if (seqKeyBigInt === null) {
                         return Response.json(
                             { error: 'seqKey must be in range [0, 2^192)' },
@@ -347,6 +376,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                     }
 
                     const status = this.cancelDraft(seqKeyBigInt, draftId)
+
                     return Response.json({ ok: true, status })
                 }
 
@@ -355,6 +385,7 @@ export class IntentNonceDO extends DurableObject<Env> {
             }
         } catch (error) {
             const message = getErrorMessage(error)
+
             return Response.json({ error: message }, { status: 500 })
         }
     }
@@ -362,9 +393,11 @@ export class IntentNonceDO extends DurableObject<Env> {
     private parseSeqKey(seqKey: string): bigint | null {
         try {
             const seqKeyBigInt = BigInt(seqKey)
+
             if (seqKeyBigInt < 0n || seqKeyBigInt >= MAX_SEQ_KEY) {
                 return null
             }
+
             return seqKeyBigInt
         } catch {
             return null
@@ -374,9 +407,11 @@ export class IntentNonceDO extends DurableObject<Env> {
     private parseSeq(seq: string): bigint | null {
         try {
             const seqBigInt = BigInt(seq)
+
             if (seqBigInt < 0n || seqBigInt >= MAX_SEQ) {
                 return null
             }
+
             return seqBigInt
         } catch {
             return null
@@ -413,6 +448,7 @@ export class IntentNonceDO extends DurableObject<Env> {
         })
 
         const seq = result as bigint
+
         return (seqKey << 64n) | seq
     }
 
@@ -423,6 +459,7 @@ export class IntentNonceDO extends DurableObject<Env> {
         const key = seqKey.toString()
         const rows = this.sql.exec('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
         const seq = getSeqFromRows(rows)
+
         return (seqKey << 64n) | seq
     }
 
@@ -498,6 +535,7 @@ export class IntentNonceDO extends DurableObject<Env> {
         })
 
         const { seq, synced } = result as { seq: bigint; synced: boolean }
+
         return { nonce: (seqKey << 64n) | seq, synced }
     }
 
@@ -508,9 +546,11 @@ export class IntentNonceDO extends DurableObject<Env> {
                 seqKey,
             )
             .toArray()
+
         if (rows.length === 0) {
             return null
         }
+
         return toPendingDraftRow(rows[0] as Record<string, unknown>)
     }
 
@@ -536,15 +576,18 @@ export class IntentNonceDO extends DurableObject<Env> {
             this.deleteExpiredDraftForSeqKey(key, nowMs)
 
             const existingDraft = this.getDraftForSeqKey(key)
+
             if (existingDraft !== null) {
                 const incomingDraftKey = options.draftKey ?? null
                 const existingDraftKey = existingDraft.draft_key
+
                 if (incomingDraftKey !== existingDraftKey) {
                     return {
                         error: 'draft already exists for seqKey with a different draftKey; complete or cancel the active request first',
                         conflictDraftId: existingDraft.draft_id,
                     }
                 }
+
                 return {
                     nonce: BigInt(existingDraft.nonce),
                     draftId: existingDraft.draft_id,
@@ -557,7 +600,9 @@ export class IntentNonceDO extends DurableObject<Env> {
             const nonceRows = this.sql
                 .exec('SELECT seq FROM nonces WHERE seq_key = ?', key)
                 .toArray()
+
             let currentSeq = getSeqFromRows(nonceRows)
+
             if (currentSeq < onChainSeq) {
                 currentSeq = onChainSeq
             }
@@ -619,14 +664,17 @@ export class IntentNonceDO extends DurableObject<Env> {
             this.deleteExpiredDraftForSeqKey(key, nowMs)
 
             const existingDraft = this.getDraftForSeqKey(key)
+
             if (existingDraft === null) {
                 return 'not_found'
             }
+
             if (existingDraft.draft_id !== draftId) {
                 return 'mismatch'
             }
 
             this.sql.exec('DELETE FROM pending_drafts WHERE seq_key = ?', key)
+
             return 'cleared'
         })
 
@@ -641,14 +689,17 @@ export class IntentNonceDO extends DurableObject<Env> {
             this.deleteExpiredDraftForSeqKey(key, nowMs)
 
             const existingDraft = this.getDraftForSeqKey(key)
+
             if (existingDraft === null) {
                 return 'not_found'
             }
+
             if (draftId && existingDraft.draft_id !== draftId) {
                 return 'mismatch'
             }
 
             this.sql.exec('DELETE FROM pending_drafts WHERE seq_key = ?', key)
+
             return 'cleared'
         })
 

@@ -33,21 +33,27 @@ export async function bindAccount(
     if (!scheme) {
         throw new RpcError(INVALID_PARAMS, 'Invalid bind scheme')
     }
+
     if (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce)) {
         throw new RpcError(INVALID_PARAMS, 'Invalid bind nonce')
     }
+
     if (typeof expiry !== 'number' || !Number.isInteger(expiry) || expiry < 0) {
         throw new RpcError(INVALID_PARAMS, 'Invalid bind expiry')
     }
+
     if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
         throw new RpcError(INVALID_SIGNATURE, 'Invalid bind signature')
     }
+
     const environment = walletBindEnvironment(env)
+
     if (!environment) {
         throw new RpcError(INVALID_PARAMS, 'CONTEXT is required to bind an account')
     }
 
     let charged: Awaited<ReturnType<ReturnType<typeof walletBindingStub>['chargeBind']>>
+
     try {
         charged = await walletBindingStub(env).chargeBind({
             issuer: caller.issuer,
@@ -58,6 +64,7 @@ export async function bindAccount(
     } catch {
         throw new RpcError(NONCE_ERROR, 'Wallet binding store unavailable')
     }
+
     if (!charged.ok) {
         throw new RpcError(RATE_LIMITED, 'Bind rate limit exceeded')
     }
@@ -75,11 +82,13 @@ export async function bindAccount(
         signature: signature as Hex,
         scheme,
     })
+
     if (!signed) {
         throw new RpcError(INVALID_SIGNATURE, 'Invalid bind signature')
     }
 
     let outcome: Awaited<ReturnType<ReturnType<typeof walletBindingStub>['bind']>>
+
     try {
         outcome = await walletBindingStub(env).bind({
             nonce,
@@ -100,15 +109,19 @@ export async function bindAccount(
         if (outcome.reason === 'address_taken') {
             throw new RpcError(INVALID_PARAMS, 'Address is bound to another identity')
         }
+
         if (outcome.reason === 'rate_limited' || outcome.reason === 'subject_cap') {
             throw new RpcError(RATE_LIMITED, 'Wallet binding cap exceeded')
         }
+
         if (outcome.reason === 'nonce_expired') {
             throw new RpcError(NONCE_ERROR, 'Bind nonce expired')
         }
+
         if (outcome.reason === 'nonce_used') {
             throw new RpcError(NONCE_ERROR, 'Bind nonce already used')
         }
+
         throw new RpcError(NONCE_ERROR, 'Bind nonce rejected')
     }
 

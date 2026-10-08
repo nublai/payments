@@ -68,6 +68,7 @@ describe('getSignerName', () => {
 
             const match = signerName.match(/^signer-\d+-(\d+)$/)
             expect(match).not.toBeNull()
+
             if (match) {
                 const index = parseInt(match[1], 10)
                 expect(index).toBeGreaterThanOrEqual(0)

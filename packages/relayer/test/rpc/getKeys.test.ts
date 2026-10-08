@@ -42,6 +42,7 @@ vi.mock('../../src/lib/logger', () => ({
 import { handleGetKeys } from '../../src/rpc/methods/getKeys'
 
 const account = '0x1234567890123456789012345678901234567890'
+
 const keyHash = `0x${'ab'.repeat(32)}`
 
 const createMockCtx = (): RpcContext => ({
@@ -72,6 +73,7 @@ describe('wallet_getKeys permission lookup', () => {
                     [keyHash],
                 ]
             }
+
             throw new Error('spendAndExecuteInfos reverted')
         })
 
@@ -87,12 +89,14 @@ describe('wallet_getKeys permission lookup', () => {
 
     it('returns call and spend permissions when the lookup succeeds', async () => {
         const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+
         const packedTransfer = `0x${(
             (BigInt(usdc) << 96n) |
             BigInt('0xa9059cbb')
         )
             .toString(16)
             .padStart(64, '0')}`
+
         mockReadContract.mockImplementation(async (args: { functionName?: string }) => {
             if (args.functionName === 'getKeys') {
                 return [
@@ -107,6 +111,7 @@ describe('wallet_getKeys permission lookup', () => {
                     [keyHash],
                 ]
             }
+
             return [
                 [
                     [
@@ -129,6 +134,7 @@ describe('wallet_getKeys permission lookup', () => {
             [{ address: account, chainIds: ['0x7a69'] }],
             createMockCtx(),
         )
+
         const keys = result['0x7a69']
         expect(keys).toHaveLength(1)
         expect(keys?.[0]?.permissions).toEqual(

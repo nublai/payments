@@ -27,7 +27,9 @@ function stubProvider(args: {
             if (typeof input !== 'string' && !(input instanceof Request)) {
                 return { ok: false, code: 'INVALID_TOKEN', message: 'bad input' }
             }
+
             if (!args.result.ok) return args.result
+
             return {
                 ok: true,
                 provider: args.name,
@@ -78,9 +80,11 @@ describe('identity provider registry', () => {
             userId: 'user_oidc_1',
             boundAccounts: [ACCOUNT],
         })
+
         if (!result.ok || result.provider === undefined || result.userId === undefined) {
             throw new Error('expected a stub identity')
         }
+
         const provider: string = result.provider
         const userId: string = result.userId
 
@@ -106,10 +110,12 @@ describe('identity provider registry', () => {
                 boundAccounts: [ACCOUNT],
             },
         })
+
         const result = await provider.verify('oidc-token', {
             env: {} as Env,
             nowSeconds: 1_700_000_000,
         })
+
         expect(result).toEqual({
             ok: true,
             provider: 'stub-oidc',

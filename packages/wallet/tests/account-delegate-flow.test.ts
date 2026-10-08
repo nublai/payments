@@ -7,9 +7,11 @@ import { installFormerProdDeployments } from './helpers/former-deployment-env'
 const ROOT_ADDRESS: Address = '0x1111111111111111111111111111111111111111'
 
 let restoreFormerProdDeployments = () => {}
+
 beforeAll(() => {
     restoreFormerProdDeployments = installFormerProdDeployments()
 })
+
 afterAll(() => {
     restoreFormerProdDeployments()
 })
@@ -125,6 +127,7 @@ test('resolveAccountDelegatePassword reads stdin when requested', async () => {
             isInteractive: true,
         },
     )
+
     expect(password).toBe('stdin-password')
 })
 
@@ -145,6 +148,7 @@ test('resolveAccountDelegatePassword uses interactive prompt', async () => {
             isInteractive: true,
         },
     )
+
     expect(password).toBe('prompt-password')
 })
 
@@ -251,6 +255,7 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
                 if (network.chainId === 137) {
                     throw new Error('Delegation failed: rpc error')
                 }
+
                 return {
                     accountAddress: ROOT_ADDRESS,
                     txHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Hex,

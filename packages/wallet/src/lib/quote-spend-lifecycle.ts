@@ -81,14 +81,18 @@ export async function withQuoteAccountLock<T>(
         if (isEnoent(error)) return action()
         throw error
     }
+
     return withKeystoreLock(
         keystorePath,
         async () => {
             const lockPath = `${keystorePath}.lock`
+
             const timer = setInterval(() => {
                 void utimes(lockPath, new Date(), new Date()).catch(() => {})
             }, 5_000)
+
             timer.unref()
+
             try {
                 return await action()
             } finally {
@@ -116,8 +120,10 @@ export async function maybeRecoverPendingQuoteSpend(
     },
 ): Promise<void> {
     if (quoteSpendRecoverySuspended() || recovering) return
+
     if (!(await pendingQuoteLimitExists(keystorePath))) return
     recovering = true
+
     try {
         await withKeystoreLock(
             keystorePath,
@@ -130,6 +136,7 @@ export async function maybeRecoverPendingQuoteSpend(
         )
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
+
         if (message.toLowerCase().includes('pending quote spend limit')) throw error
         throw new Error(
             `A pending quote spend limit is still installed and could not be restored: ${message}`,
@@ -152,21 +159,28 @@ export async function recoverPendingQuoteSpend(
     },
 ): Promise<void> {
     const record = await readPendingQuoteLimit(keystorePath)
+
     if (!record) return
     const expiry = await keyExpiryRestoreDecision(record, options?.readQuoteKey)
+
     if (expiry.differences.length > 0) {
         await refuseChangedQuoteKey(keystorePath, expiry.differences)
     }
+
     const minuteLimits = options?.readMinuteLimits
         ? await options.readMinuteLimits(record)
         : await readMinuteLimits(record.account, record.keyHash, record.rpcUrl, record.chainId)
+
     const planned = restoreCallsForChain({ record, minuteLimits })
+
     if (planned.unexpected) {
         throw new Error(
             `Pending quote spend limit does not match the chain: ${planned.unexpected}`,
         )
     }
+
     const calls = [...releaseCalls(record, planned.calls), ...expiry.calls]
+
     if (calls.length > 0) {
         if (options?.submit) {
             await options.submit(record, calls)
@@ -182,6 +196,7 @@ export async function recoverPendingQuoteSpend(
             })
         }
     }
+
     await clearPendingQuoteLimit(keystorePath)
 }
 
@@ -224,9 +239,11 @@ async function installTrackedQuoteSpendLimitNow(
             'A swap needs the root key to set a per-quote spend limit. A session file alone cannot.',
         )
     }
+
     const client = io?.client ?? publicClient(input.network)
     let spendInfos: SpendInfoLike[]
     let balances: { token: Address; balance: bigint }[]
+
     try {
         spendInfos = await readSpendInfos(client, input.bound.account, input.bound.keyHash)
         balances = await readCandidateBalances(client, input.bound, input.network.chainId)
@@ -236,14 +253,17 @@ async function installTrackedQuoteSpendLimitNow(
             'Could not read spend limits or token balances. Refusing to sign.',
         )
     }
+
     const slots = planQuoteSpendSlots({
         bound: input.bound,
         spendInfos,
         balances,
     })
+
     let key: QuoteKeyMaterial
     let permissions: QuoteKeyPermission[]
     let limits: QuoteKeyLimit[]
+
     try {
         const stored = await client.readContract({
             address: input.bound.account,
@@ -251,18 +271,21 @@ async function installTrackedQuoteSpendLimitNow(
             functionName: 'getKey',
             args: [input.bound.keyHash],
         })
+
         key = {
             expiry: BigInt(stored.expiry),
             keyType: Number(stored.keyType),
             isSuperAdmin: stored.isSuperAdmin,
             publicKey: stored.publicKey,
         }
+
         const packed = await client.readContract({
             address: input.bound.account,
             abi: accountAbi,
             functionName: 'canExecutePackedInfos',
             args: [input.bound.keyHash],
         })
+
         permissions = permissionsAfterInstall(
             packed.map(decodePackedCanExecute),
             input.callGrants ?? [],
@@ -272,10 +295,12 @@ async function installTrackedQuoteSpendLimitNow(
         if (error instanceof QuoteSpendError) throw error
         throw new QuoteSpendError('Could not read the swap key. Refusing to sign.')
     }
+
     const expiryPlan = planQuoteKeyExpiry({
         now: BigInt(Math.floor(Date.now() / 1000)),
         currentExpiry: key.expiry,
     })
+
     const record = pendingRecordFromSlots({
         account: input.bound.account,
         keyHash: input.bound.keyHash,
@@ -304,7 +329,9 @@ async function installTrackedQuoteSpendLimitNow(
               }
             : undefined,
     })
+
     await writePendingQuoteLimit(input.keystorePath, record)
+
     try {
         await submitInstallCalls(io, {
             keystorePath: input.keystorePath,
@@ -343,6 +370,7 @@ async function installTrackedQuoteSpendLimitNow(
                 : 'The per-quote spend limit could not be set. Refusing to sign.',
         )
     }
+
     return async () => {
         await withoutQuoteSpendRecovery(() => releaseInstalledQuoteSpendLimit(input, record, io))
     }
@@ -359,6 +387,7 @@ async function releaseInstalledQuoteSpendLimit(
     io?: QuoteInstallIo,
 ): Promise<void> {
     const active = currentRecord(await readPendingQuoteLimit(input.keystorePath), record)
+
     const minuteLimits = io?.readMinuteLimits
         ? await io.readMinuteLimits(active)
         : await readMinuteLimits(
@@ -367,20 +396,26 @@ async function releaseInstalledQuoteSpendLimit(
               input.network.rpcUrl,
               input.network.chainId,
           )
+
     const planned = restoreCallsForChain({
         record: active,
         minuteLimits,
     })
+
     const expiry = await keyExpiryRestoreDecision(active, io?.readQuoteKey)
+
     if (expiry.differences.length > 0) {
         await refuseChangedQuoteKey(input.keystorePath, expiry.differences)
     }
+
     if (planned.unexpected) {
         throw new QuoteSpendError(
             `The per-quote spend limit could not be restored: ${planned.unexpected}`,
         )
     }
+
     const calls = [...releaseCalls(active, planned.calls), ...expiry.calls]
+
     if (calls.length > 0) {
         await submitInstallCalls(io, {
             keystorePath: input.keystorePath,
@@ -391,6 +426,7 @@ async function releaseInstalledQuoteSpendLimit(
             failure: 'The per-quote spend limit could not be restored after the swap.',
         })
     }
+
     await clearPendingQuoteLimit(input.keystorePath)
 }
 
@@ -414,8 +450,10 @@ async function submitInstallCalls(
 ): Promise<void> {
     if (io?.submit) {
         if (input.calls.length > 0) await io.submit(input.calls)
+
         return
     }
+
     await submitRootCalls(input)
 }
 
@@ -446,7 +484,9 @@ async function keyExpiryRestoreDecision(
 ): Promise<{ calls: Call[]; differences: string[] }> {
     if (!record.keyExpiry) return { calls: [], differences: [] }
     const read = await readQuoteKeyForRestore(record, readQuoteKey)
+
     if (read.status === 'missing') return { calls: [], differences: [] }
+
     const installed = expectedInstalledKey({
         installedExpiry: BigInt(record.keyExpiry.installed),
         keyType: record.keyExpiry.keyType,
@@ -465,7 +505,9 @@ async function keyExpiryRestoreDecision(
         })),
         live: read.key,
     })
+
     const differences = quoteKeyDifferences(installed, read.key)
+
     return {
         calls: restoreQuoteKeyExpiryCall({
             account: record.account,
@@ -489,6 +531,7 @@ async function readQuoteKeyForRestore(
 ): Promise<QuoteKeyRead> {
     if (readQuoteKey) return readQuoteKey(record)
     const client = publicClient(networkFromRecord(record))
+
     try {
         const stored = await client.readContract({
             address: record.account,
@@ -496,13 +539,16 @@ async function readQuoteKeyForRestore(
             functionName: 'getKey',
             args: [record.keyHash],
         })
+
         const packed = await client.readContract({
             address: record.account,
             abi: accountAbi,
             functionName: 'canExecutePackedInfos',
             args: [record.keyHash],
         })
+
         const spendInfos = await readSpendInfos(client, record.account, record.keyHash)
+
         return {
             status: 'live',
             key: {
@@ -520,6 +566,7 @@ async function readQuoteKeyForRestore(
         }
     } catch (error) {
         const text = error instanceof Error ? error.message : String(error)
+
         if (text.includes('KeyDoesNotExist')) return { status: 'missing' }
         throw new QuoteSpendError(
             'Could not read the swap key expiry. The pending quote record was kept.',
@@ -536,6 +583,7 @@ async function refuseChangedQuoteKey(keystorePath: string, differences: string[]
 
 function decodePackedCanExecute(packed: Hex): QuoteKeyPermission {
     const value = BigInt(packed)
+
     return {
         target: getAddress(`0x${(value >> 96n).toString(16).padStart(40, '0')}`),
         selector: `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex,
@@ -569,6 +617,7 @@ async function readSpendInfos(
         functionName: 'spendInfos',
         args: [keyHash],
     })
+
     return rows.map((row) => ({
         token: getAddress(row.token),
         period: Number(row.period),
@@ -586,30 +635,40 @@ async function readMinuteLimits(
         chain: getChain(chainId, rpcUrl),
         transport: http(rpcUrl),
     })
+
     const infos = await readSpendInfos(client, account, keyHash)
     const limits = new Map<string, bigint | null>()
+
     for (const info of infos) {
         const key = info.token.toLowerCase()
+
         if (!limits.has(key)) limits.set(key, null)
+
         if (info.period === 0) limits.set(key, info.limit)
     }
+
     return limits
 }
 
 function candidateTokens(bound: QuoteSpendBound, chainId: number): Address[] {
     const tokens = [zeroAddress, getAddress(bound.usdc), ...bound.frozenTokens]
     const weth = WETH_BY_CHAIN[chainId]
+
     if (weth) tokens.push(weth)
     const legacy = getUsdcAddressByChainId(chainId, true)
+
     if (legacy) tokens.push(legacy)
     const seen = new Set<string>()
     const unique: Address[] = []
+
     for (const token of tokens) {
         const address = getAddress(token)
+
         if (seen.has(address.toLowerCase())) continue
         seen.add(address.toLowerCase())
         unique.push(address)
     }
+
     return unique
 }
 
@@ -619,6 +678,7 @@ async function readCandidateBalances(
     chainId: number,
 ): Promise<{ token: Address; balance: bigint }[]> {
     const balances: { token: Address; balance: bigint }[] = []
+
     for (const token of candidateTokens(bound, chainId)) {
         if (token === zeroAddress) {
             balances.push({
@@ -627,14 +687,17 @@ async function readCandidateBalances(
             })
             continue
         }
+
         const balance = await client.readContract({
             address: token,
             abi: erc20Abi,
             functionName: 'balanceOf',
             args: [bound.account],
         })
+
         balances.push({ token, balance })
     }
+
     return balances
 }
 
@@ -643,14 +706,18 @@ async function resolveRecoveryPassword(options?: {
     resolvePassword?: () => Promise<string>
 }): Promise<string> {
     if (options?.password) return options.password
+
     if (options?.resolvePassword) return options.resolvePassword()
     const env = process.env.TW_PASSWORD?.trim() || process.env.RELAYER_CLI_PASSWORD?.trim()
+
     if (env) return env
+
     if (process.stdin.isTTY) {
         return readlineExistingPassword(
             'A quote spend limit is still installed. Enter the keystore password to restore it:',
         )
     }
+
     throw new Error(
         'A pending quote spend limit is still installed. Re-run with TW_PASSWORD so the root key can restore it.',
     )
@@ -667,16 +734,20 @@ async function submitRootCalls(input: {
     if (input.calls.length === 0) return
     const bundle = await readKeystoreBundle(input.keystorePath)
     const root = await decryptRootKeystore(bundle.root, input.password)
+
     const signedNetwork = {
         ...input.network,
         authSigner: createEthHttpSigner(root.rootPrivateKey, input.network.chainId),
     }
+
     const client = publicClient(signedNetwork)
     const nonce = await readAccountNonce(client, input.account)
+
     const result = await executeSignedCalls(
         {
             prepareCalls: async (call) => {
                 const relayer = createCliRelayerClient(signedNetwork)
+
                 return relayer.prepareCalls({
                     from: call.from,
                     chainId: signedNetwork.chainId,
@@ -690,14 +761,17 @@ async function submitRootCalls(input: {
             },
             signTypedData: async (signed) => {
                 const signer = privateKeyToAccount(signed.privateKey)
+
                 return signer.signTypedData(signed.typedData)
             },
             sendPreparedCalls: async (prepared) => {
                 const relayer = createCliRelayerClient(signedNetwork)
+
                 return relayer.sendPreparedCalls(prepared)
             },
             waitForBundle: async (bundleStatus) => {
                 const relayer = createCliRelayerClient(signedNetwork)
+
                 return waitForBundleAction(relayer, {
                     id: bundleStatus.id,
                     chainId: signedNetwork.chainId,
@@ -714,6 +788,7 @@ async function submitRootCalls(input: {
             rpcUrl: signedNetwork.rpcUrl,
         },
     )
+
     if (!result.finalStatus.success) {
         throw new QuoteSpendError(input.failure)
     }

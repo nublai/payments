@@ -11,11 +11,14 @@ import { RpcError, INVALID_SIGNATURE, NONCE_ERROR, INVALID_PARAMS } from '../../
 import type { Env } from '../../src/types/env'
 
 const ISSUER = 'https://bind-rpc.example'
+
 const SUBJECT = 'bind-user'
+
 const NOW = 1_700_000_000
 
 function testEnv(): Env {
     const base = env as unknown as Env
+
     return {
         ...base,
         CHAIN_IDS: '31337',
@@ -28,6 +31,7 @@ function testEnv(): Env {
 describe('wallet bind RPC', () => {
     it('issues a nonce and accepts an EIP-712 signature from that wallet', async () => {
         const account = privateKeyToAccount(generatePrivateKey())
+
         const issued = await runWithAuthIdentity(
             { provider: 'oidc', userId: SUBJECT, issuer: ISSUER },
             () =>
@@ -73,12 +77,14 @@ describe('wallet bind RPC', () => {
                     NOW,
                 ),
         )
+
         expect(bound).toEqual({ address: getAddress(account.address), issuer: ISSUER, sub: SUBJECT })
     })
 
     it('accepts an EIP-191 signature and refuses a bad signature without burning the nonce', async () => {
         const account = privateKeyToAccount(generatePrivateKey())
         const other = privateKeyToAccount(generatePrivateKey())
+
         const issued = await runWithAuthIdentity(
             { provider: 'oidc', userId: `${SUBJECT}-191`, issuer: ISSUER },
             () =>
@@ -118,6 +124,7 @@ describe('wallet bind RPC', () => {
                 environment: 'local',
             }),
         })
+
         const bound = await runWithAuthIdentity(
             { provider: 'oidc', userId: `${SUBJECT}-191`, issuer: ISSUER },
             () =>
@@ -134,6 +141,7 @@ describe('wallet bind RPC', () => {
                     NOW,
                 ),
         )
+
         expect(bound.address).toBe(getAddress(account.address))
         expect(issued.message).toBe(
             walletBindPersonalMessage({
@@ -152,9 +160,11 @@ describe('wallet bind RPC', () => {
         const account = privateKeyToAccount(generatePrivateKey())
         const owner = { provider: 'oidc', userId: `${SUBJECT}-owner`, issuer: ISSUER }
         const other = { provider: 'oidc', userId: `${SUBJECT}-other`, issuer: ISSUER }
+
         const issued = await runWithAuthIdentity(owner, () =>
             issueBindNonce({ address: account.address, chainId: '0x7a69' }, testEnv(), NOW),
         )
+
         const signature = await signBind(account, issued.nonce, issued.expiry, owner.userId)
         await runWithAuthIdentity(owner, () =>
             bindAccount(
@@ -177,15 +187,18 @@ describe('wallet bind RPC', () => {
         ).rejects.toMatchObject({ code: INVALID_PARAMS })
 
         const expiringAccount = privateKeyToAccount(generatePrivateKey())
+
         const expiring = await runWithAuthIdentity(owner, () =>
             issueBindNonce({ address: expiringAccount.address, chainId: '0x7a69' }, testEnv(), NOW),
         )
+
         const expiringSignature = await signBind(
             expiringAccount,
             expiring.nonce,
             expiring.expiry,
             owner.userId,
         )
+
         await expect(
             runWithAuthIdentity(owner, () =>
                 bindAccount(

@@ -18,14 +18,22 @@ import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 
 const account = '0x1111111111111111111111111111111111111111' as Address
+
 const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+
 const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+
 const rootPrivateKey =
     '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+
 const oldAddress = privateKeyToAccount(oldKey).address
+
 const newAddress = privateKeyToAccount(newKey).address
+
 const approveSelector = '0x095ea7b3' as Hex
+
 const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+
 const password = 'pw'
 
 const network = {
@@ -63,6 +71,7 @@ async function stageDir(prefix: string) {
     const root = await mkdtemp(join(tmpdir(), prefix))
     const sessions = join(root, 'sessions')
     await mkdir(sessions, { recursive: true })
+
     return { root, sessions, keystorePath: join(root, 'alice.json') }
 }
 
@@ -72,10 +81,12 @@ async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     // Published JSON is zero. Stage rotations resolve the orchestrator from
     // ORCHESTRATOR_<chainId> for this test only.
     const restoreStage = installFormerStageDeployments()
+
     try {
         return await fn()
     } finally {
         restoreStage()
+
         if (previous === undefined) delete process.env.RELAYER_URL_STAGE
         else process.env.RELAYER_URL_STAGE = previous
     }
@@ -90,13 +101,16 @@ async function writeRealSession(path: string, name: string, key: Hex) {
         name,
         checkpoint: 'authorized',
     })
+
     await writeFile(path, `${JSON.stringify(doc, null, 2)}\n`)
+
     return doc
 }
 
 function quotePreparer(captured: PreparedInput[]) {
     return mock(async (input: PreparedInput) => {
         captured.push(input)
+
         return matchingPreparedCalls({
             from: input.from,
             calls: input.calls,
@@ -153,6 +167,7 @@ test('a send throw before an id returns keeps the key and resume settles from ge
                     prepareCalls: quotePreparer(prepares),
                     signTypedData: mock(async () => {
                         signed.push(rootPrivateKey)
+
                         return rootPrivateKey
                     }),
                     sendPreparedCalls: mock(async () => {
@@ -167,19 +182,23 @@ test('a send throw before an id returns keeps the key and resume settles from ge
         const names = await readdir(sessions)
         expect(names).toContain('default-next.json')
         expect(names).toContain('.rotation.json')
+
         const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
             status?: string
             bundleId?: string
         }
+
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBeUndefined()
         expect(prepares.length).toBeGreaterThan(0)
         expect(signed.length).toBeGreaterThan(0)
 
         const resumePrepares: PreparedInput[] = []
+
         const getKeys = mock(async () => ({
             '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
         }))
+
         await expect(
             executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password, resume: true },
@@ -202,6 +221,7 @@ test('a send throw before an id returns keeps the key and resume settles from ge
         expect(await readdir(sessions)).toContain('.rotation.json')
 
         const settlePrepares: PreparedInput[] = []
+
         const settled = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, resume: true },
             baseDeps({
@@ -218,6 +238,7 @@ test('a send throw before an id returns keeps the key and resume settles from ge
                 }),
             }) as never,
         )
+
         expect(settled.bundle.id).not.toBe('noop')
         expect(settlePrepares).toHaveLength(0)
         const after = await readdir(sessions)
@@ -258,10 +279,12 @@ test('bundle tracking unavailable after broadcast keeps the key and records the 
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(await readdir(sessions)).toContain('default-next.json')
+
         const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
             status?: string
             bundleId?: string
         }
+
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBe('bundle-tracked')
     })
@@ -422,6 +445,7 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
         const { sessions, keystorePath } = await stageDir('abandon-')
         await writeRealSession(join(sessions, 'default.json'), 'default', oldKey)
         await writeRealSession(join(sessions, 'default-next.json'), 'default-next', newKey)
+
         const marker = await sealRotationMarker(
             {
                 oldSessionName: 'default',
@@ -445,13 +469,17 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
             },
             password,
         )
+
         await writeFile(join(sessions, '.rotation.json'), `${JSON.stringify(marker, null, 2)}\n`)
         const signed: string[] = []
         let markerPresentAtGetKeys = false
+
         const getKeys = mock(async () => {
             markerPresentAtGetKeys = (await readdir(sessions)).includes('.rotation.json')
+
             return { '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }] }
         })
+
         const result = await executeSessionRotate(
             {
                 env: 'stage',
@@ -476,6 +504,7 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
                 }),
             }) as never,
         )
+
         expect(markerPresentAtGetKeys).toBe(true)
         expect(getKeys).toHaveBeenCalled()
         expect(signed).toEqual([])

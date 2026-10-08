@@ -19,7 +19,9 @@ type AccountHistoryErrorCode =
     | 'UNKNOWN'
 
 const DEFAULT_LIMIT = 20
+
 const MAX_LIMIT = 100
+
 const MAX_TARGET_SIZE = 1000
 
 export class AccountHistoryError extends Error {
@@ -131,6 +133,7 @@ function getDefaultDeps(): AccountHistoryDeps {
         getCallsHistory: async ({ env, address, chainIds, limit, offset }) => {
             const network = resolveNetworkConfig(env, selectDefaultChain(env))
             const client = createCliRelayerClient(network)
+
             return client.getCallsHistory({
                 address,
                 chainIds,
@@ -221,6 +224,7 @@ function toAccountHistoryError(
     }
 
     const message = error instanceof Error ? error.message : String(error)
+
     if (message.toLowerCase().includes('unsupported chain')) {
         return new AccountHistoryError('INVALID_ARGUMENT', message, { cause: error })
     }

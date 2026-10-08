@@ -4,8 +4,11 @@ import { getAddresses } from '@nubl/contracts/deployments'
 import { assertRelayerUrl, type EthHttpSigner } from '@nubl/relayer-client'
 
 export type EnvName = 'prod' | 'stage' | 'dev'
+
 export type ChainName = 'base' | 'polygon' | 'anvil'
+
 export type UsdcSymbol = 'USDC' | 'USDC.e'
+
 export type TokenSymbol = 'ETH' | 'USDC'
 
 export type CliNetworkConfig = {
@@ -32,6 +35,7 @@ const DEV_RELAYER_URL_DEFAULT = 'http://127.0.0.1:8787'
 
 function readEnv(name: string): string | undefined {
     const value = process.env[name]?.trim()
+
     return value ? value : undefined
 }
 
@@ -72,6 +76,7 @@ const chainConfig: Record<ChainName, CliChainConfig> = {
 const chainNameByChainId: Partial<Record<number, ChainName>> = Object.values(chainConfig).reduce(
     (acc, config) => {
         acc[config.chainId] = config.chain
+
         return acc
     },
     {} as Partial<Record<number, ChainName>>,
@@ -88,8 +93,11 @@ export function getChainNameByChainId(chainId: number): ChainName | undefined {
  */
 export function allowInsecureRelayerHttp(env: EnvName, chainId: number): boolean {
     if (env !== 'dev') return false
+
     if (chainId !== 31337 && chainId !== 41337) return false
+
     if (getAddresses(env, chainId)?.orchestrator) return false
+
     return true
 }
 
@@ -98,15 +106,19 @@ export function getEnvRelayerUrl(env: EnvName, chainId?: number): string {
         env === 'dev'
             ? (readEnv('RELAYER_URL_DEV') ?? DEV_RELAYER_URL_DEFAULT)
             : readEnv(env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE')
+
     if (!value) {
         const key = env === 'prod' ? 'RELAYER_URL_PROD' : 'RELAYER_URL_STAGE'
         throw new Error(
             `${key} is not set. Set it to the relayer base URL for the ${env} environment.`,
         )
     }
+
     const allowInsecureHttp =
         chainId !== undefined && allowInsecureRelayerHttp(env, chainId)
+
     assertRelayerUrl(value, { allowInsecureHttp })
+
     return value
 }
 
@@ -117,6 +129,7 @@ export function getChainConfig(chain: ChainName): CliChainConfig {
 /** Chains a session unlock must read. Dev is local Anvil; stage and prod are Base and Polygon. */
 export function chainsForEnv(env: EnvName): ChainName[] {
     if (env === 'dev') return ['anvil']
+
     return ['base', 'polygon']
 }
 
@@ -127,8 +140,10 @@ export function chainsForEnv(env: EnvName): ChainName[] {
 export function rpcUrlForChain(chain: ChainName): string {
     if (process.env.NODE_ENV === 'test') {
         const override = process.env[`TW_TEST_RPC_${chain}`]?.trim()
+
         if (override) return override
     }
+
     return getChainConfig(chain).rpcUrl
 }
 
@@ -137,6 +152,7 @@ export function getUsdcTokenConfig(
     options?: { legacy?: boolean },
 ): { symbol: UsdcSymbol; address: Address } {
     const config = getChainConfig(chain)
+
     if (chain === 'polygon' && options?.legacy && config.legacyUsdcAddress) {
         return {
             symbol: 'USDC.e',
@@ -158,6 +174,7 @@ export function getTokenAddress(
     if (token === 'ETH') {
         return getChainConfig(chain).ethAddress
     }
+
     return getUsdcTokenConfig(chain, options).address
 }
 
@@ -167,14 +184,17 @@ export function getTokenDecimals(token: TokenSymbol): number {
 
 export function normalizeTokenSymbol(value: string): TokenSymbol {
     const normalized = value.trim().toUpperCase()
+
     if (normalized === 'ETH' || normalized === 'USDC') {
         return normalized
     }
+
     throw new Error(`Unsupported token: ${value}`)
 }
 
 export function resolveNetworkConfig(env: EnvName, chain: ChainName): CliNetworkConfig {
     const selected = getChainConfig(chain)
+
     return {
         env,
         relayerUrl: getEnvRelayerUrl(env, selected.chainId),
@@ -195,10 +215,13 @@ const circleUsdcByChainId: Record<number, Address> = {
 
 export function getUsdcAddressByChainId(chainId: number, legacy = false): Address | undefined {
     const chain = getChainNameByChainId(chainId)
+
     if (chain) {
         return getUsdcTokenConfig(chain, { legacy }).address
     }
+
     if (legacy) return undefined
+
     return circleUsdcByChainId[chainId]
 }
 
@@ -206,12 +229,15 @@ export function normalizeChainName(value?: string): ChainName {
     if (!value || value === 'base') {
         return 'base'
     }
+
     if (value === 'polygon' || value === 'matic') {
         return 'polygon'
     }
+
     if (value === 'anvil' || value === 'local') {
         return 'anvil'
     }
+
     throw new Error(`Unsupported chain: ${value}`)
 }
 
@@ -219,5 +245,6 @@ export function selectDefaultChain(env: EnvName, chainValue?: string): ChainName
     if (chainValue) {
         return normalizeChainName(chainValue)
     }
+
     return env === 'dev' ? 'anvil' : 'base'
 }

@@ -19,6 +19,7 @@ import {
 import { decryptAgentDevice, finalizeAgentSessionKeystore } from './agent-sessions'
 import { listSessionNames } from './session-common'
 import type { Hex } from 'viem'
+
 type EnvName = 'prod' | 'stage' | 'dev'
 
 type AccountUpdatePasswordErrorCode =
@@ -129,20 +130,24 @@ export async function resolveAccountUpdatePasswords(
         args.currentPasswordStdin || args.newPasswordStdin ? deps.readPasswordLinesFromStdin() : []
 
     let currentPassword = deps.envPassword
+
     if (!currentPassword && args.currentPasswordStdin) {
         currentPassword = stdinLines[0]
     }
+
     if (!currentPassword && deps.isInteractive) {
         currentPassword = await deps.promptForExistingPassword()
     }
 
     currentPassword = currentPassword?.trim()
+
     if (!currentPassword) {
         throw new AccountUpdatePasswordError(
             'PASSWORD_REQUIRED',
             'Current and new passwords are required. Use stdin flags, TW_PASSWORD for current password, or run in interactive TTY.',
         )
     }
+
     if (deps.validateCurrentPassword) {
         try {
             await deps.validateCurrentPassword(currentPassword)
@@ -150,6 +155,7 @@ export async function resolveAccountUpdatePasswords(
             if (error instanceof AccountUpdatePasswordError) {
                 throw error
             }
+
             throw new AccountUpdatePasswordError(
                 'PASSWORD_INCORRECT',
                 'Current password is incorrect.',
@@ -159,12 +165,15 @@ export async function resolveAccountUpdatePasswords(
     }
 
     let newPassword: string | undefined
+
     if (args.newPasswordStdin) {
         newPassword = args.currentPasswordStdin ? stdinLines[1] : stdinLines[0]
     }
+
     if (!newPassword && deps.isInteractive) {
         newPassword = await deps.promptForPassword()
     }
+
     newPassword = newPassword?.trim()
 
     if (!newPassword) {
@@ -189,6 +198,7 @@ export async function assertAccountUpdateCurrentPassword(
     >,
 ): Promise<void> {
     const deps = { ...getDefaultDeps(), ...depsArg }
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -208,6 +218,7 @@ export async function executeAccountUpdatePassword(
     depsArg?: Partial<AccountUpdatePasswordDeps>,
 ): Promise<AccountUpdatePasswordResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
@@ -227,6 +238,7 @@ export async function executeAccountUpdatePassword(
                     sessionName,
                     sessionsDir,
                 )
+
                 const sessionKeystore = await deps.readSessionKeystoreFile(sessionPath)
                 sessionKeystores.set(sessionName, sessionKeystore)
             }
@@ -235,12 +247,15 @@ export async function executeAccountUpdatePassword(
                 bundle.root,
                 options.currentPassword,
             )
+
             const decryptedSessions = new Map<string, string>()
+
             for (const [name, keystore] of sessionKeystores.entries()) {
                 const decrypted = await deps.decryptSessionKeystore(
                     keystore,
                     options.currentPassword,
                 )
+
                 decryptedSessions.set(name, decrypted.sessionPrivateKey)
             }
 
@@ -254,13 +269,16 @@ export async function executeAccountUpdatePassword(
                 activeSession: bundle.root.sessionRef.active,
                 sessionsDir: bundle.root.sessionRef.dir,
             })
+
             rewrittenRoot.createdAt = bundle.root.createdAt
             rewrittenRoot.checkpoint = bundle.root.checkpoint
             rewrittenRoot.addresses = { ...bundle.root.addresses }
 
             const rewrittenSessions = new Map<string, AnySessionKeystore>()
+
             for (const [name, existing] of sessionKeystores.entries()) {
                 const sessionPrivateKey = decryptedSessions.get(name)! as Hex
+
                 const baseInput = {
                     password: options.newPassword,
                     sessionPrivateKey,
@@ -274,11 +292,13 @@ export async function executeAccountUpdatePassword(
 
                 if (isLoginKeystore(existing)) {
                     let bearerToken: Hex | undefined
+
                     if (existing.secrets.bearerToken) {
                         const oldKey = await deps.deriveKeystoreKey(
                             options.currentPassword,
                             existing.kdf.params,
                         )
+
                         try {
                             bearerToken = deps.decryptHexSecret(
                                 existing.secrets.bearerToken,
@@ -288,6 +308,7 @@ export async function executeAccountUpdatePassword(
                             oldKey.fill(0)
                         }
                     }
+
                     rewritten = await deps.createSessionKeystore({
                         ...baseInput,
                         kind: 'login',
@@ -299,6 +320,7 @@ export async function executeAccountUpdatePassword(
                         existing,
                         options.currentPassword,
                     )
+
                     const baseSession = await deps.createSessionKeystore(baseInput)
                     rewritten = await deps.finalizeAgentSessionKeystore({
                         baseKeystore: baseSession,
@@ -322,9 +344,11 @@ export async function executeAccountUpdatePassword(
                         overwrite: true,
                     })
                 }
+
                 await deps.writeRootKeystoreFile(keystorePath, rewrittenRoot, { overwrite: true })
             } catch (writeError) {
                 let rollbackError: unknown
+
                 try {
                     for (const [name, original] of sessionKeystores.entries()) {
                         const sessionPath = resolveSessionKeystorePath(
@@ -332,18 +356,22 @@ export async function executeAccountUpdatePassword(
                             name,
                             sessionsDir,
                         )
+
                         await deps.writeSessionKeystoreFile(sessionPath, original, {
                             overwrite: true,
                         })
                     }
+
                     await deps.writeRootKeystoreFile(keystorePath, bundle.root, { overwrite: true })
                 } catch (error) {
                     rollbackError = error
                 }
+
                 const rollbackMessage =
                     rollbackError instanceof Error
                         ? ` Rollback failed: ${rollbackError.message}`
                         : ''
+
                 throw new AccountUpdatePasswordError(
                     'UPDATE_FAILED',
                     `Failed to update password: ${writeError instanceof Error ? writeError.message : String(writeError)}.${rollbackMessage}`,
@@ -384,9 +412,11 @@ function toAccountUpdatePasswordError(
     }
 
     const message = error instanceof Error ? error.message : String(error)
+
     if (message.includes('Keystore is locked')) {
         return new AccountUpdatePasswordError('KEYSTORE_LOCKED', message, { cause: error })
     }
+
     if (message.includes('ENOENT') || message.toLowerCase().includes('no such file')) {
         return new AccountUpdatePasswordError(
             'KEYSTORE_NOT_FOUND',
@@ -394,6 +424,7 @@ function toAccountUpdatePasswordError(
             { cause: error },
         )
     }
+
     if (
         message.includes('No password provided on stdin') ||
         message.includes('Current and new passwords are required') ||
@@ -403,6 +434,7 @@ function toAccountUpdatePasswordError(
     ) {
         return new AccountUpdatePasswordError('PASSWORD_REQUIRED', message, { cause: error })
     }
+
     if (
         message.includes('unable to authenticate data') ||
         message.includes('bad decrypt') ||
@@ -414,6 +446,7 @@ function toAccountUpdatePasswordError(
             { cause: error },
         )
     }
+
     if (message.includes('Failed to update password')) {
         return new AccountUpdatePasswordError('UPDATE_FAILED', message, { cause: error })
     }

@@ -61,6 +61,7 @@ interface TestAccount {
 function createTestAccount(): TestAccount {
     const privateKey = generatePrivateKey()
     const account = privateKeyToAccount(privateKey)
+
     return { privateKey, account, address: account.address }
 }
 
@@ -84,6 +85,7 @@ async function signErc1271Intent(
     const erc1271Digest = computeErc1271Digest(digest, signerAddress)
     const signatureObj = await sign({ hash: erc1271Digest, privateKey: signerPrivateKey })
     const signature = serializeSignature(signatureObj)
+
     return wrapSignature(signature, keyHash)
 }
 
@@ -146,6 +148,7 @@ describe('Owner & Agent Permissions', () => {
                     },
                 ],
             })
+
             expect(result.success).toBe(true)
 
             // #then - verify owner key is registered as superadmin
@@ -154,6 +157,7 @@ describe('Owner & Agent Permissions', () => {
                 abi: accountAbi,
                 functionName: 'keyCount',
             })
+
             expect(keyCount).toBe(1n)
 
             const [keys, keyHashes] = await client.readContract({
@@ -161,6 +165,7 @@ describe('Owner & Agent Permissions', () => {
                 abi: accountAbi,
                 functionName: 'getKeys',
             })
+
             const ownerIndex = keyHashes.findIndex((hash) => hash === ownerKeyHash)
             expect(ownerIndex).toBeGreaterThan(-1)
             expect(keys[ownerIndex].isSuperAdmin).toBe(true)
@@ -196,6 +201,7 @@ describe('Owner & Agent Permissions', () => {
                 context: prepared.context,
                 signature: wrappedSignature,
             })
+
             expect(submit.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: submit.id })
@@ -233,12 +239,14 @@ describe('Owner & Agent Permissions', () => {
             // #given - delegated bot
             const bot = createTestAccount()
             await fundAccount(bot.address)
+
             const botDelegation = await client.upgradeAccount({
                 accountAddress: bot.address,
                 signerKey: bot.privateKey,
                 delegation: contracts.accountProxy,
                 authorizeKeys: [],
             })
+
             expect(botDelegation.success).toBe(true)
 
             // #given - user grants bot limited spend permissions
@@ -262,6 +270,7 @@ describe('Owner & Agent Permissions', () => {
                     },
                 ],
             })
+
             expect(userDelegation.success).toBe(true)
 
             // #when - bot signs intent for user account using ERC-1271 transform
@@ -286,6 +295,7 @@ describe('Owner & Agent Permissions', () => {
                 context: prepared.context,
                 signature: wrappedSignature,
             })
+
             expect(submit.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: submit.id })
@@ -330,6 +340,7 @@ describe('Owner & Agent Permissions', () => {
                 signerKey: user.privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(userDelegation.success).toBe(true)
 
             const agentDelegation = await client.upgradeAccount({
@@ -337,6 +348,7 @@ describe('Owner & Agent Permissions', () => {
                 signerKey: agent.privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(agentDelegation.success).toBe(true)
 
             // #given - user authorizes agent with spend permissions
@@ -358,6 +370,7 @@ describe('Owner & Agent Permissions', () => {
                     },
                 ],
             })
+
             expect(authorizeAgent.success).toBe(true)
 
             // #when - agent signs intent for user using ERC-1271 transform
@@ -382,6 +395,7 @@ describe('Owner & Agent Permissions', () => {
                 context: prepared.context,
                 signature: wrappedSignature,
             })
+
             expect(submit.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: submit.id })
@@ -428,6 +442,7 @@ describe('Owner & Agent Permissions', () => {
                 signerKey: user.privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(userDelegation.success).toBe(true)
 
             const sessionDelegation = await client.upgradeAccount({
@@ -435,6 +450,7 @@ describe('Owner & Agent Permissions', () => {
                 signerKey: sessionKey.privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(sessionDelegation.success).toBe(true)
 
             // #when - user signs intent to authorize the session key
@@ -476,6 +492,7 @@ describe('Owner & Agent Permissions', () => {
                 context: prepared.context,
                 signature,
             })
+
             expect(submit.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: submit.id })
@@ -487,6 +504,7 @@ describe('Owner & Agent Permissions', () => {
                 abi: accountAbi,
                 functionName: 'keyCount',
             })
+
             expect(keyCount).toBe(1n)
 
             const [keys, keyHashes] = await client.readContract({
@@ -494,6 +512,7 @@ describe('Owner & Agent Permissions', () => {
                 abi: accountAbi,
                 functionName: 'getKeys',
             })
+
             const sessionIndex = keyHashes.findIndex((hash) => hash === sessionKeyHash)
             expect(sessionIndex).toBeGreaterThan(-1)
             expect(keys[sessionIndex].isSuperAdmin).toBe(false)
@@ -546,6 +565,7 @@ describe('Owner & Agent Permissions', () => {
                 signerKey: owner.privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(ownerDelegation.success).toBe(true)
 
             // #given - bot delegated with MultiSigSigner + owner keys
@@ -554,9 +574,11 @@ describe('Owner & Agent Permissions', () => {
 
             const chainId = testChain.id
             const chainScopedMultiSigKey = `MULTI_SIG_SIGNER_${chainId}`
+
             const multiSigSigner =
                 (process.env[chainScopedMultiSigKey] as Address | undefined) ??
                 (process.env.MULTI_SIG_SIGNER as Address | undefined)
+
             expect(multiSigSigner).toBeDefined()
 
             const encodedOwnerPublicKey = encodeSecp256k1Key(owner.address)
@@ -585,6 +607,7 @@ describe('Owner & Agent Permissions', () => {
                     },
                 ],
             })
+
             expect(botDelegation.success).toBe(true)
 
             // #when - initialize MultiSigSigner config
@@ -617,6 +640,7 @@ describe('Owner & Agent Permissions', () => {
                 context: initPrepared.context,
                 signature: initSignature,
             })
+
             expect(initConfigSubmit.id).toBeDefined()
 
             const initConfigStatus = await waitForBundle(client, { id: initConfigSubmit.id })
@@ -644,12 +668,14 @@ describe('Owner & Agent Permissions', () => {
                 [{ type: 'bytes[]' }],
                 [[ownerWrappedSignature]],
             )
+
             const externalSignature = concat([signaturesEncoded, externalKeyHash, '0x00'])
 
             const submit = await client.sendPreparedCalls({
                 context: prepared.context,
                 signature: externalSignature,
             })
+
             expect(submit.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: submit.id })
@@ -714,6 +740,7 @@ describe('Owner & Agent Permissions', () => {
                 signerKey: user.privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(userDelegation.success).toBe(true)
 
             const sessionDelegation = await client.upgradeAccount({
@@ -721,6 +748,7 @@ describe('Owner & Agent Permissions', () => {
                 signerKey: sessionKey.privateKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(sessionDelegation.success).toBe(true)
 
             // Step 2: User authorizes session key via batched self-calls
@@ -792,6 +820,7 @@ describe('Owner & Agent Permissions', () => {
                 context: authPrepared.context,
                 signature: authSignature,
             })
+
             expect(authSubmit.id).toBeDefined()
 
             const authStatus = await waitForBundle(client, { id: authSubmit.id })
@@ -803,6 +832,7 @@ describe('Owner & Agent Permissions', () => {
                 abi: accountAbi,
                 functionName: 'getKeys',
             })
+
             expect(keyHashes).toContain(sessionKeyHash)
 
             // Step 4: Fund user with USDC and record balances
@@ -843,6 +873,7 @@ describe('Owner & Agent Permissions', () => {
                 context: prepared.context,
                 signature: wrappedSignature,
             })
+
             expect(submit.id).toBeDefined()
 
             const status = await waitForBundle(client, { id: submit.id })

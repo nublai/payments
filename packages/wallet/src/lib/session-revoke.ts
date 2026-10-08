@@ -154,16 +154,19 @@ function getDefaultDeps(): SessionRevokeDeps {
         unlink,
         readNonce: async ({ network, account }) => {
             const client = createCliRelayerClient(network)
+
             return readAccountNonce(client, account)
         },
         getKeys: async ({ network, account, chainId }) => {
             const client = createCliRelayerClient(network)
+
             return client.getKeys({ address: account, chainIds: [chainId] })
         },
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         executeSignedCalls,
         prepareCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.prepareCalls({
                 from: input.from,
                 chainId: input.network.chainId,
@@ -183,10 +186,12 @@ function getDefaultDeps(): SessionRevokeDeps {
         },
         sendPreparedCalls: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return client.sendPreparedCalls({ context: input.context, signature: input.signature })
         },
         waitForBundle: async (input) => {
             const client = createCliRelayerClient(input.network)
+
             return (await import('@nubl/relayer-client')).waitForBundle(client, {
                 id: input.id,
                 chainId: input.network.chainId,
@@ -198,9 +203,11 @@ function getDefaultDeps(): SessionRevokeDeps {
 
 function registryKeyContainsAddress(registryKey: string, address: Address): boolean {
     const [, memberSetKey] = registryKey.split('|', 3)
+
     if (!memberSetKey) {
         return false
     }
+
     return memberSetKey.split(':').includes(address.toLowerCase())
 }
 
@@ -220,20 +227,24 @@ export async function executeSessionRevoke(
     const deps = { ...getDefaultDeps(), ...depsArg }
     const chain = selectDefaultChain(options.env, options.chain)
     const network = resolveNetworkConfig(options.env, chain)
+
     const keystorePath = resolveKeystorePath({
         env: options.env,
         name: options.name,
         keystorePath: options.keystorePath,
     })
+
     const sessionName = parseSessionName(options.sessionName)
 
     return deps.withKeystoreLock(keystorePath, async () => {
         const bundle = await deps.readKeystoreBundle(keystorePath)
+
         const sessionPath = resolveSessionKeystorePath(
             keystorePath,
             sessionName,
             bundle.root.sessionRef.dir,
         )
+
         const sessionKeystore = await deps.readSessionKeystoreFile(sessionPath)
         const isAgentSession = sessionKeystore.kind === 'agent'
 
@@ -245,14 +256,17 @@ export async function executeSessionRevoke(
                 ...(isRevokingActiveSession ? ['active'] : []),
                 ...(isAgentSession ? ['an agent with messaging channels'] : []),
             ]
+
             throw new SessionRevokeError(
                 'ACTIVE_SESSION_REVOKE_REQUIRES_FORCE',
                 `This session is ${reasons.join(' and ')}. Use --force to confirm.`,
             )
         }
+
         if (isRevokingActiveSession) {
             const candidates = await deps.listSessionNames(keystorePath, bundle.root.sessionRef.dir)
             replacementActiveSession = candidates.find((value) => value !== sessionName) ?? null
+
             if (!replacementActiveSession) {
                 throw new SessionRevokeError(
                     'SESSION_REVOKE_FAILED',
@@ -263,8 +277,10 @@ export async function executeSessionRevoke(
                 )
             }
         }
+
         if (isAgentSession) {
             const listenStatus = await deps.checkAgentListenPid(sessionPath)
+
             if (listenStatus.active) {
                 throw new SessionRevokeError(
                     'SESSION_REVOKE_FAILED',
@@ -284,12 +300,15 @@ export async function executeSessionRevoke(
             if (!isAgentSession) {
                 return
             }
+
             const registry = await deps.readAgentChannelRegistry(keystorePath)
+
             const nextChannels = Object.fromEntries(
                 Object.entries(registry.channels).filter(
                     ([key]) => !registryKeyContainsAddress(key, sessionAddress),
                 ),
             )
+
             if (Object.keys(nextChannels).length !== Object.keys(registry.channels).length) {
                 await deps.writeAgentChannelRegistry(keystorePath, {
                     ...registry,
@@ -304,6 +323,7 @@ export async function executeSessionRevoke(
                 account: accountAddress,
                 chainId: network.chainId,
             })
+
             return getChainKeys(keys, network.chainId).some(
                 (entry: { hash?: string }) =>
                     typeof entry.hash === 'string' &&
@@ -313,6 +333,7 @@ export async function executeSessionRevoke(
 
         async function cleanupLocalSessionFile(): Promise<boolean> {
             let fileDeleted = true
+
             try {
                 await deps.unlink(sessionPath)
             } catch {
@@ -326,6 +347,7 @@ export async function executeSessionRevoke(
                         'Cannot revoke active session without a replacement. Create another session first.',
                     )
                 }
+
                 bundle.root.sessionRef.active = replacementActiveSession
                 await deps.writeRootKeystoreFile(keystorePath, bundle.root, { overwrite: true })
             }
@@ -334,9 +356,11 @@ export async function executeSessionRevoke(
         }
 
         const presentBeforeRevoke = await isSessionKeyPresent()
+
         if (!presentBeforeRevoke && options.resume) {
             await cleanupAgentChannels()
             const fileDeleted = await cleanupLocalSessionFile()
+
             return {
                 type: 'session_revoke',
                 status: 'complete',
@@ -355,10 +379,12 @@ export async function executeSessionRevoke(
         }
 
         const decryptedRoot = await deps.decryptRootKeystore(bundle.root, options.password)
+
         const signedNetwork = {
             ...network,
             authSigner: createEthHttpSigner(decryptedRoot.rootPrivateKey, network.chainId),
         }
+
         const nonce = await deps.readNonce({ network: signedNetwork, account: accountAddress })
 
         const calls: Call[] = [
@@ -374,6 +400,7 @@ export async function executeSessionRevoke(
         ]
 
         let submission: ExecuteSignedCallsResult
+
         try {
             submission = await deps.executeSignedCalls(
                 {
@@ -412,11 +439,14 @@ export async function executeSessionRevoke(
         } catch (error) {
             const message =
                 error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+
             if (options.resume && message.includes('simulation failed')) {
                 const stillPresent = await isSessionKeyPresent()
+
                 if (!stillPresent) {
                     await cleanupAgentChannels()
                     const fileDeleted = await cleanupLocalSessionFile()
+
                     return {
                         type: 'session_revoke',
                         status: 'complete',
@@ -434,11 +464,13 @@ export async function executeSessionRevoke(
                     }
                 }
             }
+
             throw error
         }
 
         const finalStatus = submission.finalStatus
         const statusCode = finalStatus.statusCode ?? 0
+
         if (!finalStatus.success || ![200, 201].includes(statusCode)) {
             const intentError = finalStatus.receipt?.intentError as Hex | undefined
             throw new SessionRevokeError(
@@ -457,13 +489,16 @@ export async function executeSessionRevoke(
         }
 
         let stillPresent = await isSessionKeyPresent()
+
         if (stillPresent) {
             for (let attempt = 0; attempt < 4; attempt += 1) {
                 await deps.sleep(500 * (attempt + 1))
                 stillPresent = await isSessionKeyPresent()
+
                 if (!stillPresent) break
             }
         }
+
         if (stillPresent) {
             await cleanupAgentChannels()
             throw new SessionRevokeError(

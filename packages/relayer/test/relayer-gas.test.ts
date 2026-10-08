@@ -27,6 +27,7 @@ describe('relayer gas helpers', () => {
 
     it('adds paymentGasBuffer only for payment-enabled intents', () => {
         const simulationGas = 200_000n
+
         const gasConfig = {
             intentGasBuffer: 50_000n,
             paymentGasBuffer: 70_000n,

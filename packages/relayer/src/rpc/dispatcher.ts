@@ -62,9 +62,11 @@ async function handleSingle(
 
     // Validate request structure
     const validationError = validateRequest(body)
+
     if (validationError) {
         // Notifications don't get error responses
         if (id === null) return null
+
         return createErrorResponse(id, validationError.code, validationError.message)
     }
 
@@ -73,8 +75,10 @@ async function handleSingle(
 
     // Look up method handler
     const handler = methods[request.method]
+
     if (!handler) {
         if (isNotification) return null
+
         return createErrorResponse(
             request.id,
             METHOD_NOT_FOUND,
@@ -121,6 +125,7 @@ async function handleBatch(
         .map((req) => {
             if (typeof req !== 'object' || req === null) return null
             const obj = req as Record<string, unknown>
+
             return {
                 id: obj.id as string | number | null,
                 method: obj.method as string,
@@ -144,8 +149,10 @@ async function handleBatch(
                 if (r.error instanceof RpcError) {
                     return createErrorResponse(r.id, r.error.code, r.error.message, r.error.data)
                 }
+
                 return createErrorResponse(r.id, INTERNAL_ERROR, ERROR_MESSAGES[INTERNAL_ERROR])
             }
+
             return createSuccessResponse(r.id, r.result)
         })
     }
@@ -212,10 +219,13 @@ function validateRequest(body: unknown): JsonRpcErrorObject | null {
 function extractId(body: unknown): string | number | null {
     if (typeof body !== 'object' || body === null) return null
     const obj = body as Record<string, unknown>
+
     if (obj.id === undefined) return null
+
     if (obj.id === null || typeof obj.id === 'string' || typeof obj.id === 'number') {
         return obj.id
     }
+
     return null
 }
 
@@ -240,9 +250,11 @@ function createErrorResponse(
     data?: unknown,
 ): JsonRpcResponse {
     const error: JsonRpcErrorObject = { code, message }
+
     if (data !== undefined) {
         error.data = data
     }
+
     return {
         jsonrpc: '2.0',
         id,

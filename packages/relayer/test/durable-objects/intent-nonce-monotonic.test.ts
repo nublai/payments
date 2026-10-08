@@ -32,6 +32,7 @@ class FakeSqlStorage {
         if (normalized.startsWith('SELECT seq FROM nonces WHERE seq_key = ?')) {
             const key = String(args[0])
             const seq = this.rows.get(key)
+
             return { toArray: () => (seq === undefined ? [] : [{ seq }]) }
         }
 
@@ -46,12 +47,14 @@ class FakeSqlStorage {
             const key = String(args[0])
             const seq = String(args[1])
             this.rows.set(key, seq)
+
             return { toArray: () => [] }
         }
 
         if (normalized.startsWith('DELETE FROM nonces WHERE seq_key = ?')) {
             const key = String(args[0])
             this.rows.delete(key)
+
             return { toArray: () => [] }
         }
 
@@ -62,6 +65,7 @@ class FakeSqlStorage {
         ) {
             const key = String(args[0])
             const draft = this.drafts.get(key)
+
             return {
                 toArray: () =>
                     draft
@@ -106,6 +110,7 @@ class FakeSqlStorage {
                 created_at_ms: Number(args[4]),
                 expires_at_ms: Number(args[5]),
             })
+
             return { toArray: () => [] }
         }
 
@@ -117,15 +122,18 @@ class FakeSqlStorage {
             const key = String(args[0])
             const nowMs = Number(args[1])
             const draft = this.drafts.get(key)
+
             if (draft && draft.expires_at_ms <= nowMs) {
                 this.drafts.delete(key)
             }
+
             return { toArray: () => [] }
         }
 
         if (normalized.startsWith('DELETE FROM pending_drafts WHERE seq_key = ?')) {
             const key = String(args[0])
             this.drafts.delete(key)
+
             return { toArray: () => [] }
         }
 
@@ -135,6 +143,7 @@ class FakeSqlStorage {
 
 function createIntentNonceDO(): IntentNonceDO {
     const sql = new FakeSqlStorage()
+
     const state = {
         storage: {
             sql,
@@ -147,8 +156,10 @@ function createIntentNonceDO(): IntentNonceDO {
     // Construct without DurableObjectBase runtime checks. We only need fetch()
     // and nonce logic methods, all of which rely on ctx.storage/sql.
     const nonceDO = Object.create(IntentNonceDO.prototype) as IntentNonceDO
+
     ;(nonceDO as unknown as { ctx: typeof state; sql: FakeSqlStorage }).ctx = state
     ;(nonceDO as unknown as { ctx: typeof state; sql: FakeSqlStorage }).sql = sql
+
     return nonceDO
 }
 
@@ -208,6 +219,7 @@ describe('IntentNonceDO monotonic synced allocation', () => {
 
         const n1 = BigInt(r1.nonce)
         const n2 = BigInt(r2.nonce)
+
         const seqs = [n1 & ((1n << 64n) - 1n), n2 & ((1n << 64n) - 1n)].sort((a, b) =>
             a < b ? -1 : a > b ? 1 : 0,
         )
@@ -232,6 +244,7 @@ describe('IntentNonceDO monotonic synced allocation', () => {
                 onChainSeq: '8',
             },
         )
+
         const second = await doRequest<{ nonce: string; synced: boolean }>(
             nonceDO,
             '/acquire_synced',
@@ -298,6 +311,7 @@ describe('IntentNonceDO monotonic synced allocation', () => {
             onChainSeq: '0',
             draftKey: 'second',
         })
+
         const conflictBody = (await conflict.json()) as { error: string; conflictDraftId: string }
 
         expect(conflict.status).toBe(409)
@@ -349,6 +363,7 @@ describe('IntentNonceDO monotonic synced allocation', () => {
         const dateNowSpy = vi.spyOn(Date, 'now')
 
         dateNowSpy.mockReturnValueOnce(1_000_000)
+
         const first = await doRequest<{ nonce: string; draftId: string; fromCache: boolean }>(
             nonceDO,
             '/acquire_or_get_draft',
@@ -361,6 +376,7 @@ describe('IntentNonceDO monotonic synced allocation', () => {
 
         // Move beyond min TTL bound to expire the first draft
         dateNowSpy.mockReturnValueOnce(1_061_000)
+
         const second = await doRequest<{ nonce: string; draftId: string; fromCache: boolean }>(
             nonceDO,
             '/acquire_or_get_draft',

@@ -41,6 +41,7 @@ describe('Helper workflow API', () => {
                 signerKey,
                 delegation: contracts.accountProxy,
             })
+
             expect(upgrade.success).toBe(true)
 
             const walletClient = createWalletClient({
@@ -50,6 +51,7 @@ describe('Helper workflow API', () => {
             })
 
             const transferAmount = parseEther('1')
+
             const execution = await executePreparedCalls({
                 client: authClient,
                 from: account.address,
@@ -83,6 +85,7 @@ describe('Helper workflow API', () => {
             const signerKey = generatePrivateKey()
             const signer = privateKeyToAccount(signerKey)
             await setBalance(owner.address, parseEther('1'))
+
             const authClient = createRelayerClient({
                 chainId: testChain.id,
                 rpcUrl: ANVIL_RPC_URL,
@@ -112,6 +115,7 @@ describe('Helper workflow API', () => {
                     },
                 ],
             })
+
             expect(upgrade.success).toBe(true)
 
             await new Promise((resolve) => setTimeout(resolve, 2_000))
