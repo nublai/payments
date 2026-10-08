@@ -449,7 +449,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     )
                 }
                 const books = this.readGasBooks(sql, dayStart)
-                return { allowed: true, gas: books.gasSpent, held: books.held, failures: books.failures }
+                return { allowed: true, gas: books.gasSpent, held: books.heldGas, failures: books.failures }
             })
         }
 
