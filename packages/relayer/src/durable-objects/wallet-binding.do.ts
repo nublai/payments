@@ -74,7 +74,9 @@ export class WalletBindingDO extends DurableObject<Env> {
         throw new Error('Fetch not implemented, call methods directly over rpc')
     }
 
-    async alarm(nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
+    async alarm(alarmInfo?: AlarmInvocationInfo): Promise<void> {
+        const nowSeconds = Math.floor(Date.now() / 1000)
+        void alarmInfo
         this.deleteExpired(nowSeconds, true)
         const next = this.sql
             .exec<{ expires_at: number }>(
