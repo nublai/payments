@@ -125,7 +125,6 @@ test('executeAccountStatus reports full pass with matching permissions', async (
             readNonce: mock(async () => 5n),
             readUsdcBalance: mock(async () => 50_000_000n),
             getAuthorizedKeys: mock(async () => {
-                // SAFETY: status parses decimal limit/spent strings that AuthorizedKeyInfo types as Hex.
                 return {
                     '0x7a69': [
                         {
@@ -145,13 +144,13 @@ test('executeAccountStatus reports full pass with matching permissions', async (
                                     type: 'spend',
                                     token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
                                     period: 'day',
-                                    limit: '10000000',
-                                    spent: '0',
+                                    limit: '0x989680',
+                                    spent: '0x0',
                                 },
                             ],
                         },
                     ],
-                } as GetKeysResponse
+                } satisfies GetKeysResponse
             }),
         },
     )
@@ -201,7 +200,6 @@ test('executeAccountStatus warns when a legacy wildcard session is present', asy
             readNonce: mock(async () => 1n),
             readUsdcBalance: mock(async () => 0n),
             getAuthorizedKeys: mock(async () => {
-                // SAFETY: status parses decimal limit/spent strings that AuthorizedKeyInfo types as Hex.
                 return {
                     '0x7a69': [
                         {
@@ -221,13 +219,13 @@ test('executeAccountStatus warns when a legacy wildcard session is present', asy
                                     type: 'spend',
                                     token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
                                     period: 'forever',
-                                    limit: (2n ** 256n - 1n).toString(),
-                                    spent: '0',
+                                    limit: `0x${(2n ** 256n - 1n).toString(16)}`,
+                                    spent: '0x0',
                                 },
                             ],
                         },
                     ],
-                } as GetKeysResponse
+                } satisfies GetKeysResponse
             }),
         },
     )
