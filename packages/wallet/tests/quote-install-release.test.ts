@@ -2,7 +2,17 @@ import { expect, test } from 'bun:test'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { decodeFunctionData, zeroAddress, type PublicClient } from 'viem'
+import {
+    createPublicClient,
+    custom,
+    decodeFunctionData,
+    encodeFunctionResult,
+    erc20Abi,
+    isHex,
+    toFunctionSelector,
+    zeroAddress,
+    type PublicClient,
+} from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import { quoteSpendRecoverySuspended } from '../src/lib/quote-spend-guard'
 import {
@@ -26,28 +36,78 @@ const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const APPROVE = '0x095ea7b3'
 
 function chainClient(): PublicClient {
-    // SAFETY: install/release only call readContract and getBalance on this stub client.
-    return {
-        async readContract(args: { functionName: string }) {
-            if (args.functionName === 'spendInfos') return []
+    return createPublicClient({
+        transport: custom({
+            async request(args) {
+                if (args.method === 'eth_getBalance') {
+                    return '0x0'
+                }
 
-            if (args.functionName === 'getKey') {
-                return {
-                    expiry: 0,
-                    keyType: 0,
-                    isSuperAdmin: false,
-                    publicKey: PUBLIC_KEY }
-            }
+                if (args.method === 'eth_chainId') {
+                    return '0x2105'
+                }
 
-            if (args.functionName === 'canExecutePackedInfos') return []
+                if (args.method !== 'eth_call') {
+                    throw new Error(`unexpected rpc ${args.method}`)
+                }
 
-            if (args.functionName === 'balanceOf') return 0n
-            throw new Error(`unexpected read ${args.functionName}`)
-        },
-        async getBalance() {
-            return 0n
-        },
-    } as unknown as PublicClient
+                if (!Array.isArray(args.params)) {
+                    throw new Error('unexpected rpc eth_call')
+                }
+
+                const first: unknown = args.params[0]
+                const record = first === null || first === undefined ? {} : Object.assign({}, first)
+
+                if (!('data' in record) || !isHex(record.data)) {
+                    throw new Error('bad eth_call')
+                }
+
+                const data = record.data
+                const selector = data.slice(0, 10)
+
+                if (selector === toFunctionSelector('balanceOf(address)')) {
+                    return encodeFunctionResult({
+                        abi: erc20Abi,
+                        functionName: 'balanceOf',
+                        result: 0n,
+                    })
+                }
+
+                const call = decodeFunctionData({ abi: accountAbi, data })
+
+                if (call.functionName === 'spendInfos') {
+                    return encodeFunctionResult({
+                        abi: accountAbi,
+                        functionName: 'spendInfos',
+                        result: [],
+                    })
+                }
+
+                if (call.functionName === 'canExecutePackedInfos') {
+                    return encodeFunctionResult({
+                        abi: accountAbi,
+                        functionName: 'canExecutePackedInfos',
+                        result: [],
+                    })
+                }
+
+                if (call.functionName === 'getKey') {
+                    return encodeFunctionResult({
+                        abi: accountAbi,
+                        functionName: 'getKey',
+                        result: {
+                            expiry: 0,
+                            keyType: 0,
+                            isSuperAdmin: false,
+                            publicKey: PUBLIC_KEY,
+                        },
+                    })
+                }
+
+                throw new Error(`unexpected read ${call.functionName}`)
+            },
+        }),
+    })
 }
 
 test('the release callback finishes an install inside withoutQuoteSpendRecovery', async () => {

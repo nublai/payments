@@ -18,7 +18,7 @@ import { identityAuthProviders } from '../../src/auth/identity-registry'
 import { createErc8128Provider } from '../../src/auth/providers/erc8128'
 import type { JsonRpcResponse } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
-import { stubNamespace, testEnv } from '../helpers/env'
+import { httpAuthNonceNamespace, testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
 
 const { readContract } = vi.hoisted(() => ({
@@ -61,9 +61,9 @@ function prodEnv(overrides: Partial<Env> = {}): Env {
             PRIVY_APP_ID: 'app-id',
             PRIVY_APP_SECRET: 'app-secret',
             ERC8128_ENABLED: 'true',
-            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
+            HTTP_AUTH_NONCE_MANAGER: httpAuthNonceNamespace({
                 idFromName: () => 'nonce',
-                get: () => ({ consumeNonce: async () => true }),
+                get: () => ({ consumeNonce: async (): Promise<true> => true }),
             }),
             ...overrides,
         }),

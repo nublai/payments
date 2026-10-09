@@ -119,12 +119,12 @@ test('executeAccountBalance maps address lookup failures', async () => {
 })
 
 test('executeAccountBalance preserves cause for invalid chain override', async () => {
-    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
-    const invalidOptions = {
+    const invalidOptions: AccountBalanceOptions = {
         env: 'prod',
         keystorePath: '/tmp/alice.json',
-        chain: 'foobar',
-    } as unknown as AccountBalanceOptions
+        // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
+        chain: 'foobar' as AccountBalanceOptions['chain'],
+    }
 
     try {
         await executeAccountBalance(invalidOptions)

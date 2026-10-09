@@ -66,11 +66,10 @@ import {
     ACCOUNT_UPGRADE_MAX_FEE_PER_GAS,
     ACCOUNT_UPGRADE_MAX_PRIORITY_FEE_PER_GAS,
 } from '../../src/rpc/methods/shared/upgrade-gas'
-import type { Env } from '../../src/types/env'
 import { testEnv } from '../helpers/env'
 import { parseAddr, parseHex } from '../helpers/hex'
 import { parseJson } from '../helpers/rpc'
-import { jsonStub, namespaceStub } from '../helpers/stubs'
+import { intentNonceNamespace, jsonStub, signerPoolNamespace } from '../helpers/stubs'
 
 const PORT = 18547
 
@@ -212,7 +211,7 @@ async function main(): Promise<void> {
             RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: 'paid-upgrade-anvil',
             COINGECKO_API_URL: 'http://127.0.0.1:1',
-            INTENT_NONCE_MANAGER: namespaceStub<Env['INTENT_NONCE_MANAGER']>({
+            INTENT_NONCE_MANAGER: intentNonceNamespace({
                 idFromName: () => 'nonce',
                 get: () => ({
                     fetch: async () => {
@@ -220,7 +219,7 @@ async function main(): Promise<void> {
                     },
                 }),
             }),
-            SIGNER_POOL: namespaceStub<Env['SIGNER_POOL']>({
+            SIGNER_POOL: signerPoolNamespace({
                 idFromName: () => 'pool',
                 get: () => ({
                     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {

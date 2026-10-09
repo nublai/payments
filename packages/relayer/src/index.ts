@@ -10,7 +10,7 @@ import { cors } from 'hono/cors'
 import type { Hex } from 'viem'
 
 import type { Env } from './types/env'
-import type { MonitorJob, QueueJob } from './types/pool'
+import type { MonitorJob } from './types/pool'
 import { validateEnv, validatePoolConfig, getChainIds } from './config'
 import { requestPaidUpgradeReconcile } from './rpc/methods/shared/paid-upgrade'
 import { logger, errorDetails, getErrorMessage } from './lib/logger'
@@ -198,7 +198,7 @@ app.notFound((c) => {
 /**
  * Process queue jobs (monitor, fulfillment, settlement, refund)
  */
-async function handleQueue(batch: MessageBatch<QueueJob>, env: Env): Promise<void> {
+async function handleQueue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
         const job = msg.body
 
@@ -207,6 +207,7 @@ async function handleQueue(batch: MessageBatch<QueueJob>, env: Env): Promise<voi
 
             switch (jobType) {
                 case 'monitor':
+                    // SAFETY: resolveQueueJobType only checks that the body is a non-null object whose type is absent or "monitor"; it does not check MonitorJob fields. The only producer, signer.do.ts, enqueues the body with satisfies MonitorJob. Message id/timestamp/attempts/ack/retry are already on msg.
                     await handleMonitorJob(msg as Message<MonitorJob>, env)
                     break
                 default:

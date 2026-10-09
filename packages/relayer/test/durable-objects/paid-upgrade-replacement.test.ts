@@ -9,7 +9,7 @@ import type { Hex } from 'viem'
 
 import { SignerDO } from '../../src/durable-objects/signer.do'
 import type { Env } from '../../src/types/env'
-import { stubNamespace, testEnv } from '../helpers/env'
+import { queueBinding, signerPoolNamespace, testEnv } from '../helpers/env'
 import { repeatedHex } from '../helpers/hex'
 
 const ACCOUNT = privateKeyToAccount(
@@ -153,8 +153,8 @@ describe('paid upgrade stale replacement', () => {
             },
         }
         signer.env = testEnv({
-            MONITOR_QUEUE: stubNamespace<Env['MONITOR_QUEUE']>({ send: async () => {} }),
-            SIGNER_POOL: stubNamespace<Env['SIGNER_POOL']>({
+            MONITOR_QUEUE: queueBinding({ send: async () => {} }),
+            SIGNER_POOL: signerPoolNamespace({
                 idFromName: () => 'pool-8453',
                 get: () => ({
                     fetch: async () => new Response(JSON.stringify({ allowed: true })),

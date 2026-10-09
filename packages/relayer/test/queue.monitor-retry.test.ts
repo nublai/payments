@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
+import type { MonitorJob } from '../src/types/pool'
+import type { Env } from '../src/types/env'
 import { testEnv } from './helpers/env'
 import { parseJson } from './helpers/rpc'
-import { jsonStub, namespaceStub, queueBatch } from './helpers/stubs'
-import type { Env } from '../src/types/env'
+import { jsonStub, queueBatch, signerNamespace } from './helpers/stubs'
 
 function createMonitorMessage(overrides?: {
     attempts?: number
@@ -22,7 +23,7 @@ function createMonitorMessage(overrides?: {
                 signerName: 'signer-137-0',
                 chainId: overrides?.chainId ?? 137,
                 attempt: overrides?.bodyAttempt ?? 0,
-            },
+            } satisfies MonitorJob,
             attempts: overrides?.attempts ?? 0,
             ack,
             retry,
@@ -36,7 +37,7 @@ function createMonitorEnv(options?: { signerFetch?: ReturnType<typeof vi.fn> }):
     return testEnv({
         CHAIN_IDS: '137',
         RPC_137: 'https://polygon.example',
-        SIGNER: namespaceStub<Env['SIGNER']>({
+        SIGNER: signerNamespace({
             idFromName: vi.fn().mockReturnValue('signer-id'),
             get: vi.fn().mockReturnValue({
                 fetch: options?.signerFetch ?? vi.fn().mockResolvedValue(jsonStub({}, true)),
@@ -156,7 +157,7 @@ describe('monitor queue retry behavior', () => {
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonStub({ result: null }))
 
-        const batch = queueBatch([malformedMessage, validMessage])
+        const batch = queueBatch<unknown>([malformedMessage, validMessage])
 
         const env = createMonitorEnv()
 
