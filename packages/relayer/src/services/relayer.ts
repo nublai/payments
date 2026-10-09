@@ -31,6 +31,7 @@ import {
 import { getErrorMessage } from '../lib/logger'
 import type { Logger } from '../lib/logger'
 import { INTENT_TYPES } from '../rpc/schema/intentTypes'
+import type { EIP712Domain } from '../rpc/schema/prepareCalls'
 
 /**
  * Call struct for intent execution (JSON-RPC format)
@@ -132,16 +133,6 @@ export interface SimulateIntentResult {
     error?: string
     errorCode?: string
     revertReason?: string
-}
-
-/**
- * EIP-712 domain for Orchestrator
- */
-export interface EIP712Domain {
-    name: string
-    version: string
-    chainId: number
-    verifyingContract: Address
 }
 
 /**

@@ -196,7 +196,7 @@ export interface PrepareCallsCapabilities {
     assetDiffs: Record<string, Array<[Address, AssetDiff[]]>>
 }
 
-export type PrepareCallsTypedDataDomain = {
+export interface EIP712Domain {
     name: string
     version: string
     chainId: number
@@ -210,7 +210,7 @@ export interface PrepareCallsResult {
     context: PrepareCallsContext
     digest: Hex
     typedData: {
-        domain: PrepareCallsTypedDataDomain
+        domain: EIP712Domain
         types: IntentTypes
         primaryType: 'Intent'
         message: Record<string, unknown>

@@ -14,7 +14,6 @@ const ADDRESS_ENV_KEYS = [
 type AddressEnvKey = (typeof ADDRESS_ENV_KEYS)[number]
 
 /** Worker or test env fields that `requireAddresses` reads for a chain. */
-
 export type ContractAddressEnv = {
     CONTEXT?: string
 } & { [K in AddressEnvKey]?: string } & {

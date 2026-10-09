@@ -101,11 +101,6 @@ interface FeeParams {
     maxPriorityFeePerGas: bigint
 }
 
-type StoredSignedAuthorization = Omit<SignedAuthorization, 'chainId' | 'nonce'> & {
-    chainId: SignedAuthorization['chainId'] | string
-    nonce: SignedAuthorization['nonce'] | string
-}
-
 interface RawFallbackBroadcastRequest extends PreparedBroadcastTransaction {
     nonce: number
     account: PrivateKeyAccount
@@ -1440,13 +1435,13 @@ export class SignerDO extends DurableObject<Env> {
     ): SignedAuthorization[] | undefined {
         if (!value) return undefined
         // SAFETY: this column is JSON from serializeAuthorizationList of SignedAuthorization[].
-        const parsed = JSON.parse(value) as StoredSignedAuthorization[]
+        const parsed = JSON.parse(value) as Array<Record<string, unknown>>
 
         return parsed.map((item) => {
             const chainId = item.chainId
             const nonce = item.nonce
 
-            // SAFETY: string fields are the bigint values JSON.stringify wrote; viem accepts them as SignedAuthorization.
+            // SAFETY: rows come from serializeAuthorizationList, chainId and nonce are stored as numbers and pass through unchanged, and a legacy string value becomes a bigint, which viem's toHex accepts even though the type says number.
             return {
                 ...item,
                 chainId: typeof chainId === 'string' ? BigInt(chainId) : chainId,
