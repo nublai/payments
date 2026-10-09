@@ -23,7 +23,13 @@ import {
 import { INTENT_TYPES } from '../../src/rpc/schema/intentTypes'
 import { testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
-import { jsonStub, namespaceStub, signerPoolWithFetch } from '../helpers/stubs'
+import {
+    bundleStatusNamespace,
+    bundlesByEoaResult,
+    jsonStub,
+    pendingBundlesByEoa,
+    signerPoolWithFetch,
+} from '../helpers/stubs'
 import { fixedChainConfig, stubPrepareRelayer } from '../helpers/fakes'
 import { testRelayerConfig } from '../helpers/relayer'
 
@@ -507,7 +513,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -556,7 +562,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -580,7 +586,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -628,7 +634,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -649,7 +655,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -673,7 +679,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -712,17 +718,14 @@ describe('wallet_getCallsHistory', () => {
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = Object.keys(chainEntries).join(',')
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 const chainId = Number(name.replace('bundle-status-', ''))
                 const entries = chainEntries[chainId] ?? []
 
-                const getBundlesByEoa = vi.fn(
-                    async (_eoa: string, limit: number, offset: number) => ({
-                        items: entries.slice(offset, offset + limit),
-                        total: entries.length,
-                    }),
+                const getBundlesByEoa = vi.fn((_eoa: string, limit: number, offset: number) =>
+                    bundlesByEoaResult(entries.slice(offset, offset + limit), entries.length),
                 )
 
                 chainSpies.set(chainId, getBundlesByEoa)
@@ -826,32 +829,18 @@ describe('wallet_getCallsHistory', () => {
     })
 
     it('starts initial per-chain history queries concurrently', async () => {
-        let resolveFirstChain = (_value: {
-            items: Array<{ bundleId: string; chainId: number; createdAt: number }>
-            total: number
-        }): void => {
-            throw new Error('resolveFirstChain was not initialized')
-        }
+        const firstChain = pendingBundlesByEoa()
 
-        const firstChainSpy = vi.fn(
-            () =>
-                new Promise<{
-                    items: Array<{ bundleId: string; chainId: number; createdAt: number }>
-                    total: number
-                }>((resolve) => {
-                    resolveFirstChain = resolve
-                }),
+        const firstChainSpy = vi.fn(() => firstChain.result)
+
+        const secondChainSpy = vi.fn(() =>
+            bundlesByEoaResult([{ bundleId: 'b1', chainId: 10, createdAt: 123 }], 1),
         )
-
-        const secondChainSpy = vi.fn().mockResolvedValue({
-            items: [{ bundleId: 'b1', chainId: 10, createdAt: 123 }],
-            total: 1,
-        })
 
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = '8453,10'
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 if (name === 'bundle-status-8453') {
@@ -876,7 +865,7 @@ describe('wallet_getCallsHistory', () => {
         expect(firstChainSpy).toHaveBeenCalledTimes(1)
         expect(secondChainSpy).toHaveBeenCalledTimes(1)
 
-        resolveFirstChain({ items: [], total: 0 })
+        firstChain.resolve([], 0)
         const result = await resultPromise
 
         expect(result.total).toBe(1)
@@ -896,26 +885,22 @@ describe('wallet_getCallsHistory', () => {
             createdAt: 10_000 - index,
         }))
 
-        const chainASpy = vi.fn(async (_eoa: string, limit: number, offset: number) => {
+        const chainASpy = vi.fn((_eoa: string, limit: number, offset: number) => {
             if (offset > 0) {
                 throw new Error('chain A pagination failure')
             }
 
-            return {
-                items: chainAEntries.slice(offset, offset + limit),
-                total: chainAEntries.length,
-            }
+            return bundlesByEoaResult(chainAEntries.slice(offset, offset + limit), chainAEntries.length)
         })
 
-        const chainBSpy = vi.fn(async (_eoa: string, limit: number, offset: number) => ({
-            items: chainBEntries.slice(offset, offset + limit),
-            total: chainBEntries.length,
-        }))
+        const chainBSpy = vi.fn((_eoa: string, limit: number, offset: number) =>
+            bundlesByEoaResult(chainBEntries.slice(offset, offset + limit), chainBEntries.length),
+        )
 
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = '8453,10'
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        ctx.env.BUNDLE_STATUS_DO = bundleStatusNamespace({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) =>
                 name === 'bundle-status-8453'
@@ -964,7 +949,7 @@ describe('wallet_getCallsStatus', () => {
             SIGNER_POOL: signerPoolWithFetch(
                 vi.fn().mockResolvedValue(jsonStub({ txHash: '0xabc', signer: '0x123' })),
             ),
-            BUNDLE_STATUS_DO: namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+            BUNDLE_STATUS_DO: bundleStatusNamespace({
                 idFromName: vi.fn().mockReturnValue('bundle-status-id'),
                 get: vi.fn().mockReturnValue({
                     fetch: vi.fn().mockResolvedValue(jsonStub(mockResponse)),

@@ -351,12 +351,12 @@ test('executeAccountStatus supports legacy polygon USDC.e override', async () =>
 })
 
 test('executeAccountStatus preserves cause for invalid chain override', async () => {
-    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
-    const invalidOptions = {
+    const invalidOptions: AccountStatusOptions = {
         env: 'prod',
         keystorePath: '/tmp/alice.json',
-        chain: 'foobar',
-    } as unknown as AccountStatusOptions
+        // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
+        chain: 'foobar' as AccountStatusOptions['chain'],
+    }
 
     try {
         await executeAccountStatus(invalidOptions)

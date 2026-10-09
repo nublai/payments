@@ -4,13 +4,13 @@ import { Hono } from 'hono'
 import type {Env} from '../../src/types/env'
 import { erc8128AuthMiddleware, extractAuthRequirement } from '../../src/auth/erc8128/middleware'
 import type { Erc8128VerifyFailureCode } from '../../src/auth/erc8128/verify'
-import { unusedBinding, testEnv } from '../helpers/env'
+import { httpAuthNonceNamespace, testEnv } from '../helpers/env'
 import { addr } from '../helpers/hex'
 
 function createEnv(overrides: Partial<Env> = {}): Env {
     return testEnv({
         CHAIN_IDS: '8453',
-        HTTP_AUTH_NONCE_MANAGER: unusedBinding<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>(),
+        HTTP_AUTH_NONCE_MANAGER: httpAuthNonceNamespace(),
         ...overrides,
     })
 }

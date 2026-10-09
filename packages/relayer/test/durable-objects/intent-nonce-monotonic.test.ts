@@ -1,8 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IntentNonceDO } from '../../src/durable-objects/intent-nonce.do'
+import { durableObjectState } from '../helpers/env'
 
-interface SqlResult {
-    toArray(): unknown[]
+class FakeSqlCursor<T extends Record<string, SqlStorageValue>> {
+    constructor(private readonly rows: T[]) {}
+
+    next() {
+        const value = this.rows.shift()
+
+        if (value === undefined) {
+            return { done: true as const }
+        }
+
+        return { done: false as const, value }
+    }
+
+    toArray() {
+        return this.rows
+    }
+
+    one() {
+        const row = this.rows[0]
+
+        if (row === undefined) {
+            throw new Error('no rows')
+        }
+
+        return row
+    }
+
+    raw<U extends SqlStorageValue[]>(): IterableIterator<U> {
+        throw new Error('SqlStorageCursor.raw is not stubbed')
+    }
+
+    columnNames: string[] = []
+
+    get rowsRead() {
+        return this.rows.length
+    }
+
+    get rowsWritten() {
+        return 0
+    }
+
+    [Symbol.iterator]() {
+        return this.rows[Symbol.iterator]()
+    }
 }
 
 class FakeSqlStorage {
@@ -18,7 +61,19 @@ class FakeSqlStorage {
         }
     >()
 
-    exec(query: string, ...args: unknown[]): SqlResult {
+    get databaseSize() {
+        return 0
+    }
+
+    get Cursor(): typeof SqlStorageCursor {
+        throw new Error('SqlStorage.Cursor is not stubbed')
+    }
+
+    get Statement(): typeof SqlStorageStatement {
+        throw new Error('SqlStorage.Statement is not stubbed')
+    }
+
+    exec(query: string, ...args: unknown[]): FakeSqlCursor<Record<string, SqlStorageValue>> {
         const normalized = query.trim().replace(/\s+/g, ' ')
 
         if (
@@ -26,21 +81,23 @@ class FakeSqlStorage {
             normalized.startsWith('CREATE TABLE IF NOT EXISTS pending_drafts') ||
             normalized.startsWith('CREATE INDEX IF NOT EXISTS idx_pending_drafts_expires_at_ms')
         ) {
-            return { toArray: () => [] }
+            return new FakeSqlCursor([])
         }
 
         if (normalized.startsWith('SELECT seq FROM nonces WHERE seq_key = ?')) {
             const key = String(args[0])
             const seq = this.rows.get(key)
 
-            return { toArray: () => (seq === undefined ? [] : [{ seq }]) }
+            return new FakeSqlCursor(seq === undefined ? [] : [{ seq }])
         }
 
         if (normalized.startsWith('SELECT seq_key, seq FROM nonces')) {
-            return {
-                toArray: () =>
-                    Array.from(this.rows.entries()).map(([seq_key, seq]) => ({ seq_key, seq })),
-            }
+            return new FakeSqlCursor(
+                Array.from(this.rows.entries()).map(([seq_key, seq]) => ({
+                    seq_key,
+                    seq,
+                })),
+            )
         }
 
         if (normalized.startsWith('INSERT INTO nonces')) {
@@ -48,14 +105,14 @@ class FakeSqlStorage {
             const seq = String(args[1])
             this.rows.set(key, seq)
 
-            return { toArray: () => [] }
+            return new FakeSqlCursor([])
         }
 
         if (normalized.startsWith('DELETE FROM nonces WHERE seq_key = ?')) {
             const key = String(args[0])
             this.rows.delete(key)
 
-            return { toArray: () => [] }
+            return new FakeSqlCursor([])
         }
 
         if (
@@ -66,21 +123,20 @@ class FakeSqlStorage {
             const key = String(args[0])
             const draft = this.drafts.get(key)
 
-            return {
-                toArray: () =>
-                    draft
-                        ? [
-                              {
-                                  seq_key: key,
-                                  draft_id: draft.draft_id,
-                                  nonce: draft.nonce,
-                                  draft_key: draft.draft_key,
-                                  created_at_ms: draft.created_at_ms,
-                                  expires_at_ms: draft.expires_at_ms,
-                              },
-                          ]
-                        : [],
+            if (draft === undefined) {
+                return new FakeSqlCursor([])
             }
+
+            return new FakeSqlCursor([
+                {
+                    seq_key: key,
+                    draft_id: draft.draft_id,
+                    nonce: draft.nonce,
+                    draft_key: draft.draft_key,
+                    created_at_ms: draft.created_at_ms,
+                    expires_at_ms: draft.expires_at_ms,
+                },
+            ])
         }
 
         if (
@@ -88,17 +144,16 @@ class FakeSqlStorage {
                 'SELECT seq_key, draft_id, nonce, draft_key, created_at_ms, expires_at_ms FROM pending_drafts',
             )
         ) {
-            return {
-                toArray: () =>
-                    Array.from(this.drafts.entries()).map(([seq_key, draft]) => ({
-                        seq_key,
-                        draft_id: draft.draft_id,
-                        nonce: draft.nonce,
-                        draft_key: draft.draft_key,
-                        created_at_ms: draft.created_at_ms,
-                        expires_at_ms: draft.expires_at_ms,
-                    })),
-            }
+            return new FakeSqlCursor(
+                Array.from(this.drafts.entries()).map(([seq_key, draft]) => ({
+                    seq_key,
+                    draft_id: draft.draft_id,
+                    nonce: draft.nonce,
+                    draft_key: draft.draft_key,
+                    created_at_ms: draft.created_at_ms,
+                    expires_at_ms: draft.expires_at_ms,
+                })),
+            )
         }
 
         if (normalized.startsWith('INSERT INTO pending_drafts')) {
@@ -112,7 +167,7 @@ class FakeSqlStorage {
                 expires_at_ms: Number(args[5]),
             })
 
-            return { toArray: () => [] }
+            return new FakeSqlCursor([])
         }
 
         if (
@@ -128,46 +183,59 @@ class FakeSqlStorage {
                 this.drafts.delete(key)
             }
 
-            return { toArray: () => [] }
+            return new FakeSqlCursor([])
         }
 
         if (normalized.startsWith('DELETE FROM pending_drafts WHERE seq_key = ?')) {
             const key = String(args[0])
             this.drafts.delete(key)
 
-            return { toArray: () => [] }
+            return new FakeSqlCursor([])
         }
 
         throw new Error(`Unsupported SQL in test stub: ${normalized}`)
     }
 }
 
-function createIntentNonceDO(): IntentNonceDO {
-    const sql = new FakeSqlStorage()
+function sqlStorage(fake: FakeSqlStorage): SqlStorage {
+    return {
+        exec<T extends Record<string, SqlStorageValue>>(
+            query: string,
+            ...args: unknown[]
+        ): SqlStorageCursor<T> {
+            const cursor = fake.exec(query, ...args)
 
-    const state = {
-        storage: {
-            sql,
-            transactionSync<T>(fn: () => T): T {
-                return fn()
-            },
+            // SAFETY: exec<T> is an unchecked generic; as SqlStorageCursor<T> fails TS2352, so this unavoidable row cast uses never.
+            return cursor as never
+        },
+        get databaseSize() {
+            return fake.databaseSize
+        },
+        get Cursor() {
+            return fake.Cursor
+        },
+        get Statement() {
+            return fake.Statement
         },
     }
+}
 
-    // Construct without DurableObjectBase runtime checks. We only need fetch()
-    // and nonce logic methods, all of which rely on ctx.storage/sql.
-    // SAFETY: Object.create installs only the prototype; ctx and sql are assigned next.
-    const nonceDO = Object.create(IntentNonceDO.prototype) as {
-        ctx: typeof state
-        sql: FakeSqlStorage
+function createIntentNonceDO(): IntentNonceDO {
+    const sql: SqlStorage = sqlStorage(new FakeSqlStorage())
+    const ctx: DurableObjectState = durableObjectState(sql)
+
+    const fields = { ctx, sql } satisfies {
+        ctx: ConstructorParameters<typeof IntentNonceDO>[0]
+        sql: SqlStorage
     }
 
-    nonceDO.ctx = state
-    nonceDO.sql = sql
+    // SAFETY: DurableObjectBase rejects a structural DurableObjectState at runtime; these tests only call fetch/sql methods.
+    const nonceDO = Object.create(IntentNonceDO.prototype) as IntentNonceDO
+    Object.assign(nonceDO, fields)
 
-    // SAFETY: Object.create plus ctx/sql is the IntentNonceDO surface these tests call.
-    return nonceDO as unknown as IntentNonceDO
+    return nonceDO
 }
+
 
 async function doRequest<T>(
     nonceDO: IntentNonceDO,

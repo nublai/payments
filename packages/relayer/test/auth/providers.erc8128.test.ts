@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Env } from '../../src/types/env'
 import type { verifyErc8128Request } from '../../src/auth/erc8128/verify'
 import { createErc8128Provider } from '../../src/auth/providers/erc8128'
-import { stubNamespace, testEnv } from '../helpers/env'
+import { httpAuthNonceNamespace, testEnv } from '../helpers/env'
 
 const verifyMock = vi.fn<typeof verifyErc8128Request>()
 
@@ -10,7 +9,7 @@ describe('erc8128 auth provider', () => {
     const env = testEnv({
         ERC8128_ENABLED: 'true',
         CHAIN_IDS: '8453',
-        HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
+        HTTP_AUTH_NONCE_MANAGER: httpAuthNonceNamespace({
             idFromName: vi.fn(),
             get: vi.fn(),
         }),

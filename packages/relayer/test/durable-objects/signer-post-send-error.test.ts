@@ -20,7 +20,7 @@ import type {Env} from '../../src/types/env'
 import type {IndexedCapacityInfo, SendResult} from '../../src/types/pool'
 import { testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
-import { jsonStub, namespaceStub, signerPoolWithFetch } from '../helpers/stubs'
+import { jsonStub, signerNamespace, signerPoolWithFetch } from '../helpers/stubs'
 import {
     consumeRateLimit,
     releaseRateLimit,
@@ -113,7 +113,7 @@ describe('post-send signer errors', () => {
 
         pool.env = testEnv({
             RELAYER_COUNT: '2',
-            SIGNER: namespaceStub<Env['SIGNER']>({
+            SIGNER: signerNamespace({
                 idFromName: (name: string) => name,
                 get: (name: string) => ({
                     fetch: async () => {
