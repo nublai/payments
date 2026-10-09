@@ -207,7 +207,7 @@ async function handleQueue(batch: MessageBatch<unknown>, env: Env): Promise<void
 
             switch (jobType) {
                 case 'monitor':
-                    // SAFETY: resolveQueueJobType only checks that the body is a non-null object whose type is absent or "monitor"; it does not check MonitorJob fields. Message id/timestamp/attempts/ack/retry are already on msg.
+                    // SAFETY: resolveQueueJobType only checks that the body is a non-null object whose type is absent or "monitor"; it does not check MonitorJob fields. The only producer, signer.do.ts, enqueues the body with satisfies MonitorJob. Message id/timestamp/attempts/ack/retry are already on msg.
                     await handleMonitorJob(msg as Message<MonitorJob>, env)
                     break
                 default:

@@ -55,7 +55,7 @@ function chainClient(): PublicClient {
                     throw new Error('unexpected rpc eth_call')
                 }
 
-                const first = args.params[0]
+                const first: unknown = args.params[0]
                 const record = first === null || first === undefined ? {} : Object.assign({}, first)
 
                 if (!('data' in record) || !isHex(record.data)) {
