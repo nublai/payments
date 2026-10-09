@@ -60,7 +60,7 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
 
         // Ensure contract addresses are available (deployment or env overrides)
         try {
-            getContractAddresses(env as unknown as Record<string, string | undefined>, chainId)
+            getContractAddresses(env, chainId)
         } catch {
             if (!hasDeployment(context, chainId)) {
                 missing.push(
@@ -193,10 +193,7 @@ export function getChainConfig(env: Env, chainId: number): RelayerConfig {
     return {
         rpcUrl,
         chainId,
-        contracts: getContractAddresses(
-            env as unknown as Record<string, string | undefined>,
-            chainId,
-        ),
+        contracts: getContractAddresses(env, chainId),
     }
 }
 
@@ -222,9 +219,6 @@ export function getPoolConfig(env: Env, chainId: number): SignerPoolConfig {
         minSignerBalance: env.MIN_SIGNER_BALANCE
             ? BigInt(env.MIN_SIGNER_BALANCE)
             : POOL_DEFAULTS.minSignerBalance,
-        contracts: getContractAddresses(
-            env as unknown as Record<string, string | undefined>,
-            chainId,
-        ),
+        contracts: getContractAddresses(env, chainId),
     }
 }

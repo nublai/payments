@@ -2,8 +2,36 @@ import deployments from './addresses.json'
 import { type Address } from 'viem'
 
 export type ChainDeployment = {
-  chainId: number
+  chainId?: number
   addresses: Record<string, Address>
+}
+
+type JsonDeployments = typeof deployments
+
+type DeploymentContext = keyof JsonDeployments
+
+function isDeploymentContext(value: string): value is DeploymentContext {
+  return Object.hasOwn(deployments, value)
+}
+
+function contextDeployments(context: string): JsonDeployments[DeploymentContext] | undefined {
+  if (!isDeploymentContext(context)) return undefined
+
+  return deployments[context]
+}
+
+function chainDeployment(
+  ctx: JsonDeployments[DeploymentContext],
+  chainId: number
+): ChainDeployment | undefined {
+  for (const [key, value] of Object.entries(ctx)) {
+    if (Number(key) === chainId) {
+      // SAFETY: addresses.json values are 0x-prefixed address strings.
+      return value as ChainDeployment
+    }
+  }
+
+  return undefined
 }
 
 export type ContextDeployments = Record<number, ChainDeployment>
@@ -62,7 +90,9 @@ export function getDeployment(
   context: string,
   chainId: number
 ): ChainDeployment | undefined {
-  return (deployments as unknown as Deployments)[context]?.[chainId]
+  const ctx = contextDeployments(context)
+
+  return ctx ? chainDeployment(ctx, chainId) : undefined
 }
 
 // Get address with type safety
@@ -110,7 +140,7 @@ export function getContexts(): string[] {
 
 // List chain IDs for a context
 export function getChainIds(context: string): number[] {
-  const ctx = (deployments as unknown as Deployments)[context]
+  const ctx = contextDeployments(context)
 
   return ctx ? Object.keys(ctx).map(Number) : []
 }

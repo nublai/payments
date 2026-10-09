@@ -68,8 +68,16 @@ export interface Env {
     ACCOUNT_PROXY?: string
     ORCHESTRATOR?: string
     SIMPLE_FUNDER?: string
+    SIMPLE_SETTLER?: string
     SIMULATOR?: string
+    ESCROW?: string
+    MULTI_SIG_SIGNER?: string
     CONTEXT?: string // Deployment context: "prod", "stage", "local" (default: "prod")
+
+    // Chain-specific contract addresses (e.g. ORCHESTRATOR_31337)
+    [key: `${'ORCHESTRATOR' | 'SIMPLE_FUNDER' | 'SIMPLE_SETTLER' | 'SIMULATOR' | 'ACCOUNT' | 'ACCOUNT_PROXY' | 'ESCROW' | 'MULTI_SIG_SIGNER'}_${string}`]:
+        | string
+        | undefined
 
     // Fee configuration
     // Required when CONTEXT is not local. Simulation and broadcast must pay

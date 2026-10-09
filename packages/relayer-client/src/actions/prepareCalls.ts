@@ -196,9 +196,9 @@ export async function prepareCalls(
         context: result.context,
         digest: result.digest,
         typedData: {
-            domain: result.typedData.domain as unknown as EIP712Domain,
-            types: result.typedData.types as unknown as typeof INTENT_TYPES,
-            primaryType: result.typedData.primaryType as 'Intent',
+            domain: result.typedData.domain,
+            types: result.typedData.types,
+            primaryType: result.typedData.primaryType,
             message,
         },
     }

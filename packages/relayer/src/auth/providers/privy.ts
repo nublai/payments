@@ -197,16 +197,8 @@ export function createPrivyIdentityProvider(): IdentityProvider {
 
             try {
                 const claims = await getClient(ctx.env).verifyAuthToken(parsed.token)
-                const claimsRecord = (claims ?? {}) as unknown as Record<string, unknown>
 
-                const tokenAppId =
-                    typeof claimsRecord.appId === 'string'
-                        ? claimsRecord.appId
-                        : typeof claimsRecord.app_id === 'string'
-                          ? claimsRecord.app_id
-                          : undefined
-
-                if (tokenAppId !== ctx.env.PRIVY_APP_ID) {
+                if (claims.appId !== ctx.env.PRIVY_APP_ID) {
                     return {
                         ok: false,
                         code: 'INVALID_TOKEN',

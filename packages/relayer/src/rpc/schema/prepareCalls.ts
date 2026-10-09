@@ -1,4 +1,6 @@
-import type { Address, Hex, TypedDataDomain } from 'viem'
+import type { Address, Hex } from 'viem'
+
+import type { IntentTypes } from './intentTypes'
 
 /**
  * Call object in JSON-RPC format
@@ -194,6 +196,13 @@ export interface PrepareCallsCapabilities {
     assetDiffs: Record<string, Array<[Address, AssetDiff[]]>>
 }
 
+export type PrepareCallsTypedDataDomain = {
+    name: string
+    version: string
+    chainId: number
+    verifyingContract: Address
+}
+
 /**
  * Result of wallet_prepareCalls (spec-compliant)
  */
@@ -201,9 +210,9 @@ export interface PrepareCallsResult {
     context: PrepareCallsContext
     digest: Hex
     typedData: {
-        domain: TypedDataDomain
-        types: Record<string, ReadonlyArray<{ name: string; type: string }>>
-        primaryType: string
+        domain: PrepareCallsTypedDataDomain
+        types: IntentTypes
+        primaryType: 'Intent'
         message: Record<string, unknown>
     }
     capabilities: PrepareCallsCapabilities
