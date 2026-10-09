@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import worker from '../src/index'
+import type { MonitorJob } from '../src/types/pool'
 import { queueBatch, queueBinding, testEnv } from './helpers/env'
 
 describe('queue retired escrow-bridging jobs', () => {
@@ -7,12 +8,15 @@ describe('queue retired escrow-bridging jobs', () => {
         const ack = vi.fn()
         const retry = vi.fn()
 
-        const batch = queueBatch([
+        const retired = {
+            type: 'fulfillment',
+            bundleId: 'bundle-1',
+        }
+
+        const batch = queueBatch<MonitorJob>([
             {
-                body: {
-                    type: 'fulfillment',
-                    bundleId: 'bundle-1',
-                },
+                // SAFETY: handleQueue only reads body/attempts/ack/retry; retired fulfillment bodies are not MonitorJob.
+                body: retired as never,
                 ack,
                 retry,
             },

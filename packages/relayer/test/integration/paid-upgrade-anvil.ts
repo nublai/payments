@@ -69,7 +69,7 @@ import {
 import { testEnv } from '../helpers/env'
 import { parseAddr, parseHex } from '../helpers/hex'
 import { parseJson } from '../helpers/rpc'
-import { jsonStub, namespaceStub } from '../helpers/stubs'
+import { intentNonceNamespace, jsonStub, signerPoolNamespace } from '../helpers/stubs'
 
 const PORT = 18547
 
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
             RELAYER_COUNT: '1',
             QUOTE_SIGNING_SECRET: 'paid-upgrade-anvil',
             COINGECKO_API_URL: 'http://127.0.0.1:1',
-            INTENT_NONCE_MANAGER: namespaceStub({
+            INTENT_NONCE_MANAGER: intentNonceNamespace({
                 idFromName: () => 'nonce',
                 get: () => ({
                     fetch: async () => {
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
                     },
                 }),
             }),
-            SIGNER_POOL: namespaceStub({
+            SIGNER_POOL: signerPoolNamespace({
                 idFromName: () => 'pool',
                 get: () => ({
                     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {

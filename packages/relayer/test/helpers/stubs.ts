@@ -1,20 +1,20 @@
-import {
-    stubNamespace,
-    queueBatch,
-    type TestStubMethods,
-} from './env'
+import type { Env } from '../../src/types/env'
+import { signerPoolNamespace, type TestStubMethods } from './env'
 
-export { queueBatch, stubNamespace }
+export {
+    queueBatch,
+    signerNamespace,
+    signerPoolNamespace,
+    intentNonceNamespace,
+    bundleStatusNamespace,
+    httpAuthNonceNamespace,
+    walletBindingNamespace,
+} from './env'
 
 /** Methods these tests actually call on a Durable Object namespace. */
 export type NamespaceIdAndGet = {
     idFromName: (name: string) => string
     get: (id: string) => TestStubMethods
-}
-
-/** Tests only call idFromName/get on this Durable Object namespace. */
-export function namespaceStub(stub: NamespaceIdAndGet) {
-    return stubNamespace(stub)
 }
 
 export type QueueTestMessage = {
@@ -41,8 +41,8 @@ export function jsonStub<T>(body: T, ok = true): Response {
 
 export function signerPoolWithFetch(
     fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
-) {
-    return namespaceStub({
+): Env['SIGNER_POOL'] {
+    return signerPoolNamespace({
         idFromName: () => 'pool-id',
         get: () => ({ fetch }),
     })

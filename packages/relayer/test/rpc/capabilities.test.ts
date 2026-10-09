@@ -7,7 +7,7 @@ import { handleGetCapabilities } from '../../src/rpc/methods/getCapabilities'
 import type { RpcContext } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
 import { installDeployment } from '../deployment-fixture'
-import { stubNamespace, testEnv } from '../helpers/env'
+import { signerPoolNamespace, testEnv } from '../helpers/env'
 
 // Installed into the prod/8453 deployments JSON below, and kept in env.
 const ADDRESSES_8453 = {
@@ -35,7 +35,7 @@ function createMockEnv(): Env {
         SIMULATOR: '0xSimulator',
         // Unsuffixed placeholders stay incomplete, so an unknown chain still skips.
         ...ADDRESSES_8453,
-        SIGNER_POOL: stubNamespace({
+        SIGNER_POOL: signerPoolNamespace({
             idFromName: vi.fn().mockReturnValue('pool-id'),
             get: vi.fn().mockReturnValue({
                 fetch: vi.fn().mockResolvedValue({
