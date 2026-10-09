@@ -25,3 +25,5 @@ export const INTENT_TYPES = {
         { name: 'data', type: 'bytes' },
     ],
 } as const
+
+export type IntentTypes = typeof INTENT_TYPES

@@ -832,10 +832,7 @@ export class SignerDO extends DurableObject<Env> {
         address: string,
         chainId: number,
     ): Promise<{ success: boolean; txHash?: Hex; amount?: bigint; reason?: string }> {
-        const contracts = getContractAddresses(
-            this.env as unknown as Record<string, string | undefined>,
-            chainId,
-        )
+        const contracts = getContractAddresses(this.env, chainId)
 
         if (!contracts.simpleFunder) {
             return { success: false, reason: 'SimpleFunder not configured' }
@@ -1437,16 +1434,19 @@ export class SignerDO extends DurableObject<Env> {
         value: string | undefined,
     ): SignedAuthorization[] | undefined {
         if (!value) return undefined
+        // SAFETY: this column is JSON from serializeAuthorizationList of SignedAuthorization[].
         const parsed = JSON.parse(value) as Array<Record<string, unknown>>
 
         return parsed.map((item) => {
-            const copy = { ...item }
+            const chainId = item.chainId
+            const nonce = item.nonce
 
-            if (typeof copy.chainId === 'string') copy.chainId = BigInt(copy.chainId)
-
-            if (typeof copy.nonce === 'string') copy.nonce = BigInt(copy.nonce)
-
-            return copy as unknown as SignedAuthorization
+            // SAFETY: rows come from serializeAuthorizationList, chainId and nonce are stored as numbers and pass through unchanged, and a legacy string value becomes a bigint, which viem's toHex accepts even though the type says number.
+            return {
+                ...item,
+                chainId: typeof chainId === 'string' ? BigInt(chainId) : chainId,
+                nonce: typeof nonce === 'string' ? BigInt(nonce) : nonce,
+            } as SignedAuthorization
         })
     }
 
@@ -1491,10 +1491,7 @@ export class SignerDO extends DurableObject<Env> {
         chainId: number,
         signerAddress: Address,
     ): Promise<PreparedBroadcastTransaction> {
-        const contracts = getContractAddresses(
-            this.env as unknown as Record<string, string | undefined>,
-            chainId,
-        )
+        const contracts = getContractAddresses(this.env, chainId)
 
         switch (tx.type) {
             case 'create-account': {

@@ -35,9 +35,13 @@ export function resolveCliProcessExitCode(fallbackCode: number): number {
     return typeof code === 'number' ? code : fallbackCode
 }
 
-type ActiveHandleInspector = {
-    _getActiveHandles?: () => unknown[]
-    _getActiveRequests?: () => unknown[]
+declare global {
+    namespace NodeJS {
+        interface Process {
+            _getActiveHandles?: () => object[]
+            _getActiveRequests?: () => object[]
+        }
+    }
 }
 
 function summarizeActiveResource(resource: unknown): Record<string, unknown> {
@@ -101,9 +105,8 @@ export function scheduleActiveHandleDumpIfRequested(label: string): void {
     }
 
     const timer = setTimeout(() => {
-        const inspector = process as unknown as ActiveHandleInspector
-        const handles = inspector._getActiveHandles?.() ?? []
-        const requests = inspector._getActiveRequests?.() ?? []
+        const handles = process._getActiveHandles?.() ?? []
+        const requests = process._getActiveRequests?.() ?? []
         console.error(`[tw debug] active handles after ${label}:`, handles.length)
         handles.forEach((handle, index) => {
             console.error(`[tw debug] handle[${index}]`, summarizeActiveResource(handle))
