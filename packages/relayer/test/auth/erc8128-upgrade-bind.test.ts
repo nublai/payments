@@ -20,27 +20,22 @@ import type { JsonRpcResponse } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
 import { stubNamespace, testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
+import { stubErc8128ChainClient } from '../helpers/fakes'
 
-const { readContract } = vi.hoisted(() => ({
-    readContract: vi.fn(async () => {
-        throw new Error('no key')
-    }),
-}))
-
-vi.mock('../../src/lib/multi-chain-client', async () => {
-    const actual = await vi.importActual<typeof import('../../src/lib/multi-chain-client')>(
-        '../../src/lib/multi-chain-client',
-    )
-
-    return {
-        ...actual,
-        getChainClient: () => ({
-            getCode: async () => undefined,
-            readContract,
-            verifyMessage: async () => false,
-        }),
-    }
+const readContract = vi.fn(async () => {
+    throw new Error('no key')
 })
+
+function erc8128Provider() {
+    return createErc8128Provider({
+        getChainClient: () =>
+            stubErc8128ChainClient({
+                getCode: async () => undefined,
+                readContract,
+                verifyMessage: async () => false,
+            }),
+    })
+}
 
 const CHAIN_ID = 8453
 
@@ -115,7 +110,7 @@ async function cliRequest(
 }
 
 async function erc8128Verify(request: Request, env: Env) {
-    return createErc8128Provider().verify(request, {
+    return erc8128Provider().verify(request, {
         env,
         nowSeconds: Math.floor(Date.now() / 1000),
     })
@@ -125,7 +120,7 @@ async function erc8128Verify(request: Request, env: Env) {
 async function throughWorker(request: Request, env: Env) {
     let reached = false
     const app = new Hono<{ Bindings: Env }>()
-    app.use('*', authMiddleware({ providers: [...identityAuthProviders(), createErc8128Provider()] }))
+    app.use('*', authMiddleware({ providers: [...identityAuthProviders(), erc8128Provider()] }))
     app.post('/', (c) => {
         reached = true
 

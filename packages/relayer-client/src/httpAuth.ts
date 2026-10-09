@@ -1,10 +1,17 @@
 import type { EthHttpSigner, SignOptions } from '@slicekit/erc8128'
 
+export type SignHttpRequest = (
+    request: Request,
+    signer: EthHttpSigner,
+    opts?: SignOptions,
+) => Promise<Request>
+
 export interface HttpAuthOptions {
     signer?: EthHttpSigner
     signOptions?: SignOptions
     authToken?: string
     authTokenProvider?: () => Promise<string | null>
+    signRequest?: SignHttpRequest
 }
 
 export interface HttpAuthConfig {

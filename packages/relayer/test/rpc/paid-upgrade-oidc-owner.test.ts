@@ -40,54 +40,30 @@ import { emptyHex, repeatedHex, wordHex } from '../helpers/hex'
 import { testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
 import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
+import { stubPrepareRelayer, stubUsdPrice } from '../helpers/fakes'
+import { testIntentNonceProvider } from '../helpers/relayer'
+import type { FeeEstimate } from '../../src/services/fees'
+import type { IntentNonceProvider } from '../../src/services/relayer'
 
-const { mockPrepareIntent } = vi.hoisted(() => ({
-    mockPrepareIntent: vi.fn(),
-}))
+const mockPrepareIntent = vi.fn()
 
-vi.mock('../../src/services/relayer', async () => {
-    const actual = await vi.importActual<typeof import('../../src/services/relayer')>(
-        '../../src/services/relayer',
-    )
+const paidUpgradeFee = {
+    baseFeePerGas: 1n,
+    maxPriorityFeePerGas: 1n,
+    maxFeePerGas: 1_000_000_000n,
+    totalGas: 100_000n,
+    paymentAmount: 1_000_000_000_000_000n,
+} satisfies FeeEstimate
 
-    return {
-        ...actual,
-        RelayerService: vi.fn().mockImplementation(() => ({
-            prepareIntent: mockPrepareIntent,
-        })),
-        createIntentNonceProvider: vi.fn().mockReturnValue({}),
-    }
-})
-
-vi.mock('../../src/services/fees', async () => {
-    const actual = await vi.importActual<typeof import('../../src/services/fees')>(
-        '../../src/services/fees',
-    )
-
-    return {
-        ...actual,
-        getFeeEstimate: vi.fn().mockResolvedValue({
-            baseFeePerGas: 1n,
-            maxPriorityFeePerGas: 1n,
-            maxFeePerGas: 1_000_000_000n,
-            totalGas: 100_000n,
-            paymentAmount: 1_000_000_000_000_000n,
-        }),
-    }
-})
-
-vi.mock('../../src/services/price-oracle', async () => {
-    const actual = await vi.importActual<typeof import('../../src/services/price-oracle')>(
-        '../../src/services/price-oracle',
-    )
-
-    return {
-        ...actual,
-        getUsdPrice: vi.fn(async (assetUid: string) =>
-            assetUid === 'usdc' ? 10n ** 18n : 3000n * 10n ** 18n,
-        ),
-    }
-})
+function unusedNonceProvider(): IntentNonceProvider {
+    return testIntentNonceProvider(async () => ({
+        nonce: 0n,
+        draftId: 'unused',
+        createdAtMs: 0,
+        expiresAtMs: 0,
+        fromCache: false,
+    }))
+}
 
 const CHAIN_ID = 8453
 
@@ -249,6 +225,14 @@ function createCtx(): RpcContext {
                 MULTI_SIG_SIGNER_8453: '0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3',
             },
         ),
+        deps: {
+            createRelayerService: stubPrepareRelayer(mockPrepareIntent),
+            getFeeEstimate: async () => paidUpgradeFee,
+            getUsdPrice: stubUsdPrice((assetUid) =>
+                assetUid === 'usdc' ? 10n ** 18n : 3000n * 10n ** 18n,
+            ),
+            createIntentNonceProvider: () => unusedNonceProvider(),
+        },
     }
 }
 

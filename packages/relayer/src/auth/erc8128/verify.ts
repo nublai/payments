@@ -13,6 +13,9 @@ import type { Env } from '../../types/env'
 import { parseAuthProtectedMethods } from '../policy'
 import { signerIsAccountKey } from './account-key'
 import { authorizeErc8128Signer, bindingFromRpcBody } from './signer-policy'
+import type { PublicClient } from 'viem'
+
+export type Erc8128ChainClient = Pick<PublicClient, 'getCode' | 'verifyMessage' | 'readContract'>
 
 export interface NonceStore {
     consumeNonce(replayKey: string, ttlSeconds: number): Promise<boolean>
@@ -24,6 +27,8 @@ export interface Erc8128Config {
     requireRequestBound: boolean
     requireNonReplayable: boolean
     nonceStore: NonceStore
+    getChainClient?: (chainId: number, env: Partial<Env>) => Erc8128ChainClient
+    verifyRequest?: typeof verifyRequest
 }
 
 export interface Erc8128VerificationContext {
@@ -89,6 +94,9 @@ export async function verifyErc8128Request(
         keyIdByAddress.set(keyId.address.toLowerCase(), keyId)
     }
 
+    const resolveClient = cfg.getChainClient ?? getChainClient
+    const runVerify = cfg.verifyRequest ?? verifyRequest
+
     const verifyMessage = async (args: VerifyMessageArgs): Promise<boolean> => {
         const keyId = keyIdByAddress.get(args.address.toLowerCase())
 
@@ -96,10 +104,10 @@ export async function verifyErc8128Request(
             return false
         }
 
-        let client: ReturnType<typeof getChainClient> | null = null
+        let client: Erc8128ChainClient | null = null
 
         try {
-            client = getChainClient(keyId.chainId, ctx.env)
+            client = resolveClient(keyId.chainId, ctx.env)
             const code = await client.getCode({ address: keyId.address })
 
             // Smart contract accounts (including delegated EOAs) should use chain verification.
@@ -139,7 +147,7 @@ export async function verifyErc8128Request(
         // Fallback chain verification path (if RPC is available).
         if (!client) {
             try {
-                client = getChainClient(keyId.chainId, ctx.env)
+                client = resolveClient(keyId.chainId, ctx.env)
             } catch {
                 return false
             }
@@ -156,7 +164,7 @@ export async function verifyErc8128Request(
         }
     }
 
-    const result = await verifyRequest(
+    const result = await runVerify(
         ctx.request,
         verifyMessage,
         {
@@ -199,7 +207,9 @@ export async function verifyErc8128Request(
         signer: parsed.address,
         binding,
         isAccountKey: (account, chainId, signer) =>
-            signerIsAccountKey(ctx.env, account, chainId, signer, ctx.nowSeconds),
+            signerIsAccountKey(ctx.env, account, chainId, signer, ctx.nowSeconds, {
+                getChainClient: resolveClient,
+            }),
     })
 
     if (!decision.ok) {
@@ -209,7 +219,7 @@ export async function verifyErc8128Request(
     let signerType: 'EOA' | 'SCA' = 'EOA'
 
     try {
-        const client = getChainClient(parsed.chainId, ctx.env)
+        const client = resolveClient(parsed.chainId, ctx.env)
         const code = await client.getCode({ address: parsed.address })
 
         if (hasCode(code)) {

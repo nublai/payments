@@ -5,51 +5,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { RpcError, INVALID_PARAMS } from '../../src/rpc/errors'
-
-const { mockGetCode, mockReadContract } = vi.hoisted(() => ({
-    mockGetCode: vi.fn(),
-    mockReadContract: vi.fn(),
-}))
-
-vi.mock('../../src/lib/viem-utils', () => ({
-    createRelayerPublicClient: vi.fn().mockReturnValue({
-        getCode: mockGetCode,
-        readContract: mockReadContract,
-    }),
-    hasCode: (code: string | undefined) => !!code && code !== '0x' && code.length > 2,
-}))
-
-// Import after mocks are set up
 import { handleVerifySignature } from '../../src/rpc/methods/verifySignature'
+import { fixedChainConfig, fixedChainIds, stubRelayerChainClient } from '../helpers/fakes'
+import { testRelayerConfig } from '../helpers/relayer'
 
-// Mock config
-vi.mock('../../src/config', () => ({
-    getChainIds: () => [8453],
-    getChainConfig: () => ({
-        rpcUrl: 'https://example.com/rpc',
-        chainId: 8453,
-        contracts: {
-            account: '0x1234567890123456789012345678901234567890',
-            orchestrator: '0x3456789012345678901234567890123456789012',
-        },
-    }),
-}))
+const mockGetCode = vi.fn()
 
-// Mock logger
-vi.mock('../../src/lib/logger', () => ({
-    logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-    },
-}))
+const mockReadContract = vi.fn()
 
-// Create mock context
 const createMockCtx = (): RpcContext => ({
     env: {
         RPC_URL: 'https://example.com/rpc',
         CHAIN_IDS: '8453',
+    },
+    deps: {
+        getChainIds: fixedChainIds([8453]),
+        getChainConfig: fixedChainConfig(
+            testRelayerConfig({
+                rpcUrl: 'https://example.com/rpc',
+                chainId: 8453,
+            }),
+        ),
+        createRelayerPublicClient: () =>
+            stubRelayerChainClient({
+                getCode: mockGetCode,
+                readContract: mockReadContract,
+            }),
     },
 })
 

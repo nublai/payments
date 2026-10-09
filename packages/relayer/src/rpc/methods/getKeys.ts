@@ -9,11 +9,11 @@ import { accountAbi } from '@nubl/contracts/abis'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
-import { getChainConfig, getChainIds } from '../../config'
 import { RpcError, ACCOUNT_NOT_DELEGATED, CONTRACT_ERROR } from '../errors'
 import { logger } from '../../lib/logger'
-import { createRelayerPublicClient, toHexChainId, hasCode } from '../../lib/viem-utils'
+import { toHexChainId, hasCode } from '../../lib/viem-utils'
 import { parseHexChainId, requireParam, validateAddress, unwrapParams } from '../../lib/rpc-utils'
+import { rpcHandlerIo } from '../handler-io'
 import type { KeyType } from '../schema/upgradeAccount'
 import {
     type PermissionResponse,
@@ -88,6 +88,7 @@ interface ContractSpendInfo {
  */
 export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<GetKeysResult> {
     const env = ctx.env as Env
+    const io = rpcHandlerIo(ctx)
 
     // Parse params (JSON-RPC array format)
     const typedParams = unwrapParams<GetKeysParams>(params)
@@ -100,16 +101,16 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
     if (typedParams?.chainIds && typedParams.chainIds.length > 0) {
         chainIdsToCheck = typedParams.chainIds.map((value) => parseHexChainId(value, 'chainId'))
     } else {
-        chainIdsToCheck = getChainIds(env)
+        chainIdsToCheck = io.getChainIds(env)
     }
 
     const results: GetKeysResult = {}
     const strictSingleChain = chainIdsToCheck.length === 1
 
     for (const chainId of chainIdsToCheck) {
-        const config = getChainConfig(env, chainId)
+        const config = io.getChainConfig(env, chainId)
         const hexChainId = toHexChainId(config.chainId)
-        const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
+        const publicClient = io.createRelayerPublicClient(config.chainId, config.rpcUrl)
 
         // Check if account is delegated (has code)
         let code: Hex | undefined

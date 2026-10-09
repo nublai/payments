@@ -1,54 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { verifyErc8128Request, type Erc8128Config } from '../../src/auth/erc8128/verify'
+import { stubErc8128ChainClient } from '../helpers/fakes'
+
 const ADDRESS = '0x1111111111111111111111111111111111111111'
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
     getCode: vi.fn(),
     verifyMessage: vi.fn(),
-}))
+}
 
-vi.mock('@slicekit/erc8128', () => ({
-    parseKeyId: (raw: string) => {
-        const [, chainId, address] = raw.split(':')
+const driveVerifyRequest: NonNullable<Erc8128Config['verifyRequest']> = async (
+    _request,
+    verifyMessage,
+) => {
+    const ok = await verifyMessage({
+        address: ADDRESS,
+        message: { raw: '0x010203' },
+        signature: '0xdeadbeef',
+    })
 
-        return { chainId: Number.parseInt(chainId, 10), address }
-    },
-    verifyRequest: async (
-        _request: Request,
-        verifyMessage: (args: unknown) => Promise<boolean>,
-    ) => {
-        const ok = await verifyMessage({
-            address: ADDRESS,
-            message: { raw: '0x010203' },
-            signature: '0xdeadbeef',
-        })
+    if (ok) {
+        throw new Error('driveVerifyRequest expected chain verification to fail')
+    }
 
-        if (ok) {
-            return {
-                ok: true as const,
-                params: {
-                    keyid: `erc8128:8453:${ADDRESS}`,
-                    nonce: 'nonce-1',
-                },
-            }
-        }
-
-        return {
-            ok: false as const,
-            reason: 'bad_signature' as const,
-            detail: 'bad sig',
-        }
-    },
-}))
-
-vi.mock('../../src/lib/multi-chain-client', () => ({
-    getChainClient: vi.fn(() => ({
-        getCode: mocks.getCode,
-        verifyMessage: mocks.verifyMessage,
-    })),
-}))
-
-import { verifyErc8128Request } from '../../src/auth/erc8128/verify'
+    return {
+        ok: false,
+        reason: 'bad_signature',
+        detail: 'bad sig',
+    }
+}
 
 describe('verifyErc8128Request rpc fallback handling', () => {
     beforeEach(() => {
@@ -81,6 +62,12 @@ describe('verifyErc8128Request rpc fallback handling', () => {
                 nonceStore: {
                     consumeNonce: vi.fn(async () => true),
                 },
+                getChainClient: () =>
+                    stubErc8128ChainClient({
+                        getCode: mocks.getCode,
+                        verifyMessage: mocks.verifyMessage,
+                    }),
+                verifyRequest: driveVerifyRequest,
             },
         )
 

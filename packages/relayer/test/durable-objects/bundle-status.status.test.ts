@@ -1,19 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BundleStatusDO, type TxStatusResponse } from '../../src/durable-objects/bundle-status.do'
+import { recordingLogger } from '../helpers/fakes'
 
-const { mockLoggerWarn, mockGetErrorMessage } = vi.hoisted(() => ({
-    mockLoggerWarn: vi.fn(),
-    mockGetErrorMessage: vi.fn((error: unknown) =>
-        error instanceof Error ? error.message : String(error),
-    ) }))
-
-vi.mock('../../src/lib/logger', () => ({
-    logger: {
-        warn: mockLoggerWarn,
-        error: vi.fn(),
-        info: vi.fn(),
-        debug: vi.fn() },
-    getErrorMessage: mockGetErrorMessage }))
+const mockLoggerWarn = vi.fn()
 
 type BundleTxRow = {
     bundle_id: string
@@ -114,6 +103,7 @@ type BundleStatusHost = {
             get: (signerName: string) => { fetch: (url: string) => Promise<Response> }
         }
     }
+    log: ReturnType<typeof recordingLogger>
     get_bundle_status: BundleStatusDO['get_bundle_status']
     ensureBundleTransactionsSchema: () => void
 }
@@ -135,6 +125,7 @@ function createDoStub(args: {
     const stub: BundleStatusHost = Object.create(BundleStatusDO.prototype)
 
     stub.sql = sql
+    stub.log = recordingLogger(mockLoggerWarn)
     stub.ctx = { id: { name: 'bundle-status-137' } }
     stub.env = {
         RELAYER_COUNT: args.relayerCount ?? '2',

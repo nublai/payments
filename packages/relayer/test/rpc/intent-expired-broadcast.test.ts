@@ -12,42 +12,6 @@ import {
     handleSendPreparedCalls,
 } from '../../src/rpc/methods/sendPreparedCalls'
 
-vi.mock('../../src/services/relayer', () => ({
-    RelayerService: vi.fn().mockImplementation(() => ({
-        prepareIntent: vi.fn(),
-        simulateIntent: vi.fn(),
-        getBundleStatus: vi.fn(),
-    })),
-    createIntentNonceProvider: vi.fn().mockReturnValue({
-        acquireNonce: vi.fn().mockResolvedValue(1n),
-        syncNonce: vi.fn().mockResolvedValue(undefined),
-    }),
-}))
-
-vi.mock('../../src/lib/logger', () => ({
-    logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-    },
-}))
-
-vi.mock('../../src/config', () => ({
-    getChainIds: () => [8453],
-    getChainConfig: () => ({
-        rpcUrl: 'https://example.com/rpc',
-        chainId: 8453,
-        contracts: {
-            account: '0x1234567890123456789012345678901234567890',
-            accountProxy: '0x2345678901234567890123456789012345678901',
-            orchestrator: '0x3456789012345678901234567890123456789012',
-            simpleFunder: '0x4567890123456789012345678901234567890123',
-            simulator: '0x5678901234567890123456789012345678901234',
-        },
-    }),
-}))
-
 const createMockCtx = (body: unknown): RpcContext => {
     return {
         env: {

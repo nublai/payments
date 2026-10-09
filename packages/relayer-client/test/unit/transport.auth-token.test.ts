@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const signRequestMock = vi.hoisted(() => vi.fn())
-
-vi.mock('@slicekit/erc8128', () => ({
-    signRequest: signRequestMock,
-}))
-
+import type { SignHttpRequest } from '../../src/httpAuth'
 import { createJsonRpcTransport, JsonRpcClientError } from '../../src/transport'
+
+let signRequestImpl: SignHttpRequest = async (request) => request
+
+let signRequestCalls = 0
+
+const signRequestMock: SignHttpRequest = async (request, signer, opts) => {
+    signRequestCalls += 1
+
+    return signRequestImpl(request, signer, opts)
+}
 
 function successResponse(id: number, result: unknown = 'ok') {
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), {
@@ -23,8 +28,8 @@ function fetchRequest(input: Request | URL | string): Request {
 
 describe('createJsonRpcTransport bearer auth', () => {
     beforeEach(() => {
-        signRequestMock.mockReset()
-        signRequestMock.mockImplementation(async (request: Request) => request)
+        signRequestCalls = 0
+        signRequestImpl = async (request) => request
     })
 
     afterEach(() => {
@@ -135,11 +140,11 @@ describe('createJsonRpcTransport bearer auth', () => {
     })
 
     it('keeps bearer header when httpAuth signing is also configured', async () => {
-        signRequestMock.mockImplementation(async (request: Request) => {
+        signRequestImpl = async (request) => {
             expect(request.headers.get('Authorization')).toBe('Bearer token_signed')
 
             return request
-        })
+        }
 
         let seenAuth: string | null = null
 
@@ -160,12 +165,13 @@ describe('createJsonRpcTransport bearer auth', () => {
                     address: '0x1111111111111111111111111111111111111111',
                     signMessage: async () => '0x',
                 },
+                signRequest: signRequestMock,
             },
         })
 
         await transport.request('wallet_health')
 
-        expect(signRequestMock).toHaveBeenCalledTimes(1)
+        expect(signRequestCalls).toBe(1)
         expect(seenAuth).toBe('Bearer token_signed')
     })
 

@@ -13,92 +13,20 @@ import { handleGetCallsStatus } from '../../src/rpc/methods/getCallsStatus'
 import { handleGetCallsHistory } from '../../src/rpc/methods/getCallsHistory'
 import { RpcError, INVALID_PARAMS, SERVICE_UNAVAILABLE, SIMULATION_FAILED } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
+import type { IntentNonceProvider } from '../../src/services/relayer'
 import { testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
 import { jsonStub, namespaceStub, signerPoolWithFetch } from '../helpers/stubs'
+import { fixedChainConfig, stubPrepareRelayer } from '../helpers/fakes'
+import { testRelayerConfig } from '../helpers/relayer'
 
-const { mockGetFeeEstimate } = vi.hoisted(() => ({
-    mockGetFeeEstimate: vi.fn(),
-}))
+const mockGetFeeEstimate = vi.fn()
 
-vi.mock('../../src/services/fees', async () => {
-    const actual = await vi.importActual<typeof import('../../src/services/fees')>(
-        '../../src/services/fees',
-    )
+const mockPrepareIntent = vi.fn()
 
-    return {
-        ...actual,
-        getFeeEstimate: mockGetFeeEstimate,
-    }
-})
+const mockMarkSubmitted = vi.fn()
 
-// Mock RelayerService
-const { mockPrepareIntent, mockSimulateIntent, mockMarkSubmitted, mockCreateIntentNonceProvider } =
-    vi.hoisted(() => ({
-        mockPrepareIntent: vi.fn(),
-        mockSimulateIntent: vi.fn(),
-        mockMarkSubmitted: vi.fn(),
-        mockCreateIntentNonceProvider: vi.fn().mockReturnValue({
-            acquireNonce: vi.fn().mockResolvedValue(1n),
-            acquireNonceSynced: vi.fn().mockResolvedValue({ nonce: 1n, synced: false }),
-            syncNonce: vi.fn().mockResolvedValue(undefined),
-            markSubmitted: vi.fn(),
-        }),
-    }))
-
-vi.mock('../../src/services/relayer', () => ({
-    RelayerService: vi.fn().mockImplementation(() => ({
-        prepareIntent: mockPrepareIntent,
-        simulateIntent: mockSimulateIntent,
-    })),
-    createIntentNonceProvider: mockCreateIntentNonceProvider,
-    isPaymentEnabled: vi
-        .fn()
-        .mockImplementation(
-            (payer: string, paymentToken: string) =>
-                payer !== '0x0000000000000000000000000000000000000000' &&
-                paymentToken !== '0x0000000000000000000000000000000000000000',
-        ),
-}))
-
-// Mock logger
-vi.mock('../../src/lib/logger', () => ({
-    logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-    },
-    getErrorMessage: vi.fn((error: unknown) =>
-        error instanceof Error ? error.message : String(error),
-    ),
-}))
-
-vi.mock('../../src/services/price-oracle', () => ({
-    getEthUsdPrice: vi.fn().mockResolvedValue(3000n * 10n ** 18n),
-    getUsdPrice: vi.fn().mockResolvedValue(1n * 10n ** 18n),
-    formatPriceForQuote: vi.fn().mockReturnValue('0x0'),
-}))
-
-// Mock config with stable functions (avoid reset by clearAllMocks)
-vi.mock('../../src/config', () => ({
-    getChainIds: (env: { CHAIN_IDS?: string }) =>
-        (env.CHAIN_IDS ?? '')
-            .split(',')
-            .map((id) => Number.parseInt(id.trim(), 10))
-            .filter((id) => Number.isFinite(id)),
-    getChainConfig: () => ({
-        rpcUrl: 'https://example.com/rpc',
-        chainId: 8453,
-        contracts: {
-            account: '0x1234567890123456789012345678901234567890',
-            accountProxy: '0x2345678901234567890123456789012345678901',
-            orchestrator: '0x3456789012345678901234567890123456789012',
-            simpleFunder: '0x4567890123456789012345678901234567890123',
-            simulator: '0x5678901234567890123456789012345678901234',
-        },
-    }),
-}))
+const mockCreateIntentNonceProvider = vi.fn()
 
 const positiveFee = {
     baseFeePerGas: 1_000_000_000n,
@@ -111,12 +39,16 @@ const positiveFee = {
 beforeEach(() => {
     vi.clearAllMocks()
     mockGetFeeEstimate.mockResolvedValue(positiveFee)
-    mockCreateIntentNonceProvider.mockReturnValue({
-        acquireNonce: vi.fn().mockResolvedValue(1n),
-        acquireNonceSynced: vi.fn().mockResolvedValue({ nonce: 1n, synced: false }),
-        syncNonce: vi.fn().mockResolvedValue(undefined),
+    mockCreateIntentNonceProvider.mockImplementation((): IntentNonceProvider => ({
+        acquireOrGetDraft: async () => ({
+            nonce: 1n,
+            draftId: 'd-1',
+            createdAtMs: 0,
+            expiresAtMs: 0,
+            fromCache: false,
+        }),
         markSubmitted: mockMarkSubmitted,
-    })
+    }))
     mockMarkSubmitted.mockResolvedValue('cleared')
 })
 
@@ -132,9 +64,7 @@ const ADDRESSES_8453 = {
     MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
 }
 
-type TestRpcContext = {
-    env: Env
-}
+type TestRpcContext = RpcContext & { env: Env }
 
 const createMockCtx = (envOverrides: Partial<Env> = {}): TestRpcContext => ({
     env: {
@@ -156,6 +86,19 @@ const createMockCtx = (envOverrides: Partial<Env> = {}): TestRpcContext => ({
             ...envOverrides,
         }),
         ...ADDRESSES_8453,
+    },
+    deps: {
+        createRelayerService: stubPrepareRelayer(mockPrepareIntent),
+        getFeeEstimate: mockGetFeeEstimate,
+        getUsdPrice: async () => 1n * 10n ** 18n,
+        formatPriceForQuote: () => '0x0',
+        createIntentNonceProvider: mockCreateIntentNonceProvider,
+        getChainConfig: fixedChainConfig(
+            testRelayerConfig({
+                rpcUrl: 'https://example.com/rpc',
+                chainId: 8453,
+            }),
+        ),
     },
 })
 

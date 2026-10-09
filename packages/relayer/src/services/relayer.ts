@@ -18,12 +18,15 @@ import {
     isHex,
     type Address,
     type Hex,
-    type PublicClient,
 } from 'viem'
 import { accountAbi, simulatorAbi } from '@nubl/contracts/abis'
 import type { IntentNonceDO } from '../durable-objects/intent-nonce.do'
 import type { RelayerConfig, GasConfig } from '../types/env'
-import { createRelayerPublicClient, isEip7702Delegated } from '../lib/viem-utils'
+import {
+    createRelayerPublicClient,
+    isEip7702Delegated,
+    type RelayerChainClient,
+} from '../lib/viem-utils'
 import {
     eip7702DelegationCode,
     PAID_UPGRADE_AUTHORIZATION_GAS,
@@ -424,7 +427,7 @@ function extractRevertData(error: unknown): Hex | null {
 }
 
 export class RelayerService {
-    private publicClient: PublicClient
+    private publicClient: RelayerChainClient
     private config: RelayerConfig
     private gasConfig: GasConfig
     private logger: Logger
@@ -435,12 +438,13 @@ export class RelayerService {
         logger: Logger,
         intentNonceProvider?: IntentNonceProvider,
         gasConfig?: GasConfig,
+        io?: { publicClient?: RelayerChainClient },
     ) {
         this.config = config
         this.gasConfig = gasConfig ?? DEFAULT_GAS_CONFIG
         this.logger = logger
         this.intentNonceProvider = intentNonceProvider
-        this.publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
+        this.publicClient = io?.publicClient ?? createRelayerPublicClient(config.chainId, config.rpcUrl)
     }
 
     /**

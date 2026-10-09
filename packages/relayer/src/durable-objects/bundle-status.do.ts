@@ -16,7 +16,7 @@ import { decodeEventLog, type Address } from 'viem'
 import { orchestratorAbi } from '@nubl/contracts/abis'
 import type { Env } from '../types/env'
 import type { Hex } from 'viem'
-import { getErrorMessage, logger } from '../lib/logger'
+import { getErrorMessage, logger, type Logger } from '../lib/logger'
 
 const DEFAULT_BUNDLE_UNRESOLVED_SLA_MS = 300_000
 
@@ -72,6 +72,7 @@ interface BundleGasTelemetry {
  */
 export class BundleStatusDO extends DurableObject<Env> {
     private sql: SqlStorage
+    protected log: Logger = logger
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env)
@@ -332,7 +333,7 @@ export class BundleStatusDO extends DurableObject<Env> {
 
             return (await response.json()) as TxStatusResponse
         } catch (error) {
-            logger.warn(
+            this.log.warn(
                 {
                     event: 'bundle_status_signer_fetch_failed',
                     txId,
@@ -540,7 +541,7 @@ export class BundleStatusDO extends DurableObject<Env> {
             const signerName = row.signer_name as string | null
 
             if (!signerName) {
-                logger.warn(
+                this.log.warn(
                     {
                         event: 'bundle_status_missing_signer_name',
                         bundleId,
@@ -569,7 +570,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                 }
 
                 if (!txStatus) {
-                    logger.warn(
+                    this.log.warn(
                         {
                             event: 'bundle_status_signer_probe_failed',
                             bundleId,
@@ -591,7 +592,7 @@ export class BundleStatusDO extends DurableObject<Env> {
                             txId,
                         )
                     } catch (error) {
-                        logger.warn(
+                        this.log.warn(
                             {
                                 event: 'bundle_status_signer_cache_update_failed',
                                 bundleId,
@@ -608,7 +609,7 @@ export class BundleStatusDO extends DurableObject<Env> {
 
                 transactions.push(txStatus)
             } catch (error) {
-                logger.warn(
+                this.log.warn(
                     {
                         event: 'bundle_status_tx_resolution_failed',
                         bundleId,
@@ -639,7 +640,7 @@ export class BundleStatusDO extends DurableObject<Env> {
             const unresolvedSlaMs = this.getBundleUnresolvedSlaMs()
 
             if (ageMs >= unresolvedSlaMs) {
-                logger.error(
+                this.log.error(
                     {
                         event: 'bundle_unresolvable_sla_failed',
                         reason: 'unresolvable_bundle_tracking_timeout',

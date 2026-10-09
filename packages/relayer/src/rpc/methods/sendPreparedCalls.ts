@@ -10,7 +10,7 @@ import type {
 import { getChainConfig, getChainIds } from '../../config'
 import { logger, getErrorMessage } from '../../lib/logger'
 import { unwrapParams } from '../../lib/rpc-utils'
-import { createIntentNonceProvider } from '../../services/relayer'
+import { rpcHandlerIo } from '../handler-io'
 import {
     RpcError,
     INVALID_PARAMS,
@@ -234,6 +234,7 @@ export async function handleSendPreparedCalls(
     ctx: RpcContext,
 ): Promise<SendPreparedCallsResult> {
     const env = ctx.env as Env
+    const io = rpcHandlerIo(ctx)
     const typedParams = unwrapParams<SendPreparedCallsParams>(params)
 
     if (!typedParams?.context) {
@@ -428,7 +429,7 @@ export async function handleSendPreparedCalls(
         const seqKey = getSeqKeyForDraftMark(intent.nonce, context.draft.seqKey)
 
         if (seqKey !== null) {
-            const intentNonceProvider = createIntentNonceProvider(env.INTENT_NONCE_MANAGER, chainId)
+            const intentNonceProvider = io.createIntentNonceProvider(env.INTENT_NONCE_MANAGER, chainId)
 
             try {
                 const draftStatus = await intentNonceProvider.markSubmitted(
@@ -576,6 +577,7 @@ export async function handleBatchSendPreparedCalls(
     Array<{ id: string | number | null; result?: SendPreparedCallsResult; error?: unknown }>
 > {
     const env = ctx.env as Env
+    const io = rpcHandlerIo(ctx)
 
     const parsedRequests: Array<{
         id: string | number | null
@@ -740,7 +742,7 @@ export async function handleBatchSendPreparedCalls(
         'batch intents submitted successfully',
     )
 
-    const intentNonceProvider = createIntentNonceProvider(env.INTENT_NONCE_MANAGER, batchChainId)
+    const intentNonceProvider = io.createIntentNonceProvider(env.INTENT_NONCE_MANAGER, batchChainId)
 
     for (const request of parsedRequests) {
         if (!request.draftId || request.draftSeqKey === undefined) {

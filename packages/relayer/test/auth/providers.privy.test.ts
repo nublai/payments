@@ -2,20 +2,24 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type {Env} from '../../src/types/env'
 import { authorizeRequest } from '../../src/auth/engine'
 import { authIdentityOwnsAccount, runWithAuthIdentity } from '../../src/auth/identity'
-
-const privyClientMock = vi.hoisted(() => vi.fn())
-
-const verifyAuthTokenMock = vi.hoisted(() => vi.fn())
-
-const getUserByWalletAddressMock = vi.hoisted(() => vi.fn())
-
-vi.mock('@privy-io/server-auth', () => ({
-    PrivyClient: privyClientMock.mockImplementation(() => ({
-        verifyAuthToken: verifyAuthTokenMock,
-        getUserByWalletAddress: getUserByWalletAddressMock })) }))
-
-import { createPrivyProvider } from '../../src/auth/providers/privy'
+import {
+    createPrivyProvider as createPrivyProviderImpl,
+    type PrivyAuthClient,
+} from '../../src/auth/providers/privy'
 import { testEnv } from '../helpers/env'
+
+const verifyAuthTokenMock = vi.fn()
+
+const getUserByWalletAddressMock = vi.fn()
+
+const createClient = vi.fn((_appId: string, _appSecret: string): PrivyAuthClient => ({
+    verifyAuthToken: verifyAuthTokenMock,
+    getUserByWalletAddress: getUserByWalletAddressMock,
+}))
+
+function createPrivyProvider() {
+    return createPrivyProviderImpl({ createClient })
+}
 
 function makeEnv(): Env {
     return testEnv({
@@ -27,7 +31,7 @@ function makeEnv(): Env {
 
 describe('privy auth provider', () => {
     beforeEach(() => {
-        privyClientMock.mockClear()
+        createClient.mockClear()
         verifyAuthTokenMock.mockReset()
         getUserByWalletAddressMock.mockReset()
     })
@@ -212,7 +216,7 @@ describe('privy auth provider', () => {
 
         expect(first).toEqual({ ok: true, userId: 'did:privy:user_1' })
         expect(second).toEqual({ ok: true, userId: 'did:privy:user_1' })
-        expect(privyClientMock).toHaveBeenCalledTimes(1)
+        expect(createClient).toHaveBeenCalledTimes(1)
         expect(verifyAuthTokenMock).toHaveBeenCalledTimes(2)
         expect(verifyAuthTokenMock).toHaveBeenNthCalledWith(1, 'token_1')
         expect(verifyAuthTokenMock).toHaveBeenNthCalledWith(2, 'token_2')
