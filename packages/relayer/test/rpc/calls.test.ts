@@ -186,22 +186,26 @@ function buildSendPreparedCallsParams(options?: { withTelemetry?: boolean }) {
         },
         feeTokenDeficit: '0x0',
         assetDeficits: [],
-        ...(options?.withTelemetry
-            ? {
+    }
+
+    const quotes = options?.withTelemetry
+        ? [
+              {
+                  ...quote,
                   telemetry: {
                       paymentEnabled: true,
                       simulationGas: '123456',
                       combinedGas: '234567',
                       txGas: '345678',
                   },
-              }
-            : {}),
-    }
+              },
+          ]
+        : [quote]
 
     return {
         context: {
             quote: {
-                quotes: [quote],
+                quotes,
                 signature: '0x',
                 ttl: Math.floor(Date.now() / 1000) + 300,
             },
