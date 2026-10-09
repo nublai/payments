@@ -75,7 +75,7 @@ export type PermissionsRevokeResult = {
     feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
-type PermissionsRevokeDeps = {
+export type PermissionsRevokeDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     listSessionNames: typeof listSessionNames

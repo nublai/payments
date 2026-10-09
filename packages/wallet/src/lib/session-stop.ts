@@ -27,7 +27,7 @@ async function waitForExit(pid: number, timeoutMs = 5_000): Promise<boolean> {
     return false
 }
 
-type SessionStopDeps = {
+export type SessionStopDeps = {
     readPidFromFile: typeof readPidFromFile
     createClient: (socketPath: string) => Pick<SessionDaemonClient, 'ping'>
     sendSignal: (pid: number, signal: NodeJS.Signals | 0) => void

@@ -8,11 +8,12 @@
 import { describe, it, expect } from 'vitest'
 import type { Address } from 'viem'
 import { selectSignerForEoa } from '../src/lib/pool-utils'
+import { addrFromIndex, parseAddr } from './helpers/hex'
 
 describe('selectSignerForEoa', () => {
     describe('determinism', () => {
         it('returns the same signer for the same EOA', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             const signerCount = 5
 
             const result1 = selectSignerForEoa(eoa, signerCount)
@@ -47,10 +48,7 @@ describe('selectSignerForEoa', () => {
             // With enough EOAs, some will collide on the same signer
             const signerCount = 3
 
-            const eoas: Address[] = Array.from(
-                { length: 20 },
-                (_, i) => `0x${i.toString(16).padStart(40, '0')}` as Address,
-            )
+            const eoas: Address[] = Array.from({ length: 20 }, (_, i) => addrFromIndex(i))
 
             const results = eoas.map((eoa) => selectSignerForEoa(eoa, signerCount))
             const uniqueSigners = new Set(results)
@@ -65,9 +63,8 @@ describe('selectSignerForEoa', () => {
             const signerCount = 5
 
             // Generate 100 random-ish EOAs
-            const eoas: Address[] = Array.from(
-                { length: 100 },
-                (_, i) => `0x${(i * 12345).toString(16).padStart(40, '0').slice(0, 40)}` as Address,
+            const eoas: Address[] = Array.from({ length: 100 }, (_, i) =>
+                parseAddr(`0x${(i * 12345).toString(16).padStart(40, '0').slice(0, 40)}`),
             )
 
             const counts = new Map<number, number>()
@@ -89,10 +86,7 @@ describe('selectSignerForEoa', () => {
         it('uses all signers with enough unique EOAs', () => {
             const signerCount = 10
 
-            const eoas: Address[] = Array.from(
-                { length: 1000 },
-                (_, i) => `0x${i.toString(16).padStart(40, '0')}` as Address,
-            )
+            const eoas: Address[] = Array.from({ length: 1000 }, (_, i) => addrFromIndex(i))
 
             const usedSigners = new Set<number>()
 
@@ -107,24 +101,24 @@ describe('selectSignerForEoa', () => {
 
     describe('edge cases', () => {
         it('returns 0 for single signer', () => {
-            const eoa = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd' as Address
+            const eoa = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
             expect(selectSignerForEoa(eoa, 1)).toBe(0)
         })
 
         it('throws for zero signers', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             expect(() => selectSignerForEoa(eoa, 0)).toThrow('signerCount must be positive')
         })
 
         it('throws for negative signers', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             expect(() => selectSignerForEoa(eoa, -1)).toThrow('signerCount must be positive')
         })
 
         it('handles checksummed addresses', () => {
             // Checksummed address
-            const checksummed = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B' as Address
-            const lowercase = checksummed.toLowerCase() as Address
+            const checksummed = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B'
+            const lowercase = parseAddr(checksummed.toLowerCase())
 
             const signerCount = 5
             const result1 = selectSignerForEoa(checksummed, signerCount)
@@ -140,7 +134,7 @@ describe('selectSignerForEoa', () => {
         })
 
         it('returns valid index for any signer count', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
 
             for (const signerCount of [1, 2, 3, 5, 10, 100, 256]) {
                 const result = selectSignerForEoa(eoa, signerCount)

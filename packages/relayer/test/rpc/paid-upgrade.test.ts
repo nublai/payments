@@ -29,6 +29,7 @@ import { INTENT_TYPES } from '../../src/rpc/schema/intentTypes'
 import { recomputeQuotePaymentAmount } from '../../src/services/quote-payment'
 import { signQuotes } from '../../src/lib/quote-signing'
 import type { PaidUpgradeQuote, Quote, SignedQuotes } from '../../src/rpc/schema/prepareCalls'
+import type { SendPreparedCallsParams } from '../../src/rpc/schema/sendPreparedCalls'
 import {
     buildKeyInitializationData,
     getSignedCallDomain,
@@ -46,30 +47,34 @@ import {
     peekRateLimit,
     releaseRateLimit,
 } from '../../src/rpc/methods/shared/upgrade-rate-limit'
+import { emptyHex, hex, repeatedHex, wordHex } from '../helpers/hex'
+import { testEnv } from '../helpers/env'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 
 const CHAIN_ID = 8453
 
 const SECRET = 'paid-upgrade-test-secret'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const ACCOUNT_PROXY = '0x3Be52867f8Dca2911f81076B37921c334dE29551' as Address
+const ACCOUNT_PROXY: Address = '0x3Be52867f8Dca2911f81076B37921c334dE29551'
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+const ORCHESTRATOR: Address = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
-const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const OWNER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
-const OTHER_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e141207b4c24b44a4361' as Hex
+const OTHER_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e141207b4c24b44a4361'
 
 const NATIVE_RATE = (3000n * 10n ** 18n).toString()
 
 const rpc = {
-    code: '0x',
-    nonce: '0x0',
+    code: hex('0x'),
+    nonce: hex('0x0'),
     balance: 20_000_000n,
-    executeResult: `0x${'0'.repeat(64)}` as Hex,
-    receiptErr: '0x00000000' as Hex,
-    receiptGas: '0x44444' as Hex,
+    executeResult: repeatedHex('00', 32),
+    receiptErr: hex('0x00000000'),
+    receiptGas: hex('0x44444'),
     rateThrow: false,
     gasThrow: false,
     failBroadcast: false,
@@ -87,25 +92,31 @@ let gasHeld = 0n
 let gasFailures = 0
 
 function word(value: bigint): Hex {
-    return `0x${value.toString(16).padStart(64, '0')}` as Hex
-}
-
-function jsonResponse(body: unknown, ok = true): Response {
-    return {
-        ok,
-        json: async () => body,
-    } as Response
+    return wordHex(value)
 }
 
 let captures: unknown[] = []
 
 const rpcCalls: Array<{ method?: string; params?: unknown[] }> = []
 
-const rateBodies: Array<Record<string, unknown>> = []
+type PoolRequestBody = {
+    action?: string
+    gas?: string
+    hold?: string
+    failure?: boolean
+    chainId?: number
+    account?: string
+    ip?: string
+    reservedAt?: number
+    type?: string
+    txHash?: string
+}
+
+const rateBodies: PoolRequestBody[] = []
 
 const rateStore = new Map<string, number>()
 
-function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: number; failures?: number } {
+function applyGas(body: PoolRequestBody): { allowed: boolean; gas?: number; failures?: number } {
     gasLog.push(body)
     const amount = BigInt(typeof body.gas === 'string' ? body.gas : '0')
 
@@ -141,7 +152,7 @@ function applyGas(body: Record<string, unknown>): { allowed: boolean; gas?: numb
 
 function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
-    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
+    const body = init?.body ? parseJson<PoolRequestBody>(String(init.body)) : {}
 
     if (url.includes('upgrade-rate-limit')) {
         if (
@@ -152,7 +163,7 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         ) {
             if (rpc.gasThrow) return Promise.reject(new Error('gas budget down'))
 
-            return Promise.resolve(jsonResponse(applyGas(body)))
+            return Promise.resolve(jsonStub(applyGas(body)))
         }
 
         if (rpc.rateThrow) return Promise.reject(new Error('rate store down'))
@@ -167,7 +178,7 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         })
 
         if (body.action === 'peek') {
-            return Promise.resolve(jsonResponse({ allowed: peekRateLimit(rateStore, buckets, now).allowed }))
+            return Promise.resolve(jsonStub({ allowed: peekRateLimit(rateStore, buckets, now).allowed }))
         }
 
         if (body.action === 'release') {
@@ -177,17 +188,17 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
                 typeof body.reservedAt === 'number' ? body.reservedAt : now,
             )
 
-            return Promise.resolve(jsonResponse({ allowed: true }))
+            return Promise.resolve(jsonStub({ allowed: true }))
         }
 
         const decision = consumeRateLimit(rateStore, buckets, now)
 
-        return Promise.resolve(jsonResponse({ allowed: decision.allowed, reservedAt: now }))
+        return Promise.resolve(jsonStub({ allowed: decision.allowed, reservedAt: now }))
     }
 
     if (rpc.failBroadcast) {
         return Promise.resolve(
-            jsonResponse(
+            jsonStub(
                 { error: 'broadcast failed', broadcastAttempted: rpc.broadcastAttempted },
                 false,
             ),
@@ -197,15 +208,13 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     captures.push(body)
 
     return Promise.resolve(
-        jsonResponse({
+        jsonStub({
             txHash: `0x${'ab'.repeat(32)}`,
             signer: '0x123',
             signerName: 'signer-8453-0',
         }),
     )
 }
-
-const TEST_MNEMONIC = 'test test test test test test test test test test test junk'
 
 // Local contexts read these from env. Prod reads them from the deployments
 // JSON, which the beforeAll below installs.
@@ -220,27 +229,26 @@ const ADDRESSES_8453 = {
     MULTI_SIG_SIGNER_8453: '0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3',
 }
 
+function createEnv(context = 'local'): Env {
+    return testEnv({
+        RPC_URL: 'http://rpc.test/8453',
+        RPC_8453: 'http://rpc.test/8453',
+        CHAIN_IDS: String(CHAIN_ID),
+        CONTEXT: context,
+        PAID_UPGRADE_ENABLED: 'true',
+        RELAYER_COUNT: '1',
+        QUOTE_SIGNING_SECRET: SECRET,
+        ...ADDRESSES_8453,
+        SIGNER_POOL: signerPoolWithFetch(poolFetch),
+    })
+}
+
 function createCtx(ip?: string, context = 'local'): RpcContext {
     return {
         request: new Request('https://relayer.local/', {
             headers: ip ? { 'cf-connecting-ip': ip } : {},
         }),
-        env: {
-            RPC_URL: 'http://rpc.test/8453',
-            RPC_8453: 'http://rpc.test/8453',
-            CHAIN_IDS: String(CHAIN_ID),
-            CONTEXT: context,
-            PAID_UPGRADE_ENABLED: 'true',
-            RELAYER_MNEMONIC: TEST_MNEMONIC,
-            RELAYER_COUNT: '1',
-            QUOTE_SIGNING_SECRET: SECRET,
-            ...ADDRESSES_8453,
-            INTENT_NONCE_MANAGER: {},
-            SIGNER_POOL: {
-                idFromName: () => 'pool-id',
-                get: () => ({ fetch: poolFetch }),
-            },
-        } as unknown as Env,
+        env: createEnv(context),
     }
 }
 
@@ -311,7 +319,7 @@ async function signedParams(options?: {
     encodedPreCalls?: Hex[]
     mutateAfterSign?: (quote: Quote) => void
     echo?: Partial<PaidUpgradeQuote>
-}): Promise<{ params: unknown; eoa: Address; upgrade: PaidUpgradeQuote }> {
+}): Promise<{ params: SendPreparedCallsParams; eoa: Address; upgrade: PaidUpgradeQuote }> {
     const eoa = privateKeyToAccount(OWNER_KEY).address
     const preCall = await signedPreCall(OWNER_KEY)
     const delegation = options?.delegation ?? ACCOUNT_PROXY
@@ -391,19 +399,19 @@ async function signedParams(options?: {
         primaryType: 'Intent',
         message: {
             multichain: false,
-            eoa: intent.eoa as Address,
+            eoa: intent.eoa,
             calls: intent.calls.map((call) => ({
-                to: call.to as Address,
+                to: call.to,
                 value: BigInt(call.value || '0'),
-                data: call.data as Hex,
+                data: call.data,
             })),
             nonce: BigInt(intent.nonce),
-            payer: (intent.payer ?? zeroAddress) as Address,
-            paymentToken: (intent.paymentToken ?? zeroAddress) as Address,
+            payer: intent.payer ?? zeroAddress,
+            paymentToken: intent.paymentToken ?? zeroAddress,
             paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? '0'),
             combinedGas: BigInt(intent.combinedGas),
-            encodedPreCalls: (intent.encodedPreCalls ?? []) as Hex[],
-            encodedFundTransfers: [] as Hex[],
+            encodedPreCalls: intent.encodedPreCalls ?? emptyHex(),
+            encodedFundTransfers: emptyHex(),
             settler: zeroAddress,
             expiry: BigInt(intent.expiry),
         },
@@ -504,7 +512,11 @@ beforeEach(() => {
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
             rpcCalls.push(call)
             let result: unknown = '0x'
-            const tx = call.params?.[0] as { authorizationList?: unknown; from?: string } | undefined
+
+            type RpcTx = { authorizationList?: readonly object[]; from?: string }
+
+            // SAFETY: this stub records the eth_call/send tx object the handler puts in params[0].
+            const tx = call.params?.[0] as RpcTx | undefined
 
             if (call.method === 'eth_getCode') result = rpc.code
             else if (call.method === 'eth_getTransactionCount') result = rpc.nonce
@@ -552,10 +564,13 @@ describe('paid upgrade send refusals', () => {
         expect(result.id).toEqual(expect.any(String))
         expect(captures).toHaveLength(1)
 
-        const tx = captures[0] as {
+        type CapturedExecute = {
             type: string
             authorization: { address: string; chainId: number; nonce: number; r: Hex; s: Hex }
         }
+
+        // SAFETY: poolFetch stores the execute-intent body this test just sent.
+        const tx = captures[0] as CapturedExecute
 
         expect(tx.type).toBe('execute-intent')
         expect(tx.authorization.address).toBe(ACCOUNT_PROXY)
@@ -635,7 +650,7 @@ describe('paid upgrade send refusals', () => {
             authorization: { ...upgrade.authorization, nonce: 1 },
         }
 
-        const withEcho = { ...(params as object), accountUpgrade: echoed }
+        const withEcho = { ...params, accountUpgrade: echoed }
         await expect(handleSendPreparedCalls(withEcho, createCtx())).rejects.toMatchObject({
             code: INVALID_PARAMS,
             message: 'Authorization or pre-call does not match the quote',
@@ -791,13 +806,17 @@ describe('paid upgrade send refusals', () => {
         const { params } = await signedParams()
         await handleSendPreparedCalls(params, createCtx('203.0.113.50'))
 
+        type RpcTx = { authorizationList?: readonly object[]; from?: string }
+
         const exec = rpcCalls.find((call) => {
-            const tx = call.params?.[0] as { authorizationList?: unknown } | undefined
+            // SAFETY: this stub records the eth_call tx object the handler puts in params[0].
+            const tx = call.params?.[0] as RpcTx | undefined
 
             return call.method === 'eth_call' && tx?.authorizationList !== undefined
         })
 
-        const tx = exec?.params?.[0] as { from?: string } | undefined
+        // SAFETY: the matching eth_call's first param is the tx the handler simulated.
+        const tx = exec?.params?.[0] as RpcTx | undefined
         expect(tx?.from?.toLowerCase()).toBe('0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266')
     })
 
@@ -823,9 +842,16 @@ describe('paid upgrade send refusals', () => {
         rpc.receiptMissing = true
         const { params } = await signedParams()
 
-        const ctx = createCtx('203.0.113.50')
+        const env = createEnv()
+        env.PAID_UPGRADE_RECEIPT_WAIT_MS = '200'
 
-        ;(ctx.env as Env).PAID_UPGRADE_RECEIPT_WAIT_MS = '200'
+        const ctx: RpcContext = {
+            request: new Request('https://relayer.local/', {
+                headers: { 'cf-connecting-ip': '203.0.113.50' },
+            }),
+            env,
+        }
+
         const result = await handleSendPreparedCalls(params, ctx)
         expect(result.id).toEqual(expect.any(String))
         expect(gasHeld).toBe(500_000n)
@@ -1007,7 +1033,7 @@ describe('paid upgrade send refusals', () => {
     })
 
     it('does not sign a quote when the paid rate-limit commit is rejected', async () => {
-        const env = createCtx().env as Env
+        const env = createEnv()
         const account = privateKeyToAccount(OWNER_KEY).address
 
         for (let attempt = 0; attempt < PAID_UPGRADE_ADDRESS_LIMIT; attempt++) {
@@ -1024,7 +1050,7 @@ describe('paid upgrade send refusals', () => {
 
     it('fails closed when the paid rate-limit commit cannot be stored', async () => {
         rpc.rateThrow = true
-        const env = createCtx().env as Env
+        const env = createEnv()
         await expect(
             recordPaidUpgradeRateLimit(
                 env,

@@ -49,7 +49,7 @@ export type SessionExportResult = {
     sessionName: string
 }
 
-type SessionExportDeps = {
+export type SessionExportDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     resolveSessionKeystorePath: typeof resolveSessionKeystorePath
     readSessionKeystoreFile: typeof readSessionKeystoreFile

@@ -114,7 +114,7 @@ export type AccountStatusResult = {
     checks: AccountStatusCheck[]
 }
 
-type AccountStatusDeps = {
+export type AccountStatusDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     getDelegatedCode: (input: {
         network: NetworkConfig

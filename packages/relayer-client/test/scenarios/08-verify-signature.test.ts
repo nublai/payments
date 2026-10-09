@@ -365,7 +365,7 @@ describe('wallet_verifySignature', () => {
         // #when / #then - should throw RPC error
         await expect(
             transport.request<VerifySignatureResult>('wallet_verifySignature', {
-                address: invalidAddress as Address,
+                address: invalidAddress,
                 digest,
                 signature: '0x' + 'ab'.repeat(65),
                 chain_id: chainId,

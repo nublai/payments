@@ -7,6 +7,7 @@ import { handleGetCapabilities } from '../../src/rpc/methods/getCapabilities'
 import type { RpcContext } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
 import { installDeployment } from '../deployment-fixture'
+import { stubNamespace, testEnv } from '../helpers/env'
 
 // Installed into the prod/8453 deployments JSON below, and kept in env.
 const ADDRESSES_8453 = {
@@ -20,62 +21,62 @@ const ADDRESSES_8453 = {
     MULTI_SIG_SIGNER_8453: '0xMultiSigSigner',
 }
 
-// Create mock environment
-const createMockEnv = () => ({
-    RPC_URL: 'https://mainnet.base.org',
-    CHAIN_IDS: '8453',
-    RELAYER_MNEMONIC: 'test mnemonic words',
-    RELAYER_COUNT: '3',
-    MAX_PENDING_PER_SIGNER: '16',
-    MAX_PENDING_TOTAL: '1000',
-    ACCOUNT: '0xAccount',
-    ACCOUNT_PROXY: '0xAccountProxy',
-    ORCHESTRATOR: '0x3456789012345678901234567890123456789012',
-    SIMPLE_FUNDER: '0xSimpleFunder',
-    SIMULATOR: '0xSimulator',
-    // Unsuffixed placeholders stay incomplete, so an unknown chain still skips.
-    ...ADDRESSES_8453,
-    SIGNER_POOL: {
-        idFromName: vi.fn().mockReturnValue('pool-id'),
-        get: vi.fn().mockReturnValue({
-            fetch: vi.fn().mockResolvedValue({
-                ok: true,
-                json: () =>
-                    Promise.resolve({
-                        signerCount: 3,
-                        totalCapacity: 1000,
-                        totalPending: 0,
-                        signers: [
-                            {
-                                index: 0,
-                                address: '0xSigner0',
-                                balance: '1000000000000000000',
-                                capacity: 334,
-                                pending: 0,
-                            },
-                            {
-                                index: 1,
-                                address: '0xSigner1',
-                                balance: '2000000000000000000',
-                                capacity: 333,
-                                pending: 0,
-                            },
-                            {
-                                index: 2,
-                                address: '0xSigner2',
-                                balance: '500000000000000000',
-                                capacity: 333,
-                                pending: 0,
-                            },
-                        ],
-                    }),
+function createMockEnv(): Env {
+    return testEnv({
+        RPC_URL: 'https://mainnet.base.org',
+        CHAIN_IDS: '8453',
+        RELAYER_COUNT: '3',
+        MAX_PENDING_PER_SIGNER: '16',
+        MAX_PENDING_TOTAL: '1000',
+        ACCOUNT: '0xAccount',
+        ACCOUNT_PROXY: '0xAccountProxy',
+        ORCHESTRATOR: '0x3456789012345678901234567890123456789012',
+        SIMPLE_FUNDER: '0xSimpleFunder',
+        SIMULATOR: '0xSimulator',
+        // Unsuffixed placeholders stay incomplete, so an unknown chain still skips.
+        ...ADDRESSES_8453,
+        SIGNER_POOL: stubNamespace<Env['SIGNER_POOL']>({
+            idFromName: vi.fn().mockReturnValue('pool-id'),
+            get: vi.fn().mockReturnValue({
+                fetch: vi.fn().mockResolvedValue({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            signerCount: 3,
+                            totalCapacity: 1000,
+                            totalPending: 0,
+                            signers: [
+                                {
+                                    index: 0,
+                                    address: '0xSigner0',
+                                    balance: '1000000000000000000',
+                                    capacity: 334,
+                                    pending: 0,
+                                },
+                                {
+                                    index: 1,
+                                    address: '0xSigner1',
+                                    balance: '2000000000000000000',
+                                    capacity: 333,
+                                    pending: 0,
+                                },
+                                {
+                                    index: 2,
+                                    address: '0xSigner2',
+                                    balance: '500000000000000000',
+                                    capacity: 333,
+                                    pending: 0,
+                                },
+                            ],
+                        }),
+                }),
             }),
         }),
-    } as unknown as Env['SIGNER_POOL'],
-})
+    })
+}
 
 const createMockCtx = (env = createMockEnv()): RpcContext => ({
-    env: env as Partial<Env>,
+    env,
 })
 
 let restoreDeployment: () => void

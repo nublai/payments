@@ -23,17 +23,20 @@ import { parseKeyHash } from '../src/lib/permissions-common'
 import { executeSessionUnlock } from '../src/lib/session-unlock'
 import { sessionOnChainRequiresPhrase } from '../src/lib/session-gates'
 import { computeSessionKeyHash } from '../src/lib/session-common'
+import { emptyHex, parseHex, repeatedHex } from './helpers/hex'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { parseJson } from './helpers/parse-json'
 
 const TEST_PRIVATE_KEY =
     '0x59c6995e998f97a5a0044966f0945388cf6f64f6b5f8a6d4f7e7a3fa8f8ff7f0' as const
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
-const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730' as Address
+const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730'
 
-const SPENDER = '0x9999999999999999999999999999999999999999' as Address
+const SPENDER = '0x9999999999999999999999999999999999999999'
 
 const originalSocket = process.env.TW_AGENT_SOCK
 
@@ -65,15 +68,15 @@ function orchestratorIntent(
         primaryType: 'Intent' as const,
         message: {
             multichain: false,
-            eoa: '0x1111111111111111111111111111111111111111' as Address,
+            eoa: '0x1111111111111111111111111111111111111111',
             calls,
             nonce: 1n,
             payer: zeroAddress,
             paymentToken: paymentMaxAmount === 0n ? zeroAddress : USDC,
             paymentMaxAmount,
             combinedGas: 0n,
-            encodedPreCalls: [] as Hex[],
-            encodedFundTransfers: [] as Hex[],
+            encodedPreCalls: emptyHex(),
+            encodedFundTransfers: emptyHex(),
             settler: zeroAddress,
             expiry: 0n,
         },
@@ -224,7 +227,7 @@ test('a phrase-less session allows an in-budget USDC transfer and refuses a cumu
             args: [
                 [
                     {
-                        salt: `0x${'ab'.repeat(12)}` as Hex,
+                        salt: repeatedHex('ab', 12),
                         depositor: account.address,
                         recipient: SPENDER,
                         token: USDC,
@@ -233,7 +236,7 @@ test('a phrase-less session allows an in-budget USDC transfer and refuses a cumu
                         refundTimestamp: 0n,
                         settler: zeroAddress,
                         sender: zeroAddress,
-                        settlementId: `0x${'00'.repeat(32)}` as Hex,
+                        settlementId: repeatedHex('00', 32),
                         senderChainId: 8453n,
                     },
                 ],
@@ -253,9 +256,9 @@ test('a phrase-less session allows an in-budget USDC transfer and refuses a cumu
 })
 
 test('permissions revoke without the phrase refuses to drop the USDC spend rule', async () => {
-    const decrypt = mock(async () => ({ rootPrivateKey: `0x${'11'.repeat(32)}` as Hex }))
+    const decrypt = mock(async () => ({ rootPrivateKey: repeatedHex('11', 32) }))
     const keyHash = parseKeyHash(`0x${'aa'.repeat(32)}`)
-    const account = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Address
+    const account = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     await expect(
         executePermissionsRevoke(
             {
@@ -268,14 +271,11 @@ test('permissions revoke without the phrase refuses to drop the USDC spend rule'
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(async () => ({
-                    root: {
-                        sessionRef: { active: 'default', dir: 'sessions' },
-                        addresses: { root: account, delegated: account },
-                    },
-                })) as never,
+                readKeystoreBundle: mock(async () => testKeystoreBundle(account, account, 31337, 'dev')),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as never),
+                readSessionKeystoreFile: mock(async () =>
+                    testKeystoreBundle(account, account, 31337, 'dev').session,
+                ),
                 getKeys: mock(async (): Promise<GetKeysResponse> => ({
                     '0x7a69': [
                         {
@@ -323,7 +323,7 @@ const sessionKeyHash = computeSessionKeyHash(sessionAddress)
 function packCall(target: string, selector: string): Hex {
     const packed = (BigInt(target) << 96n) | BigInt(selector)
 
-    return `0x${packed.toString(16).padStart(64, '0')}` as Hex
+    return parseHex(`0x${packed.toString(16).padStart(64, '0')}`)
 }
 
 function installRpcRedirect(hosts: Record<string, string>): () => void {
@@ -385,7 +385,7 @@ async function serveChain(input: {
                                 expiry: 0,
                                 keyType: 0,
                                 isSuperAdmin: false,
-                                publicKey: '0x' as Hex,
+                                publicKey: '0x',
                             },
                         ],
                         [sessionKeyHash],
@@ -438,9 +438,10 @@ async function serveChain(input: {
         const chunks: Buffer[] = []
         req.on('data', (chunk) => chunks.push(chunk))
         req.on('end', () => {
-            const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')) as
+            const parsed = parseJson<
                 | { id?: unknown; method?: string; params?: [{ data?: string }] }
                 | { id?: unknown; method?: string; params?: [{ data?: string }] }[]
+            >(Buffer.concat(chunks).toString('utf8'))
 
             const payload = Array.isArray(parsed) ? parsed.map((message) => reply(message)) : reply(parsed)
             res.setHeader('content-type', 'application/json')
@@ -475,7 +476,7 @@ test('a key that is narrow on base and wildcard on polygon requires the phrase',
         spends: [{ token: USDC, period: 2, limit: 10_000_000n }],
     })
 
-    const polygonUsdc = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' as Address
+    const polygonUsdc = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
 
     const polygon = await serveChain({
         chainId: 137,
@@ -553,45 +554,48 @@ test('executeSessionUnlock uses sessionOnChainRequiresPhrase for an ANY_KEYHASH 
                     password: 'pw',
                 },
                 {
-                    readKeystoreBundle: mock(async () => ({
-                        root: {
+                    readKeystoreBundle: mock(async () => {
+                        const bundle = testKeystoreBundle(
+                            '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                            sessionAddress,
+                            31337,
+                            'dev',
+                        )
+
+                        return {
+                            ...bundle,
+                            root: {
+                                ...bundle.root,
+                                addresses: {
+                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                                    delegated: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                                },
+                                sessionRef: { active: 'default', dir: 'sessions' },
+                            },
+                        }
+                    }),
+                    readSessionKeystoreFile: mock(async () => {
+                        const session = testKeystoreBundle(
+                            '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                            sessionAddress,
+                            31337,
+                            'dev',
+                        ).session
+
+                        return {
+                            ...session,
+                            network: {
+                                ...session.network,
+                                rpcUrl: chain.url,
+                                env: 'dev',
+                                chainId: 31337,
+                            },
                             addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                                session: sessionAddress,
                                 delegated: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
                             },
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                        },
-                    })) as never,
-                    readSessionKeystoreFile: mock(async () => ({
-                        version: 2,
-                        createdAt: new Date().toISOString(),
-                        name: 'default',
-                        checkpoint: 'complete',
-                        network: {
-                            env: 'dev',
-                            relayerUrl: 'http://127.0.0.1:8787',
-                            rpcUrl: chain.url,
-                            chainId: 31337,
-                        },
-                        kdf: {
-                            name: 'argon2id',
-                            params: {
-                                memoryCost: 1,
-                                timeCost: 1,
-                                parallelism: 1,
-                                hashLength: 32,
-                                salt: 'c2FsdA==',
-                            },
-                        },
-                        crypto: { algorithm: 'aes-256-gcm' },
-                        addresses: {
-                            session: sessionAddress,
-                            delegated: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-                        },
-                        secrets: {
-                            sessionPrivateKey: { nonce: 'n', ciphertext: 'c', tag: 't' },
-                        },
-                    })) as never,
+                        }
+                    }),
                     decryptSessionKeystore: decrypt,
                     createDaemonClient: () => ({ loadKey }),
                 },

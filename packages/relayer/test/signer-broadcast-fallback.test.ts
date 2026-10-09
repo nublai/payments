@@ -124,27 +124,13 @@ describe('signer broadcast fallback helpers', () => {
                 account,
             })
 
-            const signer = Object.create(SignerDO.prototype) as SignAndBroadcastHost<
-                typeof ensureClients
-            >
+            const signer: SignAndBroadcastHost<typeof ensureClients> = Object.create(
+                SignerDO.prototype,
+            )
 
             signer.ensureClients = ensureClients
 
-            const signAndBroadcastPrepared = signer.signAndBroadcastPrepared as (
-                this: { ensureClients: typeof ensureClients },
-                txParams: {
-                    to: string
-                    data: `0x${string}`
-                    value: bigint
-                    authorizationList?: SignedAuthorization[]
-                },
-                nonce: number,
-                chainId: number,
-                feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
-            ) => Promise<`0x${string}`>
-
-            const txHash = await signAndBroadcastPrepared.call(
-                signer,
+            const txHash = await signer.signAndBroadcastPrepared(
                 {
                     to: '0x000000000000000000000000000000000000051F',
                     data: '0x',
@@ -180,23 +166,14 @@ describe('signer broadcast fallback helpers', () => {
                 account,
             })
 
-            const signer = Object.create(SignerDO.prototype) as SignAndBroadcastHost<
-                typeof ensureClients
-            >
+            const signer: SignAndBroadcastHost<typeof ensureClients> = Object.create(
+                SignerDO.prototype,
+            )
 
             signer.ensureClients = ensureClients
 
-            const signAndBroadcastPrepared = signer.signAndBroadcastPrepared as (
-                this: { ensureClients: typeof ensureClients },
-                txParams: { to: string; data: `0x${string}`; value: bigint },
-                nonce: number,
-                chainId: number,
-                feeParams: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint },
-            ) => Promise<`0x${string}`>
-
             await expect(
-                signAndBroadcastPrepared.call(
-                    signer,
+                signer.signAndBroadcastPrepared(
                     {
                         to: '0x000000000000000000000000000000000000051F',
                         data: '0x',

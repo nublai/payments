@@ -187,7 +187,7 @@ export type SessionCreateResult = {
     feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
-type SessionCreateDeps = {
+export type SessionCreateDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     createSessionKeystore: typeof createSessionKeystore

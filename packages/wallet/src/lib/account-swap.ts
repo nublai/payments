@@ -225,7 +225,7 @@ export type AccountSwapResult = {
     feeCap: ExecuteSignedCallsResult['feeCap']
 }
 
-type AccountSwapDeps = {
+export type AccountSwapDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     decryptSessionKeystore: typeof decryptSessionKeystore

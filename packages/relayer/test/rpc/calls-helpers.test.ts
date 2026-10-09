@@ -22,7 +22,10 @@ describe('validateQuote boundary semantics', () => {
         )
 
         expect(result).toBeInstanceOf(RpcError)
-        expect((result as RpcError).code).toBe(QUOTE_EXPIRED)
+
+        if (!(result instanceof RpcError)) throw new Error('expected RpcError on the expired-quote branch')
+
+        expect(result.code).toBe(QUOTE_EXPIRED)
     })
 
     it('accepts quote when ttl is strictly in the future', async () => {

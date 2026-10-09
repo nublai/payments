@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 import { executeSessionStart, resolveDaemonEntrypoint } from '../src/lib/session-start'
 import { runSessionDaemonEntry } from '../src/lib/session-daemon'
+import { typedMock } from './helpers/typed-mock'
 
 const originalSocket = process.env.TW_AGENT_SOCK
 
@@ -77,10 +78,10 @@ test('runSessionDaemonEntry in foreground mode keeps stdio streams writable', as
 
     const originalStdoutDestroy = process.stdout.destroy
     const originalStderrDestroy = process.stderr.destroy
-    const stdoutDestroyMock = mock(() => process.stdout)
-    const stderrDestroyMock = mock(() => process.stderr)
-    process.stdout.destroy = stdoutDestroyMock as typeof process.stdout.destroy
-    process.stderr.destroy = stderrDestroyMock as typeof process.stderr.destroy
+    const stdoutDestroyMock = typedMock<typeof process.stdout.destroy>(() => process.stdout)
+    const stderrDestroyMock = typedMock<typeof process.stderr.destroy>(() => process.stderr)
+    process.stdout.destroy = stdoutDestroyMock
+    process.stderr.destroy = stderrDestroyMock
 
     try {
         const daemon = await runSessionDaemonEntry(true)

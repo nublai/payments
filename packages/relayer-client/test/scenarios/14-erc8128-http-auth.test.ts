@@ -49,7 +49,11 @@ function createFailingSigner(chainId: number): EthHttpSigner {
     }
 }
 
-async function postJson(request: Request): Promise<unknown> {
+type RpcErrorBody = {
+    error?: { code?: number; message?: string }
+}
+
+async function postJson(request: Request): Promise<RpcErrorBody> {
     const response = await fetch(request)
 
     return response.json()
@@ -78,8 +82,11 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
             })
         } catch (error) {
             expect(error).toBeInstanceOf(JsonRpcClientError)
+
+            if (!(error instanceof JsonRpcClientError)) throw error
+
             // Signed request should get past auth, then fail deeper validation.
-            expect((error as JsonRpcClientError).code).not.toBe(-32001)
+            expect(error.code).not.toBe(-32001)
         }
     })
 
@@ -135,7 +142,10 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
             ])
         } catch (error) {
             expect(error).toBeInstanceOf(JsonRpcClientError)
-            expect((error as JsonRpcClientError).code).not.toBe(-32001)
+
+            if (!(error instanceof JsonRpcClientError)) throw error
+
+            expect(error.code).not.toBe(-32001)
         }
     })
 
@@ -170,9 +180,7 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
             body: rawBody.replace('"signature":"0x"', '"signature":"0x11"'),
         })
 
-        const response = (await postJson(tampered)) as {
-            error?: { code?: number; message?: string }
-        }
+        const response = await postJson(tampered)
 
         expect(response.error?.code).toBe(-32001)
         expect(response.error?.message).toBe('Unauthorized')
@@ -204,8 +212,8 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
             },
         )
 
-        const first = (await postJson(signed.clone())) as { error?: { code?: number } }
-        const second = (await postJson(signed)) as { error?: { code?: number; message?: string } }
+        const first = await postJson(signed.clone())
+        const second = await postJson(signed)
 
         // First call should pass auth and fail later (invalid params/context), but not Unauthorized.
         expect(first.error?.code).not.toBe(-32001)
@@ -260,8 +268,11 @@ describeIfAuthEnabled('ERC-8128 HTTP auth', () => {
             })
         } catch (error) {
             expect(error).toBeInstanceOf(JsonRpcClientError)
+
+            if (!(error instanceof JsonRpcClientError)) throw error
+
             // Delegated signer should pass HTTP auth; deeper validation can still fail.
-            expect((error as JsonRpcClientError).code).not.toBe(-32001)
+            expect(error.code).not.toBe(-32001)
         }
     })
 })

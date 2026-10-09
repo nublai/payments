@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createHttpAuthNonceStore } from '../../src/auth/erc8128/nonce-store'
 import type { Env } from '../../src/types/env'
+import { stubNamespace, testEnv } from '../helpers/env'
 
 describe('createHttpAuthNonceStore', () => {
     it('calls nonce DO consumeNonce over rpc with ttlSeconds', async () => {
@@ -9,12 +10,12 @@ describe('createHttpAuthNonceStore', () => {
         const get = vi.fn(() => ({ consumeNonce }))
         const idFromName = vi.fn(() => 'nonce-do-id')
 
-        const env = {
-            HTTP_AUTH_NONCE_MANAGER: {
+        const env = testEnv({
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
                 idFromName,
                 get,
-            },
-        } as unknown as Env
+            }),
+        })
 
         const store = createHttpAuthNonceStore(env)
         const accepted = await store.consumeNonce('k:n', 120)
@@ -32,12 +33,12 @@ describe('createHttpAuthNonceStore', () => {
 
         const idFromName = vi.fn(() => 'nonce-do-id')
 
-        const env = {
-            HTTP_AUTH_NONCE_MANAGER: {
+        const env = testEnv({
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
                 idFromName,
                 get: vi.fn(() => ({ consumeNonce })),
-            },
-        } as unknown as Env
+            }),
+        })
 
         const store = createHttpAuthNonceStore(env)
         await expect(store.consumeNonce('k:n', 120)).resolves.toBe(false)

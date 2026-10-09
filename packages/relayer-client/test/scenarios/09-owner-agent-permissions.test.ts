@@ -46,6 +46,7 @@ import {
 import { ANVIL_RPC_URL, RELAYER_URL, TEST_CONTRACTS, testChain } from '../setup'
 import { setBalance, deal, getERC20Balance } from '../helpers/anvil'
 import { createRelayerTestClient } from '../helpers/client'
+import { optionalAddr, repeatedHex } from '../helpers/hex'
 import { BASE_TOKENS } from '../helpers/tokens'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -576,13 +577,17 @@ describe('Owner & Agent Permissions', () => {
             const chainScopedMultiSigKey = `MULTI_SIG_SIGNER_${chainId}`
 
             const multiSigSigner =
-                (process.env[chainScopedMultiSigKey] as Address | undefined) ??
-                (process.env.MULTI_SIG_SIGNER as Address | undefined)
+                optionalAddr(process.env[chainScopedMultiSigKey]) ??
+                optionalAddr(process.env.MULTI_SIG_SIGNER)
 
             expect(multiSigSigner).toBeDefined()
 
+            if (!multiSigSigner) {
+                throw new Error('MULTI_SIG_SIGNER is required')
+            }
+
             const encodedOwnerPublicKey = encodeSecp256k1Key(owner.address)
-            const multiSigPublicKey = concat([multiSigSigner!, `0x${'00'.repeat(12)}`]) as Hex
+            const multiSigPublicKey = concat([multiSigSigner, repeatedHex('00', 12)])
             const externalKeyHash = computeKeyHash('external', multiSigPublicKey)
             const ownerKeyHash = computeKeyHash('secp256k1', encodedOwnerPublicKey)
 
@@ -848,7 +853,7 @@ describe('Owner & Agent Permissions', () => {
                 sessionKey: encodedSessionPublicKey,
                 calls: [
                     {
-                        target: USDC as Address,
+                        target: USDC,
                         value: 0n,
                         data: encodeFunctionData({
                             abi: erc20Abi,

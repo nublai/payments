@@ -1,15 +1,22 @@
 import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
-import { zeroAddress, type Address, type Hex } from 'viem'
+import { zeroAddress, type Address } from 'viem'
 import { hashTypedData } from 'viem/utils'
 import { INTENT_TYPES, type Call, type PrepareCallsResponse } from '@nubl/relayer-client'
-import { executeAccountSend } from '../src/lib/account-send'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
+import { type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
+import { executeAccountSend, executeSignedCalls } from './helpers/stub-execute'
 import { discloseFeeCap } from '../src/lib/intent-payment'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from '../src/lib/gas-ceiling'
-import { getEnvRelayerUrl, getUsdcAddressByChainId } from '../src/lib/network-config'
+import { getEnvRelayerUrl, getUsdcAddressByChainId, type EnvName } from '../src/lib/network-config'
 import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { confirmedBundle } from './helpers/bundle-status'
+import { boundPort } from './helpers/bound-port'
+import { emptyHex, hex, repeatedHex } from './helpers/hex'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { parseJson } from './helpers/parse-json'
+import { firstMockArg, typedMock } from './helpers/typed-mock'
+import type { AccountSendDeps } from '../src/lib/account-send'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -21,13 +28,13 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const EOA = '0x1111111111111111111111111111111111111111' as Address
+const EOA: Address = '0x1111111111111111111111111111111111111111'
 
-const TARGET = '0x2222222222222222222222222222222222222222' as Address
+const TARGET: Address = '0x2222222222222222222222222222222222222222'
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+const ORCHESTRATOR: Address = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
-const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const BASE_USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const POLYGON_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
 
@@ -36,7 +43,7 @@ const ARBITRUM_USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
 const BASE_SEPOLIA_USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
 
 const SIG =
-    '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as Hex
+    '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const
 
 const CALLS: Call[] = [{ target: TARGET, value: 0n, data: '0x1234' }]
 
@@ -68,7 +75,7 @@ function preparedQuote(
     chainId: number,
     capOverride?: bigint,
     orchestrator: Address = ORCHESTRATOR,
-) {
+): PrepareCallsResponse {
     const cap = capOverride ?? input.paymentMaxAmount ?? 0n
     const payer = input.payer ?? zeroAddress
     const paymentToken = input.paymentToken ?? zeroAddress
@@ -77,8 +84,7 @@ function preparedQuote(
     const messageCalls = input.calls.map((call) => ({
         to: call.target,
         value: call.value,
-        data: call.data ?? '0x',
-    }))
+        data: call.data ?? '0x' }))
 
     const message = {
         multichain: false,
@@ -89,18 +95,16 @@ function preparedQuote(
         paymentToken,
         paymentMaxAmount: cap,
         combinedGas: 50_000n,
-        encodedPreCalls: [] as Hex[],
-        encodedFundTransfers: [] as Hex[],
+        encodedPreCalls: emptyHex(),
+        encodedFundTransfers: emptyHex(),
         settler: zeroAddress,
-        expiry,
-    }
+        expiry }
 
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId,
-        verifyingContract: orchestrator,
-    }
+        verifyingContract: orchestrator }
 
     const quoteWithoutPayment: Omit<Quote, 'paymentAmount'> = {
         chainId: `0x${chainId.toString(16)}`,
@@ -110,24 +114,21 @@ function preparedQuote(
             calls: messageCalls.map((call) => ({
                 to: call.to,
                 value: call.value.toString(),
-                data: call.data,
-            })),
+                data: call.data })),
             nonce: input.nonce.toString(),
             combinedGas: message.combinedGas.toString(),
             expiry: expiry.toString(),
             payer,
             paymentToken,
             paymentMaxAmount: cap.toString(),
-            settler: zeroAddress,
-        },
+            settler: zeroAddress },
         extraPayment: '0x0',
         ethPrice: '0x0',
         paymentTokenDecimals: 6,
         txGas: 1,
         nativeFeeEstimate: { maxFeePerGas: 1, maxPriorityFeePerGas: 1 },
         feeTokenDeficit: '0x0',
-        assetDeficits: [],
-    }
+        assetDeficits: [] }
 
     // SAFETY: an undefined paymentAmount deliberately models a malformed relayer quote that executeSignedCalls must refuse at runtime.
     const quote: Quote =
@@ -140,22 +141,17 @@ function preparedQuote(
             domain,
             types: INTENT_TYPES,
             primaryType: 'Intent',
-            message,
-        }),
+            message }),
         typedData: {
             domain,
             types: INTENT_TYPES,
             primaryType: 'Intent' as const,
-            message,
-        },
+            message },
         context: {
             quote: {
                 quotes: [quote],
-                signature: '0x' as Hex,
-                ttl: 2_000_000_000,
-            },
-        },
-    }
+                signature: '0x' as const,
+                ttl: 2_000_000_000 } } }
 }
 
 function signingHarness(
@@ -170,16 +166,10 @@ function signingHarness(
         sendPreparedCalls,
         prepareCalls,
         deps: {
-            prepareCalls,
-            signTypedData,
-            sendPreparedCalls,
-            waitForBundle: async () =>
-                ({
-                    id: 'bundle-1',
-                    status: 'confirmed',
-                    statusCode: 200,
-                    success: true,
-                }) as never,
+            prepareCalls: typedMock<ExecuteSignedCallsDeps['prepareCalls']>(prepareCalls),
+            signTypedData: typedMock<ExecuteSignedCallsDeps['signTypedData']>(signTypedData),
+            sendPreparedCalls: typedMock<ExecuteSignedCallsDeps['sendPreparedCalls']>(sendPreparedCalls),
+            waitForBundle: typedMock<ExecuteSignedCallsDeps['waitForBundle']>(async () => confirmedBundle()),
         },
     }
 }
@@ -188,19 +178,17 @@ const prodParams = {
     from: EOA,
     calls: CALLS,
     nonce: 7n,
-    signerPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+    signerPrivateKey: repeatedHex('11', 32),
     chainId: 8453,
     env: 'prod' as const,
     verifyingContract: ORCHESTRATOR,
     expiry: EXPIRY,
     now: NOW,
-    combinedGasCeiling: GAS_CEILING,
-}
+    combinedGasCeiling: GAS_CEILING }
 
 function signedCap(signTypedData: ReturnType<typeof mock>): bigint {
-    const typed = signTypedData.mock.calls[0]?.[0]?.typedData as {
-        message: { paymentMaxAmount: bigint }
-    }
+    const typed: { message: { paymentMaxAmount: bigint } } =
+        signTypedData.mock.calls[0]?.[0]?.typedData
 
     return typed.message.paymentMaxAmount
 }
@@ -246,8 +234,7 @@ test('quote of 1 signs paymentMaxAmount 1001 and discloses that cap', async () =
         token: BASE_USDC,
         symbol: 'USDC',
         amountUsdc: '0.001001',
-        expiresIn: '1h',
-    })
+        expiresIn: '1h' })
 })
 
 test('an honest quote signs the quote plus 5 percent', async () => {
@@ -314,14 +301,11 @@ test('an over-ceiling caller cap is clamped to 5 USDC', async () => {
         ...prodParams,
         paymentMaxAmount: 100_000_000n,
         payer: EOA,
-        paymentToken: BASE_USDC,
-    })
+        paymentToken: BASE_USDC })
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
 
-    const signed = signTypedData.mock.calls[0]?.[0]?.typedData as {
-        message: { payer: Address; paymentToken: Address }
-    }
+    const signed = firstMockArg(signTypedData).typedData
 
     expect(signed.message.payer).toBe(EOA)
     expect(signed.message.paymentToken).toBe(BASE_USDC)
@@ -334,8 +318,7 @@ test('a 50 USDC quote cannot be signed by raising the caller cap', async () => {
             ...prodParams,
             paymentMaxAmount: 100_000_000n,
             payer: EOA,
-            paymentToken: BASE_USDC,
-        }),
+            paymentToken: BASE_USDC }),
     ).rejects.toThrow(/payment amount exceeds fee cap/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
@@ -352,15 +335,14 @@ test('a caller cap without payer or token is refused', async () => {
         executeSignedCalls(deps, {
             ...prodParams,
             paymentMaxAmount: 1001n,
-            paymentToken: BASE_USDC,
-        }),
+            paymentToken: BASE_USDC }),
     ).rejects.toThrow(/payer and paymentToken/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
 
-const USDC_E = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as Address
+const USDC_E: Address = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174'
 
-const WBTC = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' as Address
+const WBTC: Address = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'
 
 test('an explicit zero payer and token is refused off local', async () => {
     const { deps, signTypedData } = signingHarness((input) => preparedQuote(input, '1', 8453))
@@ -369,8 +351,7 @@ test('an explicit zero payer and token is refused off local', async () => {
             ...prodParams,
             paymentMaxAmount: 100_000_000n,
             payer: zeroAddress,
-            paymentToken: zeroAddress,
-        }),
+            paymentToken: zeroAddress }),
     ).rejects.toThrow(/zero address/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
@@ -393,8 +374,7 @@ test('a non-USDC fee token is refused off local', async () => {
             ...prodParams,
             paymentMaxAmount: 100_000_000n,
             payer: EOA,
-            paymentToken: WBTC,
-        }),
+            paymentToken: WBTC }),
     ).rejects.toThrow(/native USDC/)
     await expect(
         executeSignedCalls(deps, {
@@ -402,8 +382,7 @@ test('a non-USDC fee token is refused off local', async () => {
             chainId: 137,
             paymentMaxAmount: 1001n,
             payer: EOA,
-            paymentToken: USDC_E,
-        }),
+            paymentToken: USDC_E }),
     ).rejects.toThrow(/native USDC/)
     await expect(
         executeSignedCalls(deps, {
@@ -411,8 +390,7 @@ test('a non-USDC fee token is refused off local', async () => {
             chainId: 137,
             paymentMaxAmount: 1001n,
             payer: EOA,
-            paymentToken: BASE_USDC,
-        }),
+            paymentToken: BASE_USDC }),
     ).rejects.toThrow(/native USDC/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
@@ -427,8 +405,7 @@ test('polygon native USDC is the only fee token accepted on polygon', async () =
         chainId: 137,
         paymentMaxAmount: 100_000_000n,
         payer: EOA,
-        paymentToken: POLYGON_USDC,
-    })
+        paymentToken: POLYGON_USDC })
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
 })
@@ -438,14 +415,12 @@ test('discloseFeeCap does not format native wei as USDC', () => {
         token: zeroAddress,
         symbol: 'none',
         amountUsdc: '1001 wei',
-        expiresIn: '1h',
-    })
+        expiresIn: '1h' })
     expect(discloseFeeCap(zeroAddress, 0n)).toEqual({
         token: zeroAddress,
         symbol: 'none',
         amountUsdc: '0',
-        expiresIn: '1h',
-    })
+        expiresIn: '1h' })
 })
 
 test('an explicit 5 USDC ceiling still signs the quote plus margin', async () => {
@@ -454,8 +429,7 @@ test('an explicit 5 USDC ceiling still signs the quote plus margin', async () =>
         ...prodParams,
         paymentMaxAmount: PAID_FEE_CAP,
         payer: EOA,
-        paymentToken: BASE_USDC,
-    })
+        paymentToken: BASE_USDC })
     expect(signedCap(signTypedData)).toBe(1001n)
 })
 
@@ -467,8 +441,7 @@ test('omitting the cap while passing payer and token still signs the quote plus 
     const result = await executeSignedCalls(deps, {
         ...prodParams,
         payer: EOA,
-        paymentToken: BASE_USDC,
-    })
+        paymentToken: BASE_USDC })
 
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
@@ -476,8 +449,7 @@ test('omitting the cap while passing payer and token still signs the quote plus 
         token: BASE_USDC,
         symbol: 'USDC',
         amountUsdc: '0.001001',
-        expiresIn: '1h',
-    })
+        expiresIn: '1h' })
 })
 
 test('a local zero quote signs cap 0 with a zero payer and says so', async () => {
@@ -486,14 +458,11 @@ test('a local zero quote signs cap 0 with a zero payer and says so', async () =>
     const result = await executeSignedCalls(deps, {
         ...prodParams,
         chainId: 31337,
-        env: 'dev',
-    })
+        env: 'dev' })
 
     expect(signedCap(signTypedData)).toBe(0n)
 
-    const signed = signTypedData.mock.calls[0]?.[0]?.typedData as {
-        message: { payer: Address; paymentToken: Address }
-    }
+    const signed = firstMockArg(signTypedData).typedData
 
     expect(signed.message.payer).toBe(zeroAddress)
     expect(signed.message.paymentToken).toBe(zeroAddress)
@@ -501,8 +470,7 @@ test('a local zero quote signs cap 0 with a zero payer and says so', async () =>
         token: zeroAddress,
         symbol: 'none',
         amountUsdc: '0',
-        expiresIn: '1h',
-    })
+        expiresIn: '1h' })
 })
 
 test('dev on a non-local chain clamps an explicit cap to 5 USDC', async () => {
@@ -517,8 +485,7 @@ test('dev on a non-local chain clamps an explicit cap to 5 USDC', async () => {
             env: 'dev',
             paymentMaxAmount: 100_000_000n,
             payer: EOA,
-            paymentToken: BASE_USDC,
-        }),
+            paymentToken: BASE_USDC }),
     ).rejects.toThrow(/payment amount exceeds fee cap/)
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signTypedData).not.toHaveBeenCalled()
@@ -530,8 +497,7 @@ test('dev on Base omits the cap and does not sign', async () => {
         executeSignedCalls(omitted.deps, {
             ...prodParams,
             chainId: 8453,
-            env: 'dev',
-        }),
+            env: 'dev' }),
     ).rejects.toThrow(/zero address/)
     expect(omitted.prepareCalls).not.toHaveBeenCalled()
     expect(omitted.signTypedData).not.toHaveBeenCalled()
@@ -543,8 +509,7 @@ test('dev on Base omits the cap and does not sign', async () => {
             chainId: 8453,
             env: 'dev',
             payer: EOA,
-            paymentToken: BASE_USDC,
-        }),
+            paymentToken: BASE_USDC }),
     ).rejects.toThrow(/payment amount exceeds fee cap/)
     expect(withUsdc.prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(0n)
     expect(withUsdc.signTypedData).not.toHaveBeenCalled()
@@ -561,8 +526,7 @@ test('dev on Base signs an in-policy quote under an explicit cap at no more than
         env: 'dev',
         paymentMaxAmount: 100_000_000n,
         payer: EOA,
-        paymentToken: BASE_USDC,
-    })
+        paymentToken: BASE_USDC })
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
     expect(signedCap(signTypedData) <= PAID_FEE_CAP).toBe(true)
@@ -579,8 +543,7 @@ test('dev on Base clamps a max uint256 cap to 5 USDC', async () => {
             env: 'dev',
             paymentMaxAmount: max,
             payer: EOA,
-            paymentToken: BASE_USDC,
-        }),
+            paymentToken: BASE_USDC }),
     ).rejects.toThrow(/payment amount exceeds fee cap/)
     expect(refused.prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(refused.signTypedData).not.toHaveBeenCalled()
@@ -592,8 +555,7 @@ test('dev on Base clamps a max uint256 cap to 5 USDC', async () => {
         env: 'dev',
         paymentMaxAmount: max,
         payer: EOA,
-        paymentToken: BASE_USDC,
-    })
+        paymentToken: BASE_USDC })
     expect(signed.prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signed.signTypedData)).toBe(PAID_FEE_CAP)
 })
@@ -607,14 +569,40 @@ test('dev on a non-local chain refuses a zero payer and token', async () => {
             env: 'dev',
             paymentMaxAmount: 100_000_000n,
             payer: zeroAddress,
-            paymentToken: zeroAddress,
-        }),
+            paymentToken: zeroAddress }),
     ).rejects.toThrow(/zero address/)
     expect(signTypedData).not.toHaveBeenCalled()
 })
 
 test('prod send returns the fee cap for human and json output', async () => {
     const signTypedData = mock(async () => SIG)
+
+    const sendDeps = {
+        readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => testKeystoreBundle(EOA)),
+        decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
+            sessionPrivateKey:
+                '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
+        resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => ({
+            address: '0x2222222222222222222222222222222222222222',
+            ens: null })),
+        hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+        readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
+        prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(
+            async (
+                input: PrepareInput & { network: { env: EnvName; chainId: number } },
+            ) =>
+                preparedQuote(
+                    input,
+                    '250000',
+                    input.network.chainId,
+                    undefined,
+                    resolveOrchestratorAddress(input.network.env, input.network.chainId),
+                ),
+        ),
+        signTypedData: typedMock<AccountSendDeps['signTypedData']>(signTypedData),
+        sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+        waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => confirmedBundle()),
+    }
 
     const result = await executeAccountSend(
         {
@@ -623,67 +611,15 @@ test('prod send returns the fee cap for human and json output', async () => {
             recipient: '0x2222222222222222222222222222222222222222',
             chain: 'polygon',
             password: 'pw',
-            keystorePath: '/tmp/alice.json',
-        },
-        {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: { addresses: { root: EOA, delegated: EOA } },
-                        session: {
-                            addresses: { session: '0x3333333333333333333333333333333333333333' },
-                        },
-                    }) as never,
-            ),
-            decryptSessionKeystore: mock(async () => ({
-                sessionPrivateKey:
-                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7',
-            })),
-            resolveAddressOrEnsInput: mock(async () => ({
-                address: '0x2222222222222222222222222222222222222222' as Address,
-                ens: null,
-            })),
-            hasLegacyRecipientAlias: mock(async () => false),
-            readNonce: mock(async () => 2n),
-            prepareCalls: mock(
-                async (
-                    input: PrepareInput & { network: { env: 'prod'; chainId: number } },
-                ) =>
-                    preparedQuote(
-                        input,
-                        '250000',
-                        input.network.chainId,
-                        undefined,
-                        resolveOrchestratorAddress(input.network.env, input.network.chainId),
-                    ),
-            ),
-            signTypedData,
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => ({
-                success: true,
-                id: 'bundle-1',
-                status: 'confirmed' as const,
-                statusCode: 200,
-                receipt: {
-                    transactionHash:
-                        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                    blockNumber: '1',
-                    gasUsed: '1',
-                    status: 'success' as const,
-                },
-            })) as never,
-        } as never,
+            keystorePath: '/tmp/alice.json' },
+        sendDeps,
     )
 
     expect(result.feeCap).toEqual({
         token: POLYGON_USDC,
         symbol: 'USDC',
         amountUsdc: '0.2625',
-        expiresIn: '1h',
-    })
+        expiresIn: '1h' })
     expect(signedCap(signTypedData)).toBe(262500n)
 })
 
@@ -714,7 +650,9 @@ test('USDC is known for Arbitrum and Base Sepolia', () => {
 function listen(handler: (body: string) => string): Promise<{ server: Server; url: string }> {
     const server = createServer((req, res) => {
         const chunks: Buffer[] = []
-        req.on('data', (chunk) => chunks.push(chunk as Buffer))
+        req.on('data', (chunk) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+        })
         req.on('end', () => {
             const body = Buffer.concat(chunks).toString('utf8')
             res.writeHead(200, { 'content-type': 'application/json' })
@@ -724,14 +662,13 @@ function listen(handler: (body: string) => string): Promise<{ server: Server; ur
 
     return new Promise((resolve) => {
         server.listen(0, '127.0.0.1', () => {
-            const port = (server.address() as { port: number }).port
-            resolve({ server, url: `http://127.0.0.1:${port}` })
+            resolve({ server, url: `http://127.0.0.1:${boundPort(server)}` })
         })
     })
 }
 
 function rpcResult(body: string, gas: bigint): string {
-    const parsed = JSON.parse(body) as { id?: number; method?: string }
+    const parsed = parseJson<{ id?: number; method?: string }>(body)
     const method = parsed.method
     const result = method === 'eth_chainId' ? '0x2105' : `0x${gas.toString(16)}`
 
@@ -739,7 +676,7 @@ function rpcResult(body: string, gas: bigint): string {
 }
 
 test('a colluding RPC cannot raise the gas ceiling above twice the local formula', async () => {
-    const calls = [{ target: TARGET, value: 0n, data: '0x' as Hex }]
+    const calls = [{ target: TARGET, value: 0n, data: hex('0x') }]
     const local = localCombinedGasCeiling(calls)
     const { server, url } = await listen((body) => rpcResult(body, 100_000_000n))
 
@@ -748,8 +685,7 @@ test('a colluding RPC cannot raise the gas ceiling above twice the local formula
             rpcUrl: url,
             chainId: 8453,
             from: EOA,
-            calls,
-        })
+            calls })
 
         expect(ceiling).toBe(local * 2n)
         expect(ceiling).toBeLessThan(800_500_000n)
@@ -759,7 +695,7 @@ test('a colluding RPC cannot raise the gas ceiling above twice the local formula
 })
 
 test('an RPC estimate within twice the local formula is kept', async () => {
-    const calls = [{ target: TARGET, value: 0n, data: '0x' as Hex }]
+    const calls = [{ target: TARGET, value: 0n, data: hex('0x') }]
     const local = localCombinedGasCeiling(calls)
     const estimated = 200_000n
     const fromRpc = estimated * 8n + 500_000n
@@ -770,8 +706,7 @@ test('an RPC estimate within twice the local formula is kept', async () => {
             rpcUrl: url,
             chainId: 8453,
             from: EOA,
-            calls,
-        })
+            calls })
 
         expect(fromRpc > local && fromRpc < local * 2n).toBe(true)
         expect(ceiling).toBe(fromRpc)

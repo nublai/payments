@@ -11,23 +11,27 @@ import {
     type Call,
     type PrepareCallsResponse,
 } from '@nubl/relayer-client'
-import { executeSignedCalls, type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
+import { type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
+import { executeSignedCalls } from './helpers/stub-execute'
 import { getEnvRelayerUrl } from '../src/lib/network-config'
+import { confirmedBundle } from './helpers/bundle-status'
+import { emptyHex, hex, repeatedHex } from './helpers/hex'
+import { firstMockArg } from './helpers/typed-mock'
 
-const EOA = '0x1111111111111111111111111111111111111111' as Address
+const EOA: Address = '0x1111111111111111111111111111111111111111'
 
-const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const BASE_USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const TARGET = '0x2222222222222222222222222222222222222222' as Address
+const TARGET: Address = '0x2222222222222222222222222222222222222222'
 
-const ATTACKER = '0x3333333333333333333333333333333333333333' as Address
+const ATTACKER: Address = '0x3333333333333333333333333333333333333333'
 
-const ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as Address
+const ORCHESTRATOR: Address = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
 
-const SIG =
-    '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as Hex
+const SIG: Hex =
+    '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b'
 
-const REQUESTED: Call[] = [{ target: TARGET, value: 1n, data: '0x1234' }]
+const REQUESTED: Call[] = [{ target: TARGET, value: 1n, data: hex('0x1234') }]
 
 const NOW = 1_700_000_000n
 
@@ -49,8 +53,8 @@ function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount =
         paymentToken: BASE_USDC,
         paymentMaxAmount,
         combinedGas: 50_000n,
-        encodedPreCalls: [] as Hex[],
-        encodedFundTransfers: [] as Hex[],
+        encodedPreCalls: emptyHex(),
+        encodedFundTransfers: emptyHex(),
         settler: zeroAddress,
         expiry: EXPIRY,
     }
@@ -108,7 +112,7 @@ function makePrepared(messageCalls: IntentCall[], nonce = 7n, paymentMaxAmount =
                         assetDeficits: [],
                     },
                 ],
-                signature: '0x' as Hex,
+                signature: hex('0x'),
                 ttl: 2_000_000_000,
             },
         },
@@ -180,7 +184,7 @@ async function expectWalletRefuses(
             from: EOA,
             calls: REQUESTED,
             nonce: 7n,
-            signerPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+            signerPrivateKey: repeatedHex('11', 32),
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
@@ -200,7 +204,7 @@ async function expectHelperRefuses(prepared: ReturnType<typeof makePrepared>, pa
     const signTypedData = mock(async () => SIG)
     await expect(
         signPreparedCalls({
-            prepared: prepared as never,
+            prepared,
             expected,
             signer: { type: 'typedData', signTypedData },
         }),
@@ -209,7 +213,7 @@ async function expectHelperRefuses(prepared: ReturnType<typeof makePrepared>, pa
 }
 
 test('executeSignedCalls signs when the prepared intent matches the request', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }])
     const signTypedData = mock(async () => SIG)
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
 
@@ -218,19 +222,13 @@ test('executeSignedCalls signs when the prepared intent matches the request', as
             prepareCalls: async () => prepared,
             signTypedData,
             sendPreparedCalls,
-            waitForBundle: async () =>
-                ({
-                    id: 'bundle-1',
-                    status: 'confirmed',
-                    statusCode: 200,
-                    success: true,
-                }) as never,
+            waitForBundle: async () => confirmedBundle(),
         },
         {
             from: EOA,
             calls: REQUESTED,
             nonce: 7n,
-            signerPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+            signerPrivateKey: repeatedHex('11', 32),
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
@@ -249,7 +247,7 @@ test('executeSignedCalls signs when the prepared intent matches the request', as
 })
 
 test('executeSignedCalls refuses a zero payer and token off local instead of signing them', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }])
     const signTypedData = mock(async () => SIG)
     await expect(
         executeSignedCalls(
@@ -265,7 +263,7 @@ test('executeSignedCalls refuses a zero payer and token off local instead of sig
                 from: EOA,
                 calls: REQUESTED,
                 nonce: 7n,
-                signerPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+                signerPrivateKey: repeatedHex('11', 32),
                 chainId: 8453,
                 env: 'prod',
                 verifyingContract: ORCHESTRATOR,
@@ -282,13 +280,13 @@ test('executeSignedCalls refuses a zero payer and token off local instead of sig
 })
 
 test('executeSignedCalls and signPreparedCalls refuse a substituted call target', async () => {
-    const prepared = makePrepared([{ to: ATTACKER, value: 1n, data: '0x1234' }])
+    const prepared = makePrepared([{ to: ATTACKER, value: 1n, data: hex('0x1234') }])
     await expectWalletRefuses(prepared, /call target does not match/)
     await expectHelperRefuses(prepared, /call target does not match/)
 })
 
 test('executeSignedCalls and signPreparedCalls refuse a substituted call value', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 2n, data: '0x1234' }])
+    const prepared = makePrepared([{ to: TARGET, value: 2n, data: hex('0x1234') }])
     await expectWalletRefuses(prepared, /call value does not match/)
     await expectHelperRefuses(prepared, /call value does not match/)
 })
@@ -300,19 +298,19 @@ test('executeSignedCalls and signPreparedCalls refuse substituted calldata', asy
 })
 
 test('executeSignedCalls and signPreparedCalls refuse a substituted nonce', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }], 8n)
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }], 8n)
     await expectWalletRefuses(prepared, /nonce does not match/)
     await expectHelperRefuses(prepared, /nonce does not match/)
 })
 
 test('executeSignedCalls and signPreparedCalls refuse a substituted fee cap', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }], 7n, 999_999n)
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }], 7n, 999_999n)
     await expectWalletRefuses(prepared, /fee cap does not match/)
     await expectHelperRefuses(prepared, /fee cap does not match/)
 })
 
 test('executeSignedCalls refuses a quote whose target differs from the signed calls', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }])
     const quotedCall = firstQuote(prepared).intent.calls[0]
 
     if (!quotedCall) throw new Error('prepared fixture has no quoted call')
@@ -358,7 +356,7 @@ test('createJsonRpcTransport refuses plain http for a non-loopback host', () => 
 })
 
 test('executeSignedCalls refuses expiry 0, a past expiry, and an expiry past the ttl', async () => {
-    const calls = [{ to: TARGET, value: 1n, data: '0x1234' as Hex }]
+    const calls = [{ to: TARGET, value: 1n, data: hex('0x1234') }]
     const unset = makePrepared(calls)
     unset.typedData.message.expiry = 0n
     firstQuote(unset).intent.expiry = '0'
@@ -382,7 +380,7 @@ test('executeSignedCalls refuses expiry 0, a past expiry, and an expiry past the
 })
 
 test('executeSignedCalls refuses a combined gas above the wallet ceiling', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }])
     const huge = 2n ** 96n - 1n
     prepared.typedData.message.combinedGas = huge
     firstQuote(prepared).intent.combinedGas = huge.toString()
@@ -391,31 +389,27 @@ test('executeSignedCalls refuses a combined gas above the wallet ceiling', async
 })
 
 test('executeSignedCalls refuses a quote payment above the wallet fee cap', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }])
     firstQuote(prepared).paymentAmount = '1001'
     await expectWalletRefuses(prepared, /payment amount exceeds fee cap/)
 })
 
 test('executeSignedCalls signs the rebuilt typed data when the relayer adds a domain salt', async () => {
-    const prepared = makePrepared([{ to: TARGET, value: 1n, data: '0x1234' }])
-    prepared.typedData.domain = {
-        ...prepared.typedData.domain,
-        salt: `0x${'11'.repeat(32)}`,
-    } as typeof prepared.typedData.domain
+    const prepared = makePrepared([{ to: TARGET, value: 1n, data: hex('0x1234') }])
+    Object.assign(prepared.typedData.domain, { salt: repeatedHex('11', 32) })
     const signTypedData = mock(async (_input: SignTypedDataInput) => SIG)
     await executeSignedCalls(
         {
             prepareCalls: async () => prepared,
             signTypedData,
             sendPreparedCalls: async () => ({ id: 'bundle-1' }),
-            waitForBundle: async () =>
-                ({ id: 'bundle-1', status: 'confirmed', statusCode: 200, success: true }) as never,
+            waitForBundle: async () => confirmedBundle(),
         },
         {
             from: EOA,
             calls: REQUESTED,
             nonce: 7n,
-            signerPrivateKey: `0x${'11'.repeat(32)}` as Hex,
+            signerPrivateKey: repeatedHex('11', 32),
             chainId: 8453,
             env: 'prod',
             verifyingContract: ORCHESTRATOR,
@@ -427,18 +421,22 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
             combinedGasCeiling: GAS_CEILING,
         },
     )
-    const signed = signTypedData.mock.calls[0]?.[0]?.typedData as { domain: { salt?: string } }
-    expect(signed.domain.salt).toBeUndefined()
+    const signed = firstMockArg(signTypedData).typedData
+    // SAFETY: this test reads domain.salt after a rebuild; EIP712Domain does not declare that field.
+    const signedDomain = signed.domain as { salt?: Hex }
+    expect(signedDomain.salt).toBeUndefined()
     expect(signTypedData).toHaveBeenCalled()
 
     const helperSign = mock(async (_typedData: PrepareCallsResponse['typedData']) => SIG)
     await signPreparedCalls({
-        prepared: prepared as never,
+        prepared,
         expected,
         signer: { type: 'typedData', signTypedData: helperSign },
     })
-    const helperSigned = helperSign.mock.calls[0]?.[0] as { domain: { salt?: string } }
-    expect(helperSigned.domain.salt).toBeUndefined()
+    const helperSigned = firstMockArg(helperSign)
+    // SAFETY: this test reads domain.salt after a rebuild; EIP712Domain does not declare that field.
+    const helperDomain = helperSigned.domain as { salt?: Hex }
+    expect(helperDomain.salt).toBeUndefined()
 })
 
 test('createJsonRpcTransport does not follow a relayer redirect', async () => {
@@ -451,6 +449,7 @@ test('createJsonRpcTransport does not follow a relayer redirect', async () => {
     })
 
     await new Promise<void>((resolve) => hopper.listen(0, '127.0.0.1', () => resolve()))
+    // SAFETY: listen(0) without a path yields AddressInfo with a bound port.
     const hopPort = (hopper.address() as { port: number }).port
 
     const redirector = createServer((_req, res) => {
@@ -459,6 +458,7 @@ test('createJsonRpcTransport does not follow a relayer redirect', async () => {
     })
 
     await new Promise<void>((resolve) => redirector.listen(0, '127.0.0.1', () => resolve()))
+    // SAFETY: listen(0) without a path yields AddressInfo with a bound port.
     const port = (redirector.address() as { port: number }).port
 
     try {

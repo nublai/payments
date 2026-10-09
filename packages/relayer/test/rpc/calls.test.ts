@@ -12,6 +12,10 @@ import {
 import { handleGetCallsStatus } from '../../src/rpc/methods/getCallsStatus'
 import { handleGetCallsHistory } from '../../src/rpc/methods/getCallsHistory'
 import { RpcError, INVALID_PARAMS, SERVICE_UNAVAILABLE, SIMULATION_FAILED } from '../../src/rpc/errors'
+import type { Env } from '../../src/types/env'
+import { testEnv } from '../helpers/env'
+import { parseJson } from '../helpers/rpc'
+import { jsonStub, namespaceStub, signerPoolWithFetch } from '../helpers/stubs'
 
 const { mockGetFeeEstimate } = vi.hoisted(() => ({
     mockGetFeeEstimate: vi.fn(),
@@ -117,36 +121,41 @@ beforeEach(() => {
 })
 
 // Create mock context
-const createMockCtx = (): RpcContext => ({
+const ADDRESSES_8453 = {
+    ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
+    SIMPLE_FUNDER_8453: '0x4567890123456789012345678901234567890123',
+    SIMULATOR_8453: '0x5678901234567890123456789012345678901234',
+    ACCOUNT_8453: '0x1234567890123456789012345678901234567890',
+    ACCOUNT_PROXY_8453: '0x2345678901234567890123456789012345678901',
+    SIMPLE_SETTLER_8453: '0x6789012345678901234567890123456789012345',
+    ESCROW_8453: '0x7890123456789012345678901234567890123456',
+    MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
+}
+
+type TestRpcContext = {
+    env: Env
+}
+
+const createMockCtx = (envOverrides: Partial<Env> = {}): TestRpcContext => ({
     env: {
-        RPC_URL: 'https://example.com/rpc',
-        RPC_8453: 'https://example.com/rpc',
-        CHAIN_IDS: '8453',
-        // These handlers exercise the local unsigned-quote path.
-        CONTEXT: 'local',
-        ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
-        SIMPLE_FUNDER_8453: '0x4567890123456789012345678901234567890123',
-        SIMULATOR_8453: '0x5678901234567890123456789012345678901234',
-        ACCOUNT_8453: '0x1234567890123456789012345678901234567890',
-        ACCOUNT_PROXY_8453: '0x2345678901234567890123456789012345678901',
-        SIMPLE_SETTLER_8453: '0x6789012345678901234567890123456789012345',
-        ESCROW_8453: '0x7890123456789012345678901234567890123456',
-        MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
-        INTENT_NONCE_MANAGER: {},
-        SIGNER_POOL: {
-            idFromName: vi.fn().mockReturnValue('pool-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: vi.fn().mockResolvedValue({
-                    ok: true,
-                    json: () =>
-                        Promise.resolve({
-                            txHash: '0xabc',
-                            signer: '0x123',
-                            signerName: 'signer-8453-0',
-                        }),
-                }),
-            }),
-        },
+        ...testEnv({
+            RPC_URL: 'https://example.com/rpc',
+            RPC_8453: 'https://example.com/rpc',
+            CHAIN_IDS: '8453',
+            // These handlers exercise the local unsigned-quote path.
+            CONTEXT: 'local',
+            SIGNER_POOL: signerPoolWithFetch(
+                vi.fn().mockResolvedValue(
+                    jsonStub({
+                        txHash: '0xabc',
+                        signer: '0x123',
+                        signerName: 'signer-8453-0',
+                    }),
+                ),
+            ),
+            ...envOverrides,
+        }),
+        ...ADDRESSES_8453,
     },
 })
 
@@ -176,7 +185,7 @@ function buildSendPreparedCallsParams(options?: { withTelemetry?: boolean }) {
             maxPriorityFeePerGas: 100000000,
         },
         feeTokenDeficit: '0x0',
-        assetDeficits: [] as unknown[],
+        assetDeficits: [],
         ...(options?.withTelemetry
             ? {
                   telemetry: {
@@ -368,8 +377,8 @@ describe('wallet_prepareCalls', () => {
     it('fails when fee estimation throws instead of signing a zero fee', async () => {
         preparedOk()
         mockGetFeeEstimate.mockRejectedValue(new Error('fee history unavailable'))
-        const ctx = createMockCtx()
-        Object.assign(ctx.env as object, {
+
+        const ctx = createMockCtx({
             CONTEXT: 'prod',
             QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
         })
@@ -410,8 +419,8 @@ describe('wallet_prepareCalls', () => {
             totalGas: 21_000n,
             paymentAmount: 0n,
         })
-        const ctx = createMockCtx()
-        Object.assign(ctx.env as object, {
+
+        const ctx = createMockCtx({
             CONTEXT: 'prod',
             QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
         })
@@ -537,12 +546,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
             }),
-        }
+        })
 
         const baseParams = buildSendPreparedCallsParams()
         const baseQuote = baseParams.context.quote.quotes[0]
@@ -572,9 +581,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         await handleSendPreparedCalls(params, ctx)
 
-        const calledUrls = bundleFetch.mock.calls.map(
-            (args) => (args[0] as string | undefined) ?? '',
-        )
+        const calledUrls = bundleFetch.mock.calls.map((args) => String(args[0] ?? ''))
 
         expect(calledUrls.some((url) => url.includes('/add_bundle_tx'))).toBe(true)
         expect(calledUrls.some((url) => url.includes('/store_pending_bundle'))).toBe(false)
@@ -588,20 +595,18 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
             }),
-        }
+        })
 
         const params = buildSendPreparedCallsParams({ withTelemetry: true })
 
         await handleSendPreparedCalls(params, ctx)
 
-        const calledUrls = bundleFetch.mock.calls.map(
-            (args) => (args[0] as string | undefined) ?? '',
-        )
+        const calledUrls = bundleFetch.mock.calls.map((args) => String(args[0] ?? ''))
 
         expect(calledUrls.some((url) => url.includes('/upsert_bundle_telemetry'))).toBe(true)
     })
@@ -614,12 +619,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
             }),
-        }
+        })
 
         const mixedCaseEoa = '0xABcdEFABcdEFabcdEfAbCdefabcdeFABcDEFabCD'
         const params = buildSendPreparedCallsParams({ withTelemetry: true })
@@ -632,8 +637,8 @@ describe('wallet_sendPreparedCalls', () => {
         )
 
         expect(telemetryCall).toBeDefined()
-        const requestInit = telemetryCall?.[1] as RequestInit
-        const payload = JSON.parse(String(requestInit.body)) as { eoa?: string }
+        const requestInit = telemetryCall?.[1]
+        const payload = parseJson<{ eoa?: string }>(String(requestInit?.body ?? '{}'))
         expect(payload.eoa).toBe(mixedCaseEoa.toLowerCase())
     })
 
@@ -662,12 +667,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
             }),
-        }
+        })
 
         const params = buildSendPreparedCallsParams({ withTelemetry: true })
 
@@ -683,12 +688,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
             }),
-        }
+        })
 
         const params = buildSendPreparedCallsParams()
 
@@ -707,12 +712,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
             }),
-        }
+        })
 
         const sendParams = buildSendPreparedCallsParams()
 
@@ -745,8 +750,8 @@ describe('wallet_getCallsHistory', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).CHAIN_IDS = Object.keys(chainEntries).join(',')
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.CHAIN_IDS = Object.keys(chainEntries).join(',')
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 const chainId = Number(name.replace('bundle-status-', ''))
@@ -763,7 +768,7 @@ describe('wallet_getCallsHistory', () => {
 
                 return { getBundlesByEoa }
             }),
-        }
+        })
 
         return { ctx, chainSpies }
     }
@@ -884,8 +889,8 @@ describe('wallet_getCallsHistory', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).CHAIN_IDS = '8453,10'
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.CHAIN_IDS = '8453,10'
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 if (name === 'bundle-status-8453') {
@@ -894,7 +899,7 @@ describe('wallet_getCallsHistory', () => {
 
                 return { getBundlesByEoa: secondChainSpy }
             }),
-        }
+        })
 
         const resultPromise = handleGetCallsHistory(
             {
@@ -948,15 +953,15 @@ describe('wallet_getCallsHistory', () => {
 
         const ctx = createMockCtx()
 
-        ;(ctx.env as Record<string, unknown>).CHAIN_IDS = '8453,10'
-        ;(ctx.env as Record<string, unknown>).BUNDLE_STATUS_DO = {
+        ctx.env.CHAIN_IDS = '8453,10'
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) =>
                 name === 'bundle-status-8453'
                     ? { getBundlesByEoa: chainASpy }
                     : { getBundlesByEoa: chainBSpy },
             ),
-        }
+        })
 
         const result = await handleGetCallsHistory(
             {
@@ -979,30 +984,32 @@ describe('wallet_getCallsStatus', () => {
         vi.clearAllMocks()
     })
 
-    const createMockCtxWithBundleStatus = (mockResponse: unknown): RpcContext => ({
-        env: {
+    const createMockCtxWithBundleStatus = (mockResponse: {
+        bundleId?: string
+        status?: string
+        statusCode?: number
+        receipts?: Array<{
+            chain_id: string
+            transaction_hash: string
+            status: boolean
+            gas_used: string
+            logs: []
+        }>
+        error?: string
+    }): RpcContext => ({
+        env: testEnv({
             RPC_URL: 'https://example.com/rpc',
             CHAIN_IDS: '8453',
-            INTENT_NONCE_MANAGER: {},
-            SIGNER_POOL: {
-                idFromName: vi.fn().mockReturnValue('pool-id'),
-                get: vi.fn().mockReturnValue({
-                    fetch: vi.fn().mockResolvedValue({
-                        ok: true,
-                        json: () => Promise.resolve({ txHash: '0xabc', signer: '0x123' }),
-                    }),
-                }),
-            },
-            BUNDLE_STATUS_DO: {
+            SIGNER_POOL: signerPoolWithFetch(
+                vi.fn().mockResolvedValue(jsonStub({ txHash: '0xabc', signer: '0x123' })),
+            ),
+            BUNDLE_STATUS_DO: namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
                 idFromName: vi.fn().mockReturnValue('bundle-status-id'),
                 get: vi.fn().mockReturnValue({
-                    fetch: vi.fn().mockResolvedValue({
-                        ok: true,
-                        json: () => Promise.resolve(mockResponse),
-                    }),
+                    fetch: vi.fn().mockResolvedValue(jsonStub(mockResponse)),
                 }),
-            },
-        },
+            }),
+        }),
     })
 
     it('should return pending status for new bundle', async () => {

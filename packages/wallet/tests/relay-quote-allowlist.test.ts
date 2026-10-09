@@ -1,11 +1,15 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
-import { executeAccountSwap } from '../src/lib/account-swap'
+import { executeAccountSwap } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { typedMock } from './helpers/typed-mock'
+import type { AccountSwapDeps } from '../src/lib/account-swap'
+import type { RelayQuoteResponse } from '../src/lib/relay-link'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -17,21 +21,21 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
+const SESSION_ADDRESS: Address = '0x3333333333333333333333333333333333333333'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+const ATTACKER = '0x2222222222222222222222222222222222222222'
 
-const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
 
-const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE'
 
-const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31' as Address
+const DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31'
 
-const MULTICALL = '0xcd6e13f7' as Hex
+const MULTICALL = '0xcd6e13f7'
 
-const USER = '0x1111111111111111111111111111111111111111' as Address
+const USER = '0x1111111111111111111111111111111111111111'
 
 const multicallAbi = [
     {
@@ -80,30 +84,9 @@ const increaseAllowanceAbi = [
 ] as const
 
 function makeKeystoreBundle(chainId = 8453) {
-    return {
-        format: 'split',
-        rootPath: '/tmp/alice.json',
-        sessionPath: '/tmp/sessions/default.json',
-        root: {
-            addresses: {
-                root: '0x1111111111111111111111111111111111111111',
-                delegated: '0x1111111111111111111111111111111111111111',
-            },
-            sessionRef: { dir: '/tmp/sessions' },
-        },
-        session: {
-            network: {
-                env: 'prod' as const,
-                relayerUrl: 'http://127.0.0.1:8787',
-                rpcUrl: 'https://mainnet.base.org',
-                chainId,
-            },
-            addresses: {
-                delegated: '0x1111111111111111111111111111111111111111',
-                session: SESSION_ADDRESS,
-            },
-        },
-    }
+    const env = chainId === 31337 ? 'dev' : 'prod'
+
+    return testKeystoreBundle(USER, SESSION_ADDRESS, chainId, env)
 }
 
 function quoteWithCall(input: {
@@ -113,7 +96,7 @@ function quoteWithCall(input: {
     chainId?: number
     kind?: string
     currencyInAmount?: string
-}) {
+}): RelayQuoteResponse {
     return {
         requestId: 'relay-request-1',
         steps: [
@@ -150,7 +133,7 @@ function attackTransferData(): Hex {
 }
 
 function runQuote(input: {
-    quote: ReturnType<typeof quoteWithCall> | Record<string, unknown>
+    quote: RelayQuoteResponse
     yes?: boolean
     amount?: string
     fromToken?: string
@@ -181,18 +164,18 @@ function runQuote(input: {
             yes: input.yes ?? true,
         },
         {
-            readKeystoreBundle: mock(async () => makeKeystoreBundle(input.chainId ?? 8453)) as any,
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => makeKeystoreBundle(input.chainId ?? 8453)),
+            decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            readTokenBalance: mock(async () => 10_000000n),
-            getQuote: mock(async () => input.quote) as any,
-            readNonce: mock(async () => 2n),
+            readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10_000000n),
+            getQuote: typedMock<AccountSwapDeps['getQuote']>(async () => input.quote),
+            readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
             confirmQuote,
-            prepareCalls: prepareCalls as any,
-            signTypedData: signTypedData as any,
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(prepareCalls),
+            signTypedData: signTypedData,
+            sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
             simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
             installQuoteSpendLimit: async () => async () => {},
             readAllowance: async () => 0n,
@@ -206,7 +189,7 @@ function runQuote(input: {
             getKeys: async () => ({
                 '0x2105': [
                     {
-                        hash: computeSessionKeyHash(SESSION_ADDRESS as Address),
+                        hash: computeSessionKeyHash(SESSION_ADDRESS),
                         expiry: '0x0',
                         type: 'secp256k1' as const,
                         role: 'normal' as const,
@@ -215,7 +198,7 @@ function runQuote(input: {
                     },
                 ],
             }),
-            waitForBundle: mock(async () => ({
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed',
@@ -227,7 +210,7 @@ function runQuote(input: {
                     gasUsed: '1',
                     status: 'success',
                 },
-            })) as any,
+            })),
         },
     )
 
@@ -249,24 +232,24 @@ test('executeAccountSwap refuses a USDC.transfer quote on chain 31337 before sig
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle(31337)) as any,
-                decryptSessionKeystore: mock(async () => ({
+                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => makeKeystoreBundle(31337)),
+                decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
-                readTokenBalance: mock(async () => 10_000000n),
-                getQuote: mock(async () =>
+                readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10_000000n),
+                getQuote: typedMock<AccountSwapDeps['getQuote']>(async () =>
                     quoteWithCall({
                         to: USDC,
                         data: attackTransferData(),
                         chainId: 31337,
                     }),
-                ) as any,
-                readNonce: mock(async () => 2n),
+                ),
+                readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
                 getKeys: async () => ({
                     '0x7a69': [
                         {
-                            hash: computeSessionKeyHash(SESSION_ADDRESS as Address),
+                            hash: computeSessionKeyHash(SESSION_ADDRESS),
                             expiry: '0x0',
                             type: 'secp256k1' as const,
                             role: 'normal' as const,
@@ -275,11 +258,11 @@ test('executeAccountSwap refuses a USDC.transfer quote on chain 31337 before sig
                         },
                     ],
                 }),
-                prepareCalls: mock(async () => {
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async () => {
                     throw new Error('prepareCalls must not run')
-                }) as any,
-                signTypedData: signTypedData as any,
-                sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
+                }),
+                signTypedData: signTypedData,
+                sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
             },
         ),
     ).rejects.toMatchObject({
@@ -434,7 +417,7 @@ test('formatRelayQuoteCalls names the target, selector, approve spender, and val
             to: USDC,
             data: approve,
             value: '0',
-        }) as any,
+        }),
     )
 
     expect(text).toContain('approve (0x095ea7b3)')

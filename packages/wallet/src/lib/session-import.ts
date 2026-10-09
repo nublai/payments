@@ -39,7 +39,7 @@ export type SessionImportResult = {
     sessionPath: string
 }
 
-type SessionImportDeps = {
+export type SessionImportDeps = {
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     writeSessionKeystoreFile: typeof writeSessionKeystoreFile
     access: (path: string, mode?: number) => Promise<void>

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { parseEther, type Address, type Hex } from 'viem'
+import { parseEther } from 'viem'
 
 describe('Gas Refill Logic', () => {
     // Test the calculation logic
@@ -59,7 +59,7 @@ describe('Gas Refill Logic', () => {
             // Simulate a maintenance result with gas refill
             const result = {
                 index: 0,
-                address: '0x1234567890123456789012345678901234567890' as Hex,
+                address: '0x1234567890123456789012345678901234567890',
                 staleTransactions: 0,
                 confirmedTransactions: 0,
                 failedTransactions: 0,
@@ -69,8 +69,7 @@ describe('Gas Refill Logic', () => {
                 gasRefillAttempted: true,
                 gasRefillSuccess: true,
                 gasRefillAmount: parseEther('0.05').toString(),
-                gasRefillTxHash: '0xabcd' as Hex,
-            }
+                gasRefillTxHash: '0xabcd' }
 
             expect(result.gasRefillAttempted).toBe(true)
             expect(result.gasRefillSuccess).toBe(true)
@@ -81,7 +80,7 @@ describe('Gas Refill Logic', () => {
         it('indicates failure when refill fails', () => {
             const result = {
                 index: 0,
-                address: '0x1234567890123456789012345678901234567890' as Hex,
+                address: '0x1234567890123456789012345678901234567890',
                 staleTransactions: 0,
                 confirmedTransactions: 0,
                 failedTransactions: 0,
@@ -91,8 +90,7 @@ describe('Gas Refill Logic', () => {
                 gasRefillAttempted: true,
                 gasRefillSuccess: false,
                 gasRefillAmount: undefined,
-                gasRefillTxHash: undefined,
-            }
+                gasRefillTxHash: undefined }
 
             expect(result.gasRefillAttempted).toBe(true)
             expect(result.gasRefillSuccess).toBe(false)
@@ -149,11 +147,10 @@ describe('Gas Refill Logic', () => {
     describe('SimpleFunder configuration', () => {
         it('skips refill when SimpleFunder is not configured', () => {
             const contracts = {
-                account: '0x1111111111111111111111111111111111111111' as Address,
-                orchestrator: '0x2222222222222222222222222222222222222222' as Address,
+                account: '0x1111111111111111111111111111111111111111',
+                orchestrator: '0x2222222222222222222222222222222222222222',
                 simpleFunder: undefined, // Not configured
-                simulator: '0x4444444444444444444444444444444444444444' as Address,
-            }
+                simulator: '0x4444444444444444444444444444444444444444' }
 
             const canAttemptRefill = !!contracts.simpleFunder
 
@@ -162,11 +159,10 @@ describe('Gas Refill Logic', () => {
 
         it('attempts refill when SimpleFunder is configured', () => {
             const contracts = {
-                account: '0x1111111111111111111111111111111111111111' as Address,
-                orchestrator: '0x2222222222222222222222222222222222222222' as Address,
-                simpleFunder: '0x3333333333333333333333333333333333333333' as Address,
-                simulator: '0x4444444444444444444444444444444444444444' as Address,
-            }
+                account: '0x1111111111111111111111111111111111111111',
+                orchestrator: '0x2222222222222222222222222222222222222222',
+                simpleFunder: '0x3333333333333333333333333333333333333333',
+                simulator: '0x4444444444444444444444444444444444444444' }
 
             const canAttemptRefill = !!contracts.simpleFunder
 

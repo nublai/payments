@@ -31,36 +31,35 @@ vi.mock('../src/config/addresses', () => ({
 
 import { validateEnv, validatePoolConfig } from '../src/config'
 import { getGasConfig, type Env } from '../src/types/env'
+import { testEnv } from './helpers/env'
 
 /**
  * Create a minimal mock Env for testing
  * Only includes string properties we need for validation
  */
 function createMockEnv(overrides: Partial<Record<string, string>> = {}): Env {
-    return {
-        // Required - use Base Sepolia (84532) with 'stage' context which has bundled deployment
-        RPC_URL: 'http://localhost:8545',
-        CHAIN_IDS: '84532',
-        RELAYER_MNEMONIC: 'test test test test test test test test test test test junk',
-        CONTEXT: 'stage',
-        // Stage requires a quote HMAC secret. This is a fixture placeholder, not a deployed secret.
-        QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
-        FEE_RECIPIENT: '0x1111111111111111111111111111111111111111',
-        ORCHESTRATOR_84532: '0x3456789012345678901234567890123456789012',
-        SIMPLE_FUNDER_84532: '0x4567890123456789012345678901234567890123',
-        SIMULATOR_84532: '0x5678901234567890123456789012345678901234',
-        ACCOUNT_84532: '0x1234567890123456789012345678901234567890',
-        ACCOUNT_PROXY_84532: '0x2345678901234567890123456789012345678901',
-        SIMPLE_SETTLER_84532: '0x6789012345678901234567890123456789012345',
-        ESCROW_84532: '0x7890123456789012345678901234567890123456',
-        MULTI_SIG_SIGNER_84532: '0x8901234567890123456789012345678901234567',
-        // Durable Objects (mocked - cast to unknown since tests don't use them)
-        SIGNER: {},
-        SIGNER_POOL: {},
-        INTENT_NONCE_MANAGER: {},
-        MONITOR_QUEUE: {},
-        ...overrides,
-    } as unknown as Env
+    return Object.assign(
+        testEnv({
+            // Required - use Base Sepolia (84532) with 'stage' context which has bundled deployment
+            RPC_URL: 'http://localhost:8545',
+            CHAIN_IDS: '84532',
+            CONTEXT: 'stage',
+            // Stage requires a quote HMAC secret. This is a fixture placeholder, not a deployed secret.
+            QUOTE_SIGNING_SECRET: 'test-quote-signing-secret',
+            FEE_RECIPIENT: '0x1111111111111111111111111111111111111111',
+        }),
+        {
+            ORCHESTRATOR_84532: '0x3456789012345678901234567890123456789012',
+            SIMPLE_FUNDER_84532: '0x4567890123456789012345678901234567890123',
+            SIMULATOR_84532: '0x5678901234567890123456789012345678901234',
+            ACCOUNT_84532: '0x1234567890123456789012345678901234567890',
+            ACCOUNT_PROXY_84532: '0x2345678901234567890123456789012345678901',
+            SIMPLE_SETTLER_84532: '0x6789012345678901234567890123456789012345',
+            ESCROW_84532: '0x7890123456789012345678901234567890123456',
+            MULTI_SIG_SIGNER_84532: '0x8901234567890123456789012345678901234567',
+            ...overrides,
+        },
+    )
 }
 
 describe('validateEnv', () => {

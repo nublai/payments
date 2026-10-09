@@ -19,8 +19,11 @@ import {
     executeAccountSwap as executeAccountSwapImpl,
     resolveAccountSwapPassword,
 } from '../src/lib/account-swap'
+import type { RelayIntentStatus, RelayQuoteResponse } from '../src/lib/relay-link'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { parseHex } from './helpers/hex'
 
-const USER = '0x1111111111111111111111111111111111111111' as Address
+const USER: Address = '0x1111111111111111111111111111111111111111'
 
 const EMPTY_ROUTER_CALL: Hex = encodeFunctionData({
     abi: [
@@ -68,7 +71,7 @@ function executeAccountSwap(
         getKeys: async () => {
             const key = {
                 hash: computeSessionKeyHash(
-                    '0x3333333333333333333333333333333333333333' as Address,
+                    '0x3333333333333333333333333333333333333333',
                 ),
                 expiry: '0x0' as const,
                 type: 'secp256k1' as const,
@@ -85,7 +88,9 @@ function executeAccountSwap(
     })
 }
 
-import { LoginProfileError } from '../src/lib/keystore'
+import { LoginProfileError, type RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import { typedMock } from './helpers/typed-mock'
+import type { AccountSwapDeps } from '../src/lib/account-swap'
 import { PromptCancelledError } from '../src/lib/password-readline'
 import { RelayLinkError } from '../src/lib/relay-link'
 import { computeSessionKeyHash } from '../src/lib/session-common'
@@ -97,51 +102,29 @@ const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
 
 function makeKeystoreBundle() {
-    return {
-        format: 'split',
-        rootPath: '/tmp/alice.json',
-        sessionPath: '/tmp/sessions/default.json',
-        root: {
-            addresses: {
-                root: '0x1111111111111111111111111111111111111111',
-                delegated: '0x1111111111111111111111111111111111111111',
-            },
-            sessionRef: {
-                dir: '/tmp/sessions',
-            },
-        },
-        session: {
-            network: {
-                env: 'prod' as const,
-                relayerUrl: 'http://127.0.0.1:8787',
-                rpcUrl: 'https://mainnet.base.org',
-                chainId: 8453,
-            },
-            addresses: {
-                delegated: '0x1111111111111111111111111111111111111111',
-                session: SESSION_ADDRESS,
-            },
-        },
-    }
+    return testKeystoreBundle(
+        '0x1111111111111111111111111111111111111111',
+        SESSION_ADDRESS,
+        8453,
+        'prod',
+    )
 }
 
-function makeSessionKeystore(overrides?: Record<string, unknown>) {
-    return {
-        network: {
-            env: 'prod' as const,
-            relayerUrl: 'http://127.0.0.1:8787',
-            rpcUrl: 'https://mainnet.base.org',
-            chainId: 8453,
-        },
-        addresses: {
-            delegated: '0x1111111111111111111111111111111111111111',
-            session: SESSION_ADDRESS,
-        },
-        ...overrides,
-    }
+function makeSessionKeystore(
+    overrides?: Partial<RelayerSessionKeystoreV2>,
+): RelayerSessionKeystoreV2 {
+    const session = testKeystoreBundle(
+        '0x1111111111111111111111111111111111111111',
+        SESSION_ADDRESS,
+        8453,
+        'prod',
+    ).session
+
+    // SAFETY: overrides replace RelayerSessionKeystoreV2 fields only; required keys stay from session.
+    return { ...session, ...overrides } as RelayerSessionKeystoreV2
 }
 
-function makeQuote(overrides?: Record<string, unknown>) {
+function makeQuote(overrides?: Partial<RelayQuoteResponse>): RelayQuoteResponse {
     return {
         requestId: 'relay-request-1',
         steps: [
@@ -173,30 +156,42 @@ function makeQuote(overrides?: Record<string, unknown>) {
             timeEstimate: 2,
         },
         fees: {
-            gas: { amountUsd: '0.10' },
-            relayer: { amountUsd: '0.07' },
+            gas: { amount: '0', amountUsd: '0.10' },
+            relayer: { amount: '0', amountUsd: '0.07' },
         },
         ...overrides,
     }
 }
 
-const bridgeOrderTemplate = JSON.parse(
-    readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
-).orderData as {
+type BridgeOrderTemplate = {
     output: { payments: { recipient: string }[] }
     inputs: { refunds: { recipient: string }[] }[]
     solver: string
-    fees: unknown[]
+    fees: RelayQuoteResponse['fees']
 }
+
+function readBridgeOrderTemplate(): BridgeOrderTemplate {
+    const parsed = JSON.parse(
+        readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
+    )
+
+    // SAFETY: the checked-in quote fixture's orderData has output.payments, inputs.refunds, solver, and fees.
+    return parsed.orderData as BridgeOrderTemplate
+}
+
+const bridgeOrderTemplate = readBridgeOrderTemplate()
 
 function depositNative(depositor: Address, id: Hex): Hex {
     const padded = depositor.toLowerCase().slice(2).padStart(64, '0')
 
-    return `0x49290c1c${padded}${id.slice(2).padStart(64, '0')}` as Hex
+    return parseHex(`0x49290c1c${padded}${id.slice(2).padStart(64, '0')}`)
 }
 
 /** Signable ETH bridge: depositNative plus an order whose output pays `recipient`. */
-function makeEthBridgeQuote(input?: { recipient?: Address; omitRequestId?: boolean }) {
+function makeEthBridgeQuote(input?: {
+    recipient?: Address
+    omitRequestId?: boolean
+}): RelayQuoteResponse {
     const recipient = input?.recipient ?? USER
     const order = structuredClone(bridgeOrderTemplate)
     order.output.payments[0]!.recipient = recipient
@@ -237,8 +232,8 @@ function makeEthBridgeQuote(input?: { recipient?: Address; omitRequestId?: boole
         },
         protocol: { v2: { orderId, orderData: order } },
         fees: {
-            gas: { amountUsd: '0.10' },
-            relayer: { amountUsd: '0.07' },
+            gas: { amount: '0', amountUsd: '0.10' },
+            relayer: { amount: '0', amountUsd: '0.07' },
         },
     }
 }
@@ -247,19 +242,19 @@ function makePreparedCalls(input: Parameters<typeof matchingPreparedCalls>[0]) {
     return matchingPreparedCalls(input)
 }
 
-function makeFinalStatus(overrides?: Record<string, unknown>) {
+function makeFinalStatus() {
     return {
         success: true,
         id: 'bundle-1',
-        status: 'confirmed',
+        status: 'confirmed' as const,
         statusCode: 200,
         receipt: {
-            transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            transactionHash:
+                '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const,
             blockNumber: '1',
             gasUsed: '1',
-            status: 'success',
+            status: 'success' as const,
         },
-        ...overrides,
     }
 }
 
@@ -354,8 +349,8 @@ test('resolveAccountSwapPassword uses interactive prompt when stdin is not reque
 test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
     const confirmQuote = mock(async () => true)
     const auditQuote = mock((_quote) => {})
-    const prepareCalls = mock(async (input) => makePreparedCalls(input)) as unknown as any
-    const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
+    const prepareCalls = mock(async (input) => makePreparedCalls(input))
+    const sendPreparedCalls = mock(async (_input: { signature: Hex }) => ({ id: 'bundle-1' }))
 
     const result = await executeAccountSwap(
         {
@@ -368,23 +363,25 @@ test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+            readKeystoreBundle: mock(async () => makeKeystoreBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => 200_000000n),
-            getQuote: mock(async () => makeQuote()) as unknown as any,
+            getQuote: mock(async () => makeQuote()),
             readNonce: mock(async () => 2n),
             confirmQuote,
             auditQuote,
-            prepareCalls,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(prepareCalls),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls,
-            waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
         },
     )
 
@@ -395,7 +392,7 @@ test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
     expect(result.txHash).toBe('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
     expect(confirmQuote).toHaveBeenCalledTimes(1)
     expect(auditQuote).toHaveBeenCalledTimes(1)
-    const prepareInput = (prepareCalls as any).mock.calls[0]?.[0]
+    const prepareInput = prepareCalls.mock.calls[0]?.[0]
     expect(prepareInput.calls).toEqual([
         {
             target: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
@@ -403,7 +400,7 @@ test('executeAccountSwap completes a same-chain USDC to ETH swap', async () => {
             data: EMPTY_ROUTER_CALL,
         },
     ])
-    const sentSignature = (sendPreparedCalls as any).mock.calls[0]?.[0]?.signature as string
+    const sentSignature = sendPreparedCalls.mock.calls[0]?.[0]?.signature ?? ''
     expect(sentSignature.startsWith('0x11111111111111111111111111111111')).toBe(true)
 })
 
@@ -420,23 +417,26 @@ test('executeAccountSwap accepts successful bundles without a statusCode', async
             yes: true,
         },
         {
-            readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+            readKeystoreBundle: mock(async () => makeKeystoreBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => 200_000000n),
-            getQuote: mock(async () => makeQuote()) as unknown as any,
+            getQuote: mock(async () => makeQuote()),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () =>
-                makeFinalStatus({ statusCode: undefined }),
-            ) as unknown as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => ({
+                ...makeFinalStatus(),
+                statusCode: undefined,
+            })),
         },
     )
 
@@ -447,13 +447,16 @@ test('executeAccountSwap accepts successful bundles without a statusCode', async
 })
 
 test('executeAccountSwap completes a bridge and polls for destination fill', async () => {
-    const pollIntentStatus = mock(async () => ({
+    const pollIntentStatus = mock(async (): Promise<RelayIntentStatus> => ({
         status: 'success',
-        txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
+        txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const],
     }))
 
-    const recipient = '0x2222222222222222222222222222222222222222' as Address
-    const getQuote = mock(async () => makeEthBridgeQuote({ recipient })) as unknown as any
+    const recipient = '0x2222222222222222222222222222222222222222'
+
+    const getQuote = mock(async (_input: { recipient?: Address }) =>
+        makeEthBridgeQuote({ recipient }),
+    )
 
     const result = await executeAccountSwap(
         {
@@ -469,7 +472,7 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
             yes: true,
         },
         {
-            readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+            readKeystoreBundle: mock(async () => makeKeystoreBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -478,14 +481,18 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
             getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
             getQuote,
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
-            pollIntentStatus: pollIntentStatus as unknown as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
+            pollIntentStatus: typedMock<AccountSwapDeps['pollIntentStatus']>(pollIntentStatus),
         },
     )
 
@@ -496,13 +503,13 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
     )
     expect(result.recipient).toBe(recipient)
     expect(pollIntentStatus).toHaveBeenCalledTimes(1)
-    expect((getQuote as any).mock.calls[0]?.[0]?.recipient).toBe(recipient)
+    expect(getQuote.mock.calls[0]?.[0]?.recipient).toBe(recipient)
 })
 
 test('executeAccountSwap does not treat source intent hashes as destination tx hashes', async () => {
-    const pollIntentStatus = mock(async () => ({
+    const pollIntentStatus = mock(async (): Promise<RelayIntentStatus> => ({
         status: 'success',
-        inTxHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
+        inTxHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const],
     }))
 
     const result = await executeAccountSwap(
@@ -519,23 +526,27 @@ test('executeAccountSwap does not treat source intent hashes as destination tx h
             yes: true,
         },
         {
-            readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+            readKeystoreBundle: mock(async () => makeKeystoreBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => 1_000000000000000000n),
             getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-            getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
+            getQuote: mock(async () => makeEthBridgeQuote()),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
-            pollIntentStatus: pollIntentStatus as unknown as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
+            pollIntentStatus: typedMock<AccountSwapDeps['pollIntentStatus']>(pollIntentStatus),
         },
     )
 
@@ -579,7 +590,7 @@ test('executeAccountSwap rejects when both sessionFile and sessionName are set',
 })
 
 test('executeAccountSwap uses the provided session file when it matches the requested network', async () => {
-    const readSessionKeystoreFile = mock(async () => makeSessionKeystore()) as unknown as any
+    const readSessionKeystoreFile = mock(async () => makeSessionKeystore())
 
     const result = await executeAccountSwap(
         {
@@ -599,15 +610,19 @@ test('executeAccountSwap uses the provided session file when it matches the requ
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => 2_000000n),
-            getQuote: mock(async () => makeQuote()) as unknown as any,
+            getQuote: mock(async () => makeQuote()),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
         },
     )
 
@@ -645,7 +660,7 @@ test('executeAccountSwap rejects ETH swaps when native spend permission is missi
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -678,7 +693,7 @@ test('executeAccountSwap rejects same-chain bridges with typed error', async () 
 })
 
 test('executeAccountSwap rejects bridge when quote has no requestId before executing', async () => {
-    const waitForBundle = mock(async () => makeFinalStatus()) as unknown as any
+    const waitForBundle = mock(async () => makeFinalStatus())
     const quoteWithoutRequestId = makeEthBridgeQuote({ omitRequestId: true })
 
     await expect(
@@ -696,22 +711,24 @@ test('executeAccountSwap rejects bridge when quote has no requestId before execu
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 1_000000000000000000n),
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-                getQuote: mock(async () => quoteWithoutRequestId) as unknown as any,
+                getQuote: mock(async () => quoteWithoutRequestId),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle,
+                waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(waitForBundle),
             },
         ),
     ).rejects.toMatchObject({
@@ -754,7 +771,7 @@ test('executeAccountSwap surfaces relay quote failures', async () => {
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -764,7 +781,7 @@ test('executeAccountSwap surfaces relay quote failures', async () => {
                     throw new RelayLinkError('API_ERROR', 'solver unavailable', {
                         statusCode: 503,
                     })
-                }) as unknown as any,
+                }),
             },
         ),
     ).rejects.toMatchObject({
@@ -787,13 +804,13 @@ test('executeAccountSwap rejects relay quotes with no executable steps', async (
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote({ steps: [] })) as unknown as any,
+                getQuote: mock(async () => makeQuote({ steps: [] })),
             },
         ),
     ).rejects.toMatchObject({
@@ -816,7 +833,7 @@ test('executeAccountSwap rejects relay quotes with signature steps', async () =>
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -832,7 +849,7 @@ test('executeAccountSwap rejects relay quotes with signature steps', async () =>
                             },
                         ],
                     }),
-                ) as unknown as any,
+                ),
             },
         ),
     ).rejects.toMatchObject({
@@ -854,7 +871,7 @@ test('executeAccountSwap does not misclassify unrelated amount strings as INVALI
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -862,7 +879,7 @@ test('executeAccountSwap does not misclassify unrelated amount strings as INVALI
                 readTokenBalance: mock(async () => 2_000000n),
                 getQuote: mock(async () => {
                     throw new Error('Token Amount exceeds protocol maximum')
-                }) as unknown as any,
+                }),
             },
         ),
     ).rejects.toMatchObject({
@@ -887,10 +904,10 @@ test('executeAccountSwap maps missing keystore files to KEYSTORE_NOT_FOUND', asy
             {
                 readKeystoreBundle: mock(async () => {
                     throw new Error('ENOENT: no such file or directory, open /tmp/missing.json')
-                }) as unknown as any,
+                }),
                 readSessionKeystoreFile: mock(async () => {
                     throw new Error('ENOENT: no such file or directory, open /tmp/session.json')
-                }) as unknown as any,
+                }),
             },
         ),
     ).rejects.toMatchObject({
@@ -960,7 +977,7 @@ test('executeAccountSwap fails fast on insufficient balance', async () => {
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -989,22 +1006,26 @@ test('executeAccountSwap still confirms the quote when yes is set', async () => 
             yes: true,
         },
         {
-            readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+            readKeystoreBundle: mock(async () => makeKeystoreBundle()),
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => 2_000000n),
-            getQuote: mock(async () => makeQuote()) as unknown as any,
+            getQuote: mock(async () => makeQuote()),
             readNonce: mock(async () => 2n),
             confirmQuote,
-            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
         },
     )
 
@@ -1025,7 +1046,7 @@ test('executeAccountSwap rejects relay quotes with mismatched source-chain calls
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -1051,7 +1072,7 @@ test('executeAccountSwap rejects relay quotes with mismatched source-chain calls
                             },
                         ],
                     }),
-                ) as unknown as any,
+                ),
             },
         ),
     ).rejects.toMatchObject({
@@ -1099,13 +1120,13 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: getQuote as unknown as any,
+                getQuote: getQuote,
                 confirmQuote,
             },
         )
@@ -1119,7 +1140,9 @@ test('executeAccountSwap stops after repeated quote drift during confirmation', 
         code: 'QUOTE_FAILED',
         message: expect.stringContaining('Quote changed materially too many times'),
     })
-    const driftMessage = String((caught as { message?: unknown }).message ?? '')
+
+    const driftMessage = String(caught instanceof Error ? caught.message : '')
+
     expect(driftMessage.includes('--yes')).toBe(false)
 
     expect(confirmQuote).toHaveBeenCalledTimes(3)
@@ -1159,22 +1182,26 @@ test('executeAccountSwap does not force reconfirmation when refreshed quotes are
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: getQuote as unknown as any,
+                getQuote: getQuote,
                 confirmQuote,
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
+                waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
             },
         )
     } finally {
@@ -1200,28 +1227,32 @@ test('executeAccountSwap maps bridge polling timeouts to typed errors', async ()
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 1_000000000000000000n),
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-                getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
+                getQuote: mock(async () => makeEthBridgeQuote()),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
+                waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
                 pollIntentStatus: mock(async () => {
                     throw new RelayLinkError(
                         'TIMEOUT',
                         'relay.link intent relay-request-1 did not reach a terminal state before timeout.',
                     )
-                }) as unknown as any,
+                }),
             },
         ),
     ).rejects.toMatchObject({
@@ -1245,19 +1276,21 @@ test('executeAccountSwap surfaces relayer auth codes from sendPreparedCalls', as
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeQuote()),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => {
                     throw new JsonRpcClientError(-32001, 'Unauthorized', {
                         auth_code: 'BAD_SIGNATURE',
@@ -1291,7 +1324,7 @@ test('executeAccountSwap does not fall back to session.json for unrelated keysto
             {
                 readKeystoreBundle: mock(async () => {
                     throw new Error('permission denied')
-                }) as unknown as any,
+                }),
                 readSessionKeystoreFile,
             },
         ),
@@ -1305,8 +1338,8 @@ test('executeAccountSwap does not fall back to session.json for unrelated keysto
 
 test('executeAccountSwap falls back to session.json when the root keystore is missing', async () => {
     const originalConsoleError = console.error
-    const consoleError = mock(() => {})
-    console.error = consoleError as typeof console.error
+    const consoleError = mock((..._args: Parameters<typeof console.error>) => {})
+    console.error = consoleError
 
     try {
         const readSessionKeystoreFile = mock(async () =>
@@ -1318,7 +1351,7 @@ test('executeAccountSwap falls back to session.json when the root keystore is mi
                     chainId: 8453,
                 },
             }),
-        ) as unknown as any
+        )
 
         const result = await executeAccountSwap(
             {
@@ -1334,22 +1367,26 @@ test('executeAccountSwap falls back to session.json when the root keystore is mi
             {
                 readKeystoreBundle: mock(async () => {
                     throw new Error('ENOENT: no such file or directory, open /tmp/alice.json')
-                }) as unknown as any,
+                }),
                 readSessionKeystoreFile,
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeQuote()),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
+                waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
             },
         )
 
@@ -1373,7 +1410,7 @@ test('executeAccountSwap falls back to session.json for login-profile root-key e
                 chainId: 8453,
             },
         }),
-    ) as unknown as any
+    )
 
     const result = await executeAccountSwap(
         {
@@ -1389,22 +1426,26 @@ test('executeAccountSwap falls back to session.json for login-profile root-key e
         {
             readKeystoreBundle: mock(async () => {
                 throw new LoginProfileError()
-            }) as unknown as any,
+            }),
             readSessionKeystoreFile,
             decryptSessionKeystore: mock(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
             readTokenBalance: mock(async () => 2_000000n),
-            getQuote: mock(async () => makeQuote()) as unknown as any,
+            getQuote: mock(async () => makeQuote()),
             readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
             signTypedData: mock(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-            ) as unknown as any,
+            ),
             sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
         },
     )
 
@@ -1427,15 +1468,20 @@ test('executeAccountSwap validates named session network against requested env a
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => ({
-                    ...makeKeystoreBundle(),
-                    root: {
-                        ...makeKeystoreBundle().root,
-                        sessionRef: {
-                            dir: 'sessions',
+                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => {
+                    const bundle = {
+                        ...makeKeystoreBundle(),
+                        root: {
+                            ...makeKeystoreBundle().root,
+                            sessionRef: {
+                                active: 'default',
+                                dir: 'sessions',
+                            },
                         },
-                    },
-                })) as unknown as any,
+                    }
+
+                    return bundle
+                }),
                 readSessionKeystoreFile: mock(async () =>
                     makeSessionKeystore({
                         network: {
@@ -1445,7 +1491,7 @@ test('executeAccountSwap validates named session network against requested env a
                             chainId: 8453,
                         },
                     }),
-                ) as unknown as any,
+                ),
             },
         ),
     ).rejects.toMatchObject({
@@ -1477,7 +1523,7 @@ test('executeAccountSwap rejects session files with a mismatched chainId', async
                             chainId: 137,
                         },
                     }),
-                ) as unknown as any,
+                ),
             },
         ),
     ).rejects.toMatchObject({
@@ -1500,30 +1546,31 @@ test('executeAccountSwap maps bundle status 400 to INTENT_REVERTED', async () =>
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeQuote()),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle: mock(async () =>
-                    makeFinalStatus({
-                        statusCode: 400,
-                        receipt: {
-                            ...makeFinalStatus().receipt,
-                            intentError:
-                                '0x08c379a000000000000000000000000000000000000000000000000000000000000020',
-                        },
-                    }),
-                ) as unknown as any,
+                waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => ({
+                    ...makeFinalStatus(),
+                    statusCode: 400,
+                    receipt: {
+                        ...makeFinalStatus().receipt,
+                        intentError:
+                            '0x08c379a000000000000000000000000000000000000000000000000000000000000020',
+                    },
+                })),
             },
         ),
     ).rejects.toMatchObject({
@@ -1550,23 +1597,27 @@ test('executeAccountSwap maps bridge fill non-success to BRIDGE_FILL_FAILED', as
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 1_000000000000000000n),
                 getKeys: mock(async () => makeKeys({ nativeSpendLimit: '0x16345785d8a0000' })),
-                getQuote: mock(async () => makeEthBridgeQuote()) as unknown as any,
+                getQuote: mock(async () => makeEthBridgeQuote()),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle: mock(async () => makeFinalStatus()) as unknown as any,
-                pollIntentStatus: mock(async () => ({ status: 'failure' })) as unknown as any,
+                waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () =>
+                makeFinalStatus(),
+            ),
+                pollIntentStatus: mock(async () => ({ status: 'failure' })),
             },
         ),
     ).rejects.toMatchObject({
@@ -1591,19 +1642,21 @@ test('executeAccountSwap maps simulation failure JsonRpcClientError to SIMULATIO
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeQuote()),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => {
                     throw new JsonRpcClientError(-32004, 'Simulation failed', {
                         cause: 'Custom revert reason',
@@ -1631,23 +1684,25 @@ test('executeAccountSwap maps bundle wait timeouts to BUNDLE_TIMEOUT', async () 
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeQuote()),
                 readNonce: mock(async () => 2n),
-                prepareCalls: mock(async (input) => makePreparedCalls(input)) as unknown as any,
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (input) =>
+                makePreparedCalls(input),
+            ),
                 signTypedData: mock(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
-                ) as unknown as any,
+                ),
                 sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle: mock(async () => {
+                waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => {
                     throw new Error('timeout waiting for bundle')
-                }) as unknown as any,
+                }),
             },
         ),
     ).rejects.toMatchObject({
@@ -1669,13 +1724,13 @@ test('executeAccountSwap returns QUOTE_FAILED when user declines confirmation', 
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeQuote()),
                 confirmQuote: mock(async () => false),
             },
         ),
@@ -1699,7 +1754,7 @@ test('executeAccountSwap rejects ETH swap when native spend remaining limit is i
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -1732,13 +1787,13 @@ test('executeAccountSwap preserves prompt cancellation for CLI handling', async 
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle()) as unknown as any,
+                readKeystoreBundle: mock(async () => makeKeystoreBundle()),
                 decryptSessionKeystore: mock(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
                 readTokenBalance: mock(async () => 2_000000n),
-                getQuote: mock(async () => makeQuote()) as unknown as any,
+                getQuote: mock(async () => makeQuote()),
                 readNonce: mock(async () => 2n),
                 confirmQuote: mock(async () => {
                     throw new PromptCancelledError()

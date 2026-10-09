@@ -182,7 +182,7 @@ export type SessionRotateResult = {
     markerRemoved?: boolean
 }
 
-type SessionRotateDeps = {
+export type SessionRotateDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     createSessionKeystore: typeof createSessionKeystore
@@ -855,7 +855,7 @@ async function defaultDeleteRotationIntent(
     })
 }
 
-function getDefaultDeps(): SessionRotateDeps {
+export function getDefaultDeps(): SessionRotateDeps {
     return {
         readKeystoreBundle,
         readSessionKeystoreFile,

@@ -156,12 +156,17 @@ function createIntentNonceDO(): IntentNonceDO {
 
     // Construct without DurableObjectBase runtime checks. We only need fetch()
     // and nonce logic methods, all of which rely on ctx.storage/sql.
-    const nonceDO = Object.create(IntentNonceDO.prototype) as IntentNonceDO
+    // SAFETY: Object.create installs only the prototype; ctx and sql are assigned next.
+    const nonceDO = Object.create(IntentNonceDO.prototype) as {
+        ctx: typeof state
+        sql: FakeSqlStorage
+    }
 
-    ;(nonceDO as unknown as { ctx: typeof state; sql: FakeSqlStorage }).ctx = state
-    ;(nonceDO as unknown as { ctx: typeof state; sql: FakeSqlStorage }).sql = sql
+    nonceDO.ctx = state
+    nonceDO.sql = sql
 
-    return nonceDO
+    // SAFETY: Object.create plus ctx/sql is the IntentNonceDO surface these tests call.
+    return nonceDO as unknown as IntentNonceDO
 }
 
 async function doRequest<T>(
@@ -175,7 +180,9 @@ async function doRequest<T>(
         throw new Error(`Request failed: ${response.status}`)
     }
 
-    return (await response.json()) as T
+    const parsed: T = await response.json()
+
+    return parsed
 }
 
 async function doRawRequest(
@@ -313,7 +320,7 @@ describe('IntentNonceDO monotonic synced allocation', () => {
             draftKey: 'second',
         })
 
-        const conflictBody = (await conflict.json()) as { error: string; conflictDraftId: string }
+        const conflictBody: { error: string; conflictDraftId: string } = await conflict.json()
 
         expect(conflict.status).toBe(409)
         expect(conflictBody.error).toContain('different draftKey')

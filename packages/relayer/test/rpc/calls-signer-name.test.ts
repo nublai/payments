@@ -4,13 +4,12 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import type { Address } from 'viem'
 import { getSignerName } from '../../src/rpc/methods/sendPreparedCalls'
 
 describe('getSignerName', () => {
     describe('deterministic signer selection', () => {
         it('should return the same signer name for the same EOA and chainId', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             const chainId = 8453
             const signerCount = 1
 
@@ -21,8 +20,8 @@ describe('getSignerName', () => {
         })
 
         it('should return different signer names for different EOAs', () => {
-            const eoa1 = '0x1234567890123456789012345678901234567890' as Address
-            const eoa2 = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd' as Address
+            const eoa1 = '0x1234567890123456789012345678901234567890'
+            const eoa2 = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
             const chainId = 8453
             const signerCount = 3
 
@@ -36,7 +35,7 @@ describe('getSignerName', () => {
         })
 
         it('should return different signer names for different chainIds', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             const signerCount = 1
 
             const signerName1 = getSignerName(eoa, 8453, signerCount)
@@ -50,7 +49,7 @@ describe('getSignerName', () => {
 
     describe('signer name format', () => {
         it('should return signer name in format signer-{chainId}-{index}', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             const chainId = 31337
             const signerCount = 1
 
@@ -60,7 +59,7 @@ describe('getSignerName', () => {
         })
 
         it('should return index within signerCount range', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             const chainId = 8453
             const signerCount = 5
 
@@ -79,7 +78,7 @@ describe('getSignerName', () => {
 
     describe('signer count handling', () => {
         it('should handle single signer (signerCount = 1)', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             const chainId = 8453
             const signerCount = 1
 
@@ -89,9 +88,9 @@ describe('getSignerName', () => {
         })
 
         it('should distribute across multiple signers', () => {
-            const eoa1 = '0x1111111111111111111111111111111111111111' as Address
-            const eoa2 = '0x2222222222222222222222222222222222222222' as Address
-            const eoa3 = '0x3333333333333333333333333333333333333333' as Address
+            const eoa1 = '0x1111111111111111111111111111111111111111'
+            const eoa2 = '0x2222222222222222222222222222222222222222'
+            const eoa3 = '0x3333333333333333333333333333333333333333'
             const chainId = 8453
             const signerCount = 3
 
@@ -108,7 +107,7 @@ describe('getSignerName', () => {
 
     describe('consistency with selectSignerForEoa', () => {
         it('should use the same logic as selectSignerForEoa for index selection', () => {
-            const eoa = '0x1234567890123456789012345678901234567890' as Address
+            const eoa = '0x1234567890123456789012345678901234567890'
             const chainId = 8453
             const signerCount = 3
 

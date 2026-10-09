@@ -1,10 +1,11 @@
-import { expect, mock, test } from 'bun:test'
-import { executeSessionStop } from '../src/lib/session-stop'
+import { expect, test } from 'bun:test'
+import { executeSessionStop, type SessionStopDeps } from '../src/lib/session-stop'
+import { typedMock } from './helpers/typed-mock'
 
 test('executeSessionStop does not unlink pid/socket when process does not exit after SIGTERM', async () => {
     process.env.TW_AGENT_SOCK = '/tmp/tw-session-stop-nonexit.sock'
 
-    const unlinkMock = mock(async (_path: string) => {})
+    const unlinkMock = typedMock<SessionStopDeps['unlink']>(async () => {})
 
     const result = await executeSessionStop({
         readPidFromFile: async () => 12345,
@@ -13,7 +14,7 @@ test('executeSessionStop does not unlink pid/socket when process does not exit a
         }),
         sendSignal: () => {},
         waitForExit: async () => false,
-        unlink: unlinkMock as unknown as typeof import('node:fs/promises').unlink,
+        unlink: unlinkMock,
     })
 
     expect(result.ok).toBe(false)
@@ -25,8 +26,8 @@ test('executeSessionStop does not unlink pid/socket when process does not exit a
 test('executeSessionStop reports cleanup unlink errors on stale pid/socket cleanup', async () => {
     process.env.TW_AGENT_SOCK = '/tmp/tw-session-stop-stale.sock'
 
-    const unlinkMock = mock(async (path: string) => {
-        if (path.endsWith('.pid')) {
+    const unlinkMock = typedMock<SessionStopDeps['unlink']>(async (path) => {
+        if (String(path).endsWith('.pid')) {
             throw new Error('permission denied')
         }
     })
@@ -36,13 +37,13 @@ test('executeSessionStop reports cleanup unlink errors on stale pid/socket clean
         createClient: () => ({ ping: async () => null }),
         sendSignal: (_pid, signal) => {
             if (signal === 0) {
-                const error = new Error('no such process') as Error & { code?: string }
+                const error: NodeJS.ErrnoException = new Error('no such process')
                 error.code = 'ESRCH'
                 throw error
             }
         },
         waitForExit: async () => true,
-        unlink: unlinkMock as unknown as typeof import('node:fs/promises').unlink,
+        unlink: unlinkMock,
     })
 
     expect(result.ok).toBe(true)

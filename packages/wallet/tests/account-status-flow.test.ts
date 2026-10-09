@@ -1,6 +1,24 @@
 import { expect, mock, test } from 'bun:test'
-import { computeKeyHash, encodeSecp256k1Key } from '@nubl/relayer-client'
-import { AccountStatusError, executeAccountStatus } from '../src/lib/account-status'
+import { computeKeyHash, encodeSecp256k1Key, type GetKeysResponse } from '@nubl/relayer-client'
+import {
+    AccountStatusError,
+    executeAccountStatus,
+    type AccountStatusOptions,
+} from '../src/lib/account-status'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+
+function statusBundle(
+    session = '0x2222222222222222222222222222222222222222',
+    env: 'dev' | 'prod' = 'dev',
+    chainId = 31337,
+) {
+    return testKeystoreBundle(
+        '0x1111111111111111111111111111111111111111',
+        session,
+        chainId,
+        env,
+    )
+}
 
 test('executeAccountStatus reports permission mismatches as warnings only', async () => {
     const sessionAddress = '0x2222222222222222222222222222222222222222' as const
@@ -13,33 +31,7 @@ test('executeAccountStatus reports permission mismatches as warnings only', asyn
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            network: {
-                                env: 'dev',
-                                relayerUrl: 'http://127.0.0.1:8787',
-                                rpcUrl: 'http://127.0.0.1:8545',
-                                chainId: 31337,
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: {
-                                session: sessionAddress,
-                            },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle(sessionAddress)),
             getDelegatedCode: mock(async () => '0xef0100abcdef' as const),
             readNonce: mock(async () => 2n),
             readUsdcBalance: mock(async () => 1000000n),
@@ -63,7 +55,7 @@ test('executeAccountStatus reports permission mismatches as warnings only', asyn
                                 ],
                             },
                         ],
-                    }) as any,
+                    }) satisfies GetKeysResponse,
             ),
         },
     )
@@ -101,33 +93,7 @@ test('executeAccountStatus returns readiness false on blocking failures', async 
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            network: {
-                                env: 'prod',
-                                relayerUrl: 'http://127.0.0.1:8787',
-                                rpcUrl: 'https://mainnet.base.org',
-                                chainId: 8453,
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: {
-                                session: '0x2222222222222222222222222222222222222222',
-                            },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle('0x2222222222222222222222222222222222222222', 'prod', 8453)),
             getDelegatedCode: mock(async () => '0x' as const),
             readNonce: mock(async () => {
                 throw new Error('rpc unavailable')
@@ -135,7 +101,7 @@ test('executeAccountStatus returns readiness false on blocking failures', async 
             readUsdcBalance: mock(async () => {
                 throw new Error('rpc unavailable')
             }),
-            getAuthorizedKeys: mock(async () => ({}) as any),
+            getAuthorizedKeys: mock(async (): Promise<GetKeysResponse> => ({})),
         },
     )
 
@@ -154,55 +120,38 @@ test('executeAccountStatus reports full pass with matching permissions', async (
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: { session: sessionAddress },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle(sessionAddress)),
             getDelegatedCode: mock(async () => '0xef0100abcdef' as const),
             readNonce: mock(async () => 5n),
             readUsdcBalance: mock(async () => 50_000_000n),
-            getAuthorizedKeys: mock(
-                async () =>
-                    ({
-                        '0x7a69': [
-                            {
-                                hash: sessionKeyHash,
-                                expiry: '0x0',
-                                type: 'secp256k1',
-                                role: 'normal',
-                                publicKey:
-                                    '0x0000000000000000000000002222222222222222222222222222222222222222',
-                                permissions: [
-                                    {
-                                        type: 'call',
-                                        to: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-                                        selector: '0x32323232',
-                                    },
-                                    {
-                                        type: 'spend',
-                                        token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-                                        period: 'day',
-                                        limit: '10000000',
-                                        spent: '0',
-                                    },
-                                ],
-                            },
-                        ],
-                    }) as any,
-            ),
+            getAuthorizedKeys: mock(async () => {
+                return {
+                    '0x7a69': [
+                        {
+                            hash: sessionKeyHash,
+                            expiry: '0x0',
+                            type: 'secp256k1',
+                            role: 'normal',
+                            publicKey:
+                                '0x0000000000000000000000002222222222222222222222222222222222222222',
+                            permissions: [
+                                {
+                                    type: 'call',
+                                    to: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                                    selector: '0x32323232',
+                                },
+                                {
+                                    type: 'spend',
+                                    token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+                                    period: 'day',
+                                    limit: '0x989680',
+                                    spent: '0x0',
+                                },
+                            ],
+                        },
+                    ],
+                } satisfies GetKeysResponse
+            }),
         },
     )
 
@@ -221,27 +170,11 @@ test('executeAccountStatus reports non-delegation code as fail', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: { session: '0x2222222222222222222222222222222222222222' },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle()),
             getDelegatedCode: mock(async () => '0x6080604052' as const),
             readNonce: mock(async () => 0n),
             readUsdcBalance: mock(async () => 0n),
-            getAuthorizedKeys: mock(async () => ({}) as any),
+            getAuthorizedKeys: mock(async (): Promise<GetKeysResponse> => ({})),
         },
     )
 
@@ -262,55 +195,38 @@ test('executeAccountStatus warns when a legacy wildcard session is present', asy
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: { session: sessionAddress },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle(sessionAddress)),
             getDelegatedCode: mock(async () => '0xef0100abcdef' as const),
             readNonce: mock(async () => 1n),
             readUsdcBalance: mock(async () => 0n),
-            getAuthorizedKeys: mock(
-                async () =>
-                    ({
-                        '0x7a69': [
-                            {
-                                hash: sessionKeyHash,
-                                expiry: '0x0',
-                                type: 'secp256k1',
-                                role: 'normal',
-                                publicKey:
-                                    '0x0000000000000000000000002222222222222222222222222222222222222222',
-                                permissions: [
-                                    {
-                                        type: 'call',
-                                        to: '0x3232323232323232323232323232323232323232',
-                                        selector: '0x32323232',
-                                    },
-                                    {
-                                        type: 'spend',
-                                        token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-                                        period: 'forever',
-                                        limit: (2n ** 256n - 1n).toString(),
-                                        spent: '0',
-                                    },
-                                ],
-                            },
-                        ],
-                    }) as any,
-            ),
+            getAuthorizedKeys: mock(async () => {
+                return {
+                    '0x7a69': [
+                        {
+                            hash: sessionKeyHash,
+                            expiry: '0x0',
+                            type: 'secp256k1',
+                            role: 'normal',
+                            publicKey:
+                                '0x0000000000000000000000002222222222222222222222222222222222222222',
+                            permissions: [
+                                {
+                                    type: 'call',
+                                    to: '0x3232323232323232323232323232323232323232',
+                                    selector: '0x32323232',
+                                },
+                                {
+                                    type: 'spend',
+                                    token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                                    period: 'forever',
+                                    limit: `0x${(2n ** 256n - 1n).toString(16)}`,
+                                    spent: '0x0',
+                                },
+                            ],
+                        },
+                    ],
+                } satisfies GetKeysResponse
+            }),
         },
     )
 
@@ -329,23 +245,7 @@ test('executeAccountStatus reports session key not found as warning', async () =
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: { session: '0x2222222222222222222222222222222222222222' },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle()),
             getDelegatedCode: mock(async () => '0xef0100abcdef' as const),
             readNonce: mock(async () => 0n),
             readUsdcBalance: mock(async () => 0n),
@@ -353,7 +253,7 @@ test('executeAccountStatus reports session key not found as warning', async () =
                 async () =>
                     ({
                         '0x7a69': [],
-                    }) as any,
+                    }) satisfies GetKeysResponse,
             ),
         },
     )
@@ -372,29 +272,13 @@ test('executeAccountStatus handles getDelegatedCode error', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: { session: '0x2222222222222222222222222222222222222222' },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle()),
             getDelegatedCode: mock(async () => {
                 throw new Error('network error')
             }),
             readNonce: mock(async () => 0n),
             readUsdcBalance: mock(async () => 0n),
-            getAuthorizedKeys: mock(async () => ({}) as any),
+            getAuthorizedKeys: mock(async (): Promise<GetKeysResponse> => ({})),
         },
     )
 
@@ -430,23 +314,7 @@ test('executeAccountStatus handles getAuthorizedKeys error', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: { session: '0x2222222222222222222222222222222222222222' },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle()),
             getDelegatedCode: mock(async () => '0xef0100abcdef' as const),
             readNonce: mock(async () => 0n),
             readUsdcBalance: mock(async () => 0n),
@@ -470,37 +338,11 @@ test('executeAccountStatus supports legacy polygon USDC.e override', async () =>
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        format: 'split',
-                        rootPath: '/tmp/alice.json',
-                        sessionPath: '/tmp/sessions/default.json',
-                        root: {
-                            addresses: {
-                                root: '0x1111111111111111111111111111111111111111',
-                                delegated: '0x1111111111111111111111111111111111111111',
-                            },
-                            network: {
-                                env: 'prod',
-                                relayerUrl: 'http://127.0.0.1:8787',
-                                rpcUrl: 'https://polygon.drpc.org',
-                                chainId: 137,
-                            },
-                            checkpoint: 'complete',
-                        },
-                        session: {
-                            addresses: {
-                                session: '0x2222222222222222222222222222222222222222',
-                            },
-                            name: 'default',
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: mock(async () => statusBundle('0x2222222222222222222222222222222222222222', 'prod', 8453)),
             getDelegatedCode: mock(async () => '0xef0100abcdef' as const),
             readNonce: mock(async () => 2n),
             readUsdcBalance: mock(async () => 1000000n),
-            getAuthorizedKeys: mock(async () => ({}) as any),
+            getAuthorizedKeys: mock(async (): Promise<GetKeysResponse> => ({})),
         },
     )
 
@@ -509,25 +351,28 @@ test('executeAccountStatus supports legacy polygon USDC.e override', async () =>
 })
 
 test('executeAccountStatus preserves cause for invalid chain override', async () => {
+    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
     const invalidOptions = {
         env: 'prod',
         keystorePath: '/tmp/alice.json',
         chain: 'foobar',
-    } as unknown as Parameters<typeof executeAccountStatus>[0]
+    } as unknown as AccountStatusOptions
 
     try {
         await executeAccountStatus(invalidOptions)
         throw new Error('expected executeAccountStatus to throw')
     } catch (error) {
         expect(error).toBeInstanceOf(AccountStatusError)
-        const statusError = error as AccountStatusError
-        expect(statusError.code).toBe('UNSUPPORTED_CHAIN')
-        expect(statusError.cause).toBeInstanceOf(Error)
+
+        if (!(error instanceof AccountStatusError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.cause).toBeInstanceOf(Error)
 
         const causeMessage =
-            statusError.cause instanceof Error
-                ? statusError.cause.message
-                : String(statusError.cause)
+            error.cause instanceof Error
+                ? error.cause.message
+                : String(error.cause)
 
         expect(causeMessage).toContain('Unsupported chain')
     }

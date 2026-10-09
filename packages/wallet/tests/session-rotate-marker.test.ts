@@ -2,33 +2,42 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
-import { decodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import { decodeFunctionData, getAddress, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
-import { executeAccountUpdatePassword } from '../src/lib/account-update-password'
-import { executePermissionsList } from '../src/lib/permissions-list'
-import { executeSessionList } from '../src/lib/session-list'
-import { executeSessionRevoke } from '../src/lib/session-revoke'
-import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
+import {
+    executeAccountUpdatePassword,
+    executePermissionsList,
+    executeSessionList,
+    executeSessionRevoke,
+    executeSessionRotate,
+} from './helpers/stub-execute'
+import { getDefaultDeps, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
+import { parseAddr } from './helpers/hex'
+import { confirmedBundle } from './helpers/bundle-status'
+import { passthroughKeystoreLock, typedMock } from './helpers/typed-mock'
+import type { AccountUpdatePasswordDeps } from '../src/lib/account-update-password'
+import { sessionKeystoreFactory, testKeystoreBundleFrom, testRootKeystore, testSessionKeystore } from './helpers/keystore-bundle'
+import { signedCallsResult, testFeeCap } from './helpers/signed-calls'
+import { testBaseKeys } from './helpers/authorized-key'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex
+const oldSessionKey = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
 
-const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex
+const newSessionKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6'
 
 const oldAddress = privateKeyToAccount(oldSessionKey).address
 
 const newAddress = privateKeyToAccount(newSessionKey).address
 
-const rootPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const rootPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
-const txHash = '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca' as Hex
+const txHash = '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca'
 
-const oldSession = {
-    addresses: { session: oldAddress, delegated: account },
+const oldSession = testSessionKeystore(oldAddress, account, {
     name: 'default',
     checkpoint: 'authorized',
     network: {
@@ -37,26 +46,25 @@ const oldSession = {
         rpcUrl: 'https://mainnet.base.org',
         chainId: 8453,
     },
-}
+})
 
-const newSession = {
-    addresses: { session: newAddress, delegated: account },
+const newSession = testSessionKeystore(newAddress, account, {
     name: 'default-next',
     checkpoint: 'pending_rotation',
     network: oldSession.network,
-}
+})
 
 function rootBundle() {
-    return {
-        root: {
+    return testKeystoreBundleFrom(
+        {
             addresses: { root: account, delegated: account },
             sessionRef: { active: 'default', dir: 'sessions' },
             network: oldSession.network,
             createdAt: '2020-01-01T00:00:00.000Z',
             checkpoint: 'delegated',
         },
-        session: oldSession,
-    }
+        oldSession,
+    )
 }
 
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
@@ -85,71 +93,62 @@ async function stageDir(): Promise<{ keystorePath: string; sessions: string }> {
     return { keystorePath: join(root, 'alice.json'), sessions }
 }
 
-function confirmedBundle(id: string) {
+function rotateDeps(keystorePath: string, overrides?: Partial<SessionRotateDeps>): SessionRotateDeps {
     return {
-        id,
-        finalStatus: {
-            success: true,
-            statusCode: 200,
-            status: 'confirmed',
-            receipt: { transactionHash: txHash },
-        },
-    }
-}
-
-function rotateDeps(keystorePath: string, overrides: Record<string, unknown> = {}) {
-    return {
-        withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
-        readKeystoreBundle: mock(async () => rootBundle()),
-        readSessionKeystoreFile: mock(async (path: string) =>
+        ...getDefaultDeps(),
+        withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
+        readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
+        readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async (path: string) =>
             path.endsWith('default-next.json') ? newSession : oldSession,
         ),
-        createSessionKeystore: mock(async () => newSession),
-        writeSessionKeystoreFile: mock(async () => {}),
-        writeRootKeystoreFile: mock(async () => {}),
-        generatePrivateKey: mock(() => rootPrivateKey),
-        decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-        decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
-            const session = getAddress(keystore.addresses.session as Address)
+        createSessionKeystore: typedMock<SessionRotateDeps['createSessionKeystore']>(sessionKeystoreFactory(newSession)),
+        writeSessionKeystoreFile: typedMock<SessionRotateDeps['writeSessionKeystoreFile']>(async () => {}),
+        writeRootKeystoreFile: typedMock<SessionRotateDeps['writeRootKeystoreFile']>(async () => {}),
+        generatePrivateKey: typedMock<SessionRotateDeps['generatePrivateKey']>(() => rootPrivateKey),
+        decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+        decryptSessionKeystore: typedMock<SessionRotateDeps['decryptSessionKeystore']>(async (keystore: { addresses: { session: string } }) => {
+            const session = getAddress(parseAddr(keystore.addresses.session))
 
             if (session === newAddress) return { sessionPrivateKey: newSessionKey }
 
             return { sessionPrivateKey: oldSessionKey }
         }),
-        readNonce: mock(async () => 1n),
-        readActiveUsdcDaily: mock(async () => 0n),
-        getKeys: mock(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-        })),
-        readGuardCleanup: mock(async (input: { chainId: number }) => {
+        readNonce: typedMock<SessionRotateDeps['readNonce']>(async () => 1n),
+        readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
+        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () =>
+            testBaseKeys(computeSessionKeyHash(oldAddress)),
+        ),
+        readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async (input: { chainId: number }) => {
             if (input.chainId === 137) {
                 return {
-                    anyCalls: [{ target: account, selector: '0xa9059cbb' as Hex }],
+                    anyCalls: [{ target: account, selector: '0xa9059cbb' }],
                     checkers: [],
                 }
             }
 
             return { anyCalls: [], checkers: [] }
         }),
-        executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+        executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
             const decoded = params.calls.map((call) =>
                 decodeFunctionData({ abi: accountAbi, data: call.data }),
             )
 
             if (decoded.some((entry) => entry.functionName === 'authorize')) {
-                return confirmedBundle('bundle-selected')
+                return signedCallsResult(testFeeCap(), 'bundle-selected', txHash)
             }
 
             throw new Error('polygon cleanup failed')
         }),
-        waitForBundle: mock(async () => confirmedBundle('bundle-selected').finalStatus),
-        prepareCalls: mock(async () => {
+        waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () =>
+            confirmedBundle('bundle-selected', txHash),
+        ),
+        prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(async () => {
             throw new Error('prepareCalls should not run')
         }),
-        signTypedData: mock(async () => {
+        signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
             throw new Error('signTypedData should not run')
         }),
-        sendPreparedCalls: mock(async () => {
+        sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
             throw new Error('sendPreparedCalls should not run')
         }),
         ...overrides,
@@ -167,7 +166,7 @@ async function leaveRealMarker(keystorePath: string) {
                 narrow: true,
                 newName: 'default-next',
             },
-            rotateDeps(keystorePath) as never,
+            rotateDeps(keystorePath),
         ),
     ).rejects.toMatchObject({ code: 'ROTATION_PARTIAL' })
 }
@@ -203,7 +202,7 @@ test('rotation marker written by the real writer is resumed instead of a noop', 
                 password: 'pw',
                 resume: true,
             },
-            rotateDeps(keystorePath) as never,
+            rotateDeps(keystorePath),
         )
 
         await expect(result).rejects.toMatchObject({ code: 'ROTATION_PARTIAL' })
@@ -222,8 +221,8 @@ test('rotation marker does not break session list, permissions, revoke, or passw
         const listed = await executeSessionList(
             { env: 'stage', chain: 'base', keystorePath, onChain: false },
             {
-                readKeystoreBundle: mock(async () => rootBundle()),
-                readSessionKeystoreFile: mock(async (path: string) =>
+                readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
+                readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async (path: string) =>
                     path.endsWith('other.json')
                         ? {
                               ...oldSession,
@@ -232,7 +231,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                           }
                         : oldSession,
                 ),
-            } as never,
+            },
         )
 
         expect(listed.status).toBe('complete')
@@ -241,10 +240,10 @@ test('rotation marker does not break session list, permissions, revoke, or passw
         const permissions = await executePermissionsList(
             { env: 'stage', chain: 'base', keystorePath },
             {
-                readKeystoreBundle: mock(async () => rootBundle()),
-                readSessionKeystoreFile: mock(async () => oldSession),
-                getKeys: mock(async () => ({})),
-            } as never,
+                readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
+                readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async () => oldSession),
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({})),
+            },
         )
 
         expect(permissions.status).toBe('complete')
@@ -261,13 +260,13 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
-                readKeystoreBundle: mock(async () => rootBundle()),
-                readSessionKeystoreFile: mock(async () => oldSession),
-                getKeys: mock(async () => ({})),
-                unlink: mock(async () => {}),
-                writeRootKeystoreFile: mock(async () => {}),
-            } as never,
+                withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
+                readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
+                readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async () => oldSession),
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({})),
+                unlink: typedMock<SessionRotateDeps['unlink']>(async () => {}),
+                writeRootKeystoreFile: typedMock<SessionRotateDeps['writeRootKeystoreFile']>(async () => {}),
+            },
         )
 
         expect(revoked.status).toBe('complete')
@@ -282,28 +281,22 @@ test('rotation marker does not break session list, permissions, revoke, or passw
                 newPassword: 'next-pw',
             },
             {
-                withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
-                readKeystoreBundle: mock(async () => bundle),
-                readSessionKeystoreFile: mock(async (path: string) =>
+                withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
+                readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => bundle),
+                readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async (path: string) =>
                     path.endsWith('other.json') ? { ...oldSession, name: 'other' } : oldSession,
                 ),
-                decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-                decryptSessionKeystore: mock(async () => ({
+                decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+                decryptSessionKeystore: typedMock<SessionRotateDeps['decryptSessionKeystore']>(async () => ({
                     sessionPrivateKey: rootPrivateKey,
                 })),
-                createRootKeystore: mock(async () => ({
-                    createdAt: '',
-                    checkpoint: '',
-                    addresses: {},
-                    network: bundle.root.network,
-                })),
-                createSessionKeystore: mock(async (input: { name: string }) => ({
-                    ...oldSession,
-                    name: input.name,
-                })),
-                writeRootKeystoreFile: mock(async () => {}),
-                writeSessionKeystoreFile: mock(async () => {}),
-            } as never,
+                createRootKeystore: typedMock<AccountUpdatePasswordDeps['createRootKeystore']>(async () =>
+                    testRootKeystore({ network: bundle.root.network }),
+                ),
+                createSessionKeystore: typedMock<SessionRotateDeps['createSessionKeystore']>(sessionKeystoreFactory(oldSession)),
+                writeRootKeystoreFile: typedMock<SessionRotateDeps['writeRootKeystoreFile']>(async () => {}),
+                writeSessionKeystoreFile: typedMock<SessionRotateDeps['writeSessionKeystoreFile']>(async () => {}),
+            },
         )
 
         expect(updated.status).toBe('complete')
@@ -346,14 +339,14 @@ test('rotation marker plus any other marker is ambiguous and does not sign', asy
                     resume: true,
                 },
                 rotateDeps(keystorePath, {
-                    executeSignedCalls: mock(
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
-                            return confirmedBundle('bundle-evil')
+                            return signedCallsResult(testFeeCap(), 'bundle-evil', txHash)
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_MARKER_AMBIGUOUS' })
         expect(signed).toEqual([])
@@ -396,14 +389,14 @@ test('rotation marker with fullAccess requires the human phrase on a plain resum
                     resume: true,
                 },
                 rotateDeps(keystorePath, {
-                    executeSignedCalls: mock(
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
-                            return confirmedBundle('bundle-evil')
+                            return signedCallsResult(testFeeCap(), 'bundle-evil', txHash)
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/ROTATE FULL ACCESS SESSION/)
         expect(signed).toEqual([])
@@ -457,14 +450,14 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
                 rotateDeps(keystorePath, {
                     signTypedData,
                     sendPreparedCalls,
-                    executeSignedCalls: mock(
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
-                            return confirmedBundle('bundle-evil')
+                            return signedCallsResult(testFeeCap(), 'bundle-evil', txHash)
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/tw session rotate --resume --full-access/)
         expect(signed).toEqual([])
@@ -505,14 +498,14 @@ test('rotation marker newKeyHash must be 0x and 64 hex characters', async () => 
                     resume: true,
                 },
                 rotateDeps(keystorePath, {
-                    executeSignedCalls: mock(
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
-                            return confirmedBundle('bundle-bad')
+                            return signedCallsResult(testFeeCap(), 'bundle-bad', txHash)
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/64 hex/)
         expect(signed).toEqual([])
@@ -536,16 +529,16 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
                     newName: 'default-next',
                 },
                 rotateDeps(keystorePath, {
-                    readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
-                    unlink: mock(async (path: string) => {
+                    readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
+                    unlink: typedMock<SessionRotateDeps['unlink']>(async (path: string) => {
                         unlinked.push(path)
                     }),
-                    executeSignedCalls: mock(async () => {
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => {
                         throw new Error(
                             'Timeout waiting for bundle bundle-timeout to reach final status. Current status: 100',
                         )
                     }),
-                }) as never,
+                }),
             )
         } catch (error) {
             caught = error
@@ -556,7 +549,10 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
             recoveryCommand: 'tw session rotate --resume',
         })
         expect(caught).toBeInstanceOf(Error)
-        expect((caught as Error).message).toMatch(/--resume/)
+
+        if (!(caught instanceof Error)) throw caught
+
+        expect(caught.message).toMatch(/--resume/)
 
         const onDisk = await readdir(sessions)
 
@@ -566,10 +562,9 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
 
         expect(markers).toHaveLength(1)
 
-        const raw = JSON.parse(await readFile(join(sessions, markers[0]!), 'utf8')) as {
-            status?: string
-            bundleId?: string
-        }
+        const raw: { status?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, markers[0]!), 'utf8'),
+        )
 
         expect(raw.status).toBe('submitted')
         expect(raw.bundleId).toBe('bundle-timeout')
@@ -591,19 +586,19 @@ test('rotation without --resume refuses an existing marker and does not authoriz
                     newName: 'default-next',
                 },
                 rotateDeps(keystorePath, {
-                    readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
-                    executeSignedCalls: mock(async () => {
+                    readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => {
                         throw new Error(
                             'Timeout waiting for bundle bundle-timeout to reach final status. Current status: 100',
                         )
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
 
-        const before = JSON.parse(
+        const before: { newSessionName?: string; bundleId?: string } = JSON.parse(
             await readFile(join(sessions, '.rotation.json'), 'utf8'),
-        ) as { newSessionName?: string; bundleId?: string }
+        )
 
         const signed: Hex[] = []
 
@@ -626,27 +621,26 @@ test('rotation without --resume refuses an existing marker and does not authoriz
                     newName: 'default-other',
                 },
                 rotateDeps(keystorePath, {
-                    readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
+                    readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
                     signTypedData,
                     sendPreparedCalls,
-                    executeSignedCalls: mock(
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
                         async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
-                            return confirmedBundle('bundle-second')
+                            return signedCallsResult(testFeeCap(), 'bundle-second', txHash)
                         },
                     ),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/tw session rotate --resume/)
         expect(signed).toEqual([])
         expect(signTypedData).not.toHaveBeenCalled()
         expect(sendPreparedCalls).not.toHaveBeenCalled()
 
-        const after = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
-            newSessionName?: string
-            bundleId?: string
-        }
+        const after: { newSessionName?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        )
 
         expect(after.newSessionName).toBe(before.newSessionName)
         expect(after.bundleId).toBe(before.bundleId)
@@ -704,20 +698,18 @@ test('resume after the pointer moved finishes cleanup and signs nothing', async 
                 resume: true,
             },
             rotateDeps(keystorePath, {
-                readKeystoreBundle: mock(async () => {
+                readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => {
                     const bundle = rootBundle()
                     bundle.root.sessionRef.active = 'default-next'
 
                     return bundle
                 }),
-                readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
-                getKeys: mock(async () => ({
-                    '0x2105': [{ hash }],
-                })),
+                readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(hash)),
                 signTypedData,
                 sendPreparedCalls,
                 executeSignedCalls: executeSigned,
-            }) as never,
+            }),
         )
 
         expect(result.status).toBe('complete')

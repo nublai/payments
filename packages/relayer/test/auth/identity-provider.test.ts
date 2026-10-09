@@ -10,9 +10,9 @@ import {
 } from '../../src/auth/identity'
 import { authProviderFromIdentity, type IdentityProvider } from '../../src/auth/identity-provider'
 import { identityAuthProviders } from '../../src/auth/identity-registry'
-import type { Env } from '../../src/types/env'
+import { testEnv } from '../helpers/env'
 
-const ACCOUNT = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
+const ACCOUNT = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
 
 function stubProvider(args: {
     name: string
@@ -52,7 +52,7 @@ describe('identity provider registry', () => {
                 method: 'POST',
                 headers: { Authorization: 'Bearer oidc-token' },
             }),
-            env: {} as Env,
+            env: testEnv(),
             nowSeconds: 1_700_000_000,
             providers: [
                 authProviderFromIdentity(
@@ -112,7 +112,7 @@ describe('identity provider registry', () => {
         })
 
         const result = await provider.verify('oidc-token', {
-            env: {} as Env,
+            env: testEnv(),
             nowSeconds: 1_700_000_000,
         })
 

@@ -11,6 +11,7 @@ import { walletBindingStub } from '../../src/auth/wallet-binding-client'
 import { handleIssueBindNonce } from '../../src/rpc/methods/issueBindNonce'
 import { RATE_LIMITED } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
+import { testEnv, workerEnv } from '../helpers/env'
 
 const ISSUER = 'https://followup.example'
 
@@ -18,7 +19,7 @@ const CLIENT_ID = 'client_123'
 
 const NOW = 1_700_000_000
 
-const ACCOUNT = '0x10000000000000000000000000000000000000aa' as Address
+const ACCOUNT = '0x10000000000000000000000000000000000000aa'
 
 let privateKey: CryptoKey
 
@@ -34,7 +35,7 @@ beforeAll(async () => {
 })
 
 function baseEnv(overrides: Partial<Env> = {}): Env {
-    const worker = env as unknown as Env
+    const worker = workerEnv(env)
 
     return {
         ...worker,
@@ -50,17 +51,27 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
     }
 }
 
-async function sign(claims: Record<string, unknown>, audience?: string | string[]): Promise<string> {
+type TokenClaims = {
+    sub?: string
+    exp?: number
+    nbf?: number
+    aud?: string
+    azp?: string
+    client_id?: string
+    wallets?: string[]
+}
+
+async function sign(claims: TokenClaims, audience?: string | string[]): Promise<string> {
     const builder = new SignJWT(claims)
         .setProtectedHeader({ alg: 'RS256', kid: 'followup-rsa', typ: 'JWT' })
         .setIssuer(ISSUER)
-        .setSubject(typeof claims.sub === 'string' ? claims.sub : 'followup-user')
+        .setSubject(claims.sub ?? 'followup-user')
         .setIssuedAt(NOW)
 
-    if (claims.exp !== undefined) builder.setExpirationTime(claims.exp as number)
+    if (claims.exp !== undefined) builder.setExpirationTime(claims.exp)
     else if (!Object.prototype.hasOwnProperty.call(claims, 'exp')) builder.setExpirationTime(NOW + 600)
 
-    if (claims.nbf !== undefined) builder.setNotBefore(claims.nbf as number)
+    if (claims.nbf !== undefined) builder.setNotBefore(claims.nbf)
 
     if (audience !== undefined) builder.setAudience(audience)
 
@@ -150,7 +161,7 @@ describe('oidc review follow-ups', () => {
     it('ignores a wallets claim unless the flag is on, and an empty claim name stays off', async () => {
         const url = 'https://followup.example/jwks/wallets'
         const provider = createOidcIdentityProvider()
-        const claimed = '0x20000000000000000000000000000000000000bb' as Address
+        const claimed = '0x20000000000000000000000000000000000000bb'
         const token = await sign({ sub: 'claim-attacker', wallets: [claimed] }, CLIENT_ID)
         const off = baseEnv({ OIDC_JWKS_URL: url })
 
@@ -425,11 +436,11 @@ describe('oidc review follow-ups', () => {
     })
 
     it('refuses an http JWKS URL outside local', () => {
-        const httpJwks = {
+        const httpJwks = testEnv({
             OIDC_ISSUER: 'https://issuer.example',
             OIDC_JWKS_URL: 'http://issuer.example/jwks',
             OIDC_CLIENT_ID: CLIENT_ID,
-        } as Env
+        })
 
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'stage' }).ok).toBe(false)
         expect(readOidcConfig({ ...httpJwks, CONTEXT: 'prod' }).ok).toBe(false)

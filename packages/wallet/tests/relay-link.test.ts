@@ -445,6 +445,7 @@ test('getIntentStatus refuses a redirect', async () => {
     const fetchMock = mock(async (_url: FetchInput, init?: RequestInit) => {
         expect(init?.redirect).toBe('error')
 
+        // SAFETY: getIntentStatus only reads redirected/status/ok/json/text; redirected cannot be set on a real Response.
         return {
             redirected: true,
             status: 200,

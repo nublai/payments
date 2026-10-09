@@ -71,7 +71,7 @@ export type PermissionsShowResult = {
     }>
 }
 
-type PermissionsShowDeps = {
+export type PermissionsShowDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     listSessionNames: typeof listSessionNames
     readSessionKeystoreFile: typeof readSessionKeystoreFile

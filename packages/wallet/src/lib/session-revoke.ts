@@ -93,7 +93,7 @@ export type SessionRevokeResult = {
     feeCap?: ExecuteSignedCallsResult['feeCap']
 }
 
-type SessionRevokeDeps = {
+export type SessionRevokeDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: typeof readSessionKeystoreFile
     decryptRootKeystore: typeof decryptRootKeystore

@@ -3,14 +3,16 @@ import { readFileSync } from 'node:fs'
 import type { Hex } from 'viem'
 import { hashRelayOrder } from '../src/lib/relay-order'
 
-const fixture = JSON.parse(
-    readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
-) as {
+type RelayOrderFixture = {
     requestId: string
     orderId: Hex
     orderData: unknown
     deposit: { data: string }
 }
+
+const fixture: RelayOrderFixture = JSON.parse(
+    readFileSync(new URL('./fixtures/relay-base-usdc-polygon-quote.json', import.meta.url), 'utf8'),
+)
 
 test('hashRelayOrder matches the live quote order id and not the request id', () => {
     const hash = hashRelayOrder(fixture.orderData)

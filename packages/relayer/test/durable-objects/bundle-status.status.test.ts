@@ -1,23 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Hex } from 'viem'
 import { BundleStatusDO, type TxStatusResponse } from '../../src/durable-objects/bundle-status.do'
 
 const { mockLoggerWarn, mockGetErrorMessage } = vi.hoisted(() => ({
     mockLoggerWarn: vi.fn(),
     mockGetErrorMessage: vi.fn((error: unknown) =>
         error instanceof Error ? error.message : String(error),
-    ),
-}))
+    ) }))
 
 vi.mock('../../src/lib/logger', () => ({
     logger: {
         warn: mockLoggerWarn,
         error: vi.fn(),
         info: vi.fn(),
-        debug: vi.fn(),
-    },
-    getErrorMessage: mockGetErrorMessage,
-}))
+        debug: vi.fn() },
+    getErrorMessage: mockGetErrorMessage }))
 
 type BundleTxRow = {
     bundle_id: string
@@ -52,8 +48,7 @@ class MockSqlStorage {
                     .map((row) => ({
                         tx_id: row.tx_id,
                         signer_name: row.signer_name,
-                        created_at: row.created_at,
-                    })),
+                        created_at: row.created_at })),
             )
         }
 
@@ -104,9 +99,23 @@ class MockSqlStorage {
 
     private rows(values: Array<Record<string, unknown>>) {
         return {
-            toArray: () => values,
+            toArray: () => values }
+    }
+}
+
+type BundleStatusHost = {
+    sql: MockSqlStorage
+    ctx: { id: { name: string } }
+    env: {
+        RELAYER_COUNT: string
+        BUNDLE_UNRESOLVED_SLA_MS: string
+        SIGNER: {
+            idFromName: (signerName: string) => string
+            get: (signerName: string) => { fetch: (url: string) => Promise<Response> }
         }
     }
+    get_bundle_status: BundleStatusDO['get_bundle_status']
+    ensureBundleTransactionsSchema: () => void
 }
 
 function createDoStub(args: {
@@ -123,7 +132,7 @@ function createDoStub(args: {
         args.bundleColumns,
     )
 
-    const stub = Object.create(BundleStatusDO.prototype) as Record<string, unknown>
+    const stub: BundleStatusHost = Object.create(BundleStatusDO.prototype)
 
     stub.sql = sql
     stub.ctx = { id: { name: 'bundle-status-137' } }
@@ -140,18 +149,15 @@ function createDoStub(args: {
                     if (!result) return new Response('not found', { status: 404 })
 
                     return Response.json(result)
-                },
-            }),
-        },
-    }
+                } }) } }
 
-    return { stub: stub as unknown as BundleStatusDO, sql }
+    return { stub, sql }
 }
 
 function makeConfirmedTxStatus(): TxStatusResponse {
     return {
         txId: 'tx-1',
-        txHash: '0xabc' as Hex,
+        txHash: '0xabc',
         chainId: 137,
         status: 'confirmed',
         blockNumber: '0x1',
@@ -159,8 +165,7 @@ function makeConfirmedTxStatus(): TxStatusResponse {
         blockHash: '0xdef',
         logs: [],
         submittedAt: Date.now(),
-        confirmedAt: Date.now(),
-    }
+        confirmedAt: Date.now() }
 }
 
 describe('BundleStatusDO status resolution', () => {
@@ -175,18 +180,13 @@ describe('BundleStatusDO status resolution', () => {
                     bundle_id: 'bundle-fetch-log-1',
                     tx_id: 'tx-fetch-1',
                     signer_name: 'signer-137-0',
-                    created_at: Date.now(),
-                },
+                    created_at: Date.now() },
             ],
             signerFetch: () => {
                 throw new Error('signer down')
-            },
-        })
+            } })
 
-        const result = await BundleStatusDO.prototype.get_bundle_status.call(
-            stub,
-            'bundle-fetch-log-1',
-        )
+        const result = await stub.get_bundle_status('bundle-fetch-log-1')
 
         expect(result.statusCode).toBe(100)
         expect(result.receipts).toHaveLength(0)
@@ -194,8 +194,7 @@ describe('BundleStatusDO status resolution', () => {
             expect.objectContaining({
                 event: 'bundle_status_signer_fetch_failed',
                 txId: 'tx-fetch-1',
-                error: 'signer down',
-            }),
+                error: 'signer down' }),
             'failed to fetch transaction status from signer',
         )
     })
@@ -207,8 +206,7 @@ describe('BundleStatusDO status resolution', () => {
                     bundle_id: 'bundle-1',
                     tx_id: 'tx-1',
                     signer_name: null,
-                    created_at: Date.now(),
-                },
+                    created_at: Date.now() },
             ],
             signerFetch: (signerName, txId) => {
                 if (txId !== 'tx-1') return null
@@ -216,10 +214,9 @@ describe('BundleStatusDO status resolution', () => {
                 if (signerName !== 'signer-137-1') return null
 
                 return makeConfirmedTxStatus()
-            },
-        })
+            } })
 
-        const result = await BundleStatusDO.prototype.get_bundle_status.call(stub, 'bundle-1')
+        const result = await stub.get_bundle_status('bundle-1')
 
         expect(result.statusCode).toBe(200)
         expect(result.receipts).toHaveLength(1)
@@ -233,8 +230,7 @@ describe('BundleStatusDO status resolution', () => {
                     bundle_id: 'bundle-log-1',
                     tx_id: 'tx-log-1',
                     signer_name: 'signer-137-0',
-                    created_at: Date.now(),
-                },
+                    created_at: Date.now() },
             ],
             signerFetch: (signerName, txId) => {
                 if (txId !== 'tx-log-1') return null
@@ -245,10 +241,9 @@ describe('BundleStatusDO status resolution', () => {
 
                 return null
             },
-            throwOnSignerNameUpdate: true,
-        })
+            throwOnSignerNameUpdate: true })
 
-        const result = await BundleStatusDO.prototype.get_bundle_status.call(stub, 'bundle-log-1')
+        const result = await stub.get_bundle_status('bundle-log-1')
 
         expect(result.statusCode).toBe(200)
         expect(result.receipts).toHaveLength(1)
@@ -260,8 +255,7 @@ describe('BundleStatusDO status resolution', () => {
                 signerName: 'signer-137-0',
                 resolvedSignerName: 'signer-137-1',
                 chainId: 137,
-                error: 'failed to update signer name',
-            }),
+                error: 'failed to update signer name' }),
             'failed to cache resolved signer name for bundle transaction',
         )
     })
@@ -273,14 +267,12 @@ describe('BundleStatusDO status resolution', () => {
                     bundle_id: 'bundle-2',
                     tx_id: 'tx-2',
                     signer_name: null,
-                    created_at: Date.now(),
-                },
+                    created_at: Date.now() },
             ],
             signerFetch: () => null,
-            unresolvedSlaMs: '300000',
-        })
+            unresolvedSlaMs: '300000' })
 
-        const result = await BundleStatusDO.prototype.get_bundle_status.call(stub, 'bundle-2')
+        const result = await stub.get_bundle_status('bundle-2')
 
         expect(result.statusCode).toBe(100)
         expect(result.receipts).toHaveLength(0)
@@ -293,14 +285,12 @@ describe('BundleStatusDO status resolution', () => {
                     bundle_id: 'bundle-3',
                     tx_id: 'tx-3',
                     signer_name: null,
-                    created_at: Date.now() - 10_000,
-                },
+                    created_at: Date.now() - 10_000 },
             ],
             signerFetch: () => null,
-            unresolvedSlaMs: '1000',
-        })
+            unresolvedSlaMs: '1000' })
 
-        const result = await BundleStatusDO.prototype.get_bundle_status.call(stub, 'bundle-3')
+        const result = await stub.get_bundle_status('bundle-3')
 
         expect(result.statusCode).toBe(300)
         expect(result.status).toBe('failed')
@@ -314,16 +304,12 @@ describe('BundleStatusDO status resolution', () => {
                     bundle_id: 'bundle-4',
                     tx_id: 'tx-4',
                     signer_name: 'signer-137-0',
-                    created_at: 0,
-                },
+                    created_at: 0 },
             ],
             signerFetch: () => null,
-            bundleColumns: [{ name: 'bundle_id' }, { name: 'tx_id' }, { name: 'signer_name' }],
-        })
+            bundleColumns: [{ name: 'bundle_id' }, { name: 'tx_id' }, { name: 'signer_name' }] })
 
-        ;(
-            BundleStatusDO.prototype as unknown as { ensureBundleTransactionsSchema: () => void }
-        ).ensureBundleTransactionsSchema.call(stub)
+        stub.ensureBundleTransactionsSchema()
 
         expect(
             sql.queries.some((entry) =>

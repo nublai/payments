@@ -1,8 +1,9 @@
-import { zeroAddress, type Address, type Hex } from 'viem'
+import { zeroAddress, type Address } from 'viem'
 import { hashTypedData } from 'viem/utils'
-import { INTENT_TYPES, type Call } from '@nubl/relayer-client'
+import { INTENT_TYPES, type Call, type PrepareCallsResponse } from '@nubl/relayer-client'
 import type { EnvName } from '../../src/lib/network-config'
 import { resolveOrchestratorAddress } from '../../src/lib/orchestrator-address'
+import { emptyHex } from './hex'
 
 export function matchingPreparedCalls(input: {
     from: Address
@@ -13,14 +14,13 @@ export function matchingPreparedCalls(input: {
     payer?: Address
     paymentToken?: Address
     paymentMaxAmount?: bigint
-}) {
+}): PrepareCallsResponse {
     const verifyingContract = resolveOrchestratorAddress(input.network.env, input.network.chainId)
 
     const messageCalls = input.calls.map((call) => ({
         to: call.target,
         value: call.value,
-        data: call.data,
-    }))
+        data: call.data }))
 
     const message = {
         multichain: false,
@@ -31,32 +31,28 @@ export function matchingPreparedCalls(input: {
         paymentToken: input.paymentToken ?? zeroAddress,
         paymentMaxAmount: input.paymentMaxAmount ?? 0n,
         combinedGas: 50_000n,
-        encodedPreCalls: [] as Hex[],
-        encodedFundTransfers: [] as Hex[],
+        encodedPreCalls: emptyHex(),
+        encodedFundTransfers: emptyHex(),
         settler: zeroAddress,
-        expiry: input.expiry ?? 1_900_000_000n,
-    }
+        expiry: input.expiry ?? 1_900_000_000n }
 
     const domain = {
         name: 'Orchestrator',
         version: '0.5.5',
         chainId: input.network.chainId,
-        verifyingContract,
-    }
+        verifyingContract }
 
     return {
         digest: hashTypedData({
             domain,
             types: INTENT_TYPES,
             primaryType: 'Intent',
-            message,
-        }),
+            message }),
         typedData: {
             domain,
             types: INTENT_TYPES,
             primaryType: 'Intent' as const,
-            message,
-        },
+            message },
         context: {
             quote: {
                 quotes: [
@@ -68,16 +64,14 @@ export function matchingPreparedCalls(input: {
                             calls: messageCalls.map((call) => ({
                                 to: call.to,
                                 value: call.value.toString(),
-                                data: call.data,
-                            })),
+                                data: call.data })),
                             nonce: input.nonce.toString(),
                             combinedGas: message.combinedGas.toString(),
                             expiry: message.expiry.toString(),
                             payer: message.payer,
                             paymentToken: message.paymentToken,
                             paymentMaxAmount: message.paymentMaxAmount.toString(),
-                            settler: zeroAddress,
-                        },
+                            settler: zeroAddress },
                         extraPayment: '0x0',
                         ethPrice: '0x0',
                         paymentTokenDecimals: 6,
@@ -85,12 +79,8 @@ export function matchingPreparedCalls(input: {
                         nativeFeeEstimate: { maxFeePerGas: 1, maxPriorityFeePerGas: 1 },
                         paymentAmount: (input.paymentMaxAmount ?? 0n) > 0n ? '1' : '0',
                         feeTokenDeficit: '0x0',
-                        assetDeficits: [],
-                    },
+                        assetDeficits: [] },
                 ],
-                signature: '0x' as Hex,
-                ttl: 2_000_000_000,
-            },
-        },
-    }
+                signature: '0x' as const,
+                ttl: 2_000_000_000 } } }
 }

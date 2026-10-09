@@ -6,33 +6,36 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFi
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
-import { decodeFunctionData, type Address, type Hex } from 'viem'
+import { decodeFunctionData, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
 import { JsonRpcClientError, type Call } from '@nubl/relayer-client'
-import { executeSignedCalls } from '../src/lib/execute-calls'
+import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { createSessionKeystore, ensureOwnerOnlyDirectory } from '../src/lib/keystore'
-import { executeSessionRotate, sealRotationMarker } from '../src/lib/session-rotate'
+import { getDefaultDeps, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { passthroughKeystoreLock, typedMock } from './helpers/typed-mock'
+import { testKeystoreBundleFrom } from './helpers/keystore-bundle'
+import { testBaseKeys } from './helpers/authorized-key'
 
-const account = '0x1111111111111111111111111111111111111111' as Address
+const account = '0x1111111111111111111111111111111111111111'
 
-const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a' as Hex
+const oldKey = '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a'
 
-const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+const newKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 const rootPrivateKey =
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
 const oldAddress = privateKeyToAccount(oldKey).address
 
 const newAddress = privateKeyToAccount(newKey).address
 
-const approveSelector = '0x095ea7b3' as Hex
+const approveSelector = '0x095ea7b3'
 
-const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 const password = 'pw'
 
@@ -43,28 +46,19 @@ const network = {
     chainId: 8453,
 }
 
-type PreparedInput = {
-    network: { chainId: number; env: 'stage' }
-    from: Address
-    calls: Call[]
-    nonce: bigint
-    expiry?: bigint
-    payer?: Address
-    paymentToken?: Address
-    paymentMaxAmount?: bigint
-}
+type PreparedInput = Parameters<SessionRotateDeps['prepareCalls']>[0]
 
 function rootBundle(active = 'default') {
-    return {
-        root: {
+    return testKeystoreBundleFrom(
+        {
             addresses: { root: account, delegated: account },
             sessionRef: { active, dir: 'sessions' },
             network,
             createdAt: '2020-01-01T00:00:00.000Z',
             checkpoint: 'delegated',
         },
-        session: { addresses: { session: oldAddress } },
-    }
+        { addresses: { session: oldAddress, delegated: account } },
+    )
 }
 
 async function stageDir(prefix: string) {
@@ -108,7 +102,7 @@ async function writeRealSession(path: string, name: string, key: Hex) {
 }
 
 function quotePreparer(captured: PreparedInput[]) {
-    return mock(async (input: PreparedInput) => {
+    return typedMock<SessionRotateDeps['prepareCalls']>(async (input) => {
         captured.push(input)
 
         return matchingPreparedCalls({
@@ -131,19 +125,20 @@ function decodeCalls(calls: Call[]) {
     }))
 }
 
-function baseDeps(extra: Record<string, unknown> = {}) {
+function baseDeps(overrides?: Partial<SessionRotateDeps>): SessionRotateDeps {
     return {
-        withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
-        readKeystoreBundle: mock(async () => rootBundle()),
-        decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-        generatePrivateKey: mock(() => newKey),
-        readNonce: mock(async () => 1n),
-        readActiveUsdcDaily: mock(async () => 0n),
-        readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
-        getKeys: mock(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-        })),
-        ...extra,
+        ...getDefaultDeps(),
+        withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
+        readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
+        decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+        generatePrivateKey: typedMock<SessionRotateDeps['generatePrivateKey']>(() => newKey),
+        readNonce: typedMock<SessionRotateDeps['readNonce']>(async () => 1n),
+        readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
+        readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
+        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () =>
+            testBaseKeys(computeSessionKeyHash(oldAddress)),
+        ),
+        ...overrides,
     }
 }
 
@@ -163,30 +158,29 @@ test('a send throw before an id returns keeps the key and resume settles from ge
                     newName: 'default-next',
                 },
                 baseDeps({
-                    executeSignedCalls,
-                    prepareCalls: quotePreparer(prepares),
-                    signTypedData: mock(async () => {
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                    prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer(prepares)),
+                    signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
                         signed.push(rootPrivateKey)
 
                         return rootPrivateKey
                     }),
-                    sendPreparedCalls: mock(async () => {
+                    sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
                         throw new Error('socket hang up')
                     }),
-                    waitForBundle: mock(async () => {
+                    waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => {
                         throw new Error('must not wait')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         const names = await readdir(sessions)
         expect(names).toContain('default-next.json')
         expect(names).toContain('.rotation.json')
 
-        const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
-            status?: string
-            bundleId?: string
-        }
+        const marker: { status?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        )
 
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBeUndefined()
@@ -195,24 +189,22 @@ test('a send throw before an id returns keeps the key and resume settles from ge
 
         const resumePrepares: PreparedInput[] = []
 
-        const getKeys = mock(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-        }))
+        const getKeys = mock(async () => testBaseKeys(computeSessionKeyHash(oldAddress)))
 
         await expect(
             executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password, resume: true },
                 baseDeps({
                     getKeys,
-                    executeSignedCalls,
-                    prepareCalls: quotePreparer(resumePrepares),
-                    signTypedData: mock(async () => {
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                    prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer(resumePrepares)),
+                    signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
                         throw new Error('must not sign')
                     }),
-                    sendPreparedCalls: mock(async () => {
+                    sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
                         throw new Error('must not send')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(getKeys).toHaveBeenCalled()
@@ -225,18 +217,16 @@ test('a send throw before an id returns keeps the key and resume settles from ge
         const settled = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, resume: true },
             baseDeps({
-                getKeys: mock(async () => ({
-                    '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
-                })),
-                executeSignedCalls,
-                prepareCalls: quotePreparer(settlePrepares),
-                signTypedData: mock(async () => {
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(newAddress))),
+                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer(settlePrepares)),
+                signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
                     throw new Error('must not sign')
                 }),
-                sendPreparedCalls: mock(async () => {
+                sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
                     throw new Error('must not send')
                 }),
-            }) as never,
+            }),
         )
 
         expect(settled.bundle.id).not.toBe('noop')
@@ -262,28 +252,27 @@ test('bundle tracking unavailable after broadcast keeps the key and records the 
                     newName: 'default-next',
                 },
                 baseDeps({
-                    executeSignedCalls,
-                    prepareCalls: quotePreparer([]),
-                    signTypedData: mock(async () => rootPrivateKey),
-                    sendPreparedCalls: mock(async () => {
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                    prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer([])),
+                    signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => rootPrivateKey),
+                    sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
                         throw new JsonRpcClientError(
                             -32002,
                             'Intent submitted but bundle tracking unavailable; retry status lookup later',
                             { bundleId: 'bundle-tracked' },
                         )
                     }),
-                    waitForBundle: mock(async () => {
+                    waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => {
                         throw new Error('must not wait')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_SUBMITTED' })
         expect(await readdir(sessions)).toContain('default-next.json')
 
-        const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8')) as {
-            status?: string
-            bundleId?: string
-        }
+        const marker: { status?: string; bundleId?: string } = JSON.parse(
+            await readFile(join(sessions, '.rotation.json'), 'utf8'),
+        )
 
         expect(marker.status).toBe('submitted')
         expect(marker.bundleId).toBe('bundle-tracked')
@@ -304,16 +293,16 @@ test('a definitive pre-broadcast refusal still drops the unsent rotation', async
                     newName: 'default-next',
                 },
                 baseDeps({
-                    executeSignedCalls,
-                    prepareCalls: quotePreparer([]),
-                    signTypedData: mock(async () => rootPrivateKey),
-                    sendPreparedCalls: mock(async () => {
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                    prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer([])),
+                    signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => rootPrivateKey),
+                    sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
                         throw new JsonRpcClientError(
                             -32602,
                             'Missing required parameter: context',
                         )
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_FAILED' })
         const names = await readdir(sessions)
@@ -339,14 +328,14 @@ test('an edited marker is refused before resume signs', async () => {
                     spendLimit: 1_000_000n,
                 },
                 baseDeps({
-                    readNonce: mock(async () => {
+                    readNonce: typedMock<SessionRotateDeps['readNonce']>(async () => {
                         throw new Error('rpc down before send')
                     }),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/rpc down before send/)
 
-        const attackerTarget = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead' as Address
+        const attackerTarget = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead'
         const marker = JSON.parse(await readFile(join(sessions, '.rotation.json'), 'utf8'))
         marker.permissions = {
             kind: 'custom',
@@ -362,19 +351,17 @@ test('an edited marker is refused before resume signs', async () => {
             executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password, resume: true },
                 baseDeps({
-                    getKeys: mock(async () => ({
-                        '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-                    })),
-                    executeSignedCalls,
-                    prepareCalls: quotePreparer(prepares),
-                    signTypedData: mock(async () => rootPrivateKey),
-                    sendPreparedCalls: mock(async () => ({ id: 'bundle-forged' })),
-                    waitForBundle: mock(async () => ({
+                    getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(oldAddress))),
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                    prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer(prepares)),
+                    signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => rootPrivateKey),
+                    sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-forged' })),
+                    waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => ({
                         success: true,
                         statusCode: 200,
                         status: 'confirmed',
                     })),
-                }) as never,
+                }),
             ),
         ).rejects.toMatchObject({ code: 'ROTATION_MARKER_MISMATCH' })
         expect(prepares).toHaveLength(0)
@@ -421,16 +408,16 @@ test('an older marker with no authentication is refused before resume signs', as
             executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password, resume: true },
                 baseDeps({
-                    executeSignedCalls,
-                    prepareCalls: quotePreparer(prepares),
-                    signTypedData: mock(async () => rootPrivateKey),
-                    sendPreparedCalls: mock(async () => ({ id: 'bundle-legacy-mac' })),
-                    waitForBundle: mock(async () => ({
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                    prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer(prepares)),
+                    signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => rootPrivateKey),
+                    sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-legacy-mac' })),
+                    waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => ({
                         success: true,
                         statusCode: 200,
                         status: 'confirmed',
                     })),
-                }) as never,
+                }),
             ),
         ).rejects.toThrow(/not authenticated/)
         expect(prepares).toHaveLength(0)
@@ -477,7 +464,7 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
         const getKeys = mock(async () => {
             markerPresentAtGetKeys = (await readdir(sessions)).includes('.rotation.json')
 
-            return { '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }] }
+            return testBaseKeys(computeSessionKeyHash(oldAddress))
         })
 
         const result = await executeSessionRotate(
@@ -490,19 +477,19 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
             },
             baseDeps({
                 getKeys,
-                executeSignedCalls: mock(async () => {
+                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => {
                     signed.push('execute')
                     throw new Error('must not sign')
                 }),
-                signTypedData: mock(async () => {
+                signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
                     signed.push('sign')
                     throw new Error('must not sign')
                 }),
-                prepareCalls: mock(async () => {
+                prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(async () => {
                     signed.push('prepare')
                     throw new Error('must not prepare')
                 }),
-            }) as never,
+            }),
         )
 
         expect(markerPresentAtGetKeys).toBe(true)

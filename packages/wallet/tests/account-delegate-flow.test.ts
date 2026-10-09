@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
-import type { Address, Hex } from 'viem'
-import { executeAccountDelegate, resolveAccountDelegatePassword } from '../src/lib/account-delegate'
+import type { Address } from 'viem'
+import { resolveAccountDelegatePassword, type AccountDelegateDeps } from '../src/lib/account-delegate'
+import { executeAccountDelegate } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { typedMock } from './helpers/typed-mock'
 
 const ROOT_ADDRESS: Address = '0x1111111111111111111111111111111111111111'
 
@@ -25,15 +27,12 @@ function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRo
             env: 'prod',
             relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
-            chainId: 8453,
-        },
+            chainId: 8453 },
         addresses: {
-            root: ROOT_ADDRESS,
-        },
+            root: ROOT_ADDRESS },
         sessionRef: {
             active: 'default',
-            dir: 'sessions',
-        },
+            dir: 'sessions' },
         kdf: {
             name: 'argon2id',
             params: {
@@ -41,15 +40,11 @@ function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRo
                 timeCost: 2,
                 parallelism: 1,
                 hashLength: 32,
-                salt: 'dGVzdA==',
-            },
-        },
+                salt: 'dGVzdA==' } },
         crypto: { algorithm: 'aes-256-gcm' },
         secrets: {
-            rootPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' },
-        },
-        ...overrides,
-    }
+            rootPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' } },
+        ...overrides }
 }
 
 function makeSessionKeystore(
@@ -64,8 +59,7 @@ function makeSessionKeystore(
             env: 'prod',
             relayerUrl: 'https://relayer.example',
             rpcUrl: 'https://rpc.example',
-            chainId: 8453,
-        },
+            chainId: 8453 },
         kdf: {
             name: 'argon2id',
             params: {
@@ -73,19 +67,14 @@ function makeSessionKeystore(
                 timeCost: 2,
                 parallelism: 1,
                 hashLength: 32,
-                salt: 'dGVzdA==',
-            },
-        },
+                salt: 'dGVzdA==' } },
         crypto: { algorithm: 'aes-256-gcm' },
         addresses: {
             session: '0x2222222222222222222222222222222222222222',
-            delegated: '0x1111111111111111111111111111111111111111',
-        },
+            delegated: '0x1111111111111111111111111111111111111111' },
         secrets: {
-            sessionPrivateKey: { nonce: 'd', ciphertext: 'e', tag: 'f' },
-        },
-        ...overrides,
-    }
+            sessionPrivateKey: { nonce: 'd', ciphertext: 'e', tag: 'f' } },
+        ...overrides }
 }
 
 test('resolveAccountDelegatePassword prefers env password', async () => {
@@ -95,8 +84,7 @@ test('resolveAccountDelegatePassword prefers env password', async () => {
             chains: ['base'],
             passwordStdin: true,
             json: false,
-            help: false,
-        },
+            help: false },
         {
             envPassword: 'from-env',
             readPasswordFromStdin: () => {
@@ -105,8 +93,7 @@ test('resolveAccountDelegatePassword prefers env password', async () => {
             promptForExistingPassword: async () => {
                 throw new Error('should not prompt')
             },
-            isInteractive: true,
-        },
+            isInteractive: true },
     )
 
     expect(password).toBe('from-env')
@@ -119,13 +106,11 @@ test('resolveAccountDelegatePassword reads stdin when requested', async () => {
             chains: ['base'],
             passwordStdin: true,
             json: false,
-            help: false,
-        },
+            help: false },
         {
             readPasswordFromStdin: () => 'stdin-password',
             promptForExistingPassword: async () => 'prompt-password',
-            isInteractive: true,
-        },
+            isInteractive: true },
     )
 
     expect(password).toBe('stdin-password')
@@ -138,15 +123,13 @@ test('resolveAccountDelegatePassword uses interactive prompt', async () => {
             chains: ['base'],
             passwordStdin: false,
             json: false,
-            help: false,
-        },
+            help: false },
         {
             readPasswordFromStdin: () => {
                 throw new Error('should not read stdin')
             },
             promptForExistingPassword: async () => 'prompt-password',
-            isInteractive: true,
-        },
+            isInteractive: true },
     )
 
     expect(password).toBe('prompt-password')
@@ -160,18 +143,15 @@ test('resolveAccountDelegatePassword throws when no password source exists', asy
                 chains: ['base'],
                 passwordStdin: false,
                 json: false,
-                help: false,
-            },
+                help: false },
             {
                 readPasswordFromStdin: () => 'unused',
                 promptForExistingPassword: async () => 'unused',
-                isInteractive: false,
-            },
+                isInteractive: false },
         ),
     ).rejects.toMatchObject({
         name: 'AccountDelegateError',
-        code: 'PASSWORD_REQUIRED',
-    })
+        code: 'PASSWORD_REQUIRED' })
 })
 
 test('executeAccountDelegate delegates or skips already delegated chains', async () => {
@@ -184,33 +164,27 @@ test('executeAccountDelegate delegates or skips already delegated chains', async
             env: 'prod',
             chains: ['base', 'polygon'],
             keystorePath: '/tmp/alice.json',
-            password: 'pw',
-        },
+            password: 'pw' },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
                 format: 'split',
                 rootPath: '/tmp/alice.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
-                session,
-            })),
-            decryptRootKeystore: mock(async () => ({
+                session })),
+            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
                 rootPrivateKey:
-                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex,
-            })),
-            decryptSessionKeystore: mock(async () => ({
+                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
+            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
-                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex,
-            })),
-            getDelegatedCode: mock(async ({ network }) =>
-                network.chainId === 8453 ? ('0x' as Hex) : ('0xef0100' as Hex),
+                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async ({ network }) =>
+                network.chainId === 8453 ? ('0x') : ('0xef0100'),
             ),
-            delegateAccount: mock(async () => ({
+            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
                 accountAddress: ROOT_ADDRESS,
-                txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as Hex,
-            })),
-            writeRootKeystoreFile,
-        },
+                txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })),
+            writeRootKeystoreFile },
     )
 
     expect(result.type).toBe('account_delegate')
@@ -232,37 +206,31 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
             env: 'prod',
             chains: ['base', 'polygon'],
             keystorePath: '/tmp/alice.json',
-            password: 'pw',
-        },
+            password: 'pw' },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
                 format: 'split',
                 rootPath: '/tmp/alice.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
-                session,
-            })),
-            decryptRootKeystore: mock(async () => ({
+                session })),
+            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
                 rootPrivateKey:
-                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex,
-            })),
-            decryptSessionKeystore: mock(async () => ({
+                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
+            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
-                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex,
-            })),
-            getDelegatedCode: mock(async () => '0x' as Hex),
-            delegateAccount: mock(async ({ network }) => {
+                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0x'),
+            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async ({ network }) => {
                 if (network.chainId === 137) {
                     throw new Error('Delegation failed: rpc error')
                 }
 
                 return {
                     accountAddress: ROOT_ADDRESS,
-                    txHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as Hex,
-                }
+                    txHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }
             }),
-            writeRootKeystoreFile: mock(async () => {}),
-        },
+            writeRootKeystoreFile: typedMock<AccountDelegateDeps['writeRootKeystoreFile']>(async () => {}) },
     )
 
     expect(result.hasFailures).toBe(true)

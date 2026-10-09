@@ -9,7 +9,6 @@ import {
     executeAccountUpdatePassword,
     resolveAccountUpdatePasswords,
 } from '../src/lib/account-update-password'
-import type { Hex } from 'viem'
 import {
     createRootKeystore,
     createSessionKeystore,
@@ -24,8 +23,6 @@ import {
     resolveSessionKeystorePath,
     writeRootKeystoreFile,
     writeSessionKeystoreFile,
-    type LoginSessionKeystoreV2,
-    type AgentSessionKeystoreV2,
 } from '../src/lib/keystore'
 import { decryptAgentDevice, finalizeAgentSessionKeystore } from '../src/lib/agent-sessions'
 
@@ -36,8 +33,7 @@ test('resolveAccountUpdatePasswords parses stdin pair line-by-line', async () =>
             currentPasswordStdin: true,
             newPasswordStdin: true,
             json: false,
-            help: false,
-        },
+            help: false },
         {
             readPasswordLinesFromStdin: () => [' oldpw ', ' newpw '],
             promptForExistingPassword: async () => {
@@ -46,8 +42,7 @@ test('resolveAccountUpdatePasswords parses stdin pair line-by-line', async () =>
             promptForPassword: async () => {
                 throw new Error('should not prompt new password')
             },
-            isInteractive: false,
-        },
+            isInteractive: false },
     )
 
     expect(resolved.currentPassword).toBe('oldpw')
@@ -62,18 +57,15 @@ test('resolveAccountUpdatePasswords rejects missing second stdin line', async ()
                 currentPasswordStdin: true,
                 newPasswordStdin: true,
                 json: false,
-                help: false,
-            },
+                help: false },
             {
                 readPasswordLinesFromStdin: () => ['old-only'],
                 promptForExistingPassword: async () => 'unused',
                 promptForPassword: async () => 'unused',
-                isInteractive: false,
-            },
+                isInteractive: false },
         ),
     ).rejects.toMatchObject({
-        code: 'PASSWORD_REQUIRED',
-    })
+        code: 'PASSWORD_REQUIRED' })
 })
 
 test('resolveAccountUpdatePasswords validates current password before prompting for new password', async () => {
@@ -86,8 +78,7 @@ test('resolveAccountUpdatePasswords validates current password before prompting 
                 currentPasswordStdin: false,
                 newPasswordStdin: false,
                 json: false,
-                help: false,
-            },
+                help: false },
             {
                 readPasswordLinesFromStdin: () => [],
                 promptForExistingPassword: async () => 'wrong-current',
@@ -95,12 +86,10 @@ test('resolveAccountUpdatePasswords validates current password before prompting 
                 isInteractive: true,
                 validateCurrentPassword: async () => {
                     throw new Error('bad decrypt')
-                },
-            },
+                } },
         ),
     ).rejects.toMatchObject({
-        code: 'PASSWORD_INCORRECT',
-    })
+        code: 'PASSWORD_INCORRECT' })
     expect(promptForPassword).toHaveBeenCalledTimes(0)
 })
 
@@ -124,8 +113,7 @@ test('executeAccountUpdatePassword re-encrypts root and all sessions; old passwo
             rpcUrl: 'http://127.0.0.1:8545',
             chainId: 31337,
             activeSession: 'default',
-            sessionsDir: 'sessions',
-        })
+            sessionsDir: 'sessions' })
 
         root.checkpoint = 'complete'
         root.addresses.delegated = root.addresses.root
@@ -136,8 +124,7 @@ test('executeAccountUpdatePassword re-encrypts root and all sessions; old passwo
             network: root.network,
             delegated: root.addresses.root,
             name: 'default',
-            checkpoint: 'authorized',
-        })
+            checkpoint: 'authorized' })
 
         const workerSession = await createSessionKeystore({
             password: oldPassword,
@@ -145,8 +132,7 @@ test('executeAccountUpdatePassword re-encrypts root and all sessions; old passwo
             network: root.network,
             delegated: root.addresses.root,
             name: 'worker-1',
-            checkpoint: 'authorized',
-        })
+            checkpoint: 'authorized' })
 
         await writeRootKeystoreFile(rootPath, root)
         await writeSessionKeystoreFile(
@@ -162,8 +148,7 @@ test('executeAccountUpdatePassword re-encrypts root and all sessions; old passwo
             env: 'dev',
             keystorePath: rootPath,
             currentPassword: oldPassword,
-            newPassword,
-        })
+            newPassword })
 
         expect(result.type).toBe('account_update_password')
         expect(result.status).toBe('complete')
@@ -199,18 +184,15 @@ test('executeAccountUpdatePassword maps incorrect password', async () => {
                 env: 'prod',
                 keystorePath: '/tmp/missing.json',
                 currentPassword: 'wrong',
-                newPassword: 'new',
-            },
+                newPassword: 'new' },
             {
                 withKeystoreLock: async (_path, action) => action(),
                 readKeystoreBundle: mock(async () => {
                     throw new Error('bad decrypt')
-                }),
-            },
+                }) },
         ),
     ).rejects.toMatchObject({
-        code: 'PASSWORD_INCORRECT',
-    })
+        code: 'PASSWORD_INCORRECT' })
 })
 
 test('executeAccountUpdatePassword preserves login keystore fields (kind, delegateAuth, bearerToken)', async () => {
@@ -219,7 +201,7 @@ test('executeAccountUpdatePassword preserves login keystore fields (kind, delega
 
     const oldPassword = 'old-password'
     const newPassword = 'new-password'
-    const bearerTokenHex = '0xdeadbeefcafebabe1234567890abcdef' as Hex
+    const bearerTokenHex = '0xdeadbeefcafebabe1234567890abcdef'
 
     try {
         const rootPrivateKey = generatePrivateKey()
@@ -233,8 +215,7 @@ test('executeAccountUpdatePassword preserves login keystore fields (kind, delega
             rpcUrl: 'http://127.0.0.1:8545',
             chainId: 31337,
             activeSession: 'default',
-            sessionsDir: 'sessions',
-        })
+            sessionsDir: 'sessions' })
 
         root.checkpoint = 'complete'
         root.addresses.delegated = root.addresses.root
@@ -250,8 +231,7 @@ test('executeAccountUpdatePassword preserves login keystore fields (kind, delega
             checkpoint: 'authorized',
             kind: 'login',
             delegateAuth,
-            bearerToken: bearerTokenHex,
-        })
+            bearerToken: bearerTokenHex })
 
         await writeRootKeystoreFile(rootPath, root)
         await writeSessionKeystoreFile(
@@ -263,8 +243,7 @@ test('executeAccountUpdatePassword preserves login keystore fields (kind, delega
             env: 'dev',
             keystorePath: rootPath,
             currentPassword: oldPassword,
-            newPassword,
-        })
+            newPassword })
 
         expect(result.status).toBe('complete')
         expect(result.updatedSessions).toEqual(['default'])
@@ -274,7 +253,10 @@ test('executeAccountUpdatePassword preserves login keystore fields (kind, delega
         )
 
         expect(isLoginKeystore(updatedSession)).toBe(true)
-        const loginKeystore = updatedSession as LoginSessionKeystoreV2
+
+        if (!isLoginKeystore(updatedSession)) throw new Error('expected login keystore')
+
+        const loginKeystore = updatedSession
         expect(loginKeystore.kind).toBe('login')
         expect(loginKeystore.delegateAuth).toEqual(delegateAuth)
         expect(loginKeystore.secrets.bearerToken).toBeDefined()
@@ -314,8 +296,7 @@ test('executeAccountUpdatePassword preserves agent keystore fields (encryptionDe
             rpcUrl: 'http://127.0.0.1:8545',
             chainId: 31337,
             activeSession: 'agent-bot',
-            sessionsDir: 'sessions',
-        })
+            sessionsDir: 'sessions' })
 
         root.checkpoint = 'complete'
         root.addresses.delegated = root.addresses.root
@@ -326,25 +307,21 @@ test('executeAccountUpdatePassword preserves agent keystore fields (encryptionDe
             network: root.network,
             delegated: root.addresses.root,
             name: 'agent-bot',
-            checkpoint: 'authorized',
-        })
+            checkpoint: 'authorized' })
 
         const exportedDevice = create(ExportedDeviceSchema, {
             pickleKey: 'device-key-test',
             pickledAccount: 'test-account-data',
-            hybridGroupSessions: [],
-        })
+            hybridGroupSessions: [] })
 
         const namedChannels = {
-            art: { streamId: '77aabb', secretHash: 'hash-1' },
-        }
+            art: { streamId: '77aabb', secretHash: 'hash-1' } }
 
         const agentSession = await finalizeAgentSessionKeystore({
             baseKeystore: baseSession,
             password: oldPassword,
             exportedDevice,
-            namedChannels,
-        })
+            namedChannels })
 
         await writeRootKeystoreFile(rootPath, root)
         await writeSessionKeystoreFile(
@@ -356,8 +333,7 @@ test('executeAccountUpdatePassword preserves agent keystore fields (encryptionDe
             env: 'dev',
             keystorePath: rootPath,
             currentPassword: oldPassword,
-            newPassword,
-        })
+            newPassword })
 
         expect(result.status).toBe('complete')
         expect(result.updatedSessions).toEqual(['agent-bot'])
@@ -367,7 +343,10 @@ test('executeAccountUpdatePassword preserves agent keystore fields (encryptionDe
         )
 
         expect(isAgentKeystore(updatedSession)).toBe(true)
-        const agentKeystore = updatedSession as AgentSessionKeystoreV2
+
+        if (!isAgentKeystore(updatedSession)) throw new Error('expected agent keystore')
+
+        const agentKeystore = updatedSession
         expect(agentKeystore.kind).toBe('agent')
         expect(agentKeystore.namedChannels).toEqual(namedChannels)
         expect(agentKeystore.secrets.encryptionDevice).toBeDefined()
@@ -396,8 +375,7 @@ test('executeAccountUpdatePassword attempts rollback on write failure', async ()
                 env: 'prod',
                 keystorePath: '/tmp/default.keystore.json',
                 currentPassword: 'old',
-                newPassword: 'new',
-            },
+                newPassword: 'new' },
             {
                 withKeystoreLock: async (_path, action) => action(),
                 readKeystoreBundle: mock(async () => {
@@ -407,23 +385,20 @@ test('executeAccountUpdatePassword attempts rollback on write failure', async ()
                         env: 'prod',
                         relayerUrl: 'http://127.0.0.1:8787',
                         rpcUrl: 'https://mainnet.base.org',
-                        chainId: 8453,
-                    })
+                        chainId: 8453 })
 
                     const session = await createSessionKeystore({
                         password: 'old',
                         sessionPrivateKey: generatePrivateKey(),
                         network: root.network,
                         delegated: root.addresses.root,
-                        name: 'default',
-                    })
+                        name: 'default' })
 
                     return {
                         rootPath: '/tmp/default.keystore.json',
                         sessionPath: '/tmp/sessions/default.json',
                         root,
-                        session,
-                    }
+                        session }
                 }),
                 listSessionNames: mock(async () => ['default']),
                 readSessionKeystoreFile: mock(async () =>
@@ -434,17 +409,13 @@ test('executeAccountUpdatePassword attempts rollback on write failure', async ()
                             env: 'prod',
                             relayerUrl: 'http://127.0.0.1:8787',
                             rpcUrl: 'https://mainnet.base.org',
-                            chainId: 8453,
-                        },
+                            chainId: 8453 },
                         delegated: '0x1111111111111111111111111111111111111111',
-                        name: 'default',
-                    }),
+                        name: 'default' }),
                 ),
                 writeRootKeystoreFile: writeRoot,
-                writeSessionKeystoreFile: writeSession,
-            },
+                writeSessionKeystoreFile: writeSession },
         ),
     ).rejects.toMatchObject({
-        code: 'UPDATE_FAILED',
-    })
+        code: 'UPDATE_FAILED' })
 })

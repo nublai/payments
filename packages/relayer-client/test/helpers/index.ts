@@ -1,5 +1,9 @@
 export * from './anvil'
 
+export * from './env'
+
+export * from './hex'
+
 export * from './tokens'
 
 export * from './deployments'

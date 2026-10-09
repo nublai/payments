@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, it } from 'vitest'
-import { getAddress, type Address, type Hex } from 'viem'
+import { getAddress, type Hex } from 'viem'
 
 import { runWithAuthIdentity } from '../../src/auth/identity'
 import { walletBindDomain, walletBindPersonalMessage } from '../../src/auth/wallet-bind'
@@ -9,6 +9,7 @@ import { bindAccount } from '../../src/rpc/methods/bindAccount'
 import { issueBindNonce } from '../../src/rpc/methods/issueBindNonce'
 import { RpcError, INVALID_SIGNATURE, NONCE_ERROR, INVALID_PARAMS } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
+import { workerEnv } from '../helpers/env'
 
 const ISSUER = 'https://bind-rpc.example'
 
@@ -17,7 +18,7 @@ const SUBJECT = 'bind-user'
 const NOW = 1_700_000_000
 
 function testEnv(): Env {
-    const base = env as unknown as Env
+    const base = workerEnv(env)
 
     return {
         ...base,
@@ -245,7 +246,7 @@ async function signBind(
         },
         primaryType: 'WalletBind',
         message: {
-            account: account.address as Address,
+            account: account.address,
             issuer: ISSUER,
             sub,
             nonce,

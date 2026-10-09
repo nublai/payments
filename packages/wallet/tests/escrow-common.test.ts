@@ -138,8 +138,11 @@ test('executeEscrowCreate rejects relative deadline 0 (0m, 0h, 0d, 0w)', async (
         ).catch((e) => e)
 
         expect(err).toBeInstanceOf(EscrowError)
-        expect((err as EscrowError).code).toBe('INVALID_ARGUMENT')
-        expect((err as EscrowError).message).toMatch(/at least 1/)
+
+        if (!(err instanceof EscrowError)) throw err
+
+        expect(err.code).toBe('INVALID_ARGUMENT')
+        expect(err.message).toMatch(/at least 1/)
     }
 })
 
@@ -176,8 +179,11 @@ test('executeEscrowCreate rejects malformed absolute deadline timestamps', async
     ).catch((error) => error)
 
     expect(err).toBeInstanceOf(EscrowError)
-    expect((err as EscrowError).code).toBe('INVALID_ARGUMENT')
-    expect((err as EscrowError).message).toMatch(/Invalid deadline/)
+
+    if (!(err instanceof EscrowError)) throw err
+
+    expect(err.code).toBe('INVALID_ARGUMENT')
+    expect(err.message).toMatch(/Invalid deadline/)
 })
 
 test('executeEscrowCreate trims relative deadline input before validation', async () => {
@@ -213,7 +219,10 @@ test('executeEscrowCreate trims relative deadline input before validation', asyn
     ).catch((error) => error)
 
     expect(err).toBeInstanceOf(EscrowError)
-    expect((err as EscrowError).code).not.toBe('INVALID_ARGUMENT')
+
+    if (!(err instanceof EscrowError)) throw err
+
+    expect(err.code).not.toBe('INVALID_ARGUMENT')
 })
 
 test('resolveEscrowContracts refuses a zeroed non-local deployment', () => {
@@ -253,6 +262,9 @@ test('executeEscrowSettle rejects mismatched oracle private key', async () => {
     ).catch((error) => error)
 
     expect(err).toBeInstanceOf(EscrowError)
-    expect((err as EscrowError).code).toBe('INVALID_ARGUMENT')
-    expect((err as EscrowError).message).toMatch(/does not match --oracle/)
+
+    if (!(err instanceof EscrowError)) throw err
+
+    expect(err.code).toBe('INVALID_ARGUMENT')
+    expect(err.message).toMatch(/does not match --oracle/)
 })

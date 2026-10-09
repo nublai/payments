@@ -59,7 +59,7 @@ export type SessionListResult = {
     }>
 }
 
-type SessionListDeps = {
+export type SessionListDeps = {
     readKeystoreBundle: typeof readKeystoreBundle
     readSessionKeystoreFile: (path: string) => Promise<AnySessionKeystore>
     listSessionNames: typeof listSessionNames

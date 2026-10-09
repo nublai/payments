@@ -2,9 +2,26 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RelayerPublicClient } from '../../src/types.js'
 import { getCallsHistory } from '../../src/actions/getCallsHistory.js'
 
-type CapturedRequest = { payload: { params?: unknown[] } | null }
+type HistoryRpcParams = {
+    address?: string
+    chainIds?: string[]
+    limit?: number
+    offset?: number
+}
+
+type HistoryRpcPayload = {
+    params?: HistoryRpcParams[]
+}
+
+type CapturedRequest = { payload: HistoryRpcPayload | null }
+
+function parseHistoryRpcPayload(text: string): HistoryRpcPayload {
+    return JSON.parse(text)
+}
 
 function createClient(): RelayerPublicClient {
+    // SAFETY: getCallsHistory only reads relayerConfig (and optional chain.id) to build the JSON-RPC transport; this stub supplies those fields.
+
     return {
         relayerConfig: {
             relayerUrl: 'https://relayer.test',
@@ -13,7 +30,7 @@ function createClient(): RelayerPublicClient {
         chain: {
             id: 8453,
         },
-    } as unknown as RelayerPublicClient
+    } as RelayerPublicClient
 }
 
 afterEach(() => {
@@ -28,7 +45,7 @@ describe('getCallsHistory action', () => {
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 if (request instanceof Request) {
-                    captured.payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
+                    captured.payload = parseHistoryRpcPayload(await request.clone().text())
                 }
 
                 return new Response(
@@ -47,7 +64,7 @@ describe('getCallsHistory action', () => {
         })
 
         expect(result.success).toBe(true)
-        const rpcParams = (captured.payload?.params?.[0] ?? {}) as Record<string, unknown>
+        const rpcParams = captured.payload?.params?.[0] ?? {}
         expect(rpcParams).toEqual({ address: '0x1234567890123456789012345678901234567890' })
         expect(rpcParams.chainIds).toBeUndefined()
     })
@@ -59,7 +76,7 @@ describe('getCallsHistory action', () => {
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 if (request instanceof Request) {
-                    captured.payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
+                    captured.payload = parseHistoryRpcPayload(await request.clone().text())
                 }
 
                 return new Response(
@@ -90,7 +107,7 @@ describe('getCallsHistory action', () => {
         }
 
         expect(result.items).toEqual([{ id: 'bundle-1', chainId: 10, createdAt: 123 }])
-        const rpcParams = (captured.payload?.params?.[0] ?? {}) as Record<string, unknown>
+        const rpcParams = captured.payload?.params?.[0] ?? {}
         expect(rpcParams).toEqual({
             address: '0x1234567890123456789012345678901234567890',
             chainIds: ['0xa'],
@@ -106,7 +123,7 @@ describe('getCallsHistory action', () => {
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
                 if (request instanceof Request) {
-                    captured.payload = JSON.parse(await request.clone().text()) as { params?: unknown[] }
+                    captured.payload = parseHistoryRpcPayload(await request.clone().text())
                 }
 
                 return new Response(
@@ -129,7 +146,7 @@ describe('getCallsHistory action', () => {
         })
 
         expect(result.success).toBe(true)
-        const rpcParams = (captured.payload?.params?.[0] ?? {}) as Record<string, unknown>
+        const rpcParams = captured.payload?.params?.[0] ?? {}
         expect(rpcParams).toEqual({
             address: '0x1234567890123456789012345678901234567890',
             chainIds: ['0xa', '0x2105'],

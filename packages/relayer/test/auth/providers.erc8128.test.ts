@@ -8,21 +8,22 @@ vi.mock('../../src/auth/erc8128/verify', () => ({
 }))
 
 import { createErc8128Provider } from '../../src/auth/providers/erc8128'
+import { stubNamespace, testEnv } from '../helpers/env'
 
 describe('erc8128 auth provider', () => {
-    const env = {
+    const env = testEnv({
         ERC8128_ENABLED: 'true',
         CHAIN_IDS: '8453',
-        HTTP_AUTH_NONCE_MANAGER: {
+        HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
             idFromName: vi.fn(),
             get: vi.fn(),
-        },
-    } as unknown as Env
+        }),
+    })
 
     it('is enabled only when ERC8128_ENABLED=true', () => {
         const provider = createErc8128Provider()
-        expect(provider.enabled({ ERC8128_ENABLED: 'true' } as Env)).toBe(true)
-        expect(provider.enabled({ ERC8128_ENABLED: 'false' } as Env)).toBe(false)
+        expect(provider.enabled(testEnv({ ERC8128_ENABLED: 'true' }))).toBe(true)
+        expect(provider.enabled(testEnv({ ERC8128_ENABLED: 'false' }))).toBe(false)
     })
 
     it('returns success when ERC-8128 verification succeeds', async () => {

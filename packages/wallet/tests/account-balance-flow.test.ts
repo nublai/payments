@@ -1,6 +1,10 @@
 import { expect, mock, test } from 'bun:test'
 import { AccountAddressError } from '../src/lib/account-address'
-import { AccountBalanceError, executeAccountBalance } from '../src/lib/account-balance'
+import {
+    AccountBalanceError,
+    executeAccountBalance,
+    type AccountBalanceOptions,
+} from '../src/lib/account-balance'
 
 test('executeAccountBalance returns base USDC balance by default', async () => {
     const result = await executeAccountBalance(
@@ -115,25 +119,28 @@ test('executeAccountBalance maps address lookup failures', async () => {
 })
 
 test('executeAccountBalance preserves cause for invalid chain override', async () => {
+    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
     const invalidOptions = {
         env: 'prod',
         keystorePath: '/tmp/alice.json',
         chain: 'foobar',
-    } as unknown as Parameters<typeof executeAccountBalance>[0]
+    } as unknown as AccountBalanceOptions
 
     try {
         await executeAccountBalance(invalidOptions)
         throw new Error('expected executeAccountBalance to throw')
     } catch (error) {
         expect(error).toBeInstanceOf(AccountBalanceError)
-        const balanceError = error as AccountBalanceError
-        expect(balanceError.code).toBe('UNSUPPORTED_CHAIN')
-        expect(balanceError.cause).toBeInstanceOf(Error)
+
+        if (!(error instanceof AccountBalanceError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.cause).toBeInstanceOf(Error)
 
         const causeMessage =
-            balanceError.cause instanceof Error
-                ? balanceError.cause.message
-                : String(balanceError.cause)
+            error.cause instanceof Error
+                ? error.cause.message
+                : String(error.cause)
 
         expect(causeMessage).toContain('Unsupported chain')
     }

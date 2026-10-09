@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
-import type { GetKeysResponse } from '@nubl/relayer-client'
-import { executeAccountSwap } from '../src/lib/account-swap'
+import type { AuthorizedKeyInfo, GetKeysResponse } from '@nubl/relayer-client'
+import { executeAccountSwap } from './helpers/stub-execute'
+import { hex, parseAddr } from './helpers/hex'
 import type {
     ExecuteSignedCallsDeps,
     ExecuteSignedCallsParams,
@@ -27,7 +28,7 @@ import {
 } from '../src/lib/quote-spend-pending'
 import { recoverPendingQuoteSpend } from '../src/lib/quote-spend-lifecycle'
 import { relayEntryPoints } from '../src/lib/relay-allowlist'
-import { executeSessionCreate } from '../src/lib/session-create'
+import { executeSessionCreate, type SessionCreateDeps } from '../src/lib/session-create'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import {
     canExecuteChangeCalls,
@@ -40,6 +41,12 @@ import {
 import { assertNoStandingRights, knownErc20Tokens, PERMIT2 } from '../src/lib/standing-rights'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { testBaseKeys } from './helpers/authorized-key'
+import { confirmedBundle } from './helpers/bundle-status'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { signedCallsResult } from './helpers/signed-calls'
+import { typedMock } from './helpers/typed-mock'
+import type { AccountSwapDeps } from '../src/lib/account-swap'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -51,29 +58,29 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const USER = '0x1111111111111111111111111111111111111111' as Address
+const USER = '0x1111111111111111111111111111111111111111'
 
-const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
 
-const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as Address
+const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
 
-const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE'
 
-const ANY_TARGET = '0x3232323232323232323232323232323232323232' as Address
+const ANY_TARGET = '0x3232323232323232323232323232323232323232'
 
-const TRANSFER = '0xa9059cbb' as Hex
+const TRANSFER = '0xa9059cbb' as const
 
-const APPROVE = '0x095ea7b3' as Hex
+const APPROVE = '0x095ea7b3'
 
-const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730' as Address
+const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730' as const
 
-const ESCROW_SEL = '0x657061bf' as Hex
+const ESCROW_SEL = '0x657061bf' as const
 
-const VAULT = '0x4444444444444444444444444444444444444444' as Address
+const VAULT = '0x4444444444444444444444444444444444444444'
 
 const EMPTY_MULTICALL = encodeFunctionData({
     abi: [
@@ -129,19 +136,8 @@ function quote(items: { to: Address; data: Hex; value?: string }[]) {
     }
 }
 
-function keys(permissions: readonly Record<string, unknown>[]) {
-    return {
-        '0x2105': [
-            {
-                hash: SESSION_KEY_HASH,
-                expiry: '0x0',
-                type: 'secp256k1' as const,
-                role: 'normal' as const,
-                publicKey: '0x' as const,
-                permissions,
-            },
-        ],
-    }
+function keys(permissions: AuthorizedKeyInfo['permissions']): GetKeysResponse {
+    return testBaseKeys(SESSION_KEY_HASH, { permissions: [...permissions] })
 }
 
 const TEST_KDF = {
@@ -213,15 +209,15 @@ function paymentPermissions() {
         {
             type: 'spend' as const,
             token: USDC,
-            limit: '10000000',
-            spent: '0x0',
+            limit: '0x989680' as const,
+            spent: '0x0' as const,
             period: 'day' as const,
         },
     ]
 }
 
 function runSwap(input: {
-    permissions: readonly Record<string, unknown>[]
+    permissions: AuthorizedKeyInfo['permissions']
     quote?: ReturnType<typeof quote>
     readAllowance?: (value: { token: Address; spender: Address }) => Promise<bigint>
     readPermit2Allowance?: (value: {
@@ -238,22 +234,11 @@ function runSwap(input: {
         () => Promise<void>
     >
 }) {
-    const signTypedData = mock(async () => '0x11' as Hex)
+    const signTypedData = typedMock<AccountSwapDeps['signTypedData']>(async () => hex('0x11'))
 
-    const executeSignedCalls = mock(async () => ({
-        id: 'bundle-1',
-        finalStatus: {
-            success: true,
-            id: 'bundle-1',
-            status: 'confirmed',
-            statusCode: 200,
-            receipt: {
-                transactionHash:
-                    '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            },
-        },
-        feeCap: { token: zeroAddress, amount: 0n },
-    }))
+    const executeSignedCalls = typedMock<AccountSwapDeps['executeSignedCalls']>(async () =>
+        signedCallsResult(),
+    )
 
     const result = executeAccountSwap(
         {
@@ -267,38 +252,23 @@ function runSwap(input: {
             yes: true,
         },
         {
-            readKeystoreBundle: mock(async () => ({
-                format: 'split',
-                rootPath: '/tmp/alice-swap-session.json',
-                sessionPath: '/tmp/sessions/default.json',
-                root: {
-                    addresses: { root: USER, delegated: USER },
-                    sessionRef: { dir: '/tmp/sessions' },
-                },
-                session: {
-                    network: {
-                        env: 'prod' as const,
-                        relayerUrl: 'http://127.0.0.1:8787',
-                        rpcUrl: 'https://mainnet.base.org',
-                        chainId: 8453,
-                    },
-                    addresses: { delegated: USER, session: SESSION_ADDRESS },
-                },
-            })) as any,
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () =>
+                testKeystoreBundle(USER, SESSION_ADDRESS, 8453, 'prod'),
+            ),
+            decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            readTokenBalance: mock(async () => 10_000000n),
-            getQuote: mock(async () => input.quote ?? quote([{ to: ROUTER, data: EMPTY_MULTICALL }])) as any,
-            readNonce: mock(async () => 2n),
-            confirmQuote: mock(async () => true),
-            getKeys: mock(async () => keys(input.permissions)) as any,
-            prepareCalls: mock(async (call: Parameters<typeof matchingPreparedCalls>[0]) =>
+            readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10_000000n),
+            getQuote: typedMock<AccountSwapDeps['getQuote']>(async () => input.quote ?? quote([{ to: ROUTER, data: EMPTY_MULTICALL }])),
+            readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
+            confirmQuote: typedMock<AccountSwapDeps['confirmQuote']>(async () => true),
+            getKeys: typedMock<AccountSwapDeps['getKeys']>(async () => keys(input.permissions)),
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (call: Parameters<typeof matchingPreparedCalls>[0]) =>
                 matchingPreparedCalls(call),
-            ) as any,
-            signTypedData: signTypedData as any,
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
+            ),
+            signTypedData: typedMock<AccountSwapDeps['signTypedData']>(signTypedData),
+            sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
             simulateQuoteCalls: async () => {},
             installQuoteSpendLimit: input.installQuoteSpendLimit ?? (async () => async () => {}),
             readAllowance: input.readAllowance ?? (async () => 0n),
@@ -313,12 +283,8 @@ function runSwap(input: {
             readApprovedSignatureCheckers:
                 input.readApprovedSignatureCheckers ?? (async () => []),
             standingRightsRegistry: input.standingRightsRegistry,
-            executeSignedCalls: executeSignedCalls as any,
-            waitForBundle: mock(async () => ({
-                success: true,
-                status: 'confirmed',
-                statusCode: 200,
-            })) as any,
+            executeSignedCalls: typedMock<AccountSwapDeps['executeSignedCalls']>(executeSignedCalls),
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => confirmedBundle()),
         },
     )
 
@@ -519,8 +485,8 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
         expect(canExecute).toHaveLength(relayEntryPoints(8453).length)
 
         const pairs = canExecute.map((call) => ({
-            target: call.args?.[1] as Address,
-            selector: (call.args?.[2] as string).toLowerCase(),
+            target: parseAddr(String(call.args?.[1])),
+            selector: String(call.args?.[2]).toLowerCase(),
             allowed: call.args?.[3],
         }))
 
@@ -577,19 +543,19 @@ test('swap session create submits only the relay entrypoints and minute-zero spe
         },
         {
             withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
-            fileExists: mock(async () => false),
-            generatePrivateKey: mock(() => sessionPrivateKey),
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async (_rootPath: string) => swapRootBundle()),
+            fileExists: typedMock<SessionCreateDeps['fileExists']>(async () => false),
+            generatePrivateKey: typedMock<SessionCreateDeps['generatePrivateKey']>(() => sessionPrivateKey),
             createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(sessionAddress)),
-            writeSessionKeystoreFile: mock(async () => {}),
+            writeSessionKeystoreFile: typedMock<SessionCreateDeps['writeSessionKeystoreFile']>(async () => {}),
             writeRootKeystoreFile: writeRoot,
-            decryptRootKeystore: mock(async () => ({
+            decryptRootKeystore: typedMock<SessionCreateDeps['decryptRootKeystore']>(async () => ({
                 rootPrivateKey:
                     '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
             })),
-            readNonce: mock(async () => 1n),
+            readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 1n),
             executeSignedCalls,
-            getKeys: mock(
+            getKeys: typedMock<AccountSwapDeps['getKeys']>(
                 async (): Promise<GetKeysResponse> => ({
                     '0x2105': [
                         {
@@ -648,19 +614,19 @@ test('swap session create refuses a standing Permit2 allowance before authorize'
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
-                fileExists: mock(async () => false),
-                generatePrivateKey: mock(
+                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async (_rootPath: string) => swapRootBundle()),
+                fileExists: typedMock<SessionCreateDeps['fileExists']>(async () => false),
+                generatePrivateKey: typedMock<SessionCreateDeps['generatePrivateKey']>(
                     () =>
                         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
                 ),
                 createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
-                writeSessionKeystoreFile: mock(async () => {}),
-                decryptRootKeystore: mock(async () => ({
+                writeSessionKeystoreFile: typedMock<SessionCreateDeps['writeSessionKeystoreFile']>(async () => {}),
+                decryptRootKeystore: typedMock<SessionCreateDeps['decryptRootKeystore']>(async () => ({
                     rootPrivateKey:
                         '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
                 })),
-                readNonce: mock(async () => 1n),
+                readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 1n),
                 executeSignedCalls,
                 readErc20Allowance: async () => 0n,
                 readPermit2Allowance: async () => ({
@@ -693,19 +659,19 @@ test('swap session create fails closed when a standing-rights read errors', asyn
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
-                fileExists: mock(async () => false),
-                generatePrivateKey: mock(
+                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async (_rootPath: string) => swapRootBundle()),
+                fileExists: typedMock<SessionCreateDeps['fileExists']>(async () => false),
+                generatePrivateKey: typedMock<SessionCreateDeps['generatePrivateKey']>(
                     () =>
                         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
                 ),
                 createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
-                writeSessionKeystoreFile: mock(async () => {}),
-                decryptRootKeystore: mock(async () => ({
+                writeSessionKeystoreFile: typedMock<SessionCreateDeps['writeSessionKeystoreFile']>(async () => {}),
+                decryptRootKeystore: typedMock<SessionCreateDeps['decryptRootKeystore']>(async () => ({
                     rootPrivateKey:
                         '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
                 })),
-                readNonce: mock(async () => 1n),
+                readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 1n),
                 executeSignedCalls,
                 readErc20Allowance: async () => {
                     throw new Error('allowance rpc down')
@@ -745,7 +711,7 @@ test('a quote grant is revoked when the pending limit is recovered', async () =>
     const decoded = submitted.map((data) => decodeFunctionData({ abi: accountAbi, data }))
     expect(decoded.map((call) => call.functionName)).toEqual(['setCanExecute'])
     expect(decoded[0]?.args?.[1]).toBe(USDC)
-    expect((decoded[0]?.args?.[2] as string).toLowerCase()).toBe(APPROVE)
+    expect(String(decoded[0]?.args?.[2]).toLowerCase()).toBe(APPROVE)
     expect(decoded[0]?.args?.[3]).toBe(false)
     await expect(readFile(pendingQuoteLimitPath(keystorePath), 'utf8')).rejects.toThrow()
 })
@@ -809,7 +775,7 @@ test('standing rights include the quoted input and fail closed on a read error',
     ).rejects.toThrow(/standing allowance/)
 })
 
-const CHECKER = '0x5555555555555555555555555555555555555555' as Address
+const CHECKER = '0x5555555555555555555555555555555555555555'
 
 test('creating a swap session requires CREATE SWAP SESSION, not the full-access phrase', async () => {
     const executeSignedCalls = mock(async () => {
@@ -818,18 +784,18 @@ test('creating a swap session requires CREATE SWAP SESSION, not the full-access 
 
     const deps = {
         withKeystoreLock: async <T>(_path: string, action: () => Promise<T>) => action(),
-        readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
-        fileExists: mock(async () => false),
-        generatePrivateKey: mock(
+        readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async (_rootPath: string) => swapRootBundle()),
+        fileExists: typedMock<SessionCreateDeps['fileExists']>(async () => false),
+        generatePrivateKey: typedMock<SessionCreateDeps['generatePrivateKey']>(
             () => '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
         ),
         createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
-        writeSessionKeystoreFile: mock(async () => {}),
-        decryptRootKeystore: mock(async () => ({
+        writeSessionKeystoreFile: typedMock<SessionCreateDeps['writeSessionKeystoreFile']>(async () => {}),
+        decryptRootKeystore: typedMock<SessionCreateDeps['decryptRootKeystore']>(async () => ({
             rootPrivateKey:
                 '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
         })),
-        readNonce: mock(async () => 1n),
+        readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 1n),
         executeSignedCalls,
         readErc20Allowance: async () => 0n,
         readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
@@ -898,19 +864,19 @@ test('swap session create refuses an ERC-1271 signature checker before authorize
             },
             {
                 withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(async (_rootPath: string) => swapRootBundle()),
-                fileExists: mock(async () => false),
-                generatePrivateKey: mock(
+                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async (_rootPath: string) => swapRootBundle()),
+                fileExists: typedMock<SessionCreateDeps['fileExists']>(async () => false),
+                generatePrivateKey: typedMock<SessionCreateDeps['generatePrivateKey']>(
                     () =>
                         '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const,
                 ),
                 createSessionKeystore: createSessionKeystoreReturning(swapSessionKeystore(SESSION_ADDRESS)),
-                writeSessionKeystoreFile: mock(async () => {}),
-                decryptRootKeystore: mock(async () => ({
+                writeSessionKeystoreFile: typedMock<SessionCreateDeps['writeSessionKeystoreFile']>(async () => {}),
+                decryptRootKeystore: typedMock<SessionCreateDeps['decryptRootKeystore']>(async () => ({
                     rootPrivateKey:
                         '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const,
                 })),
-                readNonce: mock(async () => 1n),
+                readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 1n),
                 executeSignedCalls,
                 readErc20Allowance: async () => 0n,
                 readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),

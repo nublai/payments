@@ -10,10 +10,38 @@ import {
     resolveSelectedKey,
     type OnChainPermissionKey,
 } from '../src/lib/permissions-common'
-import { executePermissionsGrant } from '../src/lib/permissions-grant'
-import { executePermissionsList } from '../src/lib/permissions-list'
-import { executePermissionsRevoke } from '../src/lib/permissions-revoke'
-import { executePermissionsShow } from '../src/lib/permissions-show'
+import {
+    executePermissionsGrant,
+    executePermissionsList,
+    executePermissionsRevoke,
+    executePermissionsShow,
+} from './helpers/stub-execute'
+import { confirmedBundle } from './helpers/bundle-status'
+import { parseHex, repeatedHex } from './helpers/hex'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { typedMock } from './helpers/typed-mock'
+import type { PermissionsGrantDeps } from '../src/lib/permissions-grant'
+
+function permissionsBundle() {
+    const bundle = testKeystoreBundle(
+        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        '0x3333333333333333333333333333333333333333',
+        31337,
+        'dev',
+    )
+
+    return {
+        ...bundle,
+        root: {
+            ...bundle.root,
+            addresses: {
+                root: bundle.root.addresses.root,
+                delegated: accountAddress,
+            },
+            sessionRef: { active: 'default', dir: 'sessions' },
+        },
+    }
+}
 
 const accountAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
@@ -77,37 +105,19 @@ test('executePermissionsGrant builds setCanExecute calldata for call grants', as
             password: 'pw',
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
-            readNonce: mock(async () => 9n),
-            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
+            decryptRootKeystore: typedMock<PermissionsGrantDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
+            readNonce: typedMock<PermissionsGrantDeps['readNonce']>(async () => 9n),
+            executeSignedCalls: typedMock<PermissionsGrantDeps['executeSignedCalls']>(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
                     id: 'bundle-1',
-                    finalStatus: {
-                        success: true,
-                        status: 'confirmed',
-                        statusCode: 200,
-                        receipt: { transactionHash: '0x' + '22'.repeat(32) },
-                    } as any,
+                    finalStatus: confirmedBundle('bundle-1', repeatedHex('22', 32)),
                     feeCap,
                 }
             }),
@@ -146,22 +156,11 @@ test('executePermissionsGrant rejects admin key rule changes', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+                readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
-                getKeys: mock(async () => ({ '0x7a69': [makeKey({ role: 'admin' })] })),
+                readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+                getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey({ role: 'admin' })] })),
             },
         ),
     ).rejects.toMatchObject({ code: 'UNSUPPORTED_FOR_ADMIN_KEY' })
@@ -181,27 +180,14 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
-            readNonce: mock(async () => 10n),
-            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
+            decryptRootKeystore: typedMock<PermissionsGrantDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
+            readNonce: typedMock<PermissionsGrantDeps['readNonce']>(async () => 10n),
+            executeSignedCalls: typedMock<PermissionsGrantDeps['executeSignedCalls']>(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
@@ -210,7 +196,7 @@ test('executePermissionsRevoke --rule call generates setCanExecute false', async
                         success: true,
                         status: 'confirmed',
                         statusCode: 200,
-                    } as any,
+                    },
                     feeCap,
                 }
             }),
@@ -246,22 +232,11 @@ test('executePermissionsRevoke rejects using --all with --rule together', async 
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+                readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
-                getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
+                readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+                getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
     ).rejects.toMatchObject({
@@ -272,7 +247,7 @@ test('executePermissionsRevoke rejects using --all with --rule together', async 
 
 test('executePermissionsShow derives external address and emits deterministic rule ids', async () => {
     const externalAddress = '0x4444444444444444444444444444444444444444'
-    const externalPublicKey = `${externalAddress}${'00'.repeat(12)}`.toLowerCase() as Hex
+    const externalPublicKey = parseHex(`${externalAddress}${'00'.repeat(12)}`.toLowerCase())
 
     const result = await executePermissionsShow(
         {
@@ -282,21 +257,10 @@ test('executePermissionsShow derives external address and emits deterministic ru
             keyHash,
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({
                 '0x7a69': [
                     makeKey({
                         type: 'external',
@@ -340,21 +304,10 @@ test('executePermissionsList returns spend usage summary ids and hashes', async 
             keystorePath: '/tmp/permissions-keystore.json',
         },
         {
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({
                 '0x7a69': [
                     makeKey({
                         permissions: [
@@ -393,27 +346,16 @@ test('executePermissionsRevoke surfaces send failure diagnostics', async () => {
                 phraseConfirmed: true,
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+                readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
-                getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-                decryptRootKeystore: mock(
-                    async () => ({ rootPrivateKey: ('0x' + '11'.repeat(32)) as Hex }) as any,
+                readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+                getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
+                decryptRootKeystore: typedMock<PermissionsGrantDeps['decryptRootKeystore']>(
+                    async () => ({ rootPrivateKey: repeatedHex('11', 32) }),
                 ),
-                readNonce: mock(async () => 10n),
-                executeSignedCalls: mock(async () => ({
+                readNonce: typedMock<PermissionsGrantDeps['readNonce']>(async () => 10n),
+                executeSignedCalls: typedMock<PermissionsGrantDeps['executeSignedCalls']>(async () => ({
                     id: 'bundle-failed',
                     finalStatus: {
                         success: false,
@@ -421,13 +363,12 @@ test('executePermissionsRevoke surfaces send failure diagnostics', async () => {
                         statusCode: 500,
                         error: 'execution reverted',
                         receipt: {
-                            transactionHash: '0x' + '44'.repeat(32),
-                            intentError: {
-                                name: 'IntentCallFailed',
-                                args: [],
-                            },
+                            transactionHash: repeatedHex('44', 32),
+                            blockNumber: '1',
+                            gasUsed: '1',
+                            status: 'reverted',
                         },
-                    } as any,
+                    },
                     feeCap,
                 })),
             },
@@ -463,37 +404,19 @@ test('executePermissionsGrant builds setSpendLimit calldata for spend grants', a
             password: 'pw',
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
-            readNonce: mock(async () => 5n),
-            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
+            decryptRootKeystore: typedMock<PermissionsGrantDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
+            readNonce: typedMock<PermissionsGrantDeps['readNonce']>(async () => 5n),
+            executeSignedCalls: typedMock<PermissionsGrantDeps['executeSignedCalls']>(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
                     id: 'bundle-spend',
-                    finalStatus: {
-                        success: true,
-                        status: 'confirmed',
-                        statusCode: 200,
-                        receipt: { transactionHash: '0x' + '33'.repeat(32) },
-                    } as any,
+                    finalStatus: confirmedBundle('bundle-1', repeatedHex('33', 32)),
                     feeCap,
                 }
             }),
@@ -523,22 +446,11 @@ test('executePermissionsGrant rejects call grant missing target', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+                readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
-                getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
+                readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+                getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
     ).rejects.toMatchObject({
@@ -559,22 +471,11 @@ test('executePermissionsGrant rejects spend grant missing token', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+                readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
-                getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
+                readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+                getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
     ).rejects.toMatchObject({
@@ -614,27 +515,14 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({ '0x7a69': [keyWithPermissions] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
-            readNonce: mock(async () => 10n),
-            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [keyWithPermissions] })),
+            decryptRootKeystore: typedMock<PermissionsGrantDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
+            readNonce: typedMock<PermissionsGrantDeps['readNonce']>(async () => 10n),
+            executeSignedCalls: typedMock<PermissionsGrantDeps['executeSignedCalls']>(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 for (const call of params.calls) {
                     capturedCalls.push(call.data)
                 }
@@ -645,7 +533,7 @@ test('executePermissionsRevoke --all removes both call and spend rules', async (
                         success: true,
                         status: 'confirmed',
                         statusCode: 200,
-                    } as any,
+                    },
                     feeCap,
                 }
             }),
@@ -673,22 +561,11 @@ test('executePermissionsRevoke returns no-op when key has no permissions and --a
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
         },
     )
 
@@ -707,22 +584,11 @@ test('executePermissionsRevoke rejects without --rule or --all', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+                readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
-                getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
+                readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+                getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
             },
         ),
     ).rejects.toMatchObject({
@@ -745,27 +611,14 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
             phraseConfirmed: true,
         },
         {
-            withKeystoreLock: async (_path, action) => action(),
-            readKeystoreBundle: mock(
-                async () =>
-                    ({
-                        root: {
-                            sessionRef: { active: 'default', dir: 'sessions' },
-                            addresses: {
-                                root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                delegated: accountAddress,
-                            },
-                        },
-                    }) as any,
-            ),
+            withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+            readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
             listSessionNames: mock(async () => []),
-            readSessionKeystoreFile: mock(async () => ({}) as any),
-            getKeys: mock(async () => ({ '0x7a69': [makeKey()] })),
-            decryptRootKeystore: mock(
-                async () => ({ rootPrivateKey: '0x' + '11'.repeat(32) }) as any,
-            ),
-            readNonce: mock(async () => 10n),
-            executeSignedCalls: mock(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
+            readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+            getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey()] })),
+            decryptRootKeystore: typedMock<PermissionsGrantDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey: repeatedHex('11', 32) })),
+            readNonce: typedMock<PermissionsGrantDeps['readNonce']>(async () => 10n),
+            executeSignedCalls: typedMock<PermissionsGrantDeps['executeSignedCalls']>(async (_deps: ExecuteSignedCallsDeps, params: ExecuteSignedCallsParams) => {
                 capturedData = params.calls[0]?.data
 
                 return {
@@ -774,7 +627,7 @@ test('executePermissionsRevoke --rule spend generates removeSpendLimit', async (
                         success: true,
                         status: 'confirmed',
                         statusCode: 200,
-                    } as any,
+                    },
                     feeCap,
                 }
             }),
@@ -798,22 +651,11 @@ test('executePermissionsRevoke rejects admin key', async () => {
                 password: 'pw',
             },
             {
-                withKeystoreLock: async (_path, action) => action(),
-                readKeystoreBundle: mock(
-                    async () =>
-                        ({
-                            root: {
-                                sessionRef: { active: 'default', dir: 'sessions' },
-                                addresses: {
-                                    root: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                    delegated: accountAddress,
-                                },
-                            },
-                        }) as any,
-                ),
+                withKeystoreLock: async <T>(_path: string, action: () => Promise<T>): Promise<T> => action(),
+                readKeystoreBundle: typedMock<PermissionsGrantDeps['readKeystoreBundle']>(async () => permissionsBundle()),
                 listSessionNames: mock(async () => []),
-                readSessionKeystoreFile: mock(async () => ({}) as any),
-                getKeys: mock(async () => ({ '0x7a69': [makeKey({ role: 'admin' })] })),
+                readSessionKeystoreFile: typedMock<PermissionsGrantDeps['readSessionKeystoreFile']>(async () => permissionsBundle().session),
+                getKeys: typedMock<PermissionsGrantDeps['getKeys']>(async () => ({ '0x7a69': [makeKey({ role: 'admin' })] })),
             },
         ),
     ).rejects.toMatchObject({ code: 'UNSUPPORTED_FOR_ADMIN_KEY' })

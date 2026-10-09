@@ -17,6 +17,8 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { relayerActions } from '../../src'
 import type { RpcPrepareCallsContext, RpcUpgradeAccountContext } from '../../src/rpc-schema'
 import { createJsonRpcTransport, type JsonRpcTransport } from '../../src/transport'
+import { requiredAddr, requiredEnv } from '../helpers/env'
+import { parseAddr, parseHex } from '../helpers/hex'
 
 type PrivyWalletInfo = {
     address: Address
@@ -75,46 +77,47 @@ function toHexChainId(chainId: number): `0x${string}` {
 }
 
 function getChainMeta(chainId: number): ChainMeta {
-    const chainMetaById = {
-        8453: {
-            id: 8453,
-            name: 'Base',
-            nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
-        },
-        84532: {
-            id: 84532,
-            name: 'Base Sepolia',
-            nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
-        },
-        137: {
-            id: 137,
-            name: 'Polygon',
-            nativeCurrency: { decimals: 18, name: 'POL', symbol: 'POL' },
-        },
-        42161: {
-            id: 42161,
-            name: 'Arbitrum',
-            nativeCurrency: { decimals: 18, name: 'ETH', symbol: 'ETH' },
-        },
-        31337: {
-            id: 31337,
-            name: 'Anvil',
-            nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
-        },
-    } as const
-
-    const chainMeta = chainMetaById[chainId as keyof typeof chainMetaById]
-
-    if (!chainMeta) throw new Error(`Unsupported TEST_CHAIN_ID: ${chainId}`)
-
-    return chainMeta
+    switch (chainId) {
+        case 8453:
+            return {
+                id: 8453,
+                name: 'Base',
+                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
+            }
+        case 84532:
+            return {
+                id: 84532,
+                name: 'Base Sepolia',
+                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
+            }
+        case 137:
+            return {
+                id: 137,
+                name: 'Polygon',
+                nativeCurrency: { decimals: 18, name: 'POL', symbol: 'POL' },
+            }
+        case 42161:
+            return {
+                id: 42161,
+                name: 'Arbitrum',
+                nativeCurrency: { decimals: 18, name: 'ETH', symbol: 'ETH' },
+            }
+        case 31337:
+            return {
+                id: 31337,
+                name: 'Anvil',
+                nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
+            }
+        default:
+            throw new Error(`Unsupported TEST_CHAIN_ID: ${chainId}`)
+    }
 }
 
 async function bootstrapPrivyUserWithWallet(): Promise<PrivyBootstrap> {
     const explicitToken = process.env.PRIVY_TEST_ACCESS_TOKEN?.trim()
 
-    const appId = process.env.PRIVY_APP_ID as string
-    const appSecret = process.env.PRIVY_APP_SECRET as string
+    const appId = requiredEnv('PRIVY_APP_ID')
+    const appSecret = requiredEnv('PRIVY_APP_SECRET')
 
     const walletAuthorizationPrivateKey = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY?.trim()
 
@@ -142,7 +145,7 @@ async function bootstrapPrivyUserWithWallet(): Promise<PrivyBootstrap> {
 
     if (explicitWalletId) {
         const candidate = await privy.walletApi.getWallet({ id: explicitWalletId })
-        wallet = { id: candidate.id, address: candidate.address as Address }
+        wallet = { id: candidate.id, address: parseAddr(candidate.address) }
     } else {
         // Create wallet under Wallet API ownership so the configured auth key can sign.
         const created = await privy.walletApi.createWallet({
@@ -150,7 +153,7 @@ async function bootstrapPrivyUserWithWallet(): Promise<PrivyBootstrap> {
             policyIds: [],
         })
 
-        wallet = { id: created.id, address: created.address as Address }
+        wallet = { id: created.id, address: parseAddr(created.address) }
     }
 
     // Fail fast with an actionable error if the resolved wallet is not signable.
@@ -185,7 +188,7 @@ function authSignatureFromRsv(input: {
 }
 
 function createPrivyTransport(token: string): JsonRpcTransport {
-    return createJsonRpcTransport(process.env.RELAYER_URL as string, {
+    return createJsonRpcTransport(requiredEnv('RELAYER_URL'), {
         httpAuth: { authToken: token },
     })
 }
@@ -281,15 +284,15 @@ async function prepareAndSignWithPrivy(params: {
 
     return {
         context: prepared.context,
-        signature: signature.signature as `0x${string}`,
+        signature: parseHex(signature.signature),
     }
 }
 
 async function createDelegatedErc8128Context() {
-    const rpcUrl = process.env.RPC_URL as string
-    const relayerUrl = process.env.RELAYER_URL as string
+    const rpcUrl = requiredEnv('RPC_URL')
+    const relayerUrl = requiredEnv('RELAYER_URL')
     const chainId = Number(process.env.TEST_CHAIN_ID)
-    const delegation = process.env.REMOTE_ACCOUNT_PROXY as Address
+    const delegation = requiredAddr('REMOTE_ACCOUNT_PROXY')
 
     const chainMeta = getChainMeta(chainId)
     const signerKey = generatePrivateKey()
@@ -366,7 +369,7 @@ describe('Remote Smoke: HTTP auth', () => {
     describe.skipIf(!hasPrivyEnv)('Privy', () => {
         it('authorized: delegated Privy wallet + valid bearer token calls wallet_sendPreparedCalls', async () => {
             const chainId = Number(process.env.TEST_CHAIN_ID)
-            const delegation = process.env.REMOTE_ACCOUNT_PROXY as Address
+            const delegation = requiredAddr('REMOTE_ACCOUNT_PROXY')
 
             const boot = await bootstrapPrivyUserWithWallet()
             const validTransport = createPrivyTransport(boot.accessToken)
@@ -399,7 +402,7 @@ describe('Remote Smoke: HTTP auth', () => {
 
         it('unauthorized: delegated Privy wallet + invalid bearer token is rejected for wallet_sendPreparedCalls', async () => {
             const chainId = Number(process.env.TEST_CHAIN_ID)
-            const delegation = process.env.REMOTE_ACCOUNT_PROXY as Address
+            const delegation = requiredAddr('REMOTE_ACCOUNT_PROXY')
 
             const boot = await bootstrapPrivyUserWithWallet()
             const validTransport = createPrivyTransport(boot.accessToken)
@@ -434,7 +437,7 @@ describe('Remote Smoke: HTTP auth', () => {
         it('authorized: valid ERC-8128 signature calls wallet_sendPreparedCalls', async () => {
             const delegated = await createDelegatedErc8128Context()
 
-            const transport = createJsonRpcTransport(process.env.RELAYER_URL as string, {
+            const transport = createJsonRpcTransport(requiredEnv('RELAYER_URL'), {
                 httpAuth: { signer: delegated.signer },
             })
 
@@ -457,7 +460,7 @@ describe('Remote Smoke: HTTP auth', () => {
                     wrongKeyAccount.signMessage({ message: { raw: toHex(message) } }),
             }
 
-            const transport = createJsonRpcTransport(process.env.RELAYER_URL as string, {
+            const transport = createJsonRpcTransport(requiredEnv('RELAYER_URL'), {
                 httpAuth: { signer: invalidSigner },
             })
 

@@ -12,14 +12,20 @@ import {
     type Hex,
 } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
-import { executeAccountSwap } from '../src/lib/account-swap'
-import { executeSignedCalls } from '../src/lib/execute-calls'
+import { executeAccountSwap, executeSignedCalls } from './helpers/stub-execute'
 import { readKeystoreBundle } from '../src/lib/keystore'
 import { simulateRelayQuote } from '../src/lib/relay-simulate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { hex, repeatedHex } from './helpers/hex'
+import { testBaseKeys } from './helpers/authorized-key'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { confirmedBundle } from './helpers/bundle-status'
+import { signedCallsResult } from './helpers/signed-calls'
+import { typedMock } from './helpers/typed-mock'
+import type { AccountSwapDeps } from '../src/lib/account-swap'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -31,25 +37,25 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const USER = '0x1111111111111111111111111111111111111111' as Address
+const USER = '0x1111111111111111111111111111111111111111'
 
-const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as Address
+const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const WETH = '0x4200000000000000000000000000000000000006' as Address
+const WETH = '0x4200000000000000000000000000000000000006'
 
-const ATTACKER = '0x2222222222222222222222222222222222222222' as Address
+const ATTACKER = '0x2222222222222222222222222222222222222222'
 
-const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE' as Address
+const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE'
 
-const ANY_TARGET = '0x3232323232323232323232323232323232323232' as Address
+const ANY_TARGET = '0x3232323232323232323232323232323232323232'
 
-const ANY_FN = '0x32323232' as Hex
+const ANY_FN = '0x32323232'
 
-const KEY_HASH = `0x${'ab'.repeat(32)}` as Hex
+const KEY_HASH = repeatedHex('ab', 32)
 
 const TRANSFER_TOPIC = keccak256(toHex('Transfer(address,address,uint256)'))
 
@@ -114,20 +120,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 function narrowKeys(role: 'normal' | 'admin' = 'normal', wildcard = false) {
-    return {
-        '0x2105': [
-            {
-                hash: SESSION_KEY_HASH,
-                expiry: '0x0',
-                type: 'secp256k1' as const,
-                role,
-                publicKey: '0x' as const,
-                permissions: wildcard
-                    ? [{ type: 'call' as const, to: ANY_TARGET, selector: ANY_FN }]
-                    : relaySessionCallPermissions(8453),
-            },
-        ],
-    }
+    return testBaseKeys(
+        SESSION_KEY_HASH,
+        {
+            role,
+            permissions: wildcard
+                ? [{ type: 'call' as const, to: ANY_TARGET, selector: ANY_FN }]
+                : relaySessionCallPermissions(8453),
+        },
+    )
 }
 
 function quoteFor(data: Hex, to: Address = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f') {
@@ -154,24 +155,7 @@ function quoteFor(data: Hex, to: Address = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec
 }
 
 function bundle() {
-    return {
-        format: 'split',
-        rootPath: '/tmp/alice.json',
-        sessionPath: '/tmp/sessions/default.json',
-        root: {
-            addresses: { root: USER, delegated: USER },
-            sessionRef: { dir: '/tmp/sessions' },
-        },
-        session: {
-            network: {
-                env: 'prod' as const,
-                relayerUrl: 'http://127.0.0.1:8787',
-                rpcUrl: 'https://mainnet.base.org',
-                chainId: 8453,
-            },
-            addresses: { delegated: USER, session: SESSION_ADDRESS },
-        },
-    }
+    return testKeystoreBundle(USER, SESSION_ADDRESS, 8453, 'prod')
 }
 
 function run(input: {
@@ -179,9 +163,9 @@ function run(input: {
     quote?: ReturnType<typeof quoteFor>
     keys?: ReturnType<typeof narrowKeys>
     installQuoteSpendLimit?: () => Promise<() => Promise<void>>
-    executeSignedCalls?: () => Promise<unknown>
+    executeSignedCalls?: AccountSwapDeps['executeSignedCalls']
 }) {
-    const signTypedData = mock(async () => '0x11' as Hex)
+    const signTypedData = mock(async () => hex('0x11'))
 
     const result = executeAccountSwap(
         {
@@ -195,21 +179,21 @@ function run(input: {
             yes: true,
         },
         {
-            readKeystoreBundle: mock(async () => bundle()) as any,
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => bundle()),
+            decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            readTokenBalance: mock(async () => 10_000000n),
-            getQuote: mock(async () => input.quote ?? quoteFor(EMPTY_MULTICALL)) as any,
-            readNonce: mock(async () => 2n),
-            confirmQuote: mock(async () => true),
-            getKeys: mock(async () => input.keys ?? narrowKeys()) as any,
-            prepareCalls: mock(async (call: Parameters<typeof matchingPreparedCalls>[0]) =>
+            readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10_000000n),
+            getQuote: typedMock<AccountSwapDeps['getQuote']>(async () => input.quote ?? quoteFor(EMPTY_MULTICALL)),
+            readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
+            confirmQuote: typedMock<AccountSwapDeps['confirmQuote']>(async () => true),
+            getKeys: typedMock<AccountSwapDeps['getKeys']>(async () => input.keys ?? narrowKeys()),
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (call: Parameters<typeof matchingPreparedCalls>[0]) =>
                 matchingPreparedCalls(call),
-            ) as any,
-            signTypedData: signTypedData as any,
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
+            ),
+            signTypedData: typedMock<AccountSwapDeps['signTypedData']>(signTypedData),
+            sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
             simulateQuoteCalls: async () => {},
             installQuoteSpendLimit: input.installQuoteSpendLimit ?? (async () => async () => {}),
             readAllowance: async () => 0n,
@@ -220,27 +204,10 @@ function run(input: {
             readErc4626ShareBalance: async () => 0n,
             readErc4626ShareAllowance: async () => 0n,
             readApprovedSignatureCheckers: async () => [],
-            executeSignedCalls: (input.executeSignedCalls ??
-                (async () => ({
-                    id: 'bundle-1',
-                    finalStatus: {
-                        success: true,
-                        id: 'bundle-1',
-                        status: 'confirmed',
-                        statusCode: 200,
-                        receipt: {
-                            transactionHash:
-                                '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                        },
-                    },
-                    feeCap: { token: zeroAddress, amount: 0n },
-                }))) as any,
-            waitForBundle: mock(async () => ({
-                success: true,
-                id: 'bundle-1',
-                status: 'confirmed',
-                statusCode: 200,
-            })) as any,
+            executeSignedCalls: typedMock<AccountSwapDeps['executeSignedCalls']>(
+                input.executeSignedCalls ?? (async () => signedCallsResult()),
+            ),
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => confirmedBundle()),
         },
     )
 
@@ -283,7 +250,7 @@ test('success false still releases the spend limit', async () => {
         executeSignedCalls: async () => ({
             id: 'bundle-1',
             finalStatus: { success: false, id: 'bundle-1', status: 'failed', error: 'reverted' },
-            feeCap: { token: zeroAddress, amount: 0n },
+            feeCap: { token: zeroAddress, symbol: 'none', amountUsdc: '0', expiresIn: '1h' },
         }),
     })
 
@@ -476,12 +443,17 @@ test('simulation refuses when output logs do not match the balance diff', async 
     const pad = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
     const userTopic = `0x${USER.slice(2).toLowerCase().padStart(64, '0')}`
 
+    type SimulateBlock = {
+        blockStateCalls: { calls: Array<{ to?: string; data?: string; value?: string }> }[]
+    }
+
     const request = async (method: string, params: unknown[]) => {
         if (method === 'eth_getBalance' || method === 'eth_call') return pad(100n)
 
         if (method === 'eth_simulateV1') {
-            const block = params[0] as { blockStateCalls: { calls: unknown[] }[] }
-            const calls = block.blockStateCalls[0]?.calls ?? []
+            const block = params[0]
+            // SAFETY: this stub only reads blockStateCalls from eth_simulateV1 params it invented.
+            const calls = (block as SimulateBlock | undefined)?.blockStateCalls[0]?.calls ?? []
 
             return [
                 {
@@ -550,28 +522,28 @@ test('the second simulation runs on the calls about to be signed, after prepare 
             yes: true,
         },
         {
-            readKeystoreBundle: mock(async () => bundle()) as any,
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => bundle()),
+            decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            readTokenBalance: mock(async () => 10_000000n),
-            getQuote: mock(async () => quoteFor(EMPTY_MULTICALL)) as any,
-            readNonce: mock(async () => 2n),
-            confirmQuote: mock(async () => true),
-            getKeys: mock(async () => narrowKeys()) as any,
-            prepareCalls: mock(async (call: Parameters<typeof matchingPreparedCalls>[0]) => {
+            readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10_000000n),
+            getQuote: typedMock<AccountSwapDeps['getQuote']>(async () => quoteFor(EMPTY_MULTICALL)),
+            readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
+            confirmQuote: typedMock<AccountSwapDeps['confirmQuote']>(async () => true),
+            getKeys: typedMock<AccountSwapDeps['getKeys']>(async () => narrowKeys()),
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (call: Parameters<typeof matchingPreparedCalls>[0]) => {
                 order.push('prepare')
 
                 return matchingPreparedCalls(call)
-            }) as any,
-            signTypedData: mock(async () => {
+            }),
+            signTypedData: typedMock<AccountSwapDeps['signTypedData']>(async () => {
                 order.push('sign')
 
                 return signature
-            }) as any,
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            simulateQuoteCalls: async (input) => {
+            }),
+            sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+            simulateQuoteCalls: async (input: { calls: Array<{ data?: Hex }> }) => {
                 order.push('sim')
                 simulated = input.calls[0]?.data
             },
@@ -584,16 +556,7 @@ test('the second simulation runs on the calls about to be signed, after prepare 
             readErc4626ShareBalance: async () => 0n,
             readErc4626ShareAllowance: async () => 0n,
             readApprovedSignatureCheckers: async () => [],
-            waitForBundle: mock(async () => ({
-                success: true,
-                id: 'bundle-1',
-                status: 'confirmed',
-                statusCode: 200,
-                receipt: {
-                    transactionHash:
-                        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                },
-            })) as any,
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => confirmedBundle()),
         },
     )
     expect(simulated).toBe(EMPTY_MULTICALL)

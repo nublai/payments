@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest'
 import type { GetKeysResponse } from '../../src/actions/getKeys.js'
 import { findAuthorizedKey, getChainKeys } from '../../src/helpers/keys.js'
 
-const KEYS_FIXTURE = {
+const KEYS_FIXTURE: GetKeysResponse = {
     '0x2105': [
         {
             hash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
             type: 'secp256k1',
             role: 'admin',
             permissions: [],
-            expiry: '0',
+            expiry: '0x00',
+            publicKey: '0x',
         },
     ],
     '0x14A33': [
@@ -18,10 +19,11 @@ const KEYS_FIXTURE = {
             type: 'secp256k1',
             role: 'normal',
             permissions: [],
-            expiry: '0',
+            expiry: '0x00',
+            publicKey: '0x',
         },
     ],
-} as unknown as GetKeysResponse
+}
 
 describe('helpers/keys', () => {
     it('returns chain keys via exact hex key match', () => {

@@ -7,29 +7,32 @@ import { signPreparedCalls } from '../../src/helpers/signPreparedCalls.js'
 import { INTENT_TYPES } from '../../src/types.js'
 import { computeErc1271Digest } from '../../src/utils/erc1271.js'
 import { wrapSignature } from '../../src/utils/signature.js'
+import { addr, emptyHex, repeatedHex } from '../helpers/hex'
 
-const RAW_SIGNATURE = `0x${'11'.repeat(65)}` as Hex
+const RAW_SIGNATURE = repeatedHex('11', 65)
 
-const KEY_HASH = `0x${'22'.repeat(32)}` as Hex
+const KEY_HASH = repeatedHex('22', 32)
 
-const TARGET_ACCOUNT = '0x1234567890123456789012345678901234567890' as Address
+const TARGET_ACCOUNT = addr('0x1234567890123456789012345678901234567890')
 
-const DELEGATED_SIGNER = '0x9876543210987654321098765432109876543210' as Address
+const DELEGATED_SIGNER = addr('0x9876543210987654321098765432109876543210')
 
-const ORCHESTRATOR = '0x1111111111111111111111111111111111111111' as Address
+const ORCHESTRATOR = addr('0x1111111111111111111111111111111111111111')
 
 function makePrepared(eoa: Address = TARGET_ACCOUNT): PrepareCallsResponse {
+    const calls: { to: Address; value: bigint; data: Hex }[] = []
+
     const message = {
         multichain: false,
         eoa,
-        calls: [] as { to: Address; value: bigint; data: Hex }[],
+        calls,
         nonce: 1n,
         payer: eoa,
         paymentToken: zeroAddress,
         paymentMaxAmount: 0n,
         combinedGas: 1n,
-        encodedPreCalls: [] as Hex[],
-        encodedFundTransfers: [] as Hex[],
+        encodedPreCalls: emptyHex(),
+        encodedFundTransfers: emptyHex(),
         settler: zeroAddress,
         expiry: 1_700_000_120n,
     }

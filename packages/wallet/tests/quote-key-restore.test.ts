@@ -11,16 +11,17 @@ import {
     writePendingQuoteLimit,
     type PendingQuoteLimitRecord,
 } from '../src/lib/quote-spend-pending'
+import { repeatedHex } from './helpers/hex'
 
-const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
+const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 
-const PUBLIC_KEY = '0x1234' as Hex
+const PUBLIC_KEY: Hex = '0x1234'
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-const APPROVE = '0x095ea7b3' as Hex
+const APPROVE: Hex = '0x095ea7b3'
 
-const TRANSFER = '0xa9059cbb' as Hex
+const TRANSFER: Hex = '0xa9059cbb'
 
 const NOW = 1_700_000_000n
 
@@ -191,7 +192,7 @@ function pendingRecord(input: {
     return {
         version: 1,
         account: ACCOUNT,
-        keyHash: `0x${'ab'.repeat(32)}` as Hex,
+        keyHash: repeatedHex('ab', 32),
         chainId: 8453,
         env: 'prod',
         rpcUrl: 'http://127.0.0.1:9',

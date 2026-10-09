@@ -1,11 +1,12 @@
 import { expect, mock, test } from 'bun:test'
-import type { Hex } from 'viem'
 import {
     assertCanExportPrivateKeys,
-    executeAccountExport,
     resolveAccountExportPassword,
+    type AccountExportDeps,
 } from '../src/lib/account-export'
+import { executeAccountExport } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import { typedMock } from './helpers/typed-mock'
 
 function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRootKeystoreV2 {
     return {
@@ -16,16 +17,13 @@ function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRo
             env: 'prod',
             relayerUrl: 'http://127.0.0.1:8787',
             rpcUrl: 'https://mainnet.base.org',
-            chainId: 8453,
-        },
+            chainId: 8453 },
         addresses: {
             root: '0x1111111111111111111111111111111111111111',
-            delegated: '0x3333333333333333333333333333333333333333',
-        },
+            delegated: '0x3333333333333333333333333333333333333333' },
         sessionRef: {
             active: 'default',
-            dir: 'sessions',
-        },
+            dir: 'sessions' },
         kdf: {
             name: 'argon2id',
             params: {
@@ -33,15 +31,11 @@ function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRo
                 timeCost: 2,
                 parallelism: 1,
                 hashLength: 32,
-                salt: 'dGVzdA==',
-            },
-        },
+                salt: 'dGVzdA==' } },
         crypto: { algorithm: 'aes-256-gcm' },
         secrets: {
-            rootPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' },
-        },
-        ...overrides,
-    }
+            rootPrivateKey: { nonce: 'a', ciphertext: 'b', tag: 'c' } },
+        ...overrides }
 }
 
 function makeSessionKeystore(
@@ -56,8 +50,7 @@ function makeSessionKeystore(
             env: 'prod',
             relayerUrl: 'https://relayer.example',
             rpcUrl: 'https://rpc.example',
-            chainId: 8453,
-        },
+            chainId: 8453 },
         kdf: {
             name: 'argon2id',
             params: {
@@ -65,19 +58,14 @@ function makeSessionKeystore(
                 timeCost: 2,
                 parallelism: 1,
                 hashLength: 32,
-                salt: 'dGVzdA==',
-            },
-        },
+                salt: 'dGVzdA==' } },
         crypto: { algorithm: 'aes-256-gcm' },
         addresses: {
             session: '0x2222222222222222222222222222222222222222',
-            delegated: '0x1111111111111111111111111111111111111111',
-        },
+            delegated: '0x1111111111111111111111111111111111111111' },
         secrets: {
-            sessionPrivateKey: { nonce: 'd', ciphertext: 'e', tag: 'f' },
-        },
-        ...overrides,
-    }
+            sessionPrivateKey: { nonce: 'd', ciphertext: 'e', tag: 'f' } },
+        ...overrides }
 }
 
 test('executeAccountExport returns metadata by default without decrypting', async () => {
@@ -92,18 +80,15 @@ test('executeAccountExport returns metadata by default without decrypting', asyn
         {
             env: 'prod',
             keystorePath: '/tmp/test-keystore.json',
-            showPrivate: false,
-        },
+            showPrivate: false },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountExportDeps['readKeystoreBundle']>(async () => ({
                 rootPath: '/tmp/test-keystore.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
-                session,
-            })),
+                session })),
             decryptRootKeystore: decrypt,
-            decryptSessionKeystore: decrypt,
-        },
+            decryptSessionKeystore: decrypt },
     )
 
     expect(result.type).toBe('account_export')
@@ -119,28 +104,25 @@ test('executeAccountExport includes secrets when --show-private is enabled', asy
     const session = makeSessionKeystore()
 
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
     const sessionPrivateKey =
-        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as Hex
+        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7'
 
     const result = await executeAccountExport(
         {
             env: 'prod',
             keystorePath: '/tmp/test-keystore.json',
             showPrivate: true,
-            password: 'password',
-        },
+            password: 'password' },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountExportDeps['readKeystoreBundle']>(async () => ({
                 rootPath: '/tmp/test-keystore.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
-                session,
-            })),
-            decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-            decryptSessionKeystore: mock(async () => ({ sessionPrivateKey })),
-        },
+                session })),
+            decryptRootKeystore: typedMock<AccountExportDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+            decryptSessionKeystore: typedMock<AccountExportDeps['decryptSessionKeystore']>(async () => ({ sessionPrivateKey })) },
     )
 
     expect(result.secrets?.rootPrivateKey).toBe(rootPrivateKey)
@@ -155,20 +137,16 @@ test('executeAccountExport rejects private export without password', async () =>
             {
                 env: 'prod',
                 keystorePath: '/tmp/test-keystore.json',
-                showPrivate: true,
-            },
+                showPrivate: true },
             {
-                readKeystoreBundle: mock(async () => ({
+                readKeystoreBundle: typedMock<AccountExportDeps['readKeystoreBundle']>(async () => ({
                     rootPath: '/tmp/test-keystore.json',
                     sessionPath: '/tmp/sessions/default.json',
                     root,
-                    session,
-                })),
-            },
+                    session })) },
         ),
     ).rejects.toMatchObject({
-        code: 'PASSWORD_REQUIRED',
-    })
+        code: 'PASSWORD_REQUIRED' })
 })
 
 test('assertCanExportPrivateKeys rejects non-interactive export', async () => {
@@ -176,11 +154,9 @@ test('assertCanExportPrivateKeys rejects non-interactive export', async () => {
         assertCanExportPrivateKeys({
             showPrivate: true,
             isInteractive: false,
-            promptForTypedConfirmation: async () => true,
-        }),
+            promptForTypedConfirmation: async () => true }),
     ).rejects.toMatchObject({
-        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED',
-    })
+        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED' })
 })
 
 test('assertCanExportPrivateKeys rejects non-interactive export even when a password is available', async () => {
@@ -192,11 +168,9 @@ test('assertCanExportPrivateKeys rejects non-interactive export even when a pass
         assertCanExportPrivateKeys({
             showPrivate: true,
             isInteractive: false,
-            promptForTypedConfirmation: prompt,
-        }),
+            promptForTypedConfirmation: prompt }),
     ).rejects.toMatchObject({
-        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED',
-    })
+        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED' })
     expect(prompt).not.toHaveBeenCalled()
 })
 
@@ -207,11 +181,9 @@ test('assertCanExportPrivateKeys rejects MCP export even on a TTY', async () => 
             showPrivate: true,
             isInteractive: true,
             mcp: true,
-            promptForTypedConfirmation: prompt,
-        }),
+            promptForTypedConfirmation: prompt }),
     ).rejects.toMatchObject({
-        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED',
-    })
+        code: 'PRIVATE_EXPORT_CONFIRMATION_REQUIRED' })
     expect(prompt).not.toHaveBeenCalled()
 })
 
@@ -220,11 +192,9 @@ test('assertCanExportPrivateKeys rejects failed confirmation', async () => {
         assertCanExportPrivateKeys({
             showPrivate: true,
             isInteractive: true,
-            promptForTypedConfirmation: async () => false,
-        }),
+            promptForTypedConfirmation: async () => false }),
     ).rejects.toMatchObject({
-        code: 'PRIVATE_EXPORT_CONFIRMATION_FAILED',
-    })
+        code: 'PRIVATE_EXPORT_CONFIRMATION_FAILED' })
 })
 
 test('executeAccountExport maps invalid profile name to AccountExportError', async () => {
@@ -232,12 +202,10 @@ test('executeAccountExport maps invalid profile name to AccountExportError', asy
         executeAccountExport({
             env: 'prod',
             name: 'alice.dev',
-            showPrivate: false,
-        }),
+            showPrivate: false }),
     ).rejects.toMatchObject({
         name: 'AccountExportError',
-        code: 'INVALID_NAME',
-    })
+        code: 'INVALID_NAME' })
 })
 
 test('resolveAccountExportPassword uses env password first', async () => {
@@ -247,14 +215,12 @@ test('resolveAccountExportPassword uses env password first', async () => {
             json: false,
             passwordStdin: false,
             showPrivate: true,
-            help: false,
-        },
+            help: false },
         {
             envPassword: 'from-env',
             readPasswordFromStdin: () => 'ignored',
             promptForExistingPassword: async () => 'ignored',
-            isInteractive: true,
-        },
+            isInteractive: true },
     )
 
     expect(password).toBe('from-env')
@@ -267,13 +233,11 @@ test('resolveAccountExportPassword uses stdin when requested', async () => {
             json: false,
             passwordStdin: true,
             showPrivate: true,
-            help: false,
-        },
+            help: false },
         {
             readPasswordFromStdin: () => 'from-stdin',
             promptForExistingPassword: async () => 'ignored',
-            isInteractive: true,
-        },
+            isInteractive: true },
     )
 
     expect(password).toBe('from-stdin')
@@ -286,13 +250,11 @@ test('resolveAccountExportPassword uses existing-password prompt for interactive
             json: false,
             passwordStdin: false,
             showPrivate: true,
-            help: false,
-        },
+            help: false },
         {
             readPasswordFromStdin: () => 'ignored',
             promptForExistingPassword: async () => 'existing-password',
-            isInteractive: true,
-        },
+            isInteractive: true },
     )
 
     expect(password).toBe('existing-password')

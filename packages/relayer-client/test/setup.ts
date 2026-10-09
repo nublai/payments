@@ -41,9 +41,10 @@ const localEnvPath = resolve(__dirname, '../../contracts/deployments/envs/local/
 config({ path: localEnvPath })
 
 import { beforeAll, afterAll } from 'vitest'
-import { createPublicClient, http, type Chain, type Hex } from 'viem'
+import { createPublicClient, http, type Chain } from 'viem'
 import { base, baseSepolia } from 'viem/chains'
 import { getTestContracts } from './helpers/deployments'
+import { parseHex } from './helpers/hex'
 
 // Default ports
 export const ANVIL_PORT = process.env.ANVIL_PORT ? parseInt(process.env.ANVIL_PORT) : 8545
@@ -67,7 +68,9 @@ export const ANVIL_RPC_URL_ARB = `http://127.0.0.1:${ANVIL_PORT_ARB}`
 
 export const RELAYER_URL = process.env.RELAYER_URL || `http://127.0.0.1:${RELAYER_PORT}`
 
-export const REMOTE_PRIVATE_KEY = process.env.REMOTE_PRIVATE_KEY as Hex | undefined
+export const REMOTE_PRIVATE_KEY = process.env.REMOTE_PRIVATE_KEY
+    ? parseHex(process.env.REMOTE_PRIVATE_KEY)
+    : undefined
 
 // Check if we're running against Anvil (local or fork mode)
 // If RPC_URL is explicitly set to an external URL, we're in remote mode
