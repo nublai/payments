@@ -63,8 +63,9 @@ function pipelinedRow(row: BundleHistoryRow): PipelinedBundleRow {
 function bundlesItems(rows: BundleHistoryRow[]): BundlesByEoaResult['items'] {
     const settled = Promise.resolve(disposableRows(rows))
 
-    return Object.assign(rows.map(pipelinedRow), settled, {
-        [Promise.prototype.then.name]: settled.then.bind(settled),
+    return Object.assign(rows.map(pipelinedRow), {
+        // oxlint-disable-next-line unicorn/no-thenable -- Cloudflare RPC pipelined result must be thenable
+        then: settled.then.bind(settled),
         catch: settled.catch.bind(settled),
         finally: settled.finally.bind(settled),
         [Symbol.toStringTag]: 'Promise',
