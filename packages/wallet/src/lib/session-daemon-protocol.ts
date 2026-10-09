@@ -136,37 +136,52 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): TypedDataJson {
     return value as string | number | boolean | null | undefined
 }
 
-function reviveTypedDataInPlace(value: unknown): void {
-    if (Array.isArray(value)) {
-        for (let index = 0; index < value.length; index++) {
-            const entry = value[index]
+/** The four Intent fields this file reads after `isRecord` at the parse site. */
+type ParsedTypedDataRecord = {
+    primaryType?: unknown
+    domain?: unknown
+    types?: unknown
+    message?: unknown
+}
 
-            if (Array.isArray(entry) || isRecord(entry)) {
-                reviveTypedDataInPlace(entry)
-            } else {
-                value[index] = mapTypedDataBigInt(entry, true)
+function reviveTypedDataInPlace(value: ParsedTypedDataRecord): void {
+    const nodes: unknown[] = [value]
+
+    while (nodes.length > 0) {
+        const node = nodes.pop()
+
+        if (Array.isArray(node)) {
+            for (let index = 0; index < node.length; index++) {
+                const entry = node[index]
+
+                if (Array.isArray(entry) || isRecord(entry)) {
+                    nodes.push(entry)
+                } else {
+                    node[index] = mapTypedDataBigInt(entry, true)
+                }
             }
+
+            continue
         }
 
-        return
-    }
+        if (!isRecord(node)) {
+            continue
+        }
 
-    if (isRecord(value)) {
-        for (const key of Object.keys(value)) {
-            const entry = value[key]
+        for (const key of Object.keys(node)) {
+            const entry = node[key]
 
             if (Array.isArray(entry) || isRecord(entry)) {
-                reviveTypedDataInPlace(entry)
+                nodes.push(entry)
             } else {
-                value[key] = mapTypedDataBigInt(entry, true)
+                node[key] = mapTypedDataBigInt(entry, true)
             }
         }
     }
 }
 
-function hasIntentTypedDataKeys(value: unknown): boolean {
+function hasIntentTypedDataKeys(value: ParsedTypedDataRecord): boolean {
     return (
-        isRecord(value) &&
         value.primaryType === 'Intent' &&
         isRecord(value.domain) &&
         isRecord(value.types) &&
@@ -178,7 +193,7 @@ export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson
     return mapTypedDataBigInt(typedData, false)
 }
 
-export function decodeTypedDataBigInt(value: unknown): DaemonTypedData {
+export function decodeTypedDataBigInt(value: ParsedTypedDataRecord): DaemonTypedData {
     if (!hasIntentTypedDataKeys(value)) {
         throw new Error('Invalid daemon typed data')
     }
