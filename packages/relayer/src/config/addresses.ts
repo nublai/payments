@@ -17,7 +17,7 @@ type AddressEnvKey = (typeof ADDRESS_ENV_KEYS)[number]
 export type ContractAddressEnv = {
     CONTEXT?: string
 } & { [K in AddressEnvKey]?: string } & {
-    [K in `${AddressEnvKey}_${string}`]?: string
+    [K in `${AddressEnvKey}_${number}`]?: string
 }
 
 function addressEnvVars(env: ContractAddressEnv, chainId: number) {

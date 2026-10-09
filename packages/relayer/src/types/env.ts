@@ -75,7 +75,7 @@ export interface Env {
     CONTEXT?: string // Deployment context: "prod", "stage", "local" (default: "prod")
 
     // Chain-specific contract addresses (e.g. ORCHESTRATOR_31337)
-    [key: `${'ORCHESTRATOR' | 'SIMPLE_FUNDER' | 'SIMPLE_SETTLER' | 'SIMULATOR' | 'ACCOUNT' | 'ACCOUNT_PROXY' | 'ESCROW' | 'MULTI_SIG_SIGNER'}_${string}`]:
+    [key: `${'ORCHESTRATOR' | 'SIMPLE_FUNDER' | 'SIMPLE_SETTLER' | 'SIMULATOR' | 'ACCOUNT' | 'ACCOUNT_PROXY' | 'ESCROW' | 'MULTI_SIG_SIGNER'}_${number}`]:
         | string
         | undefined
 
