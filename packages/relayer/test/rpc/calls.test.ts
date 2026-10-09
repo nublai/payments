@@ -13,7 +13,7 @@ import { handleGetCallsStatus } from '../../src/rpc/methods/getCallsStatus'
 import { handleGetCallsHistory } from '../../src/rpc/methods/getCallsHistory'
 import { RpcError, INVALID_PARAMS, SERVICE_UNAVAILABLE, SIMULATION_FAILED } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
-import { testEnv } from '../helpers/env'
+import { testEnv, type TestEnvOverrides } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
 import { jsonStub, namespaceStub, signerPoolWithFetch } from '../helpers/stubs'
 
@@ -136,7 +136,7 @@ type TestRpcContext = {
     env: Env
 }
 
-const createMockCtx = (envOverrides: Partial<Env> = {}): TestRpcContext => ({
+const createMockCtx = (envOverrides: TestEnvOverrides = {}): TestRpcContext => ({
     env: {
         ...testEnv({
             RPC_URL: 'https://example.com/rpc',
@@ -546,10 +546,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
-            idFromName: vi.fn().mockReturnValue('bundle-status-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: bundleFetch,
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
+                idFromName: vi.fn().mockReturnValue('bundle-status-id'),
+                get: vi.fn().mockReturnValue({
+                    fetch: bundleFetch,
+                }),
             }),
         })
 
@@ -595,10 +597,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
-            idFromName: vi.fn().mockReturnValue('bundle-status-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: bundleFetch,
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
+                idFromName: vi.fn().mockReturnValue('bundle-status-id'),
+                get: vi.fn().mockReturnValue({
+                    fetch: bundleFetch,
+                }),
             }),
         })
 
@@ -619,10 +623,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
-            idFromName: vi.fn().mockReturnValue('bundle-status-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: bundleFetch,
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
+                idFromName: vi.fn().mockReturnValue('bundle-status-id'),
+                get: vi.fn().mockReturnValue({
+                    fetch: bundleFetch,
+                }),
             }),
         })
 
@@ -667,10 +673,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
-            idFromName: vi.fn().mockReturnValue('bundle-status-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: bundleFetch,
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
+                idFromName: vi.fn().mockReturnValue('bundle-status-id'),
+                get: vi.fn().mockReturnValue({
+                    fetch: bundleFetch,
+                }),
             }),
         })
 
@@ -688,10 +696,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
-            idFromName: vi.fn().mockReturnValue('bundle-status-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: bundleFetch,
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
+                idFromName: vi.fn().mockReturnValue('bundle-status-id'),
+                get: vi.fn().mockReturnValue({
+                    fetch: bundleFetch,
+                }),
             }),
         })
 
@@ -712,10 +722,12 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
-            idFromName: vi.fn().mockReturnValue('bundle-status-id'),
-            get: vi.fn().mockReturnValue({
-                fetch: bundleFetch,
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
+                idFromName: vi.fn().mockReturnValue('bundle-status-id'),
+                get: vi.fn().mockReturnValue({
+                    fetch: bundleFetch,
+                }),
             }),
         })
 
@@ -751,7 +763,8 @@ describe('wallet_getCallsHistory', () => {
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = Object.keys(chainEntries).join(',')
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 const chainId = Number(name.replace('bundle-status-', ''))
@@ -767,6 +780,7 @@ describe('wallet_getCallsHistory', () => {
                 chainSpies.set(chainId, getBundlesByEoa)
 
                 return { getBundlesByEoa }
+            }),
             }),
         })
 
@@ -890,7 +904,8 @@ describe('wallet_getCallsHistory', () => {
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = '8453,10'
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 if (name === 'bundle-status-8453') {
@@ -898,6 +913,7 @@ describe('wallet_getCallsHistory', () => {
                 }
 
                 return { getBundlesByEoa: secondChainSpy }
+            }),
             }),
         })
 
@@ -954,13 +970,15 @@ describe('wallet_getCallsHistory', () => {
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = '8453,10'
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+        Object.assign(ctx.env, {
+            BUNDLE_STATUS_DO: namespaceStub({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) =>
                 name === 'bundle-status-8453'
                     ? { getBundlesByEoa: chainASpy }
                     : { getBundlesByEoa: chainBSpy },
             ),
+            }),
         })
 
         const result = await handleGetCallsHistory(
@@ -1003,7 +1021,7 @@ describe('wallet_getCallsStatus', () => {
             SIGNER_POOL: signerPoolWithFetch(
                 vi.fn().mockResolvedValue(jsonStub({ txHash: '0xabc', signer: '0x123' })),
             ),
-            BUNDLE_STATUS_DO: namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
+            BUNDLE_STATUS_DO: namespaceStub({
                 idFromName: vi.fn().mockReturnValue('bundle-status-id'),
                 get: vi.fn().mockReturnValue({
                     fetch: vi.fn().mockResolvedValue(jsonStub(mockResponse)),

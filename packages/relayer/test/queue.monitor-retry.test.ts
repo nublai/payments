@@ -36,7 +36,7 @@ function createMonitorEnv(options?: { signerFetch?: ReturnType<typeof vi.fn> }):
     return testEnv({
         CHAIN_IDS: '137',
         RPC_137: 'https://polygon.example',
-        SIGNER: namespaceStub<Env['SIGNER']>({
+        SIGNER: namespaceStub({
             idFromName: vi.fn().mockReturnValue('signer-id'),
             get: vi.fn().mockReturnValue({
                 fetch: options?.signerFetch ?? vi.fn().mockResolvedValue(jsonStub({}, true)),

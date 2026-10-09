@@ -35,7 +35,7 @@ function createMockEnv(): Env {
         SIMULATOR: '0xSimulator',
         // Unsuffixed placeholders stay incomplete, so an unknown chain still skips.
         ...ADDRESSES_8453,
-        SIGNER_POOL: stubNamespace<Env['SIGNER_POOL']>({
+        SIGNER_POOL: stubNamespace({
             idFromName: vi.fn().mockReturnValue('pool-id'),
             get: vi.fn().mockReturnValue({
                 fetch: vi.fn().mockResolvedValue({

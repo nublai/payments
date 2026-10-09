@@ -113,7 +113,7 @@ describe('post-send signer errors', () => {
 
         pool.env = testEnv({
             RELAYER_COUNT: '2',
-            SIGNER: namespaceStub<Env['SIGNER']>({
+            SIGNER: namespaceStub({
                 idFromName: (name: string) => name,
                 get: (name: string) => ({
                     fetch: async () => {

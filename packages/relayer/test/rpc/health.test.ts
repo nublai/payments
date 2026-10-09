@@ -5,7 +5,6 @@
 import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest'
 import { handleHealth, handleLive, handleReady } from '../../src/rpc/methods/health'
 import type { RpcContext } from '../../src/rpc/types'
-import type { Env } from '../../src/types/env'
 import { installDeployment } from '../deployment-fixture'
 import { stubNamespace, testEnv, type TestBindingStub } from '../helpers/env'
 import { jsonResponse } from '../helpers/rpc'
@@ -36,7 +35,7 @@ function healthEnv(signerPool?: TestBindingStub) {
         ...testEnv({
             RPC_URL: 'https://example.com/rpc',
             CHAIN_IDS: '8453',
-            SIGNER_POOL: stubNamespace<Env['SIGNER_POOL']>(signerPool ?? defaultSignerPool()),
+            SIGNER_POOL: stubNamespace(signerPool ?? defaultSignerPool()),
         }),
         ...ADDRESSES_8453,
     }

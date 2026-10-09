@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Env } from '../../src/types/env'
 
 const verifyMock = vi.hoisted(() => vi.fn())
 
@@ -14,7 +13,7 @@ describe('erc8128 auth provider', () => {
     const env = testEnv({
         ERC8128_ENABLED: 'true',
         CHAIN_IDS: '8453',
-        HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
+        HTTP_AUTH_NONCE_MANAGER: stubNamespace({
             idFromName: vi.fn(),
             get: vi.fn(),
         }),

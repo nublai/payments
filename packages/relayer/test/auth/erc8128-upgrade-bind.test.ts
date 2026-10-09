@@ -61,7 +61,7 @@ function prodEnv(overrides: Partial<Env> = {}): Env {
             PRIVY_APP_ID: 'app-id',
             PRIVY_APP_SECRET: 'app-secret',
             ERC8128_ENABLED: 'true',
-            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace({
                 idFromName: () => 'nonce',
                 get: () => ({ consumeNonce: async () => true }),
             }),

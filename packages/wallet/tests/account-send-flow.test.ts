@@ -76,11 +76,11 @@ test('resolveAccountSendPassword uses RELAYER_CLI_PASSWORD first', async () => {
 })
 
 test('executeAccountSend preserves cause for invalid chain override', async () => {
-    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
     const invalidOptions: AccountSendOptions = {
         env: 'prod',
         amount: '1',
         recipient: '0x2222222222222222222222222222222222222222',
+        // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
         chain: 'foobar' as AccountSendOptions['chain'],
         password: 'pw',
         keystorePath: '/tmp/alice.json',

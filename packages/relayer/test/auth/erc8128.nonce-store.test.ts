@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createHttpAuthNonceStore } from '../../src/auth/erc8128/nonce-store'
-import type { Env } from '../../src/types/env'
 import { stubNamespace, testEnv } from '../helpers/env'
 
 describe('createHttpAuthNonceStore', () => {
@@ -11,7 +10,7 @@ describe('createHttpAuthNonceStore', () => {
         const idFromName = vi.fn(() => 'nonce-do-id')
 
         const env = testEnv({
-            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace({
                 idFromName,
                 get,
             }),
@@ -34,7 +33,7 @@ describe('createHttpAuthNonceStore', () => {
         const idFromName = vi.fn(() => 'nonce-do-id')
 
         const env = testEnv({
-            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace({
                 idFromName,
                 get: vi.fn(() => ({ consumeNonce })),
             }),

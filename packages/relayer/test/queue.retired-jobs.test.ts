@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import worker from '../src/index'
-import type { Env } from '../src/types/env'
-import { queueBatch, stubNamespace, testEnv } from './helpers/env'
+import { queueBatch, queueBinding, testEnv } from './helpers/env'
 
 describe('queue retired escrow-bridging jobs', () => {
     it('acks retired fulfillment job instead of retrying', async () => {
@@ -21,7 +20,7 @@ describe('queue retired escrow-bridging jobs', () => {
 
         const env = testEnv({
             CHAIN_IDS: '8453',
-            MONITOR_QUEUE: stubNamespace<Env['MONITOR_QUEUE']>({ send: vi.fn() }),
+            MONITOR_QUEUE: queueBinding({ send: vi.fn() }),
         })
 
         await worker.queue(batch, env)

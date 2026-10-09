@@ -142,23 +142,42 @@ class FakeSqlStorage {
     }
 }
 
+type IntentNonceState = ConstructorParameters<typeof IntentNonceDO>[0]
+
+type IntentNonceSql = {
+    exec: (query: string, ...args: unknown[]) => { toArray(): unknown[] }
+}
+
+type IntentNonceFields = {
+    ctx: {
+        storage: {
+            sql: IntentNonceSql
+            transactionSync: IntentNonceState['storage']['transactionSync']
+        }
+    }
+    sql: IntentNonceSql
+}
+
 function createIntentNonceDO(): IntentNonceDO {
     const sql = new FakeSqlStorage()
 
-    const state = {
-        storage: {
-            sql,
-            transactionSync<T>(fn: () => T): T {
-                return fn()
+    const fields = {
+        ctx: {
+            storage: {
+                sql,
+                transactionSync<T>(fn: () => T): T {
+                    return fn()
+                },
             },
         },
-    }
+        sql,
+    } satisfies IntentNonceFields
 
     // Construct without DurableObjectBase runtime checks. We only need fetch()
     // and nonce logic methods, all of which rely on ctx.storage/sql.
     // SAFETY: Object.create plus assigned ctx/sql is the IntentNonceDO surface these tests call; DurableObjectBase constructor checks are skipped.
     const nonceDO = Object.create(IntentNonceDO.prototype) as IntentNonceDO
-    Object.assign(nonceDO, { ctx: state, sql })
+    Object.assign(nonceDO, fields)
 
     return nonceDO
 }

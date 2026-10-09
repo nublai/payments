@@ -119,10 +119,10 @@ test('executeAccountNonce maps unsupported chain errors', async () => {
 })
 
 test('executeAccountNonce preserves cause for invalid chain override', async () => {
-    // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
     const invalidOptions: AccountNonceOptions = {
         env: 'prod',
         keystorePath: '/tmp/alice.json',
+        // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
         chain: 'foobar' as AccountNonceOptions['chain'],
     }
 
