@@ -417,16 +417,21 @@ async function signedParams(options?: {
         },
     })
 
+    const params: SendPreparedCallsParams = {
+        context: { quote: signed },
+        signature: await privateKeyToAccount(options?.intentSigner ?? OWNER_KEY).sign({
+            hash: digest,
+        }),
+    }
+
+    if (options?.echo) {
+        params.accountUpgrade = options.echo
+    }
+
     return {
         eoa,
         upgrade,
-        params: {
-            context: { quote: signed },
-            signature: await privateKeyToAccount(options?.intentSigner ?? OWNER_KEY).sign({
-                hash: digest,
-            }),
-            ...(options?.echo ? { accountUpgrade: options.echo } : {}),
-        },
+        params,
     }
 }
 

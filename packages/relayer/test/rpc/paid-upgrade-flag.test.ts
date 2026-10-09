@@ -13,6 +13,7 @@ import { hashAuthorization, hashTypedData } from 'viem/utils'
 import { orchestratorAbi } from '@nubl/contracts/abis'
 
 import type {RpcContext} from '../../src/rpc/types'
+import type {Env} from '../../src/types/env'
 import { handlePrepareCalls } from '../../src/rpc/methods/prepareCalls'
 import { handleSendPreparedCalls } from '../../src/rpc/methods/sendPreparedCalls'
 import { INVALID_PARAMS } from '../../src/rpc/errors'
@@ -167,19 +168,24 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
 }
 
 function createCtx(flag?: string): RpcContext {
+    const overrides: Partial<Env> = {
+        RPC_URL: 'http://rpc.test/8453',
+        RPC_8453: 'http://rpc.test/8453',
+        CHAIN_IDS: String(CHAIN_ID),
+        CONTEXT: 'local',
+        RELAYER_COUNT: '1',
+        QUOTE_SIGNING_SECRET: SECRET,
+        SIGNER_POOL: signerPoolWithFetch(poolFetch),
+    }
+
+    if (flag !== undefined) {
+        overrides.PAID_UPGRADE_ENABLED = flag
+    }
+
     return {
         request: new Request('https://relayer.local/'),
         env: Object.assign(
-            testEnv({
-                RPC_URL: 'http://rpc.test/8453',
-                RPC_8453: 'http://rpc.test/8453',
-                CHAIN_IDS: String(CHAIN_ID),
-                CONTEXT: 'local',
-                RELAYER_COUNT: '1',
-                QUOTE_SIGNING_SECRET: SECRET,
-                SIGNER_POOL: signerPoolWithFetch(poolFetch),
-                ...(flag === undefined ? {} : { PAID_UPGRADE_ENABLED: flag }),
-            }),
+            testEnv(overrides),
             {
                 ORCHESTRATOR_8453: ORCHESTRATOR,
                 SIMPLE_FUNDER_8453: '0x41D23D227C6D0F732D41eE5c203C48d96292A48B',
