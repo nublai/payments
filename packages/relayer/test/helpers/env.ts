@@ -61,64 +61,14 @@ function pipelinedRow(row: BundleHistoryRow): PipelinedBundleRow {
 }
 
 function bundlesItems(rows: BundleHistoryRow[]): BundlesByEoaResult['items'] {
-    const pipeline = rows.map(pipelinedRow)
-    const result = Object.assign(Promise.resolve(disposableRows(rows)), pipeline)
+    const settled = Promise.resolve(disposableRows(rows))
 
-    result.length = pipeline.length
-    result.toString = pipeline.toString.bind(pipeline)
-    result.toLocaleString = pipeline.toLocaleString.bind(pipeline)
-    result.pop = pipeline.pop.bind(pipeline)
-    result.push = pipeline.push.bind(pipeline)
-    result.concat = pipeline.concat.bind(pipeline)
-    result.join = pipeline.join.bind(pipeline)
-    result.reverse = (...args: Parameters<PipelinedBundleRow[]['reverse']>) => {
-        pipeline.reverse(...args)
-
-        return result
-    }
-
-    result.shift = pipeline.shift.bind(pipeline)
-    result.slice = pipeline.slice.bind(pipeline)
-    result.sort = (...args: Parameters<PipelinedBundleRow[]['sort']>) => {
-        pipeline.sort(...args)
-
-        return result
-    }
-
-    result.splice = pipeline.splice.bind(pipeline)
-    result.unshift = pipeline.unshift.bind(pipeline)
-    result.indexOf = pipeline.indexOf.bind(pipeline)
-    result.lastIndexOf = pipeline.lastIndexOf.bind(pipeline)
-    result.every = pipeline.every.bind(pipeline)
-    result.some = pipeline.some.bind(pipeline)
-    result.forEach = pipeline.forEach.bind(pipeline)
-    result.map = pipeline.map.bind(pipeline)
-    result.filter = pipeline.filter.bind(pipeline)
-    result.reduce = pipeline.reduce.bind(pipeline)
-    result.reduceRight = pipeline.reduceRight.bind(pipeline)
-    result.find = pipeline.find.bind(pipeline)
-    result.findIndex = pipeline.findIndex.bind(pipeline)
-    result.fill = (...args: Parameters<PipelinedBundleRow[]['fill']>) => {
-        pipeline.fill(...args)
-
-        return result
-    }
-
-    result.copyWithin = (...args: Parameters<PipelinedBundleRow[]['copyWithin']>) => {
-        pipeline.copyWithin(...args)
-
-        return result
-    }
-
-    result.entries = pipeline.entries.bind(pipeline)
-    result.keys = pipeline.keys.bind(pipeline)
-    result.values = pipeline.values.bind(pipeline)
-    result.includes = pipeline.includes.bind(pipeline)
-    result.flatMap = pipeline.flatMap.bind(pipeline)
-    result.flat = pipeline.flat.bind(pipeline)
-    result.at = pipeline.at.bind(pipeline)
-
-    return result
+    return Object.assign(rows.map(pipelinedRow), settled, {
+        [Promise.prototype.then.name]: settled.then.bind(settled),
+        catch: settled.catch.bind(settled),
+        finally: settled.finally.bind(settled),
+        [Symbol.toStringTag]: 'Promise',
+    })
 }
 
 /** RPC Result for BundleStatusDO.getBundlesByEoa: Promise & Disposable & items/total pipelining. */
