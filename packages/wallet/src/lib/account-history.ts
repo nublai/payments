@@ -184,15 +184,30 @@ export async function executeAccountHistory(
             throw new AccountHistoryError('RELAYER_ERROR', result.error)
         }
 
-        return {
+        const history: Pick<
+            AccountHistoryResult,
+            'type' | 'status' | 'address' | 'keystorePath'
+        > = {
             type: 'account_history',
             status: 'complete',
             address,
-            ...(keystorePath ? { keystorePath } : {}),
-            networkScope: {
-                env: options.env,
-                ...(chainIds ? { chainIds } : {}),
-            },
+        }
+
+        if (keystorePath) {
+            history.keystorePath = keystorePath
+        }
+
+        const networkScope: AccountHistoryResult['networkScope'] = {
+            env: options.env,
+        }
+
+        if (chainIds) {
+            networkScope.chainIds = chainIds
+        }
+
+        return {
+            ...history,
+            networkScope,
             page: {
                 limit,
                 offset,

@@ -8,6 +8,16 @@ export type UpgradeRateKind = 'prepare' | 'upgrade'
 
 export type UpgradeRateAction = 'peek' | 'commit' | 'reserve' | 'release'
 
+type UpgradeRateLimitBody = {
+    action: UpgradeRateAction
+    kind: UpgradeRateKind
+    chainId: number
+    account: string
+    identity: string
+    ip: string
+    reservedAt?: number
+}
+
 export interface RateBucket {
     key: string
     limit: number
@@ -341,18 +351,23 @@ async function postUpgradeRateLimit(
     let response: Response
 
     try {
+        const rateLimitBody: UpgradeRateLimitBody = {
+            action: input.action,
+            kind: input.kind,
+            chainId,
+            account: input.account,
+            identity: input.identity,
+            ip,
+        }
+
+        if (input.reservedAt !== undefined) {
+            rateLimitBody.reservedAt = input.reservedAt
+        }
+
         response = await pool.fetch(`http://do/upgrade-rate-limit?poolName=pool-${chainId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: input.action,
-                kind: input.kind,
-                chainId,
-                account: input.account,
-                identity: input.identity,
-                ip,
-                ...(input.reservedAt !== undefined ? { reservedAt: input.reservedAt } : {}),
-            }),
+            body: JSON.stringify(rateLimitBody),
         })
     } catch (error) {
         logger.error({ error, kind: input.kind, chainId }, 'upgrade rate limit unavailable')

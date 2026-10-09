@@ -1547,7 +1547,7 @@ export class SignerDO extends DurableObject<Env> {
 
                 const encodedIntent = this.encodeIntentToBytes(intentWithRecipient)
 
-                return {
+                const prepared: PreparedBroadcastTransaction = {
                     to: contracts.orchestrator,
                     data: encodeFunctionData({
                         abi: orchestratorAbi,
@@ -1555,10 +1555,14 @@ export class SignerDO extends DurableObject<Env> {
                         args: [encodedIntent],
                     }),
                     value: 0n,
-                    ...(tx.authorization
-                        ? { authorizationList: [tx.authorization], paidUpgrade: true }
-                        : {}),
                 }
+
+                if (tx.authorization) {
+                    prepared.authorizationList = [tx.authorization]
+                    prepared.paidUpgrade = true
+                }
+
+                return prepared
             }
 
             case 'batch-execute-intent': {
@@ -1984,7 +1988,10 @@ export class SignerDO extends DurableObject<Env> {
                     authorizationList: this.deserializeAuthorizationList(
                         claimed.tx_authorization_list as string | undefined,
                     ),
-                    ...(paidUpgrade ? { paidUpgrade: true } : {}),
+                }
+
+                if (paidUpgrade) {
+                    txParams.paidUpgrade = true
                 }
 
                 try {

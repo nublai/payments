@@ -49,14 +49,19 @@ export function readOidcConfig(
 
     if (missing.length > 0) return { ok: false, missing }
 
+    const config: OidcConfig = {
+        issuer,
+        jwksUrl,
+        clientId,
+    }
+
+    if (walletsClaim) {
+        config.walletsClaim = walletsClaim
+    }
+
     return {
         ok: true,
-        config: {
-            issuer,
-            jwksUrl,
-            clientId,
-            ...(walletsClaim ? { walletsClaim } : {}),
-        },
+        config,
     }
 }
 

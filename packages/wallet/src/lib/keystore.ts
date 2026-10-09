@@ -350,16 +350,19 @@ export async function createSessionKeystore(
     }
 
     if (input.kind === 'login') {
+        const secrets: LoginSessionKeystoreV2['secrets'] = {
+            sessionPrivateKey: encryptHexSecret(input.sessionPrivateKey, key),
+        }
+
+        if (input.bearerToken) {
+            secrets.bearerToken = encryptHexSecret(input.bearerToken, key)
+        }
+
         const loginKeystore: LoginSessionKeystoreV2 = {
             ...base,
             kind: 'login',
             delegateAuth: input.delegateAuth,
-            secrets: {
-                sessionPrivateKey: encryptHexSecret(input.sessionPrivateKey, key),
-                ...(input.bearerToken
-                    ? { bearerToken: encryptHexSecret(input.bearerToken, key) }
-                    : {}),
-            },
+            secrets,
         }
 
         key.fill(0)
