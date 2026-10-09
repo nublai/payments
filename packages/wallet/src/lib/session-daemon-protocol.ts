@@ -136,11 +136,35 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): TypedDataJson {
     return value as string | number | boolean | null | undefined
 }
 
-export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson {
-    return mapTypedDataBigInt(typedData, false)
+function reviveTypedDataInPlace(value: unknown): void {
+    if (Array.isArray(value)) {
+        for (let index = 0; index < value.length; index++) {
+            const entry = value[index]
+
+            if (Array.isArray(entry) || isRecord(entry)) {
+                reviveTypedDataInPlace(entry)
+            } else {
+                value[index] = mapTypedDataBigInt(entry, true)
+            }
+        }
+
+        return
+    }
+
+    if (isRecord(value)) {
+        for (const key of Object.keys(value)) {
+            const entry = value[key]
+
+            if (Array.isArray(entry) || isRecord(entry)) {
+                reviveTypedDataInPlace(entry)
+            } else {
+                value[key] = mapTypedDataBigInt(entry, true)
+            }
+        }
+    }
 }
 
-function hasIntentTypedDataKeys(value: TypedDataJson | DaemonTypedData): boolean {
+function hasIntentTypedDataKeys(value: unknown): boolean {
     return (
         isRecord(value) &&
         value.primaryType === 'Intent' &&
@@ -150,17 +174,19 @@ function hasIntentTypedDataKeys(value: TypedDataJson | DaemonTypedData): boolean
     )
 }
 
-export function decodeTypedDataBigInt(value: unknown): DaemonTypedData {
-    const revived = mapTypedDataBigInt(value, true)
+export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson {
+    return mapTypedDataBigInt(typedData, false)
+}
 
-    if (!hasIntentTypedDataKeys(revived)) {
+export function decodeTypedDataBigInt(value: unknown): DaemonTypedData {
+    if (!hasIntentTypedDataKeys(value)) {
         throw new Error('Invalid daemon typed data')
     }
 
-    const mapped: unknown = revived
+    reviveTypedDataInPlace(value)
 
-    // SAFETY: only primaryType 'Intent' and object domain/types/message are checked here. Swap sessions go through reviewSwapSessionSignature and phrase-less through assessPhraseLessIntent before signTypedData; phrase-confirmed full-access sessions sign as-is by design. viem local signTypedData signs a 4-key payload whose domain is malformed, and throws during encoding if types are missing/unknown or message fields do not match the types.
-    return mapped as DaemonTypedData
+    // SAFETY: only primaryType 'Intent' and object domain/types/message are checked here. Swap sessions go through reviewSwapSessionSignature and phrase-less through assessPhraseLessIntent before signTypedData; a non-swap session with phraseConfirmed signs as-is. viem 2.45.1 local signTypedData throws on an invalid verifyingContract, empty or unknown types, a bad address or uint in the message, and missing message fields; it still signs an empty domain, extra domain keys, a non-string name, a non-numeric chainId string, extra message fields (ignored), and a well-formed types table that is not the Intent schema.
+    return value as DaemonTypedData
 }
 
 export function normalizeSessionName(name: string): string {
