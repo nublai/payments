@@ -58,7 +58,7 @@ export type TestBindingStub = {
 /** Namespace or queue stub that only implements the methods a test calls. */
 export function stubNamespace<T extends EnvBinding>(stub: TestBindingStub): T {
     // SAFETY: T is an Env DO/queue binding; tests only call the methods they install on this stub.
-    return stub as unknown as T
+    return stub as TestBindingStub & T
 }
 
 export type TestQueueMessage = {
@@ -86,5 +86,5 @@ export function queueBatch(messages: TestQueueMessage[]): MessageBatch<import('.
     }
 
     // SAFETY: handleQueue only reads messages[].body/attempts/ack/retry; retired fulfillment bodies are not MonitorJob.
-    return batch as unknown as MessageBatch<import('../../src/types/pool').QueueJob>
+    return batch as typeof batch & MessageBatch<import('../../src/types/pool').QueueJob>
 }

@@ -26,8 +26,7 @@ const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const APPROVE = '0x095ea7b3'
 
 function chainClient(): PublicClient {
-    // SAFETY: install/release only call readContract and getBalance on this stub client.
-    return {
+    const client = {
         async readContract(args: { functionName: string }) {
             if (args.functionName === 'spendInfos') return []
 
@@ -47,7 +46,10 @@ function chainClient(): PublicClient {
         async getBalance() {
             return 0n
         },
-    } as unknown as PublicClient
+    }
+
+    // SAFETY: install/release only call readContract and getBalance on this stub client.
+    return client as typeof client & PublicClient
 }
 
 test('the release callback finishes an install inside withoutQuoteSpendRecovery', async () => {

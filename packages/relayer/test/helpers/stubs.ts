@@ -28,7 +28,7 @@ export type NamespaceIdAndGet = {
 /** Tests only call idFromName/get on this Durable Object namespace. */
 export function namespaceStub<T extends EnvDurableObject>(stub: NamespaceIdAndGet): T {
     // SAFETY: T is an Env Durable Object namespace; tests only call idFromName/get.
-    return stub as unknown as T
+    return stub as NamespaceIdAndGet & T
 }
 
 export type QueueTestMessage = {
@@ -63,7 +63,7 @@ export function queueBatch(messages: QueueTestMessage[]): MessageBatch<QueueJob>
     }
 
     // SAFETY: handleQueue only reads messages and calls ack/retry; retired/null bodies are not MonitorJob.
-    return batch as unknown as MessageBatch<QueueJob>
+    return batch as typeof batch & MessageBatch<QueueJob>
 }
 
 /** Real Response for stubs that only read ok and json(). */
