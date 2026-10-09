@@ -159,12 +159,16 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
             (permission) => permission.type === 'call',
         )
 
-        const installed = decoded
-            .filter((entry) => entry.functionName === 'setCanExecute')
-            .map((entry) => ({
-                to: String(entry.args[1]).toLowerCase(),
-                selector: String(entry.args[2]).toLowerCase(),
-            }))
+        const installed: { to: string; selector: string }[] = []
+
+        for (const entry of decoded) {
+            if (entry.functionName === 'setCanExecute') {
+                installed.push({
+                    to: String(entry.args[1]).toLowerCase(),
+                    selector: String(entry.args[2]).toLowerCase(),
+                })
+            }
+        }
 
         expect(installed).toEqual(
             expected.map((permission) => ({
