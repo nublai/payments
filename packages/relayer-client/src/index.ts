@@ -143,7 +143,6 @@ export {
     getChainIdFromContext,
     type SerializedCall,
     type SerializedIntent,
-    type JsonReplacerValue,
 } from './utils'
 
 // Utils - Account
