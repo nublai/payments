@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { encodeFunctionData, getAddress, zeroAddress, type Hex } from 'viem'
 import { executeAccountSwap } from './helpers/stub-execute'
 import { PAID_FEE_CAP, resolveIntentPayment } from '../src/lib/intent-payment'
