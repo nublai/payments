@@ -205,7 +205,7 @@ function sqlStorage(fake: FakeSqlStorage): SqlStorage {
         ): SqlStorageCursor<T> {
             const cursor = fake.exec(query, ...args)
 
-            // SAFETY: this stub cursor yields the columns the SQL produces; T is the caller's row type.
+            // SAFETY: exec<T> is an unchecked generic; as SqlStorageCursor<T> fails TS2352, so this unavoidable row cast uses never.
             return cursor as never
         },
         get databaseSize() {

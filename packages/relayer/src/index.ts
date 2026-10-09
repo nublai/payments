@@ -10,7 +10,7 @@ import { cors } from 'hono/cors'
 import type { Hex } from 'viem'
 
 import type { Env } from './types/env'
-import type { MonitorJob, QueueJob } from './types/pool'
+import type { MonitorJob } from './types/pool'
 import { validateEnv, validatePoolConfig, getChainIds } from './config'
 import { requestPaidUpgradeReconcile } from './rpc/methods/shared/paid-upgrade'
 import { logger, errorDetails, getErrorMessage } from './lib/logger'
@@ -198,7 +198,7 @@ app.notFound((c) => {
 /**
  * Process queue jobs (monitor, fulfillment, settlement, refund)
  */
-async function handleQueue(batch: MessageBatch<QueueJob>, env: Env): Promise<void> {
+async function handleQueue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
         const job = msg.body
 

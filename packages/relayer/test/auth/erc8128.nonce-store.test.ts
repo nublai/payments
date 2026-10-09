@@ -5,7 +5,10 @@ import { httpAuthNonceNamespace, testEnv } from '../helpers/env'
 
 describe('createHttpAuthNonceStore', () => {
     it('calls nonce DO consumeNonce over rpc with ttlSeconds', async () => {
-        const consumeNonce = vi.fn(async (_replayKey: string, _ttlSeconds: number) => true)
+        const consumeNonce = vi.fn(
+            async (_replayKey: string, _ttlSeconds: number): Promise<true> => true,
+        )
+
         const get = vi.fn(() => ({ consumeNonce }))
         const idFromName = vi.fn(() => 'nonce-do-id')
 
@@ -26,7 +29,7 @@ describe('createHttpAuthNonceStore', () => {
     })
 
     it('returns false when nonce DO rpc call throws', async () => {
-        const consumeNonce = vi.fn(async () => {
+        const consumeNonce = vi.fn(async (): Promise<true> => {
             throw new Error('rpc unavailable')
         })
 

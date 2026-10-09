@@ -157,14 +157,7 @@ describe('monitor queue retry behavior', () => {
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonStub({ result: null }))
 
-        const batch = queueBatch<MonitorJob>([
-            {
-                ...malformedMessage,
-                // SAFETY: handleQueue only reads body/attempts/ack/retry; the first message is a null body on purpose.
-                body: malformedMessage.body as never,
-            },
-            validMessage,
-        ])
+        const batch = queueBatch<unknown>([malformedMessage, validMessage])
 
         const env = createMonitorEnv()
 

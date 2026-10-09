@@ -9,6 +9,8 @@ export {
     bundleStatusNamespace,
     httpAuthNonceNamespace,
     walletBindingNamespace,
+    bundlesByEoaResult,
+    pendingBundlesByEoa,
 } from './env'
 
 /** Methods these tests actually call on a Durable Object namespace. */

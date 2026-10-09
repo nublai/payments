@@ -22,17 +22,85 @@ function durableObjectId(value: string): DurableObjectId {
     }
 }
 
+export type BundleHistoryRow = {
+    bundleId: string
+    chainId: number
+    createdAt: number
+}
+
+type BundlesByEoa = DurableObjectStub<BundleStatusDO>['getBundlesByEoa']
+
+type BundlesByEoaResult = ReturnType<BundlesByEoa>
+
+type ConsumeNonce = DurableObjectStub<HttpAuthNonceDO>['consumeNonce']
+
+type PipelinedBundleRow = Promise<BundleHistoryRow & Disposable> & {
+    bundleId: Promise<string>
+    chainId: Promise<number>
+    createdAt: Promise<number>
+}
+
+class BundlesItems extends Array<PipelinedBundleRow> {}
+
+function disposableRows(rows: BundleHistoryRow[]): BundleHistoryRow[] & Disposable {
+    return Object.assign(rows.slice(), {
+        [Symbol.dispose]() {},
+    })
+}
+
+function bundlesItems(rows: BundleHistoryRow[]): BundlesByEoaResult['items'] {
+    return Object.assign(Promise.resolve(disposableRows(rows)), new BundlesItems())
+}
+
+/** RPC Result for BundleStatusDO.getBundlesByEoa: Promise & Disposable & items/total pipelining. */
+export function bundlesByEoaResult(
+    items: BundleHistoryRow[],
+    total: number,
+): BundlesByEoaResult {
+    return Object.assign(
+        Promise.resolve({
+            items,
+            total,
+            [Symbol.dispose]() {},
+        }),
+        {
+            items: bundlesItems(items),
+            total: Promise.resolve(total),
+        },
+    )
+}
+
+export function pendingBundlesByEoa() {
+    let settle: (value: { items: BundleHistoryRow[]; total: number } & Disposable) => void =
+        () => {
+            unused('pendingBundlesByEoa.settle')
+        }
+
+    const settled = new Promise<{ items: BundleHistoryRow[]; total: number } & Disposable>(
+        (resolve) => {
+            settle = resolve
+        },
+    )
+
+    return {
+        result: Object.assign(settled, {
+            items: bundlesItems([]),
+            total: settled.then((value) => value.total),
+        }),
+        resolve(items: BundleHistoryRow[], total: number) {
+            settle({
+                items,
+                total,
+                [Symbol.dispose]() {},
+            })
+        },
+    }
+}
+
 export type TestStubMethods = {
     fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-    consumeNonce?: (replayKey: string, ttlSeconds: number) => Promise<boolean>
-    getBundlesByEoa?: (
-        eoa: string,
-        limit: number,
-        offset: number,
-    ) => Promise<{
-        items: Array<{ bundleId: string; chainId: number; createdAt: number }>
-        total: number
-    }>
+    consumeNonce?: ConsumeNonce
+    getBundlesByEoa?: BundlesByEoa
 }
 
 export type TestBindingStub = {
@@ -48,14 +116,15 @@ function fetcherFields(id: DurableObjectId, fetchImpl?: TestStubMethods['fetch']
         connect(): Socket {
             return unused('connect')
         },
-        // SAFETY: Rpc brands this field as never; the runtime only checks that the key exists.
-        __DURABLE_OBJECT_BRAND: undefined as never,
     }
 }
 
 function signerStub(methods: TestStubMethods = {}): DurableObjectStub<SignerDO> {
     return {
         ...fetcherFields(durableObjectId('stub'), methods.fetch),
+        get __DURABLE_OBJECT_BRAND(): never {
+            return unused('brand')
+        },
         getTxStatus: () => unused('getTxStatus'),
         getCapacity: () => unused('getCapacity'),
         sendTransaction: () => unused('sendTransaction'),
@@ -68,6 +137,9 @@ function signerStub(methods: TestStubMethods = {}): DurableObjectStub<SignerDO> 
 function signerPoolStub(methods: TestStubMethods = {}): DurableObjectStub<SignerPoolDO> {
     return {
         ...fetcherFields(durableObjectId('stub'), methods.fetch),
+        get __DURABLE_OBJECT_BRAND(): never {
+            return unused('brand')
+        },
         sendTransaction: () => unused('sendTransaction'),
         getPoolStatus: () => unused('getPoolStatus'),
         handleMaintenance: () => unused('handleMaintenance'),
@@ -75,123 +147,45 @@ function signerPoolStub(methods: TestStubMethods = {}): DurableObjectStub<Signer
 }
 
 function intentNonceStub(methods: TestStubMethods = {}): DurableObjectStub<IntentNonceDO> {
-    return fetcherFields(durableObjectId('stub'), methods.fetch)
+    return {
+        ...fetcherFields(durableObjectId('stub'), methods.fetch),
+        get __DURABLE_OBJECT_BRAND(): never {
+            return unused('brand')
+        },
+    }
 }
 
 function bundleStatusStub(methods: TestStubMethods = {}): DurableObjectStub<BundleStatusDO> {
-    const stub: DurableObjectStub<BundleStatusDO> = {
+    return {
         ...fetcherFields(durableObjectId('stub'), methods.fetch),
+        get __DURABLE_OBJECT_BRAND(): never {
+            return unused('brand')
+        },
         getBundleIdByTxId: () => unused('getBundleIdByTxId'),
         upsertBundleTelemetry: () => unused('upsertBundleTelemetry'),
         getBundleTelemetry: () => unused('getBundleTelemetry'),
-        getBundlesByEoa: () => unused('getBundlesByEoa'),
+        getBundlesByEoa: methods.getBundlesByEoa ?? (() => unused('getBundlesByEoa')),
         add_bundle_tx: () => unused('add_bundle_tx'),
         get_bundle_status: () => unused('get_bundle_status'),
     }
-
-    if (methods.getBundlesByEoa === undefined) {
-        return stub
-    }
-
-    const getBundlesByEoa = methods.getBundlesByEoa
-
-    return new Proxy(stub, {
-        get(target, prop) {
-            if (prop === 'getBundlesByEoa') {
-                return getBundlesByEoa
-            }
-
-            if (prop === 'id') {
-                return target.id
-            }
-
-            if (prop === 'name') {
-                return target.name
-            }
-
-            if (prop === 'fetch') {
-                return target.fetch
-            }
-
-            if (prop === 'connect') {
-                return target.connect
-            }
-
-            if (prop === 'getBundleIdByTxId') {
-                return target.getBundleIdByTxId
-            }
-
-            if (prop === 'upsertBundleTelemetry') {
-                return target.upsertBundleTelemetry
-            }
-
-            if (prop === 'getBundleTelemetry') {
-                return target.getBundleTelemetry
-            }
-
-            if (prop === 'add_bundle_tx') {
-                return target.add_bundle_tx
-            }
-
-            if (prop === 'get_bundle_status') {
-                return target.get_bundle_status
-            }
-
-            if (prop === '__DURABLE_OBJECT_BRAND') {
-                return target.__DURABLE_OBJECT_BRAND
-            }
-
-            return unused(`bundleStatus.${String(prop)}`)
-        },
-    })
 }
 
 function httpAuthNonceStub(methods: TestStubMethods = {}): DurableObjectStub<HttpAuthNonceDO> {
-    const stub: DurableObjectStub<HttpAuthNonceDO> = {
+    return {
         ...fetcherFields(durableObjectId('stub'), methods.fetch),
-        consumeNonce: () => unused('consumeNonce'),
-    }
-
-    if (methods.consumeNonce === undefined) {
-        return stub
-    }
-
-    const consumeNonce = methods.consumeNonce
-
-    return new Proxy(stub, {
-        get(target, prop) {
-            if (prop === 'consumeNonce') {
-                return consumeNonce
-            }
-
-            if (prop === 'id') {
-                return target.id
-            }
-
-            if (prop === 'name') {
-                return target.name
-            }
-
-            if (prop === 'fetch') {
-                return target.fetch
-            }
-
-            if (prop === 'connect') {
-                return target.connect
-            }
-
-            if (prop === '__DURABLE_OBJECT_BRAND') {
-                return target.__DURABLE_OBJECT_BRAND
-            }
-
-            return unused(`httpAuthNonce.${String(prop)}`)
+        get __DURABLE_OBJECT_BRAND(): never {
+            return unused('brand')
         },
-    })
+        consumeNonce: methods.consumeNonce ?? (() => unused('consumeNonce')),
+    }
 }
 
 function walletBindingStub(methods: TestStubMethods = {}): DurableObjectStub<WalletBindingDO> {
     return {
         ...fetcherFields(durableObjectId('stub'), methods.fetch),
+        get __DURABLE_OBJECT_BRAND(): never {
+            return unused('brand')
+        },
         issueNonce: () => unused('issueNonce'),
         bind: () => unused('bind'),
         chargeBind: () => unused('chargeBind'),

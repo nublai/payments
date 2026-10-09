@@ -63,7 +63,7 @@ function prodEnv(overrides: Partial<Env> = {}): Env {
             ERC8128_ENABLED: 'true',
             HTTP_AUTH_NONCE_MANAGER: httpAuthNonceNamespace({
                 idFromName: () => 'nonce',
-                get: () => ({ consumeNonce: async () => true }),
+                get: () => ({ consumeNonce: async (): Promise<true> => true }),
             }),
             ...overrides,
         }),
