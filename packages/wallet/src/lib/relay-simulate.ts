@@ -69,6 +69,16 @@ export type RelayExecutionContext = {
     nonce: bigint
 }
 
+/** JSON-RPC result after the HTTP JSON boundary. */
+export type RpcJson =
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | RpcJson[]
+    | { [key: string]: RpcJson }
+
 export type SimulateRelayQuoteInput = {
     rpcUrl: string
     chainId: number
@@ -81,7 +91,7 @@ export type SimulateRelayQuoteInput = {
     execution: RelayExecutionContext
     /** Relayer JSON-RPC URL. Required when `execution.origin` is omitted. */
     relayerUrl?: string
-    request?: (method: string, params: unknown[]) => Promise<unknown>
+    request?: (method: string, params: unknown[]) => Promise<RpcJson>
 }
 
 type BalanceBook = {
@@ -133,7 +143,7 @@ function decodeWord(data: unknown): bigint {
     return BigInt(data)
 }
 
-async function defaultRequest(rpcUrl: string, method: string, params: unknown[]): Promise<unknown> {
+async function defaultRequest(rpcUrl: string, method: string, params: unknown[]): Promise<RpcJson> {
     let response: Response
 
     try {
@@ -168,7 +178,8 @@ async function defaultRequest(rpcUrl: string, method: string, params: unknown[])
         )
     }
 
-    return payload.result
+    // SAFETY: response.json() is JSON; a JSON-RPC result is that tree or undefined.
+    return payload.result as RpcJson
 }
 
 function dedupedWatches(watches: SimulatedWatch[]): SimulatedWatch[] {
@@ -316,7 +327,7 @@ function readBook(watches: SimulatedWatch[], words: bigint[]): BalanceBook {
 async function readBefore(
     input: SimulateRelayQuoteInput,
     watches: SimulatedWatch[],
-    request: (method: string, params: unknown[]) => Promise<unknown>,
+    request: (method: string, params: unknown[]) => Promise<RpcJson>,
 ): Promise<BalanceBook> {
     const words: bigint[] = []
 
@@ -405,7 +416,7 @@ function outputLogSum(logs: SimLog[] | undefined, token: Address, user: Address)
 export async function readRelayerSignerOrigin(input: {
     relayerUrl: string
     chainId: number
-    request?: (method: string, params: unknown[]) => Promise<unknown>
+    request?: (method: string, params: unknown[]) => Promise<RpcJson>
 }): Promise<Address> {
     const request =
         input.request ??
@@ -585,7 +596,7 @@ function encodeOrchestratorCall(input: SimulateRelayQuoteInput): Hex {
 async function simulateOnce(
     input: SimulateRelayQuoteInput,
     watches: SimulatedWatch[],
-    request: (method: string, params: unknown[]) => Promise<unknown>,
+    request: (method: string, params: unknown[]) => Promise<RpcJson>,
 ): Promise<{ book: BalanceBook; logs: SimLog[] | undefined }> {
     if (!input.execution.origin) {
         throw new RelaySimulationRejected(

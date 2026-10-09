@@ -92,7 +92,18 @@ export type DaemonResponse =
 
 export const BIGINT_TAG_PREFIX = '$bigint:'
 
-function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
+/** JSON-shaped typed data, plus bigint before encode and after decode. */
+export type TypedDataJson =
+    | string
+    | number
+    | boolean
+    | bigint
+    | null
+    | undefined
+    | TypedDataJson[]
+    | { [key: string]: TypedDataJson }
+
+function mapTypedDataBigInt(value: unknown, revive: boolean): TypedDataJson {
     if (typeof value === 'bigint') {
         return `${BIGINT_TAG_PREFIX}${value.toString()}`
     }
@@ -112,7 +123,7 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
     }
 
     if (isRecord(value)) {
-        const mapped: Record<string, unknown> = {}
+        const mapped: { [key: string]: TypedDataJson } = {}
 
         for (const [key, entry] of Object.entries(value)) {
             mapped[key] = mapTypedDataBigInt(entry, revive)
@@ -121,10 +132,11 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
         return mapped
     }
 
-    return value
+    // SAFETY: after bigint/array/record, a typed-data node is a JSON leaf.
+    return value as string | number | boolean | null | undefined
 }
 
-export function encodeTypedDataBigInt(typedData: DaemonTypedData): unknown {
+export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson {
     return mapTypedDataBigInt(typedData, false)
 }
 

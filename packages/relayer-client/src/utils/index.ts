@@ -7,6 +7,7 @@ export {
     getChainIdFromContext,
     type SerializedCall,
     type SerializedIntent,
+    type JsonReplacerValue,
 } from './serialize'
 
 export { isDelegatedAccount } from './account'

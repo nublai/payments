@@ -6,11 +6,17 @@ import type { Address, Hex } from 'viem'
 import type { Intent, Call } from '../types'
 import type { PrepareCallsContext } from '../actions/prepareCalls'
 
+/** Values JSON.stringify will keep after a replacer runs. */
+export type JsonReplacerValue = string | number | boolean | object | null | undefined
+
 /**
  * JSON replacer that converts BigInt to string for serialization
  */
-export function bigIntReplacer(_key: string, value: unknown): unknown {
-    return typeof value === 'bigint' ? value.toString() : value
+export function bigIntReplacer(_key: string, value: unknown): JsonReplacerValue {
+    if (typeof value === 'bigint') return value.toString()
+
+    // SAFETY: JSON.stringify only asks the replacer to return JSON-compatible leaves; non-bigint values pass through.
+    return value as JsonReplacerValue
 }
 
 /**

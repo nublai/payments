@@ -20,7 +20,8 @@ import { INVALID_PARAMS } from '../../src/rpc/errors'
 import { INTENT_TYPES } from '../../src/rpc/schema/intentTypes'
 import { signQuotes } from '../../src/lib/quote-signing'
 import { recomputeQuotePaymentAmount } from '../../src/services/quote-payment'
-import type { PaidUpgradeQuote, Quote, SignedQuotes } from '../../src/rpc/schema/prepareCalls'
+import type { PaidUpgradeQuote, PrepareCallsParams, Quote, SignedQuotes } from '../../src/rpc/schema/prepareCalls'
+import type { SendPreparedCallsParams } from '../../src/rpc/schema/sendPreparedCalls'
 import {
     buildKeyInitializationData,
     getSignedCallDomain,
@@ -314,7 +315,7 @@ function preparedIntent(eoa: Address): PrepareIntentResult {
     }
 }
 
-async function prepareParams(): Promise<unknown> {
+async function prepareParams(): Promise<PrepareCallsParams> {
     return {
         from: OWNER,
         chain_id: '0x2105',
@@ -326,7 +327,7 @@ async function prepareParams(): Promise<unknown> {
     }
 }
 
-async function sendParams(): Promise<unknown> {
+async function sendParams(): Promise<SendPreparedCallsParams> {
     const upgrade = await upgradeQuote()
     const encoded = [encodeSignedPreCall(upgrade.preCall)]
     const txGas = 100_000

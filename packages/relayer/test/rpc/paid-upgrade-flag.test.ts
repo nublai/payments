@@ -20,7 +20,8 @@ import { INVALID_PARAMS } from '../../src/rpc/errors'
 import { INTENT_TYPES } from '../../src/rpc/schema/intentTypes'
 import { signQuotes } from '../../src/lib/quote-signing'
 import { recomputeQuotePaymentAmount } from '../../src/services/quote-payment'
-import type {PaidUpgradeQuote, Quote, SignedQuotes} from '../../src/rpc/schema/prepareCalls'
+import type {PaidUpgradeQuote, PrepareCallsParams, Quote, SignedQuotes} from '../../src/rpc/schema/prepareCalls'
+import type {SendPreparedCallsParams} from '../../src/rpc/schema/sendPreparedCalls'
 import {
     buildKeyInitializationData,
     getSignedCallDomain,
@@ -240,7 +241,7 @@ function preparedIntent(): PrepareIntentResult {
         expiry: String(Math.floor(Date.now() / 1000) + 3600) }
 }
 
-function plainPrepareParams(): unknown {
+function plainPrepareParams(): PrepareCallsParams {
     return {
         from: OWNER,
         chain_id: '0x2105',
@@ -248,7 +249,7 @@ function plainPrepareParams(): unknown {
         capabilities: { meta: { fee_payer: OWNER, fee_token: USDC } } }
 }
 
-async function paidPrepareParams(): Promise<unknown> {
+async function paidPrepareParams(): Promise<PrepareCallsParams> {
     return {
         from: OWNER,
         chain_id: '0x2105',
@@ -259,7 +260,7 @@ async function paidPrepareParams(): Promise<unknown> {
 }
 
 /** A paid quote HMAC-signed with the relayer secret, the way prepare signs it with the flag on. */
-async function signedPaidSendParams(): Promise<unknown> {
+async function signedPaidSendParams(): Promise<SendPreparedCallsParams> {
     const upgrade = await upgradeQuote()
     const encoded = [encodeSignedPreCall(upgrade.preCall)]
     const txGas = 100_000

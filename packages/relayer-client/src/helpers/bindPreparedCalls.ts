@@ -203,8 +203,14 @@ export function parseQuotePaymentAmount(
 
 export function firstQuotePaymentAmount(prepared: {
     context?: { quote?: { quotes?: Array<{ paymentAmount?: unknown }> } }
-}): unknown {
-    return prepared.context?.quote?.quotes?.[0]?.paymentAmount
+}): bigint | undefined {
+    const parsed = parseQuotePaymentAmount(prepared.context?.quote?.quotes?.[0]?.paymentAmount)
+
+    if (parsed.ok) return parsed.amount
+
+    if (parsed.reason === 'missing') return undefined
+
+    refuse('quote payment amount is not numeric')
 }
 
 /**

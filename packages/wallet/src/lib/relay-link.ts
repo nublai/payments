@@ -136,7 +136,15 @@ export function sumQuoteFeeUsd(quote: RelayQuoteResponse): string {
     return values.reduce((total, value) => total + value, 0).toFixed(2)
 }
 
-async function parseRelayResponse(response: Response): Promise<unknown> {
+type RelayJson =
+    | string
+    | number
+    | boolean
+    | null
+    | RelayJson[]
+    | { [key: string]: RelayJson }
+
+async function parseRelayResponse(response: Response): Promise<RelayJson> {
     const text = await response.text()
 
     if (!text) {
@@ -144,7 +152,10 @@ async function parseRelayResponse(response: Response): Promise<unknown> {
     }
 
     try {
-        return JSON.parse(text) as unknown
+        const parsed: unknown = JSON.parse(text)
+
+        // SAFETY: JSON.parse yields a JSON value; RelayJson is that tree.
+        return parsed as RelayJson
     } catch (error) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned invalid JSON.', {
             statusCode: response.status,
@@ -161,11 +172,11 @@ function getErrorMessage(payload: unknown, fallback: string): string {
     return fallback
 }
 
-async function postJson<TRequest, TResponse>(
+async function postJson<TRequest>(
     path: string,
     body: TRequest,
     deps: RelayLinkDeps,
-): Promise<TResponse> {
+): Promise<RelayJson> {
     const response = await deps.fetch(`${deps.baseUrl}${path}`, {
         method: 'POST',
         headers: {
@@ -176,9 +187,7 @@ async function postJson<TRequest, TResponse>(
         signal: createTimeoutSignal(),
     })
 
-    const payload = await readRelayPayload(response)
-
-    return payload as TResponse
+    return await readRelayPayload(response)
 }
 
 function assertNoRedirect(response: Response): void {
@@ -189,7 +198,7 @@ function assertNoRedirect(response: Response): void {
     }
 }
 
-async function readRelayPayload(response: Response): Promise<unknown> {
+async function readRelayPayload(response: Response): Promise<RelayJson> {
     assertNoRedirect(response)
     const payload = await parseRelayResponse(response)
 
@@ -207,11 +216,11 @@ async function readRelayPayload(response: Response): Promise<unknown> {
     return payload
 }
 
-async function getJson<TResponse>(
+async function getJson(
     path: string,
     searchParams: Record<string, string>,
     deps: RelayLinkDeps,
-): Promise<TResponse> {
+): Promise<RelayJson> {
     const url = new URL(`${deps.baseUrl}${path}`)
 
     for (const [key, value] of Object.entries(searchParams)) {
@@ -223,7 +232,7 @@ async function getJson<TResponse>(
         signal: createTimeoutSignal(),
     })
 
-    return (await readRelayPayload(response)) as TResponse
+    return await readRelayPayload(response)
 }
 
 function createTimeoutSignal(): AbortSignal | undefined {
@@ -482,7 +491,7 @@ export async function getQuote(
     depsArg?: Partial<RelayLinkDeps> & { env?: EnvName },
 ): Promise<RelayQuoteResponse> {
     const deps = { ...getDefaultDeps(depsArg?.env), ...depsArg }
-    const payload = await postJson<RelayQuoteRequest, unknown>('/quote/v2', request, deps)
+    const payload = await postJson<RelayQuoteRequest>('/quote/v2', request, deps)
     const quote = normalizeQuoteResponse(payload)
 
     if (quote.steps.length === 0) {
@@ -497,7 +506,7 @@ export async function getIntentStatus(
     depsArg?: Partial<RelayLinkDeps> & { env?: EnvName },
 ): Promise<RelayIntentStatus> {
     const deps = { ...getDefaultDeps(depsArg?.env), ...depsArg }
-    const payload = await getJson<unknown>('/intents/status/v3', { requestId }, deps)
+    const payload = await getJson('/intents/status/v3', { requestId }, deps)
 
     return normalizeIntentStatus(payload)
 }

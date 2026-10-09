@@ -7,10 +7,14 @@ import type { RpcContext } from '../../src/rpc/types'
 import { RpcError } from '../../src/rpc/errors'
 import { handleSendPreparedCalls } from '../../src/rpc/methods/sendPreparedCalls'
 
+type SignerPoolJson =
+    | { txHash: string; signer: string }
+    | { error: string; code: string }
+
 // Helper to create mock context with configurable signer pool behavior
 const createMockCtx = (signerPoolResponse?: {
     ok: boolean
-    json: () => Promise<unknown>
+    json: () => Promise<SignerPoolJson>
 }): RpcContext => {
     const defaultResponse = {
         ok: true,
