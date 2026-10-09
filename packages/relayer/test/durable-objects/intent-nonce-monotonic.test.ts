@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IntentNonceDO } from '../../src/durable-objects/intent-nonce.do'
-import { durableObjectState, testEnv } from '../helpers/env'
+import { durableObjectState } from '../helpers/env'
 
 class FakeSqlCursor<T extends Record<string, SqlStorageValue>> {
     constructor(private readonly rows: T[]) {}
@@ -224,8 +224,18 @@ function createIntentNonceDO(): IntentNonceDO {
     const sql: SqlStorage = sqlStorage(new FakeSqlStorage())
     const ctx: DurableObjectState = durableObjectState(sql)
 
-    return new IntentNonceDO(ctx, testEnv())
+    const fields = { ctx, sql } satisfies {
+        ctx: ConstructorParameters<typeof IntentNonceDO>[0]
+        sql: SqlStorage
+    }
+
+    // SAFETY: DurableObjectBase rejects a structural DurableObjectState at runtime; these tests only call fetch/sql methods.
+    const nonceDO = Object.create(IntentNonceDO.prototype) as IntentNonceDO
+    Object.assign(nonceDO, fields)
+
+    return nonceDO
 }
+
 
 async function doRequest<T>(
     nonceDO: IntentNonceDO,

@@ -48,9 +48,8 @@ function fetcherFields(id: DurableObjectId, fetchImpl?: TestStubMethods['fetch']
         connect(): Socket {
             return unused('connect')
         },
-        get __DURABLE_OBJECT_BRAND(): never {
-            return unused('__DURABLE_OBJECT_BRAND')
-        },
+        // SAFETY: Rpc brands this field as never; the runtime only checks that the key exists.
+        __DURABLE_OBJECT_BRAND: undefined as never,
     }
 }
 
