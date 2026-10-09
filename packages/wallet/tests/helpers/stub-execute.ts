@@ -61,124 +61,118 @@ import {
 } from '../../src/lib/session-rotate'
 import { stubDeps } from './typed-mock'
 
-/** Partial of a Deps bag. Function slots accept bun mocks whose inferred impl is slightly narrower. */
-type PartialDeps<T> = {
-    [K in keyof T]?: T[K] extends (...args: infer _A) => infer _R ? T[K] | CallableFunction : T[K]
-}
-
 function withPartialDeps<I, D, R>(
     fn: (input: I, deps?: Partial<D>) => R,
     input: I,
-    deps: PartialDeps<D> | undefined,
+    deps: Partial<D> | undefined,
 ): R {
     if (deps === undefined) return fn(input, undefined)
 
-    // SAFETY: each installed function is the dep method this test calls; bun mocks are that callable at runtime.
-    return fn(input, stubDeps<Partial<D>, PartialDeps<D>>(deps))
-
+    return fn(input, deps)
 }
 
 export function executeSessionRotate(
     options: Parameters<typeof executeSessionRotateImpl>[0],
-    deps?: PartialDeps<SessionRotateDeps>,
+    deps?: Partial<SessionRotateDeps>,
 ): ReturnType<typeof executeSessionRotateImpl> {
     return withPartialDeps(executeSessionRotateImpl, options, deps)
 }
 
 export function executeAccountSwap(
     options: Parameters<typeof executeAccountSwapImpl>[0],
-    deps?: PartialDeps<AccountSwapDeps>,
+    deps?: Partial<AccountSwapDeps>,
 ): ReturnType<typeof executeAccountSwapImpl> {
     return withPartialDeps(executeAccountSwapImpl, options, deps)
 }
 
 export function executeAccountSend(
     options: Parameters<typeof executeAccountSendImpl>[0],
-    deps?: PartialDeps<AccountSendDeps>,
+    deps?: Partial<AccountSendDeps>,
 ): ReturnType<typeof executeAccountSendImpl> {
     return withPartialDeps(executeAccountSendImpl, options, deps)
 }
 
 export function executeAccountCreate(
     options: Parameters<typeof executeAccountCreateImpl>[0],
-    deps?: PartialDeps<AccountCreateDeps>,
+    deps?: Partial<AccountCreateDeps>,
 ): ReturnType<typeof executeAccountCreateImpl> {
     return withPartialDeps(executeAccountCreateImpl, options, deps)
 }
 
 export function executeAccountDelegate(
     options: Parameters<typeof executeAccountDelegateImpl>[0],
-    deps?: PartialDeps<AccountDelegateDeps>,
+    deps?: Partial<AccountDelegateDeps>,
 ): ReturnType<typeof executeAccountDelegateImpl> {
     return withPartialDeps(executeAccountDelegateImpl, options, deps)
 }
 
 export function executeAccountExport(
     options: Parameters<typeof executeAccountExportImpl>[0],
-    deps?: PartialDeps<AccountExportDeps>,
+    deps?: Partial<AccountExportDeps>,
 ): ReturnType<typeof executeAccountExportImpl> {
     return withPartialDeps(executeAccountExportImpl, options, deps)
 }
 
 export function executePermissionsGrant(
     options: Parameters<typeof executePermissionsGrantImpl>[0],
-    deps?: PartialDeps<PermissionsGrantDeps>,
+    deps?: Partial<PermissionsGrantDeps>,
 ): ReturnType<typeof executePermissionsGrantImpl> {
     return withPartialDeps(executePermissionsGrantImpl, options, deps)
 }
 
 export function executePermissionsList(
     options: Parameters<typeof executePermissionsListImpl>[0],
-    deps?: PartialDeps<PermissionsListDeps>,
+    deps?: Partial<PermissionsListDeps>,
 ): ReturnType<typeof executePermissionsListImpl> {
     return withPartialDeps(executePermissionsListImpl, options, deps)
 }
 
 export function executePermissionsRevoke(
     options: Parameters<typeof executePermissionsRevokeImpl>[0],
-    deps?: PartialDeps<PermissionsRevokeDeps>,
+    deps?: Partial<PermissionsRevokeDeps>,
 ): ReturnType<typeof executePermissionsRevokeImpl> {
     return withPartialDeps(executePermissionsRevokeImpl, options, deps)
 }
 
 export function executePermissionsShow(
     options: Parameters<typeof executePermissionsShowImpl>[0],
-    deps?: PartialDeps<PermissionsShowDeps>,
+    deps?: Partial<PermissionsShowDeps>,
 ): ReturnType<typeof executePermissionsShowImpl> {
     return withPartialDeps(executePermissionsShowImpl, options, deps)
 }
 
 export function executeSessionList(
     options: Parameters<typeof executeSessionListImpl>[0],
-    deps?: PartialDeps<SessionListDeps>,
+    deps?: Partial<SessionListDeps>,
 ): ReturnType<typeof executeSessionListImpl> {
     return withPartialDeps(executeSessionListImpl, options, deps)
 }
 
 export function executeSessionRevoke(
     options: Parameters<typeof executeSessionRevokeImpl>[0],
-    deps?: PartialDeps<SessionRevokeDeps>,
+    deps?: Partial<SessionRevokeDeps>,
 ): ReturnType<typeof executeSessionRevokeImpl> {
     return withPartialDeps(executeSessionRevokeImpl, options, deps)
 }
 
 export function executeAccountUpdatePassword(
     options: Parameters<typeof executeAccountUpdatePasswordImpl>[0],
-    deps?: PartialDeps<AccountUpdatePasswordDeps>,
+    deps?: Partial<AccountUpdatePasswordDeps>,
 ): ReturnType<typeof executeAccountUpdatePasswordImpl> {
     return withPartialDeps(executeAccountUpdatePasswordImpl, options, deps)
 }
 
 export function executeSessionCreate(
     options: Parameters<typeof executeSessionCreateImpl>[0],
-    deps?: PartialDeps<SessionCreateDeps>,
+    deps?: Partial<SessionCreateDeps>,
 ): ReturnType<typeof executeSessionCreateImpl> {
     return withPartialDeps(executeSessionCreateImpl, options, deps)
 }
 
 export function executeSignedCalls(
-    deps: PartialDeps<ExecuteSignedCallsDeps>,
+    deps: Partial<ExecuteSignedCallsDeps>,
     params: ExecuteSignedCallsParams,
 ): ReturnType<typeof executeSignedCallsImpl> {
-    return executeSignedCallsImpl(stubDeps<ExecuteSignedCallsDeps, PartialDeps<ExecuteSignedCallsDeps>>(deps), params)
+    // SAFETY: these tests only call the dep methods they install on this object.
+    return executeSignedCallsImpl(stubDeps<ExecuteSignedCallsDeps, Partial<ExecuteSignedCallsDeps>>(deps), params)
 }

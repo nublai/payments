@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import type { Address } from 'viem'
-import { resolveAccountDelegatePassword } from '../src/lib/account-delegate'
+import { resolveAccountDelegatePassword, type AccountDelegateDeps } from '../src/lib/account-delegate'
 import { executeAccountDelegate } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { typedMock } from './helpers/typed-mock'
 
 const ROOT_ADDRESS: Address = '0x1111111111111111111111111111111111111111'
 
@@ -165,22 +166,22 @@ test('executeAccountDelegate delegates or skips already delegated chains', async
             keystorePath: '/tmp/alice.json',
             password: 'pw' },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
                 format: 'split',
                 rootPath: '/tmp/alice.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
                 session })),
-            decryptRootKeystore: mock(async () => ({
+            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
                 rootPrivateKey:
                     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
-            decryptSessionKeystore: mock(async () => ({
+            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
-            getDelegatedCode: mock(async ({ network }) =>
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async ({ network }) =>
                 network.chainId === 8453 ? ('0x') : ('0xef0100'),
             ),
-            delegateAccount: mock(async () => ({
+            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
                 accountAddress: ROOT_ADDRESS,
                 txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })),
             writeRootKeystoreFile },
@@ -207,20 +208,20 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
             keystorePath: '/tmp/alice.json',
             password: 'pw' },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
                 format: 'split',
                 rootPath: '/tmp/alice.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
                 session })),
-            decryptRootKeystore: mock(async () => ({
+            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
                 rootPrivateKey:
                     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
-            decryptSessionKeystore: mock(async () => ({
+            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
-            getDelegatedCode: mock(async () => '0x'),
-            delegateAccount: mock(async ({ network }) => {
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0x'),
+            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async ({ network }) => {
                 if (network.chainId === 137) {
                     throw new Error('Delegation failed: rpc error')
                 }
@@ -229,7 +230,7 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
                     accountAddress: ROOT_ADDRESS,
                     txHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }
             }),
-            writeRootKeystoreFile: mock(async () => {}) },
+            writeRootKeystoreFile: typedMock<AccountDelegateDeps['writeRootKeystoreFile']>(async () => {}) },
     )
 
     expect(result.hasFailures).toBe(true)

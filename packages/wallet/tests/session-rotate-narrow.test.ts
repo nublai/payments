@@ -8,12 +8,13 @@ import { signedPaymentMaxForQuote } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
-import { sealRotationMarker, type RotationIntentPayload } from '../src/lib/session-rotate'
+import { sealRotationMarker, type RotationIntentPayload, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { parseAddr } from './helpers/hex'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
+import { typedMock } from './helpers/typed-mock'
 
 const account = '0x1111111111111111111111111111111111111111'
 
@@ -83,47 +84,47 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 newName: 'default-next',
             },
             {
-                withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
-                readKeystoreBundle: mock(async () => ({
+                withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(async (_path: string, fn: () => Promise<unknown>) => fn()),
+                readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => ({
                     root: {
                         addresses: { root: account, delegated: account },
                         sessionRef: { active: 'default', dir: 'sessions' },
                     },
                     session: oldSession,
                 })),
-                readSessionKeystoreFile: mock(async () => {
+                readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async () => {
                     reads += 1
 
                     return reads === 1 ? oldSession : newSession
                 }),
-                readRotationIntent: mock(async () => null),
-                createSessionKeystore: mock(async () => newSession),
-                writeSessionKeystoreFile: mock(async () => {}),
-                writeRootKeystoreFile: mock(async () => {}),
-                writeRotationIntent: mock(
+                readRotationIntent: typedMock<SessionRotateDeps['readRotationIntent']>(async () => null),
+                createSessionKeystore: typedMock<SessionRotateDeps['createSessionKeystore']>(async () => newSession),
+                writeSessionKeystoreFile: typedMock<SessionRotateDeps['writeSessionKeystoreFile']>(async () => {}),
+                writeRootKeystoreFile: typedMock<SessionRotateDeps['writeRootKeystoreFile']>(async () => {}),
+                writeRotationIntent: typedMock<SessionRotateDeps['writeRotationIntent']>(
                     async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => ({
                         ...value,
                         fileName: fileName ?? 'rotation.json',
                     }),
                 ),
-                deleteRotationIntent: mock(async () => {}),
-                unlink: mock(async () => {}),
-                generatePrivateKey: mock(() => rootPrivateKey),
-                decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-                decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
+                deleteRotationIntent: typedMock<SessionRotateDeps['deleteRotationIntent']>(async () => {}),
+                unlink: typedMock<SessionRotateDeps['unlink']>(async () => {}),
+                generatePrivateKey: typedMock<SessionRotateDeps['generatePrivateKey']>(() => rootPrivateKey),
+                decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+                decryptSessionKeystore: typedMock<SessionRotateDeps['decryptSessionKeystore']>(async (keystore: { addresses: { session: string } }) => {
                     const session = getAddress(parseAddr(keystore.addresses.session))
 
                     if (session === newAddress) return { sessionPrivateKey: newSessionKey }
 
                     return { sessionPrivateKey: oldSessionKey }
                 }),
-                readNonce: mock(async () => 1n),
-                readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
-                readActiveUsdcDaily: mock(async () => 0n),
-                getKeys: mock(async () => ({
+                readNonce: typedMock<SessionRotateDeps['readNonce']>(async () => 1n),
+                readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
+                readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
                     '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
                 })),
-                executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
 
                     return {
@@ -139,16 +140,16 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                         },
                     }
                 }),
-                prepareCalls: mock(async () => {
+                prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(async () => {
                     throw new Error('prepareCalls should not run')
                 }),
-                signTypedData: mock(async () => {
+                signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
                     throw new Error('signTypedData should not run')
                 }),
-                sendPreparedCalls: mock(async () => {
+                sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
                     throw new Error('sendPreparedCalls should not run')
                 }),
-                waitForBundle: mock(async () => {
+                waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => {
                     throw new Error('waitForBundle should not run')
                 }),
             },
@@ -212,43 +213,43 @@ function rotateDeps<E>(overrides?: E) {
     let reads = 0
 
     return {
-        withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
-        readKeystoreBundle: mock(async () => ({
+        withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(async (_path: string, fn: () => Promise<unknown>) => fn()),
+        readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => ({
             root: {
                 addresses: { root: account, delegated: account },
                 sessionRef: { active: 'default', dir: 'sessions' },
             },
             session: oldSession,
         })),
-        readSessionKeystoreFile: mock(async () => {
+        readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async () => {
             reads += 1
 
             return reads === 1 ? oldSession : newSession
         }),
-        readRotationIntent: mock(async () => null),
-        createSessionKeystore: mock(async () => newSession),
-        writeSessionKeystoreFile: mock(async () => {}),
-        writeRootKeystoreFile: mock(async () => {}),
-        writeRotationIntent: mock(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => ({
+        readRotationIntent: typedMock<SessionRotateDeps['readRotationIntent']>(async () => null),
+        createSessionKeystore: typedMock<SessionRotateDeps['createSessionKeystore']>(async () => newSession),
+        writeSessionKeystoreFile: typedMock<SessionRotateDeps['writeSessionKeystoreFile']>(async () => {}),
+        writeRootKeystoreFile: typedMock<SessionRotateDeps['writeRootKeystoreFile']>(async () => {}),
+        writeRotationIntent: typedMock<SessionRotateDeps['writeRotationIntent']>(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => ({
             ...value,
             fileName: fileName ?? 'rotation.json',
         })),
-        deleteRotationIntent: mock(async () => {}),
-        unlink: mock(async () => {}),
-        generatePrivateKey: mock(() => rootPrivateKey),
-        decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-        decryptSessionKeystore: mock(async (keystore: { addresses: { session: string } }) => {
+        deleteRotationIntent: typedMock<SessionRotateDeps['deleteRotationIntent']>(async () => {}),
+        unlink: typedMock<SessionRotateDeps['unlink']>(async () => {}),
+        generatePrivateKey: typedMock<SessionRotateDeps['generatePrivateKey']>(() => rootPrivateKey),
+        decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+        decryptSessionKeystore: typedMock<SessionRotateDeps['decryptSessionKeystore']>(async (keystore: { addresses: { session: string } }) => {
             const session = getAddress(parseAddr(keystore.addresses.session))
 
             if (session === newAddress) return { sessionPrivateKey: newSessionKey }
 
             return { sessionPrivateKey: oldSessionKey }
         }),
-        readNonce: mock(async () => 1n),
-        getKeys: mock(async () => ({
+        readNonce: typedMock<SessionRotateDeps['readNonce']>(async () => 1n),
+        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
             '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
         })),
-        executeSignedCalls: mock(async () => ({
+        executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => ({
             id: 'bundle-narrow',
             finalStatus: {
                 success: true,
@@ -260,20 +261,20 @@ function rotateDeps<E>(overrides?: E) {
                 },
             },
         })),
-        prepareCalls: mock(async () => {
+        prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(async () => {
             throw new Error('prepareCalls should not run')
         }),
-        signTypedData: mock(async () => {
+        signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
             throw new Error('signTypedData should not run')
         }),
-        sendPreparedCalls: mock(async () => {
+        sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => {
             throw new Error('sendPreparedCalls should not run')
         }),
-        waitForBundle: mock(async () => {
+        waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => {
             throw new Error('waitForBundle should not run')
         }),
-        readActiveUsdcDaily: mock(async () => 0n),
-        readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
+        readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
+        readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
         ...overrides,
     }
 }
@@ -294,10 +295,10 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                 fullAccessPhraseConfirmed: true,
             },
             rotateDeps({
-                getKeys: mock(async () => ({
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
                     '0x7a69': [{ hash: computeSessionKeyHash(newAddress) }],
                 })),
-                readGuardCleanup: mock(async () => ({
+                readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({
                     anyCalls: [
                         {
                             target: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
@@ -315,7 +316,7 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                         },
                     ],
                 })),
-                executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
 
                     return {
@@ -379,12 +380,12 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
                             locked = false
                         }
                     },
-                    readActiveUsdcDaily: mock(async () => {
+                    readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => {
                         expect(locked).toBe(true)
 
                         return 10_000_000n
                     }),
-                    executeSignedCalls: mock(async () => {
+                    executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => {
                         signed = true
                         throw new Error('should not send')
                     }),
@@ -430,10 +431,10 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                 newName: 'default-next',
             },
             rotateDeps({
-                getKeys: mock(async () => ({
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
                     '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
                 })),
-                readGuardCleanup: mock(async (input: { chainId: number }) => {
+                readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async (input: { chainId: number }) => {
                     if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
 
                     return {
@@ -441,8 +442,8 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                         checkers: [],
                     }
                 }),
-                executeSignedCalls,
-                prepareCalls: mock(async (input: {
+                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+                prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(async (input: {
                     network: { chainId: number }
                     from: Address
                     calls: { target: Address; value: bigint; data: Hex }[]
@@ -471,9 +472,9 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                         paymentMaxAmount: input.paymentMaxAmount,
                     })
                 }),
-                signTypedData: mock(async () => rootPrivateKey),
-                sendPreparedCalls: mock(async () => ({ id: 'bundle-extra-chain' })),
-                waitForBundle: mock(async () => ({
+                signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => rootPrivateKey),
+                sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-extra-chain' })),
+                waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => ({
                     success: true,
                     statusCode: 200,
                     status: 'confirmed',
@@ -531,16 +532,16 @@ function partialRotateHarness(mode: 'status' | 'throw') {
     const prepares: { chainId: number }[] = []
 
     const deps = rotateDeps({
-        getKeys: mock(async () => ({
+        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
             '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
         })),
-        readRotationIntent: mock(async () => savedIntent),
-        writeRotationIntent: mock(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => {
+        readRotationIntent: typedMock<SessionRotateDeps['readRotationIntent']>(async () => savedIntent),
+        writeRotationIntent: typedMock<SessionRotateDeps['writeRotationIntent']>(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => {
             savedIntent = { ...value, fileName: fileName ?? 'rotation.json' }
 
             return savedIntent
         }),
-        readSessionKeystoreFile: mock(async () => {
+        readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async () => {
             if (readOld) {
                 readOld = false
 
@@ -549,10 +550,10 @@ function partialRotateHarness(mode: 'status' | 'throw') {
 
             return newSession
         }),
-        unlink: mock(async (path: string) => {
+        unlink: typedMock<SessionRotateDeps['unlink']>(async (path: string) => {
             unlinked.push(path)
         }),
-        readGuardCleanup: mock(async (input: { chainId: number }) => {
+        readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async (input: { chainId: number }) => {
             if (input.chainId !== POLYGON_CHAIN_ID) return { anyCalls: [], checkers: [] }
 
             return {
@@ -560,8 +561,8 @@ function partialRotateHarness(mode: 'status' | 'throw') {
                 checkers: [],
             }
         }),
-        executeSignedCalls,
-        prepareCalls: mock(async (input: {
+        executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
+        prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(async (input: {
             network: { chainId: number }
             from: Address
             calls: { target: Address; value: bigint; data: Hex }[]
@@ -584,9 +585,9 @@ function partialRotateHarness(mode: 'status' | 'throw') {
                 paymentMaxAmount: input.paymentMaxAmount,
             })
         }),
-        signTypedData: mock(async () => rootPrivateKey),
-        sendPreparedCalls: mock(async () => ({ id: 'bundle-partial' })),
-        waitForBundle: mock(async (input: { network: { chainId: number } }) => {
+        signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => rootPrivateKey),
+        sendPreparedCalls: typedMock<SessionRotateDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-partial' })),
+        waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async (input: { network: { chainId: number } }) => {
             if (input.network.chainId === POLYGON_CHAIN_ID && !polygonSucceeds) {
                 if (mode === 'throw') throw new Error('extra chain rpc down')
 
@@ -732,19 +733,19 @@ test('resume after a successful rotation does not start another rotation', async
         const signed: string[] = []
 
         const deps = rotateDeps({
-            getKeys: mock(async () => ({
+            getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
                 '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
             })),
-            readRotationIntent: mock(async () => intent),
-            writeRotationIntent: mock(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => {
+            readRotationIntent: typedMock<SessionRotateDeps['readRotationIntent']>(async () => intent),
+            writeRotationIntent: typedMock<SessionRotateDeps['writeRotationIntent']>(async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => {
                 intent = { ...value, fileName: fileName ?? '.rotation.json' }
 
                 return intent
             }),
-            deleteRotationIntent: mock(async () => {
+            deleteRotationIntent: typedMock<SessionRotateDeps['deleteRotationIntent']>(async () => {
                 intent = null
             }),
-            executeSignedCalls: mock(async () => {
+            executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => {
                 signed.push('authorize')
 
                 return {
@@ -800,7 +801,7 @@ test('a tampered pending marker is not authorized', async () => {
         let reads = 0
 
         const deps = rotateDeps({
-            readRotationIntent: mock(async () => ({
+            readRotationIntent: typedMock<SessionRotateDeps['readRotationIntent']>(async () => ({
                 oldSessionName: 'default',
                 newSessionName: 'attacker',
                 status: 'pending',
@@ -814,7 +815,7 @@ test('a tampered pending marker is not authorized', async () => {
                 oldKeyHash: computeSessionKeyHash(oldAddress),
                 permissions: { kind: 'narrow' },
             })),
-            readSessionKeystoreFile: mock(async () => {
+            readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async () => {
                 reads += 1
 
                 if (reads === 1) {
@@ -829,10 +830,10 @@ test('a tampered pending marker is not authorized', async () => {
                     name: 'attacker',
                 }
             }),
-            getKeys: mock(async () => ({
+            getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
                 '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
             })),
-            executeSignedCalls: mock(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+            executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
                 for (const call of params.calls) signed.push(call.data)
 
                 return {
@@ -890,13 +891,13 @@ test('two rotation markers are refused instead of using the lexicographic last',
         const signed: string[] = []
 
         const { readRotationIntent: _ignored, ...deps } = rotateDeps({
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => ({
                 root: {
                     addresses: { root: account, delegated: account },
                     sessionRef: { active: 'default', dir: 'sessions' },
                 },
             })),
-            executeSignedCalls: mock(async () => {
+            executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => {
                 signed.push('signed')
 
                 return {
@@ -928,7 +929,7 @@ test('resume --chain refuses a marker for a different chain', async () => {
         const signed: string[] = []
 
         const deps = rotateDeps({
-            readRotationIntent: mock(async () => ({
+            readRotationIntent: typedMock<SessionRotateDeps['readRotationIntent']>(async () => ({
                 oldSessionName: 'default',
                 newSessionName: 'default-next',
                 status: 'submitted',
@@ -940,11 +941,11 @@ test('resume --chain refuses a marker for a different chain', async () => {
                 narrow: true,
                 fullAccess: false,
             })),
-            getKeys: mock(async () => ({
+            getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
                 '0x89': [{ hash: computeSessionKeyHash(newAddress) }],
                 '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
             })),
-            waitForBundle: mock(async () => ({
+            waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => ({
                 success: true,
                 statusCode: 200,
                 status: 'confirmed',
@@ -953,7 +954,7 @@ test('resume --chain refuses a marker for a different chain', async () => {
                         '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
                 },
             })),
-            executeSignedCalls: mock(async () => {
+            executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async () => {
                 signed.push('signed')
 
                 return {
@@ -987,10 +988,10 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
         const daily = mock(async () => 0n)
 
         const deps = rotateDeps({
-            getKeys: mock(async () => ({
+            getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
                 '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
             })),
-            readRotationIntent: mock(async () => ({
+            readRotationIntent: typedMock<SessionRotateDeps['readRotationIntent']>(async () => ({
                 ...(await sealRotationMarker(
                     {
                         oldSessionName: 'default',
@@ -1011,7 +1012,7 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
                 fileName: '.rotation.json',
             })),
             readActiveUsdcDaily: daily,
-            waitForBundle: mock(async () => ({
+            waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => ({
                 success: true,
                 statusCode: 200,
                 status: 'confirmed',
@@ -1020,7 +1021,7 @@ test('a submitted resume re-reads the daily USDC total under the lock', async ()
                         '0xabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabca',
                 },
             })),
-            readGuardCleanup: mock(async () => ({ anyCalls: [], checkers: [] })),
+            readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
         })
 
         const result = await executeSessionRotate(

@@ -15,6 +15,7 @@ import {
     AccountSendError,
     resolveAccountSendPassword,
     type AccountSendOptions,
+    type AccountSendDeps,
 } from '../src/lib/account-send'
 import { executeAccountSend } from './helpers/stub-execute'
 import {
@@ -26,7 +27,7 @@ import {
 import { RecipientResolutionError } from '../src/lib/recipient-resolver'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
-import { firstMockArg } from './helpers/typed-mock'
+import { firstMockArg, typedMock } from './helpers/typed-mock'
 
 function sendBundle(
     rootPath = '/tmp/alice.json',
@@ -117,24 +118,24 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(async () => sendBundle()),
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle()),
+            decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            resolveAddressOrEnsInput: mock(async () => ({
+            resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => ({
                 address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
-            hasLegacyRecipientAlias: mock(async () => false),
-            readNonce: mock(async () => 2n),
-            prepareCalls,
-            signTypedData: mock(
+            hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+            readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
+            prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(prepareCalls),
+            signTypedData: typedMock<AccountSendDeps['signTypedData']>(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
             ),
             sendPreparedCalls,
-            waitForBundle: mock(async () => ({
+            waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
@@ -178,24 +179,24 @@ test('executeAccountSend supports legacy polygon USDC.e override', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(async () => sendBundle()),
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle()),
+            decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            resolveAddressOrEnsInput: mock(async () => ({
+            resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => ({
                 address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
-            hasLegacyRecipientAlias: mock(async () => false),
-            readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
-            signTypedData: mock(
+            hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+            readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
+            prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(async (input) => matchingPreparedCalls(input)),
+            signTypedData: typedMock<AccountSendDeps['signTypedData']>(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
             ),
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => ({
+            sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+            waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
@@ -220,7 +221,7 @@ test('executeAccountSend rejects invalid amount precision', async () => {
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => sendBundle()),
+                readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle()),
             },
         ),
     ).rejects.toMatchObject({
@@ -240,15 +241,15 @@ test('executeAccountSend rejects unresolved ENS recipient', async () => {
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => sendBundle()),
-                decryptSessionKeystore: mock(async () => ({
+                readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle()),
+                decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
-                resolveAddressOrEnsInput: mock(async () => {
+                resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => {
                     throw new Error('Could not resolve ENS name: unknown.eth')
                 }),
-                hasLegacyRecipientAlias: mock(async () => false),
+                hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
             },
         ),
     ).rejects.toMatchObject({
@@ -268,26 +269,26 @@ test('executeAccountSend surfaces guidance for legacy alias recipients', async (
                 keystorePath: '/tmp/alice.json',
             },
             {
-                resolveAddressOrEnsInput: mock(async () => {
+                resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => {
                     throw new RecipientResolutionError(
                         'INVALID_RECIPIENT',
                         'Recipient must be a valid address or .eth ENS name.',
                     )
                 }),
-                hasLegacyRecipientAlias: mock(async () => true),
-                readKeystoreBundle: mock(async () => sendBundle()),
-                decryptSessionKeystore: mock(async () => ({
+                hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => true),
+                readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle()),
+                decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
-                readNonce: mock(async () => 1n),
-                prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
-                signTypedData: mock(
+                readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 1n),
+                prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(async (input) => matchingPreparedCalls(input)),
+                signTypedData: typedMock<AccountSendDeps['signTypedData']>(
                     async () =>
                         '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
                 ),
-                sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-                waitForBundle: mock(async () => ({
+                sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+                waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => ({
                     success: true,
                     id: 'bundle-1',
                     status: 'confirmed' as const,
@@ -319,12 +320,12 @@ test('executeAccountSend resolves ENS recipient', async () => {
             keystorePath: '/tmp/alice.json',
         },
         {
-            readKeystoreBundle: mock(async () => sendBundle()),
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle()),
+            decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            resolveAddressOrEnsInput: mock(async () => {
+            resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => {
                 const ens: `${string}.eth` = 'vitalik.eth'
 
                 return {
@@ -332,15 +333,15 @@ test('executeAccountSend resolves ENS recipient', async () => {
                     ens,
                 }
             }),
-            hasLegacyRecipientAlias: mock(async () => false),
-            readNonce: mock(async () => 1n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
-            signTypedData: mock(
+            hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+            readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 1n),
+            prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(async (input) => matchingPreparedCalls(input)),
+            signTypedData: typedMock<AccountSendDeps['signTypedData']>(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
             ),
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => ({
+            sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+            waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
@@ -364,15 +365,15 @@ test('executeAccountSend classifies empty recipient as invalid recipient', async
                 keystorePath: '/tmp/alice.json',
             },
             {
-                readKeystoreBundle: mock(async () => sendBundle()),
-                decryptSessionKeystore: mock(async () => ({
+                readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle()),
+                decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
-                resolveAddressOrEnsInput: mock(async () => {
+                resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => {
                     throw new Error('Recipient cannot be empty.')
                 }),
-                hasLegacyRecipientAlias: mock(async () => false),
+                hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
             },
         ),
     ).rejects.toMatchObject({ code: 'INVALID_RECIPIENT' })
@@ -421,26 +422,26 @@ test('executeAccountSend supports --session-file direct mode', async () => {
         },
         {
             readSessionKeystoreFile,
-            readKeystoreBundle: mock(async () => {
+            readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => {
                 throw new Error('should not load root bundle')
             }),
-            decryptSessionKeystore: mock(async () => ({
+            decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            resolveAddressOrEnsInput: mock(async () => ({
+            resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => ({
                 address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
-            hasLegacyRecipientAlias: mock(async () => false),
-            readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
-            signTypedData: mock(
+            hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+            readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
+            prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(async (input) => matchingPreparedCalls(input)),
+            signTypedData: typedMock<AccountSendDeps['signTypedData']>(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
             ),
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => ({
+            sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+            waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
@@ -502,25 +503,25 @@ test('executeAccountSend supports --session local selection mode', async () => {
             sessionName: 'worker-2',
         },
         {
-            readKeystoreBundle: mock(async () => sendBundle('/tmp/default.keystore.json')),
+            readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle('/tmp/default.keystore.json')),
             readSessionKeystoreFile,
-            decryptSessionKeystore: mock(async () => ({
+            decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            resolveAddressOrEnsInput: mock(async () => ({
+            resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => ({
                 address: '0x2222222222222222222222222222222222222222',
                 ens: null,
             })),
-            hasLegacyRecipientAlias: mock(async () => false),
-            readNonce: mock(async () => 2n),
-            prepareCalls: mock(async (input) => matchingPreparedCalls(input)),
-            signTypedData: mock(
+            hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+            readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
+            prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(async (input) => matchingPreparedCalls(input)),
+            signTypedData: typedMock<AccountSendDeps['signTypedData']>(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
             ),
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => ({
+            sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+            waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed' as const,
@@ -546,8 +547,8 @@ test('executeAccountSend preserves selected session lookup failures', async () =
                 sessionName: 'worker-missing',
             },
             {
-                readKeystoreBundle: mock(async () => sendBundle('/tmp/default.keystore.json')),
-                readSessionKeystoreFile: mock(async () => {
+                readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => sendBundle('/tmp/default.keystore.json')),
+                readSessionKeystoreFile: typedMock<AccountSendDeps['readSessionKeystoreFile']>(async () => {
                     throw new Error('ENOENT: no such file or directory')
                 }),
             },
@@ -586,7 +587,7 @@ test('executeAccountSend rejects --session-file chain mismatch', async () => {
                 sessionFile: '/tmp/worker-1.session.json',
             },
             {
-                readSessionKeystoreFile: mock(async (_path: string): Promise<RelayerSessionKeystoreV2> => ({
+                readSessionKeystoreFile: typedMock<AccountSendDeps['readSessionKeystoreFile']>(async (_path: string): Promise<RelayerSessionKeystoreV2> => ({
                     version: 2,
                     createdAt: '2026-03-02T00:00:00.000Z',
                     name: 'worker-1',
@@ -635,10 +636,10 @@ test('executeAccountSend preserves chain mismatch errors in session-only profile
                 keystorePath: '/tmp/default.keystore.json',
             },
             {
-                readKeystoreBundle: mock(async () => {
+                readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => {
                     throw new SessionOnlyProfileError('/tmp/default.keystore.json')
                 }),
-                readSessionKeystoreFile: mock(async (_path: string): Promise<RelayerSessionKeystoreV2> => ({
+                readSessionKeystoreFile: typedMock<AccountSendDeps['readSessionKeystoreFile']>(async (_path: string): Promise<RelayerSessionKeystoreV2> => ({
                     version: 2,
                     createdAt: '2026-03-02T00:00:00.000Z',
                     name: 'worker-1',
@@ -687,10 +688,10 @@ test('executeAccountSend preserves chain mismatch errors for login-profile fallb
                 keystorePath: '/tmp/default.keystore.json',
             },
             {
-                readKeystoreBundle: mock(async () => {
+                readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => {
                     throw new LoginProfileError()
                 }),
-                readSessionKeystoreFile: mock(async (_path: string): Promise<LoginSessionKeystoreV2> => ({
+                readSessionKeystoreFile: typedMock<AccountSendDeps['readSessionKeystoreFile']>(async (_path: string): Promise<LoginSessionKeystoreV2> => ({
                     version: 2,
                     createdAt: '2026-03-02T00:00:00.000Z',
                     name: 'worker-1',

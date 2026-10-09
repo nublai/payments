@@ -7,8 +7,10 @@ import {
     resolveKeystorePath,
     resolveAccountCreatePassword,
     type AccountCreateOptions,
+    type AccountCreateDeps,
 } from '../src/lib/account-create'
 import { executeAccountCreate } from './helpers/stub-execute'
+import { typedMock } from './helpers/typed-mock'
 import type {
     AnySessionKeystore,
     createSessionKeystore,
@@ -265,12 +267,12 @@ test('executeAccountCreate creates keystore and delegates', async () => {
     let generateCalls = 0
 
     const result = await executeAccountCreate(options, {
-        generatePrivateKey: mock(() => {
+        generatePrivateKey: typedMock<AccountCreateDeps['generatePrivateKey']>(() => {
             generateCalls += 1
 
             return generateCalls === 1 ? rootPrivateKey : sessionPrivateKey
         }),
-        createRootKeystore: mock(async () => rootKeystore),
+        createRootKeystore: typedMock<AccountCreateDeps['createRootKeystore']>(async () => rootKeystore),
         createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
         writeRootKeystoreFile,
         writeSessionKeystoreFile,
@@ -370,12 +372,12 @@ test('executeAccountCreate maps delegation failure to typed error', async () => 
                 password: 'password',
                 keystorePath: '/tmp/test-keystore.json' },
             {
-                generatePrivateKey: mock(() => rootPrivateKey),
-                createRootKeystore: mock(async () => rootKeystore),
+                generatePrivateKey: typedMock<AccountCreateDeps['generatePrivateKey']>(() => rootPrivateKey),
+                createRootKeystore: typedMock<AccountCreateDeps['createRootKeystore']>(async () => rootKeystore),
                 createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
-                writeRootKeystoreFile: mock(async () => {}),
-                writeSessionKeystoreFile: mock(async () => {}),
-                delegateAccount: mock(async () => {
+                writeRootKeystoreFile: typedMock<AccountCreateDeps['writeRootKeystoreFile']>(async () => {}),
+                writeSessionKeystoreFile: typedMock<AccountCreateDeps['writeSessionKeystoreFile']>(async () => {}),
+                delegateAccount: typedMock<AccountCreateDeps['delegateAccount']>(async () => {
                     throw new Error('Delegation failed: relayer rejected authorization')
                 }) },
         ),
@@ -399,12 +401,12 @@ test('executeAccountCreate writes session keystore before delegation so resume r
                 password: 'password',
                 keystorePath: '/tmp/test-keystore.json' },
             {
-                generatePrivateKey: mock(() => rootPrivateKey),
-                createRootKeystore: mock(async () => rootKeystore),
+                generatePrivateKey: typedMock<AccountCreateDeps['generatePrivateKey']>(() => rootPrivateKey),
+                createRootKeystore: typedMock<AccountCreateDeps['createRootKeystore']>(async () => rootKeystore),
                 createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
-                writeRootKeystoreFile: mock(async () => {}),
+                writeRootKeystoreFile: typedMock<AccountCreateDeps['writeRootKeystoreFile']>(async () => {}),
                 writeSessionKeystoreFile,
-                delegateAccount: mock(async () => {
+                delegateAccount: typedMock<AccountCreateDeps['delegateAccount']>(async () => {
                     throw new Error('Delegation failed: relayer rejected authorization')
                 }) },
         ),
@@ -440,8 +442,8 @@ test('executeAccountCreate writes split root and session keystores', async () =>
             password: 'password',
             keystorePath: '/tmp/test-keystore.json' },
         {
-            generatePrivateKey: mock(() => rootPrivateKey),
-            createRootKeystore: mock(async () => rootKeystore),
+            generatePrivateKey: typedMock<AccountCreateDeps['generatePrivateKey']>(() => rootPrivateKey),
+            createRootKeystore: typedMock<AccountCreateDeps['createRootKeystore']>(async () => rootKeystore),
             createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
             writeRootKeystoreFile,
             writeSessionKeystoreFile,
@@ -474,17 +476,17 @@ test('executeAccountCreate resume loads split bundle and avoids key generation',
             keystorePath: '/tmp/test-keystore.json',
             resume: true },
         {
-            generatePrivateKey: generateKey,
-            readKeystoreBundle: mock(async () => ({
+            generatePrivateKey: typedMock<AccountCreateDeps['generatePrivateKey']>(generateKey),
+            readKeystoreBundle: typedMock<AccountCreateDeps['readKeystoreBundle']>(async () => ({
                 rootPath: '/tmp/test-keystore.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root: rootKeystore,
                 session: sessionKeystore })),
-            decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-            decryptSessionKeystore: mock(async () => ({ sessionPrivateKey })),
-            writeRootKeystoreFile: mock(async () => {}),
-            writeSessionKeystoreFile: mock(async () => {}),
-            delegateAccount: mock(async () => ({
+            decryptRootKeystore: typedMock<AccountCreateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+            decryptSessionKeystore: typedMock<AccountCreateDeps['decryptSessionKeystore']>(async () => ({ sessionPrivateKey })),
+            writeRootKeystoreFile: typedMock<AccountCreateDeps['writeRootKeystoreFile']>(async () => {}),
+            writeSessionKeystoreFile: typedMock<AccountCreateDeps['writeSessionKeystoreFile']>(async () => {}),
+            delegateAccount: typedMock<AccountCreateDeps['delegateAccount']>(async () => ({
                 accountAddress: rootKeystore.addresses.root })) },
     )
 
@@ -506,14 +508,14 @@ test('executeAccountCreate surfaces session write errors before delegation', asy
                 password: 'password',
                 keystorePath: '/tmp/test-keystore.json' },
             {
-                generatePrivateKey: mock(() => rootPrivateKey),
-                createRootKeystore: mock(async () => rootKeystore),
+                generatePrivateKey: typedMock<AccountCreateDeps['generatePrivateKey']>(() => rootPrivateKey),
+                createRootKeystore: typedMock<AccountCreateDeps['createRootKeystore']>(async () => rootKeystore),
                 createSessionKeystore: returnsRelayerSessionKeystore(sessionKeystore),
-                writeRootKeystoreFile: mock(async () => {}),
-                writeSessionKeystoreFile: mock(async () => {
+                writeRootKeystoreFile: typedMock<AccountCreateDeps['writeRootKeystoreFile']>(async () => {}),
+                writeSessionKeystoreFile: typedMock<AccountCreateDeps['writeSessionKeystoreFile']>(async () => {
                     throw new Error('Session keystore already exists at /tmp/sessions/default.json')
                 }),
-                delegateAccount: mock(async () => ({
+                delegateAccount: typedMock<AccountCreateDeps['delegateAccount']>(async () => ({
                     accountAddress: rootKeystore.addresses.root,
                     txHash: '0xabc' })) },
         ),

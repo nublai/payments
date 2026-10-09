@@ -7,6 +7,8 @@ import { formatRelayQuoteCalls } from '../src/lib/relay-allowlist'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { typedMock } from './helpers/typed-mock'
+import type { AccountSwapDeps } from '../src/lib/account-swap'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -161,18 +163,18 @@ function runQuote(input: {
             yes: input.yes ?? true,
         },
         {
-            readKeystoreBundle: mock(async () => makeKeystoreBundle(input.chainId ?? 8453)),
-            decryptSessionKeystore: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => makeKeystoreBundle(input.chainId ?? 8453)),
+            decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
             })),
-            readTokenBalance: mock(async () => 10_000000n),
-            getQuote: mock(async () => input.quote),
-            readNonce: mock(async () => 2n),
+            readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10_000000n),
+            getQuote: typedMock<AccountSwapDeps['getQuote']>(async () => input.quote),
+            readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
             confirmQuote,
-            prepareCalls: prepareCalls,
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(prepareCalls),
             signTypedData: signTypedData,
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
+            sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
             simulateQuoteCalls: input.simulateQuoteCalls ?? (async () => {}),
             installQuoteSpendLimit: async () => async () => {},
             readAllowance: async () => 0n,
@@ -195,7 +197,7 @@ function runQuote(input: {
                     },
                 ],
             }),
-            waitForBundle: mock(async () => ({
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed',
@@ -229,20 +231,20 @@ test('executeAccountSwap refuses a USDC.transfer quote on chain 31337 before sig
                 yes: true,
             },
             {
-                readKeystoreBundle: mock(async () => makeKeystoreBundle(31337)),
-                decryptSessionKeystore: mock(async () => ({
+                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => makeKeystoreBundle(31337)),
+                decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                     sessionPrivateKey:
                         '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
                 })),
-                readTokenBalance: mock(async () => 10_000000n),
-                getQuote: mock(async () =>
+                readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10_000000n),
+                getQuote: typedMock<AccountSwapDeps['getQuote']>(async () =>
                     quoteWithCall({
                         to: USDC,
                         data: attackTransferData(),
                         chainId: 31337,
                     }),
                 ),
-                readNonce: mock(async () => 2n),
+                readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
                 getKeys: async () => ({
                     '0x7a69': [
                         {
@@ -255,11 +257,11 @@ test('executeAccountSwap refuses a USDC.transfer quote on chain 31337 before sig
                         },
                     ],
                 }),
-                prepareCalls: mock(async () => {
+                prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async () => {
                     throw new Error('prepareCalls must not run')
                 }),
                 signTypedData: signTypedData,
-                sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
+                sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
             },
         ),
     ).rejects.toMatchObject({

@@ -15,7 +15,8 @@ import { boundPort } from './helpers/bound-port'
 import { emptyHex, hex, repeatedHex } from './helpers/hex'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { parseJson } from './helpers/parse-json'
-import { firstMockArg } from './helpers/typed-mock'
+import { firstMockArg, typedMock } from './helpers/typed-mock'
+import type { AccountSendDeps } from '../src/lib/account-send'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -165,10 +166,12 @@ function signingHarness(
         sendPreparedCalls,
         prepareCalls,
         deps: {
-            prepareCalls,
-            signTypedData,
-            sendPreparedCalls,
-            waitForBundle: async () => confirmedBundle() } }
+            prepareCalls: typedMock<ExecuteSignedCallsDeps['prepareCalls']>(prepareCalls),
+            signTypedData: typedMock<ExecuteSignedCallsDeps['signTypedData']>(signTypedData),
+            sendPreparedCalls: typedMock<ExecuteSignedCallsDeps['sendPreparedCalls']>(sendPreparedCalls),
+            waitForBundle: typedMock<ExecuteSignedCallsDeps['waitForBundle']>(async () => confirmedBundle()),
+        },
+    }
 }
 
 const prodParams = {
@@ -579,16 +582,16 @@ test('prod send returns the fee cap for human and json output', async () => {
     const signTypedData = mock(async () => SIG)
 
     const sendDeps = {
-        readKeystoreBundle: mock(async () => testKeystoreBundle(EOA)),
-        decryptSessionKeystore: mock(async () => ({
+        readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => testKeystoreBundle(EOA)),
+        decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
             sessionPrivateKey:
                 '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
-        resolveAddressOrEnsInput: mock(async () => ({
+        resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => ({
             address: '0x2222222222222222222222222222222222222222',
             ens: null })),
-        hasLegacyRecipientAlias: mock(async () => false),
-        readNonce: mock(async () => 2n),
-        prepareCalls: mock(
+        hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+        readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
+        prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(
             async (
                 input: PrepareInput & { network: { env: 'prod'; chainId: number } },
             ) =>
@@ -600,9 +603,9 @@ test('prod send returns the fee cap for human and json output', async () => {
                     resolveOrchestratorAddress(input.network.env, input.network.chainId),
                 ),
         ),
-        signTypedData,
-        sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-        waitForBundle: mock(async () => confirmedBundle()),
+        signTypedData: typedMock<AccountSendDeps['signTypedData']>(signTypedData),
+        sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+        waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => confirmedBundle()),
     }
 
     const result = await executeAccountSend(

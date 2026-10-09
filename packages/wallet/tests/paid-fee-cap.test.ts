@@ -12,11 +12,12 @@ afterAll(() => {
 })
 
 import type { Address } from 'viem'
-import { type AccountSendOptions } from '../src/lib/account-send'
+import { type AccountSendOptions, type AccountSendDeps } from '../src/lib/account-send'
 import { executeAccountSend } from './helpers/stub-execute'
 import { confirmedBundle } from './helpers/bundle-status'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { typedMock } from './helpers/typed-mock'
 
 /** Wallet-chosen cap. Kept literal so this file loads on the pre-fix commit. */
 const PAID_FEE_CAP = 5_000_000n
@@ -34,20 +35,20 @@ function sendDeps(prepareCalls: ReturnType<typeof mock>, signTypedData = mock(as
     const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
 
     const deps = {
-        readKeystoreBundle: mock(async () => testKeystoreBundle(SENDER)),
-        decryptSessionKeystore: mock(async () => ({
+        readKeystoreBundle: typedMock<AccountSendDeps['readKeystoreBundle']>(async () => testKeystoreBundle(SENDER)),
+        decryptSessionKeystore: typedMock<AccountSendDeps['decryptSessionKeystore']>(async () => ({
             sessionPrivateKey: SESSION_KEY,
         })),
-        resolveAddressOrEnsInput: mock(async () => ({
+        resolveAddressOrEnsInput: typedMock<AccountSendDeps['resolveAddressOrEnsInput']>(async () => ({
             address: '0x2222222222222222222222222222222222222222',
             ens: null,
         })),
-        hasLegacyRecipientAlias: mock(async () => false),
-        readNonce: mock(async () => 2n),
-        prepareCalls,
-        signTypedData,
-        sendPreparedCalls,
-        waitForBundle: mock(async () => confirmedBundle()),
+        hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
+        readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
+        prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(prepareCalls),
+        signTypedData: typedMock<AccountSendDeps['signTypedData']>(signTypedData),
+        sendPreparedCalls: typedMock<AccountSendDeps['sendPreparedCalls']>(sendPreparedCalls),
+        waitForBundle: typedMock<AccountSendDeps['waitForBundle']>(async () => confirmedBundle()),
     }
 
     return {

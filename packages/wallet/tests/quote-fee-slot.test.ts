@@ -7,6 +7,8 @@ import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { typedMock } from './helpers/typed-mock'
+import type { AccountSwapDeps } from '../src/lib/account-swap'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -94,7 +96,7 @@ async function installedBound(input: {
             keystorePath: '/tmp/alice.json',
             yes: true },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => ({
                 format: 'split',
                 rootPath: '/tmp/alice.json',
                 sessionPath: '/tmp/sessions/default.json',
@@ -108,17 +110,17 @@ async function installedBound(input: {
                         rpcUrl: 'https://mainnet.base.org',
                         chainId: 8453 },
                     addresses: { delegated: USER, session: SESSION_ADDRESS } } })),
-            decryptSessionKeystore: mock(async () => ({
+            decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const })),
-            readTokenBalance: mock(async () => 10n ** 18n),
-            getQuote: mock(async () => quote(input.value)),
-            readNonce: mock(async () => 2n),
-            confirmQuote: mock(async () => true),
-            prepareCalls: mock(async (prepared) => matchingPreparedCalls(prepared)),
-            signTypedData: mock(async () => `0x${'11'.repeat(64)}1b` as const),
-            sendPreparedCalls: mock(async () => ({ id: 'bundle-1' })),
-            waitForBundle: mock(async () => ({
+            readTokenBalance: typedMock<AccountSwapDeps['readTokenBalance']>(async () => 10n ** 18n),
+            getQuote: typedMock<AccountSwapDeps['getQuote']>(async () => quote(input.value)),
+            readNonce: typedMock<AccountSwapDeps['readNonce']>(async () => 2n),
+            confirmQuote: typedMock<AccountSwapDeps['confirmQuote']>(async () => true),
+            prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (prepared) => matchingPreparedCalls(prepared)),
+            signTypedData: typedMock<AccountSwapDeps['signTypedData']>(async () => `0x${'11'.repeat(64)}1b` as const),
+            sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => ({
                 success: true,
                 id: 'bundle-1',
                 status: 'confirmed',

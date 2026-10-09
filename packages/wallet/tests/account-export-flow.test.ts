@@ -2,9 +2,11 @@ import { expect, mock, test } from 'bun:test'
 import {
     assertCanExportPrivateKeys,
     resolveAccountExportPassword,
+    type AccountExportDeps,
 } from '../src/lib/account-export'
 import { executeAccountExport } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import { typedMock } from './helpers/typed-mock'
 
 function makeRootKeystore(overrides?: Partial<RelayerRootKeystoreV2>): RelayerRootKeystoreV2 {
     return {
@@ -80,7 +82,7 @@ test('executeAccountExport returns metadata by default without decrypting', asyn
             keystorePath: '/tmp/test-keystore.json',
             showPrivate: false },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountExportDeps['readKeystoreBundle']>(async () => ({
                 rootPath: '/tmp/test-keystore.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
@@ -114,13 +116,13 @@ test('executeAccountExport includes secrets when --show-private is enabled', asy
             showPrivate: true,
             password: 'password' },
         {
-            readKeystoreBundle: mock(async () => ({
+            readKeystoreBundle: typedMock<AccountExportDeps['readKeystoreBundle']>(async () => ({
                 rootPath: '/tmp/test-keystore.json',
                 sessionPath: '/tmp/sessions/default.json',
                 root,
                 session })),
-            decryptRootKeystore: mock(async () => ({ rootPrivateKey })),
-            decryptSessionKeystore: mock(async () => ({ sessionPrivateKey })) },
+            decryptRootKeystore: typedMock<AccountExportDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
+            decryptSessionKeystore: typedMock<AccountExportDeps['decryptSessionKeystore']>(async () => ({ sessionPrivateKey })) },
     )
 
     expect(result.secrets?.rootPrivateKey).toBe(rootPrivateKey)
@@ -137,7 +139,7 @@ test('executeAccountExport rejects private export without password', async () =>
                 keystorePath: '/tmp/test-keystore.json',
                 showPrivate: true },
             {
-                readKeystoreBundle: mock(async () => ({
+                readKeystoreBundle: typedMock<AccountExportDeps['readKeystoreBundle']>(async () => ({
                     rootPath: '/tmp/test-keystore.json',
                     sessionPath: '/tmp/sessions/default.json',
                     root,
