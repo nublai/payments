@@ -88,7 +88,7 @@ function executeAccountSwap(
     })
 }
 
-import { LoginProfileError, type KeystoreBundle, type RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import { LoginProfileError, type RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import { typedMock } from './helpers/typed-mock'
 import type { AccountSwapDeps } from '../src/lib/account-swap'
 import { PromptCancelledError } from '../src/lib/password-readline'
@@ -1474,13 +1474,13 @@ test('executeAccountSwap validates named session network against requested env a
                         root: {
                             ...makeKeystoreBundle().root,
                             sessionRef: {
+                                active: 'default',
                                 dir: 'sessions',
                             },
                         },
                     }
 
-                    // SAFETY: named-session env/chain checks run only after sessionRef.active is missing; a complete sessionRef would resolve the active session and skip this mismatch path.
-                    return bundle as unknown as KeystoreBundle
+                    return bundle
                 }),
                 readSessionKeystoreFile: mock(async () =>
                     makeSessionKeystore({
