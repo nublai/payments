@@ -6,6 +6,25 @@ import { authProviderFromIdentity, type IdentityProvider, type IdentityResult } 
 import { isPrivyEnabled, tokenTargetsOidc } from '../oidc-config'
 import type { AuthProvider } from '../types'
 
+export type PrivyAuthClaims = {
+    appId: string
+    userId: string
+}
+
+export type PrivyAuthUser = {
+    id?: string
+    linkedAccounts?: Array<{ type?: string; address?: string }>
+}
+
+export type PrivyAuthClient = {
+    verifyAuthToken: (token: string) => Promise<PrivyAuthClaims>
+    getUserByWalletAddress: (address: string) => Promise<PrivyAuthUser | null | undefined>
+}
+
+export type PrivyIdentityDeps = {
+    createClient?: (appId: string, appSecret: string) => PrivyAuthClient
+}
+
 function parseBearerToken(
     request: Request,
 ): { ok: true; token: string } | { ok: false; message: string } {
@@ -116,7 +135,7 @@ function linkedWalletMatches(
 }
 
 async function bindPrivyAccounts(
-    client: PrivyClient,
+    client: PrivyAuthClient,
     userId: string,
     accounts: Address[],
 ): Promise<
@@ -150,12 +169,13 @@ function requestFromIdentityInput(input: Request | string): Request {
  * identity shape (`provider`, `userId`, `boundAccounts`) so another provider
  * can sit beside it in the registry without a change to the identity gate.
  */
-export function createPrivyIdentityProvider(): IdentityProvider {
-    let client: PrivyClient | undefined
+export function createPrivyIdentityProvider(deps: PrivyIdentityDeps = {}): IdentityProvider {
+    let client: PrivyAuthClient | undefined
+    const createClient = deps.createClient ?? ((appId, appSecret) => new PrivyClient(appId, appSecret))
 
-    function getClient(env: Env): PrivyClient {
+    function getClient(env: Env): PrivyAuthClient {
         if (!client) {
-            client = new PrivyClient(env.PRIVY_APP_ID ?? '', env.PRIVY_APP_SECRET ?? '')
+            client = createClient(env.PRIVY_APP_ID ?? '', env.PRIVY_APP_SECRET ?? '')
         }
 
         return client
@@ -264,6 +284,6 @@ export function createPrivyIdentityProvider(): IdentityProvider {
 }
 
 /** HTTP auth adapter. Existing callers and tests keep the AuthProvider result shape. */
-export function createPrivyProvider(): AuthProvider {
-    return authProviderFromIdentity(createPrivyIdentityProvider())
+export function createPrivyProvider(deps: PrivyIdentityDeps = {}): AuthProvider {
+    return authProviderFromIdentity(createPrivyIdentityProvider(deps))
 }

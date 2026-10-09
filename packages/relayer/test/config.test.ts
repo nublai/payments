@@ -2,36 +2,71 @@
  * Unit tests for config validation functions
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
-vi.mock('@nubl/contracts/deployments', () => ({
+import type { ContractAddresses } from '@nubl/contracts/deployments'
+import type { Address } from 'viem'
+
+import {
+    validateEnv as validateEnvImpl,
+    validatePoolConfig,
+    type ValidateEnvDeps,
+} from '../src/config'
+import type { ContractAddressEnv } from '../src/config/addresses'
+import { getGasConfig, type Env } from '../src/types/env'
+import { testEnv } from './helpers/env'
+
+const fallbackAddresses = {
+    orchestrator: '0x0000000000000000000000000000000000000001',
+    simpleFunder: '0x0000000000000000000000000000000000000002',
+    simulator: '0x0000000000000000000000000000000000000003',
+    account: '0x0000000000000000000000000000000000000004',
+    accountProxy: '0x0000000000000000000000000000000000000005',
+    simpleSettler: '0x0000000000000000000000000000000000000006',
+    escrow: '0x0000000000000000000000000000000000000007',
+    multiSigSigner: '0x0000000000000000000000000000000000000008',
+} as const satisfies ContractAddresses
+
+function isHexAddress(value: string): value is Address {
+    return value.startsWith('0x')
+}
+
+function hexAddress(value: string | undefined, fallback: Address): Address {
+    if (value !== undefined && isHexAddress(value)) return value
+
+    return fallback
+}
+
+const validateDeps = {
     hasDeployment: (context: string, chainId: number) => context === 'stage' && chainId === 84532,
-}))
+    getContractAddresses: (env: ContractAddressEnv, chainId: number) => {
+        const orchestrator =
+            chainId === 84532
+                ? env.ORCHESTRATOR_84532
+                : chainId === 999999
+                  ? env.ORCHESTRATOR_999999
+                  : undefined
 
-vi.mock('../src/config/addresses', () => ({
-    getContractAddresses: vi.fn((env: Record<string, string | undefined>, chainId: number) => {
-        const orchestratorKey = `ORCHESTRATOR_${chainId}`
-
-        if (!env[orchestratorKey] && !(chainId === 84532 && env.CONTEXT === 'stage')) {
+        if (!orchestrator && !(chainId === 84532 && env.CONTEXT === 'stage')) {
             throw new Error('missing deployment')
         }
 
         return {
-            orchestrator: env[orchestratorKey] ?? '0x0000000000000000000000000000000000000001',
-            simpleFunder: '0x0000000000000000000000000000000000000002',
-            simulator: '0x0000000000000000000000000000000000000003',
-            account: '0x0000000000000000000000000000000000000004',
-            accountProxy: '0x0000000000000000000000000000000000000005',
-            simpleSettler: '0x0000000000000000000000000000000000000006',
-            escrow: '0x0000000000000000000000000000000000000007',
-            multiSigSigner: '0x0000000000000000000000000000000000000008',
+            orchestrator: hexAddress(orchestrator, fallbackAddresses.orchestrator),
+            simpleFunder: fallbackAddresses.simpleFunder,
+            simulator: fallbackAddresses.simulator,
+            account: fallbackAddresses.account,
+            accountProxy: fallbackAddresses.accountProxy,
+            simpleSettler: fallbackAddresses.simpleSettler,
+            escrow: fallbackAddresses.escrow,
+            multiSigSigner: fallbackAddresses.multiSigSigner,
         }
-    }),
-}))
+    },
+} satisfies ValidateEnvDeps
 
-import { validateEnv, validatePoolConfig } from '../src/config'
-import { getGasConfig, type Env } from '../src/types/env'
-import { testEnv } from './helpers/env'
+function validateEnv(env: Env) {
+    return validateEnvImpl(env, validateDeps)
+}
 
 /**
  * Create a minimal mock Env for testing

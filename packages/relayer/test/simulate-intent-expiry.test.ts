@@ -1,17 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockGetCode, mockCall } = vi.hoisted(() => ({
-    mockGetCode: vi.fn(),
-    mockCall: vi.fn() }))
-
-vi.mock('../src/lib/viem-utils', () => ({
-    createRelayerPublicClient: vi.fn().mockReturnValue({
-        getCode: mockGetCode,
-        call: mockCall }),
-    isEip7702Delegated: vi.fn().mockReturnValue(true) }))
-
 import { RelayerService } from '../src/services/relayer'
+import { mockedRelayerChainClient } from './helpers/fakes'
 import { testLogger, testRelayerConfig } from './helpers/relayer'
+
+const { client, mockGetCode, mockCall } = mockedRelayerChainClient()
 
 describe('simulateIntent expiry unit guard', () => {
     beforeEach(() => {
@@ -21,7 +14,9 @@ describe('simulateIntent expiry unit guard', () => {
     })
 
     it('rejects millisecond expiry values', async () => {
-        const relayer = new RelayerService(testRelayerConfig(), testLogger())
+        const relayer = new RelayerService(testRelayerConfig(), testLogger(), undefined, undefined, {
+            publicClient: client,
+        })
 
         const result = await relayer.simulateIntent({
             eoa: '0x0000000000000000000000000000000000000001',
@@ -29,9 +24,11 @@ describe('simulateIntent expiry unit guard', () => {
                 {
                     to: '0x0000000000000000000000000000000000000002',
                     value: '0x0',
-                    data: '0x' },
+                    data: '0x',
+                },
             ],
-            expiry: '1700000000000' })
+            expiry: '1700000000000',
+        })
 
         expect(result.success).toBe(false)
         expect(result.error).toContain('appears to be milliseconds')

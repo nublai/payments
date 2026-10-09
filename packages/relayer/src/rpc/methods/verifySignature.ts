@@ -11,12 +11,13 @@ import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
 import type { VerifySignatureParams, VerifySignatureResult } from '../schema/verifySignature'
-import { getChainConfig, getChainIds } from '../../config'
 import { RpcError, INVALID_PARAMS, INTERNAL_ERROR } from '../errors'
 import { computeErc1271Digest, wrapSignature } from '../../lib/erc1271'
 import { logger } from '../../lib/logger'
-import { createRelayerPublicClient, hasCode } from '../../lib/viem-utils'
+import { hasCode } from '../../lib/viem-utils'
 import { parseHexChainId, requireParam, validateAddress, unwrapParams } from '../../lib/rpc-utils'
+import { getChainIds } from '../../config'
+import { rpcHandlerIo } from '../handler-io'
 
 // =============================================================================
 // Types
@@ -48,6 +49,7 @@ export async function handleVerifySignature(
     ctx: RpcContext,
 ): Promise<VerifySignatureResult> {
     const env = ctx.env as Env
+    const io = rpcHandlerIo(ctx)
 
     // Parse params (JSON-RPC array format)
     const typedParams = unwrapParams<VerifySignatureParams>(params)
@@ -70,8 +72,8 @@ export async function handleVerifySignature(
         throw new RpcError(INVALID_PARAMS, `Unsupported chain ID: ${requestedChainId}`)
     }
 
-    const config = getChainConfig(env, requestedChainId)
-    const publicClient = createRelayerPublicClient(config.chainId, config.rpcUrl)
+    const config = io.getChainConfig(env, requestedChainId)
+    const publicClient = io.createRelayerPublicClient(config.chainId, config.rpcUrl)
 
     // Step 3: Delegation Status Check
     // Check if account is delegated (has EIP-7702 delegation bytecode)

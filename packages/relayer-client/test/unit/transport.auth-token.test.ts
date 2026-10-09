@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-const signRequestMock = vi.hoisted(() => vi.fn())
-
-vi.mock('@slicekit/erc8128', () => ({
-    signRequest: signRequestMock,
-}))
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { privateKeyToAccount } from 'viem/accounts'
+import { toHex } from 'viem'
 
 import { createJsonRpcTransport, JsonRpcClientError } from '../../src/transport'
+
+const signerAccount = privateKeyToAccount(
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+)
 
 function successResponse(id: number, result: unknown = 'ok') {
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), {
@@ -22,11 +22,6 @@ function fetchRequest(input: Request | URL | string): Request {
 }
 
 describe('createJsonRpcTransport bearer auth', () => {
-    beforeEach(() => {
-        signRequestMock.mockReset()
-        signRequestMock.mockImplementation(async (request: Request) => request)
-    })
-
     afterEach(() => {
         vi.unstubAllGlobals()
     })
@@ -135,18 +130,12 @@ describe('createJsonRpcTransport bearer auth', () => {
     })
 
     it('keeps bearer header when httpAuth signing is also configured', async () => {
-        signRequestMock.mockImplementation(async (request: Request) => {
-            expect(request.headers.get('Authorization')).toBe('Bearer token_signed')
-
-            return request
-        })
-
-        let seenAuth: string | null = null
+        let seen: Request | undefined
 
         vi.stubGlobal(
             'fetch',
             vi.fn(async (request: Request | URL | string) => {
-                seenAuth = fetchRequest(request).headers.get('Authorization')
+                seen = fetchRequest(request)
 
                 return successResponse(1)
             }),
@@ -157,16 +146,18 @@ describe('createJsonRpcTransport bearer auth', () => {
                 authToken: 'token_signed',
                 signer: {
                     chainId: 8453,
-                    address: '0x1111111111111111111111111111111111111111',
-                    signMessage: async () => '0x',
+                    address: signerAccount.address,
+                    signMessage: async (message) =>
+                        signerAccount.signMessage({ message: { raw: toHex(message) } }),
                 },
             },
         })
 
         await transport.request('wallet_health')
 
-        expect(signRequestMock).toHaveBeenCalledTimes(1)
-        expect(seenAuth).toBe('Bearer token_signed')
+        expect(seen?.headers.get('Authorization')).toBe('Bearer token_signed')
+        expect(seen?.headers.get('Signature')).toBeTruthy()
+        expect(seen?.headers.get('Signature-Input')).toBeTruthy()
     })
 
     it('surfaces token-provider failure as JsonRpcClientError', async () => {

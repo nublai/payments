@@ -1,17 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockGetCode, mockCall } = vi.hoisted(() => ({
-    mockGetCode: vi.fn(),
-    mockCall: vi.fn() }))
-
-vi.mock('../src/lib/viem-utils', () => ({
-    createRelayerPublicClient: () => ({
-        getCode: mockGetCode,
-        call: mockCall }),
-    isEip7702Delegated: (code: string | undefined) =>
-        !!code && code !== '0x' && code.startsWith('0xef01') }))
-
 import { RelayerService } from '../src/services/relayer'
+import { mockedRelayerChainClient } from './helpers/fakes'
 import { silentLogger } from './helpers/logger'
 
 const EOA = '0x00000000000000000000000000000000000000aa'
@@ -19,6 +9,8 @@ const EOA = '0x00000000000000000000000000000000000000aa'
 const ACCOUNT_PROXY = '0x2345678901234567890123456789012345678901'
 
 const OTHER = '0x00000000000000000000000000000000000000bb'
+
+const { client, mockGetCode, mockCall } = mockedRelayerChainClient()
 
 function relayer(): RelayerService {
     return new RelayerService(
@@ -33,8 +25,15 @@ function relayer(): RelayerService {
                 simpleFunder: '0x4567890123456789012345678901234567890123',
                 simpleSettler: '0x6789012345678901234567890123456789012345',
                 escrow: '0x7890123456789012345678901234567890123456',
-                multiSigSigner: '0x8901234567890123456789012345678901234567' } },
+                multiSigSigner: '0x8901234567890123456789012345678901234567',
+            },
+        },
         silentLogger(),
+        undefined,
+        undefined,
+        {
+            publicClient: client,
+        },
     )
 }
 
@@ -42,7 +41,8 @@ const calls = [
     {
         to: '0x0000000000000000000000000000000000000002',
         value: '0x0',
-        data: '0x' },
+        data: '0x',
+    },
 ]
 
 describe('paid upgrade simulation state override', () => {
@@ -64,7 +64,8 @@ describe('paid upgrade simulation state override', () => {
         const result = await relayer().simulateIntent({
             eoa: EOA,
             calls,
-            delegation: ACCOUNT_PROXY })
+            delegation: ACCOUNT_PROXY,
+        })
 
         expect(result.success).toBe(true)
         expect(result.gasUsed).toBe('21000')
@@ -73,7 +74,8 @@ describe('paid upgrade simulation state override', () => {
         expect(override).toEqual([
             {
                 address: EOA,
-                code: `0xef0100${ACCOUNT_PROXY.slice(2).toLowerCase()}` },
+                code: `0xef0100${ACCOUNT_PROXY.slice(2).toLowerCase()}`,
+            },
         ])
     })
 
@@ -81,7 +83,8 @@ describe('paid upgrade simulation state override', () => {
         const result = await relayer().simulateIntent({
             eoa: EOA,
             calls,
-            delegation: OTHER })
+            delegation: OTHER,
+        })
 
         expect(result.success).toBe(false)
         expect(result.error).toBe('Delegation target is not the account proxy')

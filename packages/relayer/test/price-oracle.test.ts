@@ -8,16 +8,6 @@ import {
     updatePrices,
 } from '../src/services/price-oracle'
 
-vi.mock('../src/lib/logger', () => ({
-    logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-    },
-    getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
-}))
-
 describe('price oracle', () => {
     let originalFetch: typeof fetch | undefined
 

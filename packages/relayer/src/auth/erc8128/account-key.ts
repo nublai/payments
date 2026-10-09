@@ -27,12 +27,14 @@ export function secp256k1AccountKeyHash(signer: Address): Hex {
     return keccak256(encoded)
 }
 
+export type AccountKeyClient = Pick<PublicClient, 'readContract'>
+
 /**
  * True when `signer` is a live secp256k1 key registered on `account`.
  * A missing account, a revert, or an expired key is false.
  */
 export async function isOnChainAccountKey(
-    client: PublicClient,
+    client: AccountKeyClient,
     account: Address,
     signer: Address,
     nowSeconds: number,
@@ -61,15 +63,21 @@ export async function isOnChainAccountKey(
     }
 }
 
+export type SignerAccountKeyDeps = {
+    getChainClient?: (chainId: number, env: Partial<Env>) => AccountKeyClient
+}
+
 export async function signerIsAccountKey(
     env: Partial<Env>,
     account: Address,
     chainId: number,
     signer: Address,
     nowSeconds: number,
+    deps?: SignerAccountKeyDeps,
 ): Promise<boolean> {
     try {
-        const client = getChainClient(chainId, env)
+        const resolveClient = deps?.getChainClient ?? getChainClient
+        const client = resolveClient(chainId, env)
 
         return await isOnChainAccountKey(client, account, signer, nowSeconds)
     } catch {

@@ -6,40 +6,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { CONTRACT_ERROR, RpcError } from '../../src/rpc/errors'
-
-const { mockGetCode, mockReadContract } = vi.hoisted(() => ({
-    mockGetCode: vi.fn(),
-    mockReadContract: vi.fn(),
-}))
-
-vi.mock('../../src/lib/viem-utils', () => ({
-    createRelayerPublicClient: vi.fn().mockReturnValue({
-        getCode: mockGetCode,
-        readContract: mockReadContract,
-    }),
-    hasCode: (code: string | undefined) => !!code && code !== '0x' && code.length > 2,
-    toHexChainId: (chainId: number) => `0x${chainId.toString(16)}`,
-}))
-
-vi.mock('../../src/config', () => ({
-    getChainIds: () => [31337],
-    getChainConfig: () => ({
-        rpcUrl: 'http://127.0.0.1:8545',
-        chainId: 31337,
-        contracts: {},
-    }),
-}))
-
-vi.mock('../../src/lib/logger', () => ({
-    logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-    },
-}))
-
 import { handleGetKeys } from '../../src/rpc/methods/getKeys'
+import { fixedChainConfig, mockedRelayerChainClient } from '../helpers/fakes'
+import { testRelayerConfig } from '../helpers/relayer'
+
+const { client, mockGetCode, mockReadContract } = mockedRelayerChainClient()
 
 const account = '0x1234567890123456789012345678901234567890'
 
@@ -50,6 +21,15 @@ const createMockCtx = (): RpcContext => ({
         RPC_URL: 'http://127.0.0.1:8545',
         CHAIN_IDS: '31337',
     },
+    deps: {
+        getChainConfig: fixedChainConfig(
+            testRelayerConfig({
+                rpcUrl: 'http://127.0.0.1:8545',
+                chainId: 31337,
+            }),
+        ),
+        createRelayerPublicClient: () => client,
+    },
 })
 
 describe('wallet_getKeys permission lookup', () => {
@@ -59,7 +39,7 @@ describe('wallet_getKeys permission lookup', () => {
     })
 
     it('returns a JSON-RPC error when spendAndExecuteInfos fails', async () => {
-        mockReadContract.mockImplementation(async (args: { functionName?: string }) => {
+        mockReadContract.mockImplementation(async (args) => {
             if (args.functionName === 'getKeys') {
                 return [
                     [
@@ -97,7 +77,7 @@ describe('wallet_getKeys permission lookup', () => {
             .toString(16)
             .padStart(64, '0')}`
 
-        mockReadContract.mockImplementation(async (args: { functionName?: string }) => {
+        mockReadContract.mockImplementation(async (args) => {
             if (args.functionName === 'getKeys') {
                 return [
                     [

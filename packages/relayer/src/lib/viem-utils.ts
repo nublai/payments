@@ -4,6 +4,9 @@
 
 import { createPublicClient, http, type Chain, type PublicClient } from 'viem'
 
+/** The RelayerService and RPC handlers only call these PublicClient methods. */
+export type RelayerChainClient = Pick<PublicClient, 'readContract' | 'getCode' | 'call'>
+
 /**
  * Create a viem Chain configuration object
  */

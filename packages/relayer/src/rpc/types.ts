@@ -4,6 +4,14 @@
  * Standard types for JSON-RPC 2.0 protocol as defined in https://www.jsonrpc.org/specification
  */
 
+import type { PublicClient } from 'viem'
+
+import type { Logger } from '../lib/logger'
+import type { RelayerChainClient } from '../lib/viem-utils'
+import type { FeeEstimate } from '../services/fees'
+import type { IntentNonceProvider, RelayerService } from '../services/relayer'
+import type { Env, FeeConfig, GasConfig, RelayerConfig } from '../types/env'
+
 /**
  * JSON-RPC 2.0 Request object
  */
@@ -55,6 +63,28 @@ export interface RpcCaller {
 }
 
 /**
+ * Optional handler overrides. Production never sets this; tests pass fakes
+ * that match the real function and RelayerService.prepareIntent types.
+ */
+export interface RpcHandlerDeps {
+    createRelayerPublicClient?: (chainId: number, rpcUrl: string) => RelayerChainClient
+    getChainConfig?: (env: Env, chainId: number) => RelayerConfig
+    createRelayerService?: (
+        config: RelayerConfig,
+        logger: Logger,
+        intentNonceProvider?: IntentNonceProvider,
+        gasConfig?: GasConfig,
+    ) => Pick<RelayerService, 'prepareIntent'>
+    getFeeEstimate?: (
+        publicClient: PublicClient,
+        txGas: bigint,
+        config: FeeConfig,
+    ) => Promise<FeeEstimate>
+    getUsdPrice?: typeof import('../services/price-oracle').getUsdPrice
+    createIntentNonceProvider?: typeof import('../services/relayer').createIntentNonceProvider
+}
+
+/**
  * Context passed to method handlers
  */
 export interface RpcContext {
@@ -64,6 +94,8 @@ export interface RpcContext {
     request?: Request
     /** Set by the auth middleware after a provider succeeds. */
     auth?: RpcCaller
+    /** Test-only I/O overrides. Unset in production. */
+    deps?: RpcHandlerDeps
 }
 
 /**

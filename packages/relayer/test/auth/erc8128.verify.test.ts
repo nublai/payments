@@ -3,21 +3,22 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { bytesToHex, encodeAbiParameters } from 'viem'
 import { signRequest, type EthHttpSigner } from '@slicekit/erc8128'
 
-import { verifyErc8128Request, type NonceStore } from '../../src/auth/erc8128/verify'
+import {
+    verifyErc8128Request as verifyErc8128RequestImpl,
+    type Erc8128Config,
+    type Erc8128VerificationContext,
+    type NonceStore,
+} from '../../src/auth/erc8128/verify'
+import { mockedErc8128ChainClient } from '../helpers/fakes'
 
-const { mockGetCode, mockReadContract, mockVerifyMessage } = vi.hoisted(() => ({
-    mockGetCode: vi.fn(),
-    mockReadContract: vi.fn(),
-    mockVerifyMessage: vi.fn(),
-}))
+const { client, mockGetCode, mockReadContract, mockVerifyMessage } = mockedErc8128ChainClient()
 
-vi.mock('../../src/lib/multi-chain-client', () => ({
-    getChainClient: () => ({
-        getCode: mockGetCode,
-        readContract: mockReadContract,
-        verifyMessage: mockVerifyMessage,
-    }),
-}))
+function verifyErc8128Request(ctx: Erc8128VerificationContext, cfg: Erc8128Config) {
+    return verifyErc8128RequestImpl(ctx, {
+        ...cfg,
+        getChainClient: () => client,
+    })
+}
 
 const account = privateKeyToAccount(
     '0x59c6995e998f97a5a0044966f0945382db9f6c0b4b7f3adf8f13e9f5b5b6c5a5',

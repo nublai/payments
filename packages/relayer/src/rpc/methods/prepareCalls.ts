@@ -4,8 +4,7 @@ import { hashTypedData } from 'viem/utils'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import { getFeeConfig, getGasConfig, getPriceOracleConfig } from '../../types/env'
-import { convertToFeeToken, getFeeEstimate } from '../../services/fees'
-import { formatPriceForQuote, getUsdPrice } from '../../services/price-oracle'
+import { convertToFeeToken } from '../../services/fees'
 import { toHexChainId } from '../../lib/viem-utils'
 import {
     RpcError,
@@ -15,10 +14,12 @@ import {
     DRAFT_CONFLICT,
     SIMULATION_FAILED,
 } from '../errors'
-import { getChainConfig, getChainIds } from '../../config'
+import { getChainIds } from '../../config'
 import { getChainConfig as getChainAssetsConfig } from '../../config/chains'
 import { logger } from '../../lib/logger'
-import { RelayerService, createIntentNonceProvider, isPaymentEnabled } from '../../services/relayer'
+import { formatPriceForQuote } from '../../services/price-oracle'
+import { isPaymentEnabled } from '../../services/relayer'
+import { rpcHandlerIo } from '../handler-io'
 import { isLocalDevContext, quoteSigningSecret } from '../../config/runtime-context'
 import { isOnChainAccountKey } from '../../auth/erc8128/account-key'
 import { sessionAddressFromEncodedKey } from '../../lib/session-address'
@@ -54,6 +55,7 @@ export async function handlePrepareCalls(
     ctx: RpcContext,
 ): Promise<PrepareCallsResult> {
     const env = ctx.env as Env
+    const io = rpcHandlerIo(ctx)
     const typedParams = unwrapParams<PrepareCallsParams>(params)
 
     if (!typedParams?.from) {
@@ -75,16 +77,16 @@ export async function handlePrepareCalls(
         throw new RpcError(INVALID_PARAMS, `Unsupported chain ID: ${requestedChainId}`)
     }
 
-    const config = getChainConfig(env, requestedChainId)
+    const config = io.getChainConfig(env, requestedChainId)
     const hexChainId = toHexChainId(config.chainId)
 
-    const intentNonceProvider = createIntentNonceProvider(
+    const intentNonceProvider = io.createIntentNonceProvider(
         env.INTENT_NONCE_MANAGER,
         requestedChainId,
     )
 
     const gasConfig = getGasConfig(env)
-    const relayerService = new RelayerService(config, logger, intentNonceProvider, gasConfig)
+    const relayerService = io.createRelayerService(config, logger, intentNonceProvider, gasConfig)
 
     const meta = typedParams.capabilities?.meta
     const nonce = meta?.nonce
@@ -186,7 +188,7 @@ export async function handlePrepareCalls(
     let feeEstimate
 
     try {
-        feeEstimate = await getFeeEstimate(publicClient, txGas, feeConfig)
+        feeEstimate = await io.getFeeEstimate(publicClient, txGas, feeConfig)
     } catch (error) {
         logger.warn({ error }, 'Fee estimation failed')
         throw new RpcError(SERVICE_UNAVAILABLE, 'Fee estimation failed')
@@ -210,7 +212,7 @@ export async function handlePrepareCalls(
         )
     }
 
-    const nativeUsdPrice = await getUsdPrice(nativeAssetUid, priceConfig)
+    const nativeUsdPrice = await io.getUsdPrice(nativeAssetUid, priceConfig)
 
     if (!nativeUsdPrice) {
         throw new RpcError(
@@ -249,7 +251,7 @@ export async function handlePrepareCalls(
         }
 
         paymentTokenDecimals = assetConfig.decimals
-        const tokenUsdPrice = await getUsdPrice(assetUid, priceConfig)
+        const tokenUsdPrice = await io.getUsdPrice(assetUid, priceConfig)
 
         if (!tokenUsdPrice) {
             throw new RpcError(

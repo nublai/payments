@@ -28,10 +28,17 @@ const POOL_DEFAULTS = {
     minSignerBalance: BigInt('10000000000000000'), // 0.01 ETH
 } as const
 
+export type ValidateEnvDeps = {
+    getContractAddresses?: typeof getContractAddresses
+    hasDeployment?: typeof hasDeployment
+}
+
 /**
  * Validate that all required environment variables are set
  */
-export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
+export function validateEnv(env: Env, deps: ValidateEnvDeps = {}): { valid: boolean; missing: string[] } {
+    const addressesOf = deps.getContractAddresses ?? getContractAddresses
+    const deploymentOf = deps.hasDeployment ?? hasDeployment
     const missing: string[] = []
 
     for (const key of REQUIRED_ENV_VARS) {
@@ -60,9 +67,9 @@ export function validateEnv(env: Env): { valid: boolean; missing: string[] } {
 
         // Ensure contract addresses are available (deployment or env overrides)
         try {
-            getContractAddresses(env, chainId)
+            addressesOf(env, chainId)
         } catch {
-            if (!hasDeployment(context, chainId)) {
+            if (!deploymentOf(context, chainId)) {
                 missing.push(
                     `Contract addresses for chain ${chainId} are not deployed (set ORCHESTRATOR_${chainId} or provide deployment)`,
                 )

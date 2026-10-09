@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-
-const verifyMock = vi.hoisted(() => vi.fn())
-
-vi.mock('../../src/auth/erc8128/verify', () => ({
-    verifyErc8128Request: verifyMock,
-}))
-
+import type { verifyErc8128Request } from '../../src/auth/erc8128/verify'
 import { createErc8128Provider } from '../../src/auth/providers/erc8128'
 import { httpAuthNonceNamespace, testEnv } from '../helpers/env'
+
+const verifyMock = vi.fn<typeof verifyErc8128Request>()
 
 describe('erc8128 auth provider', () => {
     const env = testEnv({
@@ -20,7 +16,7 @@ describe('erc8128 auth provider', () => {
     })
 
     it('is enabled only when ERC8128_ENABLED=true', () => {
-        const provider = createErc8128Provider()
+        const provider = createErc8128Provider({ verify: verifyMock })
         expect(provider.enabled(testEnv({ ERC8128_ENABLED: 'true' }))).toBe(true)
         expect(provider.enabled(testEnv({ ERC8128_ENABLED: 'false' }))).toBe(false)
     })
@@ -38,7 +34,7 @@ describe('erc8128 auth provider', () => {
             nonceKey: 'k',
         })
 
-        const provider = createErc8128Provider()
+        const provider = createErc8128Provider({ verify: verifyMock })
 
         const result = await provider.verify(
             new Request('https://relayer.example.com/', { method: 'POST', body: '{}' }),
@@ -58,7 +54,7 @@ describe('erc8128 auth provider', () => {
             message: 'replayed',
         })
 
-        const provider = createErc8128Provider()
+        const provider = createErc8128Provider({ verify: verifyMock })
 
         const result = await provider.verify(
             new Request('https://relayer.example.com/', { method: 'POST', body: '{}' }),
@@ -75,7 +71,7 @@ describe('erc8128 auth provider', () => {
     it('returns BAD_SIGNATURE when verifier throws', async () => {
         verifyMock.mockRejectedValueOnce(new Error('rpc down'))
 
-        const provider = createErc8128Provider()
+        const provider = createErc8128Provider({ verify: verifyMock })
 
         const result = await provider.verify(
             new Request('https://relayer.example.com/', { method: 'POST', body: '{}' }),

@@ -1,19 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BundleStatusDO, type TxStatusResponse } from '../../src/durable-objects/bundle-status.do'
+import { logger } from '../../src/lib/logger'
 
-const { mockLoggerWarn, mockGetErrorMessage } = vi.hoisted(() => ({
-    mockLoggerWarn: vi.fn(),
-    mockGetErrorMessage: vi.fn((error: unknown) =>
-        error instanceof Error ? error.message : String(error),
-    ) }))
-
-vi.mock('../../src/lib/logger', () => ({
-    logger: {
-        warn: mockLoggerWarn,
-        error: vi.fn(),
-        info: vi.fn(),
-        debug: vi.fn() },
-    getErrorMessage: mockGetErrorMessage }))
+const mockLoggerWarn = vi.spyOn(logger, 'warn')
 
 type BundleTxRow = {
     bundle_id: string
@@ -170,8 +159,10 @@ function makeConfirmedTxStatus(): TxStatusResponse {
 
 describe('BundleStatusDO status resolution', () => {
     beforeEach(() => {
-        vi.clearAllMocks()
+        mockLoggerWarn.mockClear()
     })
+
+    afterAll(() => mockLoggerWarn.mockRestore())
 
     it('logs signer fetch failures via bundle status resolution path', async () => {
         const { stub } = createDoStub({

@@ -10,15 +10,18 @@ import { walletBindingStub } from '../../src/auth/wallet-binding-client'
 import { isIdentityProviderUnavailable } from '../../src/auth/types'
 import type {Env} from '../../src/types/env'
 import { workerEnv } from '../helpers/env'
+import type { PrivyAuthClient, PrivyIdentityDeps } from '../../src/auth/providers/privy'
 
-const privyClientMock = vi.hoisted(() => vi.fn())
+const verifyAuthTokenMock = vi.fn<PrivyAuthClient['verifyAuthToken']>()
 
-const verifyAuthTokenMock = vi.hoisted(() => vi.fn())
+const createPrivyClient = vi.fn<NonNullable<PrivyIdentityDeps['createClient']>>((_appId, _appSecret) => ({
+    verifyAuthToken: verifyAuthTokenMock,
+    getUserByWalletAddress: vi.fn<PrivyAuthClient['getUserByWalletAddress']>(),
+}))
 
-vi.mock('@privy-io/server-auth', () => ({
-    PrivyClient: privyClientMock.mockImplementation(() => ({
-        verifyAuthToken: verifyAuthTokenMock,
-        getUserByWalletAddress: vi.fn() })) }))
+function providers() {
+    return identityAuthProviders({ privy: { createClient: createPrivyClient } })
+}
 
 const OIDC_SKEW = 60
 
@@ -183,7 +186,7 @@ describe('oidc identity provider', () => {
                 headers: { Authorization: 'Bearer privy-token' } }),
             env: workerEnv,
             nowSeconds: NOW,
-            providers: identityAuthProviders() })
+            providers: providers() })
 
         expect(privy).toMatchObject({ ok: true, provider: 'privy', userId: 'did:privy:abc' })
 
@@ -193,7 +196,7 @@ describe('oidc identity provider', () => {
                     headers: { Authorization: `Bearer ${token}` } }),
                 env: workerEnv,
                 nowSeconds: NOW,
-                providers: identityAuthProviders() }),
+                providers: providers() }),
         )
 
         expect(routed).toMatchObject({ ok: true, provider: 'oidc', userId: 'oidc-user' })
@@ -210,7 +213,7 @@ describe('oidc identity provider', () => {
                     headers: { Authorization: `Bearer ${token}` } }),
                 env: workerEnv,
                 nowSeconds: NOW,
-                providers: identityAuthProviders() }),
+                providers: providers() }),
         )
 
         expect(result).toMatchObject({ ok: true, provider: 'oidc', userId: 'only-oidc' })
@@ -368,7 +371,7 @@ describe('oidc identity provider', () => {
                         headers: { Authorization: `Bearer ${token}` } }),
                     env: oidcEnv(url),
                     nowSeconds: NOW,
-                    providers: identityAuthProviders() }),
+                    providers: providers() }),
             { fail: true },
         )
 
@@ -385,7 +388,7 @@ describe('oidc identity provider', () => {
                 headers: { Authorization: 'Bearer privy-token' } }),
             env: oidcEnv(url),
             nowSeconds: NOW,
-            providers: identityAuthProviders() })
+            providers: providers() })
 
         expect(privyDown).toMatchObject({
             ok: false,
