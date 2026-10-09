@@ -16,7 +16,8 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { passthroughKeystoreLock, typedMock } from './helpers/typed-mock'
 import { testKeystoreBundleFrom } from './helpers/keystore-bundle'
 import { testBaseKeys } from './helpers/authorized-key'
-import type { SessionRotateDeps } from '../src/lib/session-rotate'
+import { getDefaultDeps, type RotationIntentPayload, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { confirmedBundle } from './helpers/bundle-status'
 
 const account = '0x1111111111111111111111111111111111111111'
 
@@ -110,8 +111,9 @@ function quotePreparer(captured: PreparedInput[]) {
     })
 }
 
-function baseDeps<E>(extra?: E) {
+function baseDeps(overrides?: Partial<SessionRotateDeps>): SessionRotateDeps {
     return {
+        ...getDefaultDeps(),
         withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
         readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
         decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
@@ -120,7 +122,7 @@ function baseDeps<E>(extra?: E) {
         readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
         readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
         getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(oldAddress))),
-        ...extra,
+        ...overrides,
     }
 }
 
@@ -136,11 +138,11 @@ function intentWriter(
     sessions: string,
     plan: (call: number) => 'write' | 'fail' | 'write-then-fail',
     error: () => Error,
-) {
+): SessionRotateDeps['writeRotationIntent'] {
     let calls = 0
 
-    return mock(
-        async (_root: string, _dir: string, value: Record<string, unknown>, fileName?: string) => {
+    return typedMock<SessionRotateDeps['writeRotationIntent']>(
+        async (_root: string, _dir: string, value: RotationIntentPayload, fileName?: string) => {
             calls += 1
             const step = plan(calls)
 
@@ -177,11 +179,7 @@ async function firstRunWithEnospc(sessions: string, keystorePath: string) {
 
                     return { id: 'bundle-1' }
                 }),
-                waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => ({
-                    success: true,
-                    statusCode: 200,
-                    status: 'confirmed',
-                })),
+                waitForBundle: typedMock<SessionRotateDeps['waitForBundle']>(async () => confirmedBundle()),
                 writeRotationIntent: intentWriter(
                     sessions,
                     (call) => (call >= 2 ? 'fail' : 'write'),
@@ -295,11 +293,7 @@ test('a crash after the resealed marker is written and before the sidecar update
 
         const resumePrepares: PreparedInput[] = []
 
-        const waitForBundle = mock(async () => ({
-            success: true,
-            statusCode: 200,
-            status: 'confirmed',
-        }))
+        const waitForBundle = typedMock<SessionRotateDeps['waitForBundle']>(async () => confirmedBundle())
 
         const result = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, resume: true },

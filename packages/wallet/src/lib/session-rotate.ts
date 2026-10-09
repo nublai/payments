@@ -839,7 +839,7 @@ async function defaultDeleteRotationIntent(
     })
 }
 
-function getDefaultDeps(): SessionRotateDeps {
+export function getDefaultDeps(): SessionRotateDeps {
     return {
         readKeystoreBundle,
         readSessionKeystoreFile,

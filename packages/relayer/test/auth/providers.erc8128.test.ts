@@ -14,7 +14,7 @@ describe('erc8128 auth provider', () => {
     const env = testEnv({
         ERC8128_ENABLED: 'true',
         CHAIN_IDS: '8453',
-        HTTP_AUTH_NONCE_MANAGER: stubNamespace<Env['HTTP_AUTH_NONCE_MANAGER']>({
+        HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
             idFromName: vi.fn(),
             get: vi.fn(),
         }),

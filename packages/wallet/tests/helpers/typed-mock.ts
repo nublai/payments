@@ -12,20 +12,14 @@ export function typedMock<F extends (...args: never[]) => void>(impl: F): F & Mo
     return mock(impl) as F & Mock<F>
 }
 
-/** Present a test double bag as the production deps type. Suites only call methods they install. */
-export function stubDeps<T, S>(value: S): T {
-    // SAFETY: these tests only call the dep methods they install on this object.
-    return value as unknown as T
-}
-
 /** First argument of the first recorded mock call after the test already asserted a call. */
-export function firstMockArg<T>(fn: Mock<(...args: never[]) => unknown>): T {
+export function firstMockArg<F extends (...args: never[]) => unknown>(fn: Mock<F>): Parameters<F>[0] {
     const args = fn.mock.calls[0]
 
     if (args === undefined) throw new Error('expected a mock call')
 
-    // SAFETY: the suite already asserted this mock ran; args[0] is that invocation's first argument.
-    return args[0] as T
+    // SAFETY: the suite already asserted this mock ran; args[0] is Parameters<F>[0] of the same F.
+    return args[0] as Parameters<F>[0]
 }
 
 /** Generic keystore lock that runs `action` and preserves T. */

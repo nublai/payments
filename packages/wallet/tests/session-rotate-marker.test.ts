@@ -12,7 +12,7 @@ import {
     executeSessionRevoke,
     executeSessionRotate,
 } from './helpers/stub-execute'
-import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { getDefaultDeps, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash, listSessionNames } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { parseAddr } from './helpers/hex'
@@ -93,8 +93,9 @@ async function stageDir(): Promise<{ keystorePath: string; sessions: string }> {
     return { keystorePath: join(root, 'alice.json'), sessions }
 }
 
-function rotateDeps<E>(keystorePath: string, overrides?: E) {
+function rotateDeps(keystorePath: string, overrides?: Partial<SessionRotateDeps>): SessionRotateDeps {
     return {
+        ...getDefaultDeps(),
         withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
         readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
         readSessionKeystoreFile: typedMock<SessionRotateDeps['readSessionKeystoreFile']>(async (path: string) =>

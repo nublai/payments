@@ -8,7 +8,7 @@ import { signedPaymentMaxForQuote } from '@nubl/relayer-client'
 import { accountAbi } from '@nubl/contracts/abis'
 import { getDefaultSessionPermissions } from '../src/lib/account-create'
 import { PAID_FEE_CAP } from '../src/lib/intent-payment'
-import { sealRotationMarker, type RotationIntentPayload, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { getDefaultDeps, sealRotationMarker, type RotationIntentPayload, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { parseAddr } from './helpers/hex'
@@ -191,7 +191,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
 const ANY_KEYHASH =
     '0x3232323232323232323232323232323232323232323232323232323232323232'
 
-function rotateDeps<E>(overrides?: E) {
+function rotateDeps(overrides?: Partial<SessionRotateDeps>): SessionRotateDeps {
     const oldSession = testSessionKeystore(oldAddress, account, { name: 'default' })
 
     const newSession = testSessionKeystore(newAddress, account, {
@@ -202,6 +202,7 @@ function rotateDeps<E>(overrides?: E) {
     let reads = 0
 
     return {
+        ...getDefaultDeps(),
         withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
         readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () =>
             testKeystoreBundleFrom(
@@ -340,7 +341,7 @@ test('session rotate re-reads the daily USDC sum inside the keystore lock', asyn
                     newName: 'default-next',
                 },
                 rotateDeps({
-                    withKeystoreLock: async (_path: string, fn: () => Promise<unknown>) => {
+                    withKeystoreLock: async <T>(_path: string, fn: () => Promise<T>): Promise<T> => {
                         locked = true
 
                         try {

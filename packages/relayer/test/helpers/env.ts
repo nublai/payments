@@ -1,7 +1,16 @@
 import type { Env } from '../../src/types/env'
 
+type EnvBinding =
+    | Env['SIGNER']
+    | Env['SIGNER_POOL']
+    | Env['INTENT_NONCE_MANAGER']
+    | Env['MONITOR_QUEUE']
+    | NonNullable<Env['BUNDLE_STATUS_DO']>
+    | NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>
+    | NonNullable<Env['WALLET_BINDING']>
+
 /** Empty Durable Object / Queue binding. Unit tests that build Env never call these. */
-export function unusedBinding<T>(): T {
+export function unusedBinding<T extends EnvBinding>(): T {
     // SAFETY: these tests never invoke this binding; the empty object only fills Env's required key.
     return {} as T
 }
@@ -47,9 +56,9 @@ export type TestBindingStub = {
 }
 
 /** Namespace or queue stub that only implements the methods a test calls. */
-export function stubNamespace<T>(stub: TestBindingStub): T {
-    // SAFETY: these tests only call the methods they install on this stub.
-    return stub as T
+export function stubNamespace<T extends EnvBinding>(stub: TestBindingStub): T {
+    // SAFETY: T is an Env DO/queue binding; tests only call the methods they install on this stub.
+    return stub as unknown as T
 }
 
 export type TestQueueMessage = {

@@ -1479,7 +1479,7 @@ test('executeAccountSwap validates named session network against requested env a
                         },
                     }
 
-                    // SAFETY: this suite asserts executeAccountSwap rejects a sessionRef that omits active.
+                    // SAFETY: named-session env/chain checks run only after sessionRef.active is missing; a complete sessionRef would resolve the active session and skip this mismatch path.
                     return bundle as unknown as KeystoreBundle
                 }),
                 readSessionKeystoreFile: mock(async () =>

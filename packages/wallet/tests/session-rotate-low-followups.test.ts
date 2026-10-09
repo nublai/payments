@@ -10,7 +10,7 @@ import { expect, mock, test } from 'bun:test'
 import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { createSessionKeystore, deriveKeystoreKey } from '../src/lib/keystore'
-import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { getDefaultDeps, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -107,8 +107,9 @@ function quotePreparer(captured: PreparedInput[]) {
     })
 }
 
-function baseDeps<E>(extra?: E) {
+function baseDeps(overrides?: Partial<SessionRotateDeps>): SessionRotateDeps {
     return {
+        ...getDefaultDeps(),
         withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
         readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
         decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
@@ -117,7 +118,7 @@ function baseDeps<E>(extra?: E) {
         readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
         readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
         getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(oldAddress))),
-        ...extra,
+        ...overrides,
     }
 }
 

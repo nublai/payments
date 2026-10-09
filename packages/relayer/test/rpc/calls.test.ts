@@ -546,7 +546,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -595,7 +595,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -619,7 +619,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -667,7 +667,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -688,7 +688,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -712,7 +712,7 @@ describe('wallet_sendPreparedCalls', () => {
 
         const ctx = createMockCtx()
 
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn().mockReturnValue('bundle-status-id'),
             get: vi.fn().mockReturnValue({
                 fetch: bundleFetch,
@@ -751,7 +751,7 @@ describe('wallet_getCallsHistory', () => {
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = Object.keys(chainEntries).join(',')
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 const chainId = Number(name.replace('bundle-status-', ''))
@@ -890,7 +890,7 @@ describe('wallet_getCallsHistory', () => {
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = '8453,10'
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) => {
                 if (name === 'bundle-status-8453') {
@@ -954,7 +954,7 @@ describe('wallet_getCallsHistory', () => {
         const ctx = createMockCtx()
 
         ctx.env.CHAIN_IDS = '8453,10'
-        ctx.env.BUNDLE_STATUS_DO = namespaceStub<Env['BUNDLE_STATUS_DO']>({
+        ctx.env.BUNDLE_STATUS_DO = namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
             idFromName: vi.fn((name: string) => name),
             get: vi.fn((name: string) =>
                 name === 'bundle-status-8453'
@@ -1003,7 +1003,7 @@ describe('wallet_getCallsStatus', () => {
             SIGNER_POOL: signerPoolWithFetch(
                 vi.fn().mockResolvedValue(jsonStub({ txHash: '0xabc', signer: '0x123' })),
             ),
-            BUNDLE_STATUS_DO: namespaceStub({
+            BUNDLE_STATUS_DO: namespaceStub<NonNullable<Env['BUNDLE_STATUS_DO']>>({
                 idFromName: vi.fn().mockReturnValue('bundle-status-id'),
                 get: vi.fn().mockReturnValue({
                     fetch: vi.fn().mockResolvedValue(jsonStub(mockResponse)),

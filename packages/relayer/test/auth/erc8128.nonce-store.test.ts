@@ -11,7 +11,7 @@ describe('createHttpAuthNonceStore', () => {
         const idFromName = vi.fn(() => 'nonce-do-id')
 
         const env = testEnv({
-            HTTP_AUTH_NONCE_MANAGER: stubNamespace<Env['HTTP_AUTH_NONCE_MANAGER']>({
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
                 idFromName,
                 get,
             }),
@@ -34,7 +34,7 @@ describe('createHttpAuthNonceStore', () => {
         const idFromName = vi.fn(() => 'nonce-do-id')
 
         const env = testEnv({
-            HTTP_AUTH_NONCE_MANAGER: stubNamespace<Env['HTTP_AUTH_NONCE_MANAGER']>({
+            HTTP_AUTH_NONCE_MANAGER: stubNamespace<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>({
                 idFromName,
                 get: vi.fn(() => ({ consumeNonce })),
             }),

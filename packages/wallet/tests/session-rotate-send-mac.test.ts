@@ -12,7 +12,7 @@ import { accountAbi } from '@nubl/contracts/abis'
 import { JsonRpcClientError, type Call } from '@nubl/relayer-client'
 import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { createSessionKeystore, ensureOwnerOnlyDirectory } from '../src/lib/keystore'
-import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
+import { getDefaultDeps, sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
@@ -125,8 +125,9 @@ function decodeCalls(calls: Call[]) {
     }))
 }
 
-function baseDeps<E>(extra?: E) {
+function baseDeps(overrides?: Partial<SessionRotateDeps>): SessionRotateDeps {
     return {
+        ...getDefaultDeps(),
         withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
         readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
         decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
@@ -137,7 +138,7 @@ function baseDeps<E>(extra?: E) {
         getKeys: typedMock<SessionRotateDeps['getKeys']>(async () =>
             testBaseKeys(computeSessionKeyHash(oldAddress)),
         ),
-        ...extra,
+        ...overrides,
     }
 }
 

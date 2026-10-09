@@ -305,9 +305,7 @@ test('an over-ceiling caller cap is clamped to 5 USDC', async () => {
     expect(prepareCalls.mock.calls[0]?.[0]?.paymentMaxAmount).toBe(PAID_FEE_CAP)
     expect(signedCap(signTypedData)).toBe(1001n)
 
-    const signed = firstMockArg<{
-        typedData: { message: { payer: Address; paymentToken: Address } }
-    }>(signTypedData).typedData
+    const signed = firstMockArg(signTypedData).typedData
 
     expect(signed.message.payer).toBe(EOA)
     expect(signed.message.paymentToken).toBe(BASE_USDC)
@@ -464,9 +462,7 @@ test('a local zero quote signs cap 0 with a zero payer and says so', async () =>
 
     expect(signedCap(signTypedData)).toBe(0n)
 
-    const signed = firstMockArg<{
-        typedData: { message: { payer: Address; paymentToken: Address } }
-    }>(signTypedData).typedData
+    const signed = firstMockArg(signTypedData).typedData
 
     expect(signed.message.payer).toBe(zeroAddress)
     expect(signed.message.paymentToken).toBe(zeroAddress)

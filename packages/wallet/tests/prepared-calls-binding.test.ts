@@ -421,8 +421,10 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
             combinedGasCeiling: GAS_CEILING,
         },
     )
-    const signed = firstMockArg<{ typedData: { domain: { salt?: Hex } } }>(signTypedData).typedData
-    expect(signed.domain.salt).toBeUndefined()
+    const signed = firstMockArg(signTypedData).typedData
+    // SAFETY: this test reads domain.salt after a rebuild; EIP712Domain does not declare that field.
+    const signedDomain = signed.domain as { salt?: Hex }
+    expect(signedDomain.salt).toBeUndefined()
     expect(signTypedData).toHaveBeenCalled()
 
     const helperSign = mock(async (_typedData: PrepareCallsResponse['typedData']) => SIG)
@@ -431,8 +433,10 @@ test('executeSignedCalls signs the rebuilt typed data when the relayer adds a do
         expected,
         signer: { type: 'typedData', signTypedData: helperSign },
     })
-    const helperSigned = firstMockArg<{ domain: { salt?: Hex } }>(helperSign)
-    expect(helperSigned.domain.salt).toBeUndefined()
+    const helperSigned = firstMockArg(helperSign)
+    // SAFETY: this test reads domain.salt after a rebuild; EIP712Domain does not declare that field.
+    const helperDomain = helperSigned.domain as { salt?: Hex }
+    expect(helperDomain.salt).toBeUndefined()
 })
 
 test('createJsonRpcTransport does not follow a relayer redirect', async () => {

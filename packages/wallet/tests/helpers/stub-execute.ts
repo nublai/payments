@@ -59,7 +59,7 @@ import {
     executeSessionRotate as executeSessionRotateImpl,
     type SessionRotateDeps,
 } from '../../src/lib/session-rotate'
-import { stubDeps } from './typed-mock'
+import { typedMock } from './typed-mock'
 
 function withPartialDeps<I, D, R>(
     fn: (input: I, deps?: Partial<D>) => R,
@@ -169,10 +169,27 @@ export function executeSessionCreate(
     return withPartialDeps(executeSessionCreateImpl, options, deps)
 }
 
+function completeSignedCallsDeps(overrides: Partial<ExecuteSignedCallsDeps> = {}): ExecuteSignedCallsDeps {
+    return {
+        prepareCalls: typedMock<ExecuteSignedCallsDeps['prepareCalls']>(async () => {
+            throw new Error('not stubbed')
+        }),
+        signTypedData: typedMock<ExecuteSignedCallsDeps['signTypedData']>(async () => {
+            throw new Error('not stubbed')
+        }),
+        sendPreparedCalls: typedMock<ExecuteSignedCallsDeps['sendPreparedCalls']>(async () => {
+            throw new Error('not stubbed')
+        }),
+        waitForBundle: typedMock<ExecuteSignedCallsDeps['waitForBundle']>(async () => {
+            throw new Error('not stubbed')
+        }),
+        ...overrides,
+    }
+}
+
 export function executeSignedCalls(
     deps: Partial<ExecuteSignedCallsDeps>,
     params: ExecuteSignedCallsParams,
 ): ReturnType<typeof executeSignedCallsImpl> {
-    // SAFETY: these tests only call the dep methods they install on this object.
-    return executeSignedCallsImpl(stubDeps<ExecuteSignedCallsDeps, Partial<ExecuteSignedCallsDeps>>(deps), params)
+    return executeSignedCallsImpl(completeSignedCallsDeps(deps), params)
 }

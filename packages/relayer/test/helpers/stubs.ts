@@ -1,6 +1,14 @@
 import type { Env } from '../../src/types/env'
 import type { QueueJob } from '../../src/types/pool'
 
+type EnvDurableObject =
+    | Env['SIGNER']
+    | Env['SIGNER_POOL']
+    | Env['INTENT_NONCE_MANAGER']
+    | NonNullable<Env['BUNDLE_STATUS_DO']>
+    | NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>
+    | NonNullable<Env['WALLET_BINDING']>
+
 /** Methods these tests actually call on a Durable Object namespace. */
 export type NamespaceIdAndGet = {
     idFromName: (name: string) => string
@@ -18,9 +26,9 @@ export type NamespaceIdAndGet = {
 }
 
 /** Tests only call idFromName/get on this Durable Object namespace. */
-export function namespaceStub<T>(stub: NamespaceIdAndGet): T {
-    // SAFETY: these tests only call idFromName/get; other DurableObjectNamespace methods are unused.
-    return stub as T
+export function namespaceStub<T extends EnvDurableObject>(stub: NamespaceIdAndGet): T {
+    // SAFETY: T is an Env Durable Object namespace; tests only call idFromName/get.
+    return stub as unknown as T
 }
 
 export type QueueTestMessage = {

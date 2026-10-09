@@ -105,8 +105,8 @@ test('executeAccountSend preserves cause for invalid chain override', async () =
 })
 
 test('executeAccountSend executes sponsored transfer flow', async () => {
-    const prepareCalls = mock(async (input) => matchingPreparedCalls(input))
-    const sendPreparedCalls = mock(async () => ({ id: 'bundle-1' }))
+    const prepareCalls = typedMock<AccountSendDeps['prepareCalls']>(async (input) => matchingPreparedCalls(input))
+    const sendPreparedCalls = typedMock<AccountSendDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' }))
 
     const result = await executeAccountSend(
         {
@@ -129,7 +129,7 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
             })),
             hasLegacyRecipientAlias: typedMock<AccountSendDeps['hasLegacyRecipientAlias']>(async () => false),
             readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
-            prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(prepareCalls),
+            prepareCalls,
             signTypedData: typedMock<AccountSendDeps['signTypedData']>(
                 async () =>
                     '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const,
@@ -158,11 +158,14 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
     expect(result.token.amount).toBe('1.5')
     expect(result.bundle.id).toBe('bundle-1')
     expect(result.txHash).toBe('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-    const prepareInput = firstMockArg<{ sessionKey: string; nonce: bigint }>(prepareCalls)
+    const prepareInput = firstMockArg(prepareCalls)
+
+    if (prepareInput.sessionKey === undefined) throw new Error('expected sessionKey')
+
     expect(typeof prepareInput.sessionKey).toBe('string')
     expect(prepareInput.sessionKey.startsWith('0x')).toBe(true)
     expect(prepareInput.nonce).toBe(2n)
-    const sentSignature = firstMockArg<{ signature: string }>(sendPreparedCalls).signature
+    const sentSignature = firstMockArg(sendPreparedCalls).signature
     expect(sentSignature.startsWith('0x11111111111111111111111111111111')).toBe(true)
     expect(sentSignature.length).toBeGreaterThan(132)
 })

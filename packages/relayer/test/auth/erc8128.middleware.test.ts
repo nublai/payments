@@ -10,7 +10,7 @@ import { addr } from '../helpers/hex'
 function createEnv(overrides: Partial<Env> = {}): Env {
     return testEnv({
         CHAIN_IDS: '8453',
-        HTTP_AUTH_NONCE_MANAGER: unusedBinding<Env['HTTP_AUTH_NONCE_MANAGER']>(),
+        HTTP_AUTH_NONCE_MANAGER: unusedBinding<NonNullable<Env['HTTP_AUTH_NONCE_MANAGER']>>(),
         ...overrides,
     })
 }
