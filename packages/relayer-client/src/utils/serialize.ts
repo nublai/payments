@@ -6,7 +6,7 @@ import type { Address, Hex } from 'viem'
 import type { Intent, Call } from '../types'
 import type { PrepareCallsContext } from '../actions/prepareCalls'
 
-/** Values JSON.stringify can pass into a replacer, including symbol and function. */
+/** Values JSON.stringify can pass into a replacer, including symbol, bigint, and function (`object`). */
 type JsonReplacerValue =
     | string
     | number
@@ -14,7 +14,6 @@ type JsonReplacerValue =
     | bigint
     | symbol
     | object
-    | ((...args: never[]) => unknown)
     | null
     | undefined
 
