@@ -808,7 +808,7 @@ function markRotationIntentSubmitted(
     intent: RotationIntent,
     bundleId?: string,
 ): SubmittedRotationIntentPayload {
-    const payload: SubmittedRotationIntentPayload = {
+    const payload: Omit<SubmittedRotationIntentPayload, 'status' | 'bundleId'> = {
         oldSessionName: intent.oldSessionName,
         newSessionName: intent.newSessionName,
         chain: intent.chain,
@@ -816,7 +816,6 @@ function markRotationIntentSubmitted(
         newKeyHash: intent.newKeyHash,
         narrow: intent.narrow,
         fullAccess: intent.fullAccess,
-        status: 'submitted',
     }
 
     if (intent.account) payload.account = intent.account
@@ -827,9 +826,14 @@ function markRotationIntentSubmitted(
 
     if (intent.macKdf) payload.macKdf = intent.macKdf
 
-    if (bundleId) payload.bundleId = bundleId
+    const submitted: SubmittedRotationIntentPayload = {
+        ...payload,
+        status: 'submitted',
+    }
 
-    return payload
+    if (bundleId) submitted.bundleId = bundleId
+
+    return submitted
 }
 
 function isPossiblySubmittedRotation(error: unknown): boolean {

@@ -83,6 +83,33 @@ test('executeAccountHistory uses root EOA from keystore when no address override
     })
 })
 
+test('executeAccountHistory keeps keystorePath before networkScope in result key order', async () => {
+    const result = await executeAccountHistory(
+        {
+            env: 'prod',
+            keystorePath: '/tmp/alice.json',
+        },
+        {
+            readKeystoreBundle: mock(async () => bundle),
+            getCallsHistory: mock(async () => ({
+                success: true as const,
+                items: [],
+                total: 0,
+            })),
+        },
+    )
+
+    expect(Object.keys(result)).toEqual([
+        'type',
+        'status',
+        'address',
+        'keystorePath',
+        'networkScope',
+        'page',
+        'items',
+    ])
+})
+
 test('executeAccountHistory uses explicit address and skips keystore lookup', async () => {
     const getCallsHistory = mock(async () => ({
         success: true as const,
