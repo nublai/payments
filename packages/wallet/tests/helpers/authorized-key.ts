@@ -19,3 +19,8 @@ export function testAuthorizedKey(hash: Hex, overrides?: Partial<AuthorizedKeyIn
 export function testKeys(chainHex: `0x${string}`, keys: AuthorizedKeyInfo[]): GetKeysResponse {
     return { [chainHex]: keys }
 }
+
+/** One authorized key on Base (`0x2105`). */
+export function testBaseKeys(hash: Hex, overrides?: Partial<AuthorizedKeyInfo>): GetKeysResponse {
+    return testKeys('0x2105', [testAuthorizedKey(hash, overrides)])
+}

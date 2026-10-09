@@ -9,13 +9,14 @@ import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
 import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { type Call } from '@nubl/relayer-client'
 import { createSessionKeystore, deriveKeystoreKey } from '../src/lib/keystore'
 import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-rotate'
 import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute'
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
-import { typedMock } from './helpers/typed-mock'
+import { passthroughKeystoreLock, typedMock } from './helpers/typed-mock'
+import { testKeystoreBundleFrom } from './helpers/keystore-bundle'
+import { testBaseKeys } from './helpers/authorized-key'
 
 const account: Address = '0x1111111111111111111111111111111111111111'
 
@@ -39,28 +40,19 @@ const network = {
     chainId: 8453,
 }
 
-type PreparedInput = {
-    network: { chainId: number; env: 'stage' }
-    from: Address
-    calls: Call[]
-    nonce: bigint
-    expiry?: bigint
-    payer?: Address
-    paymentToken?: Address
-    paymentMaxAmount?: bigint
-}
+type PreparedInput = Parameters<SessionRotateDeps['prepareCalls']>[0]
 
 function rootBundle(active = 'default') {
-    return {
-        root: {
+    return testKeystoreBundleFrom(
+        {
             addresses: { root: account, delegated: account },
             sessionRef: { active, dir: 'sessions' },
             network,
             createdAt: '2020-01-01T00:00:00.000Z',
             checkpoint: 'delegated',
         },
-        session: { addresses: { session: oldAddress } },
-    }
+        { addresses: { session: oldAddress, delegated: account } },
+    )
 }
 
 async function stageDir(prefix: string) {
@@ -99,7 +91,7 @@ async function writeRealSession(path: string, name: string, key: Hex) {
 }
 
 function quotePreparer(captured: PreparedInput[]) {
-    return mock(async (input: PreparedInput) => {
+    return typedMock<SessionRotateDeps['prepareCalls']>(async (input) => {
         captured.push(input)
 
         return matchingPreparedCalls({
@@ -117,16 +109,14 @@ function quotePreparer(captured: PreparedInput[]) {
 
 function baseDeps<E>(extra?: E) {
     return {
-        withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(async (_path: string, fn: () => Promise<unknown>) => fn()),
+        withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
         readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
         decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
         generatePrivateKey: typedMock<SessionRotateDeps['generatePrivateKey']>(() => newKey),
         readNonce: typedMock<SessionRotateDeps['readNonce']>(async () => 1n),
         readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
         readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
-        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-        })),
+        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(oldAddress))),
         ...extra,
     }
 }
@@ -245,9 +235,7 @@ test('abandon refuses an unverified marker and leaves the file', async () => {
             )}\n`,
         )
 
-        const getKeys = mock(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-        }))
+        const getKeys = mock(async () => testBaseKeys(computeSessionKeyHash(oldAddress)))
 
         await expect(
             executeSessionRotate(

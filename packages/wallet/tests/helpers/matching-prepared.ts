@@ -1,6 +1,6 @@
 import { zeroAddress, type Address } from 'viem'
 import { hashTypedData } from 'viem/utils'
-import { INTENT_TYPES, type Call } from '@nubl/relayer-client'
+import { INTENT_TYPES, type Call, type PrepareCallsResponse } from '@nubl/relayer-client'
 import type { EnvName } from '../../src/lib/network-config'
 import { resolveOrchestratorAddress } from '../../src/lib/orchestrator-address'
 import { emptyHex } from './hex'
@@ -14,7 +14,7 @@ export function matchingPreparedCalls(input: {
     payer?: Address
     paymentToken?: Address
     paymentMaxAmount?: bigint
-}) {
+}): PrepareCallsResponse {
     const verifyingContract = resolveOrchestratorAddress(input.network.env, input.network.chainId)
 
     const messageCalls = input.calls.map((call) => ({
@@ -81,6 +81,6 @@ export function matchingPreparedCalls(input: {
                         feeTokenDeficit: '0x0',
                         assetDeficits: [] },
                 ],
-                signature: '0x',
+                signature: '0x' as const,
                 ttl: 2_000_000_000 } } }
 }

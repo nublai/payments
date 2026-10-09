@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decodeFunctionData, encodeFunctionData, erc20Abi, zeroAddress, type Address, type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
-import type { GetKeysResponse } from '@nubl/relayer-client'
+import type { AuthorizedKeyInfo, GetKeysResponse } from '@nubl/relayer-client'
 import { executeAccountSwap } from './helpers/stub-execute'
-import { parseAddr } from './helpers/hex'
+import { hex, parseAddr } from './helpers/hex'
 import type {
     ExecuteSignedCallsDeps,
     ExecuteSignedCallsParams,
@@ -41,6 +41,10 @@ import {
 import { assertNoStandingRights, knownErc20Tokens, PERMIT2 } from '../src/lib/standing-rights'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
+import { testBaseKeys } from './helpers/authorized-key'
+import { confirmedBundle } from './helpers/bundle-status'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
+import { signedCallsResult } from './helpers/signed-calls'
 import { typedMock } from './helpers/typed-mock'
 import type { AccountSwapDeps } from '../src/lib/account-swap'
 
@@ -60,7 +64,7 @@ const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
 
 const SESSION_KEY_HASH = computeSessionKeyHash(SESSION_ADDRESS)
 
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
 
 const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
 
@@ -68,13 +72,13 @@ const APPROVAL_PROXY = '0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE'
 
 const ANY_TARGET = '0x3232323232323232323232323232323232323232'
 
-const TRANSFER = '0xa9059cbb'
+const TRANSFER = '0xa9059cbb' as const
 
 const APPROVE = '0x095ea7b3'
 
-const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730'
+const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730' as const
 
-const ESCROW_SEL = '0x657061bf'
+const ESCROW_SEL = '0x657061bf' as const
 
 const VAULT = '0x4444444444444444444444444444444444444444'
 
@@ -132,19 +136,8 @@ function quote(items: { to: Address; data: Hex; value?: string }[]) {
     }
 }
 
-function keys(permissions: readonly Record<string, unknown>[]) {
-    return {
-        '0x2105': [
-            {
-                hash: SESSION_KEY_HASH,
-                expiry: '0x0',
-                type: 'secp256k1' as const,
-                role: 'normal' as const,
-                publicKey: '0x' as const,
-                permissions,
-            },
-        ],
-    }
+function keys(permissions: AuthorizedKeyInfo['permissions']): GetKeysResponse {
+    return testBaseKeys(SESSION_KEY_HASH, { permissions: [...permissions] })
 }
 
 const TEST_KDF = {
@@ -216,15 +209,15 @@ function paymentPermissions() {
         {
             type: 'spend' as const,
             token: USDC,
-            limit: '10000000',
-            spent: '0x0',
+            limit: '0x989680' as const,
+            spent: '0x0' as const,
             period: 'day' as const,
         },
     ]
 }
 
 function runSwap(input: {
-    permissions: readonly Record<string, unknown>[]
+    permissions: AuthorizedKeyInfo['permissions']
     quote?: ReturnType<typeof quote>
     readAllowance?: (value: { token: Address; spender: Address }) => Promise<bigint>
     readPermit2Allowance?: (value: {
@@ -241,22 +234,11 @@ function runSwap(input: {
         () => Promise<void>
     >
 }) {
-    const signTypedData = mock(async () => '0x11')
+    const signTypedData = typedMock<AccountSwapDeps['signTypedData']>(async () => hex('0x11'))
 
-    const executeSignedCalls = mock(async () => ({
-        id: 'bundle-1',
-        finalStatus: {
-            success: true,
-            id: 'bundle-1',
-            status: 'confirmed' as const,
-            statusCode: 200,
-            receipt: {
-                transactionHash:
-                    '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            },
-        },
-        feeCap: { token: zeroAddress, amount: 0n },
-    }))
+    const executeSignedCalls = typedMock<AccountSwapDeps['executeSignedCalls']>(async () =>
+        signedCallsResult(),
+    )
 
     const result = executeAccountSwap(
         {
@@ -270,24 +252,9 @@ function runSwap(input: {
             yes: true,
         },
         {
-            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => ({
-                format: 'split',
-                rootPath: '/tmp/alice-swap-session.json',
-                sessionPath: '/tmp/sessions/default.json',
-                root: {
-                    addresses: { root: USER, delegated: USER },
-                    sessionRef: { dir: '/tmp/sessions' },
-                },
-                session: {
-                    network: {
-                        env: 'prod' as const,
-                        relayerUrl: 'http://127.0.0.1:8787',
-                        rpcUrl: 'https://mainnet.base.org',
-                        chainId: 8453,
-                    },
-                    addresses: { delegated: USER, session: SESSION_ADDRESS },
-                },
-            })),
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () =>
+                testKeystoreBundle(USER, SESSION_ADDRESS, 8453, 'prod'),
+            ),
             decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const,
@@ -317,11 +284,7 @@ function runSwap(input: {
                 input.readApprovedSignatureCheckers ?? (async () => []),
             standingRightsRegistry: input.standingRightsRegistry,
             executeSignedCalls: typedMock<AccountSwapDeps['executeSignedCalls']>(executeSignedCalls),
-            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => ({
-                success: true,
-                status: 'confirmed' as const,
-                statusCode: 200,
-            })),
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => confirmedBundle()),
         },
     )
 

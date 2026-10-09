@@ -15,6 +15,7 @@ import type { AccountSwapDeps } from '../src/lib/account-swap'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { addr, parseAddr, parseHex, repeatedHex } from './helpers/hex'
+import { testBaseKeys } from './helpers/authorized-key'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { typedMock } from './helpers/typed-mock'
 import { confirmedBundle } from './helpers/bundle-status'
@@ -306,8 +307,8 @@ function scriptedBalances(input: { before: bigint[]; after: bigint[]; revert?: b
 }
 
 function run(input: {
-    quote?: unknown
-    getQuote?: () => Promise<unknown>
+    quote?: RelayQuoteResponse
+    getQuote?: AccountSwapDeps['getQuote']
     yes?: boolean
     amount?: string
     slippage?: number
@@ -318,7 +319,7 @@ function run(input: {
     balance?: bigint
     confirmQuote?: () => Promise<boolean>
     simulateQuoteCalls?: (value: SimulateRelayQuoteInput) => Promise<void>
-    getKeys?: () => Promise<unknown>
+    getKeys?: AccountSwapDeps['getKeys']
     readAllowance?: (value: {
         token: Address
         spender: Address
@@ -362,7 +363,12 @@ function run(input: {
             })),
             readTokenBalance: mock(async () => input.balance ?? 10_000000n),
             getQuote: typedMock<AccountSwapDeps['getQuote']>(
-                input.getQuote ?? (async () => input.quote),
+                input.getQuote ??
+                    (async () => {
+                        if (input.quote === undefined) throw new Error('missing quote')
+
+                        return input.quote
+                    }),
             ),
             readNonce: mock(async () => 2n),
             confirmQuote,
@@ -396,18 +402,10 @@ function run(input: {
             readApprovedSignatureCheckers: async () => [],
             getKeys: typedMock<AccountSwapDeps['getKeys']>(
                 input.getKeys ??
-                    (async () => ({
-                        '0x2105': [
-                            {
-                                hash: computeSessionKeyHash(SESSION_ADDRESS),
-                                expiry: '0x0',
-                                type: 'secp256k1',
-                                role: 'normal',
-                                publicKey: '0x',
-                                permissions: relaySessionCallPermissions(8453),
-                            },
-                        ],
-                    })),
+                    (async () =>
+                        testBaseKeys(computeSessionKeyHash(SESSION_ADDRESS), {
+                            permissions: relaySessionCallPermissions(8453),
+                        })),
             ),
         },
     )
@@ -416,26 +414,17 @@ function run(input: {
 }
 
 function ethKeys() {
-    return {
-        '0x2105': [
+    return testBaseKeys(computeSessionKeyHash(SESSION_ADDRESS), {
+        permissions: [
             {
-                hash: computeSessionKeyHash(SESSION_ADDRESS),
-                expiry: '0x0',
-                type: 'secp256k1',
-                role: 'normal',
-                publicKey: '0x',
-                permissions: [
-                    {
-                        type: 'spend',
-                        token: zeroAddress,
-                        limit: '0x16345785d8a0000',
-                        spent: '0x0',
-                        period: 'forever',
-                    },
-                ],
+                type: 'spend',
+                token: zeroAddress,
+                limit: '0x16345785d8a0000',
+                spent: '0x0',
+                period: 'forever',
             },
         ],
-    }
+    })
 }
 
 const innerTransfer = encodeFunctionData({

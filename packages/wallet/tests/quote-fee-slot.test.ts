@@ -7,6 +7,8 @@ import { computeSessionKeyHash } from '../src/lib/session-common'
 import { relaySessionCallPermissions } from '../src/lib/swap-session'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
+import { confirmedBundle } from './helpers/bundle-status'
+import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { typedMock } from './helpers/typed-mock'
 import type { AccountSwapDeps } from '../src/lib/account-swap'
 
@@ -20,11 +22,11 @@ afterAll(() => {
     restoreFormerProdDeployments()
 })
 
-const USER = '0x1111111111111111111111111111111111111111'
+const USER = '0x1111111111111111111111111111111111111111' as const
 
-const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333'
+const SESSION_ADDRESS = '0x3333333333333333333333333333333333333333' as const
 
-const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
+const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as const
 
 const BASE_USDC = getAddress(resolveIntentPayment('prod', 8453, USER).paymentToken)
 
@@ -63,7 +65,7 @@ function quote(value: bigint) {
                 requestId: 'relay-request-1',
                 items: [
                     {
-                        status: 'incomplete',
+                        status: 'incomplete' as const,
                         data: { to: ROUTER, data: EMPTY_ROUTER_CALL, value: value.toString(), chainId: 8453 } },
                 ] },
         ],
@@ -75,7 +77,7 @@ function quote(value: bigint) {
                 amountUsd: '100.10' },
             rate: '3508.77',
             timeEstimate: 2 },
-        fees: { gas: { amountUsd: '0.10' }, relayer: { amountUsd: '0.07' } } }
+        fees: { gas: { amount: '0', amountUsd: '0.10' }, relayer: { amount: '0', amountUsd: '0.07' } } }
 }
 
 async function installedBound(input: {
@@ -96,20 +98,8 @@ async function installedBound(input: {
             keystorePath: '/tmp/alice.json',
             yes: true },
         {
-            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => ({
-                format: 'split',
-                rootPath: '/tmp/alice.json',
-                sessionPath: '/tmp/sessions/default.json',
-                root: {
-                    addresses: { root: USER, delegated: USER },
-                    sessionRef: { dir: '/tmp/sessions' } },
-                session: {
-                    network: {
-                        env: 'prod' as const,
-                        relayerUrl: 'http://127.0.0.1:8787',
-                        rpcUrl: 'https://mainnet.base.org',
-                        chainId: 8453 },
-                    addresses: { delegated: USER, session: SESSION_ADDRESS } } })),
+            readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () =>
+                testKeystoreBundle(USER, SESSION_ADDRESS, 8453, 'prod')),
             decryptSessionKeystore: typedMock<AccountSwapDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const })),
@@ -120,16 +110,7 @@ async function installedBound(input: {
             prepareCalls: typedMock<AccountSwapDeps['prepareCalls']>(async (prepared) => matchingPreparedCalls(prepared)),
             signTypedData: typedMock<AccountSwapDeps['signTypedData']>(async () => `0x${'11'.repeat(64)}1b` as const),
             sendPreparedCalls: typedMock<AccountSwapDeps['sendPreparedCalls']>(async () => ({ id: 'bundle-1' })),
-            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => ({
-                success: true,
-                id: 'bundle-1',
-                status: 'confirmed',
-                statusCode: 200,
-                receipt: {
-                    transactionHash: `0x${'aa'.repeat(32)}`,
-                    blockNumber: '1',
-                    gasUsed: '1',
-                    status: 'success' } })),
+            waitForBundle: typedMock<AccountSwapDeps['waitForBundle']>(async () => confirmedBundle()),
             simulateQuoteCalls: async () => {},
             installQuoteSpendLimit: async (value: { bound: typeof bound }) => {
                 bound = value.bound

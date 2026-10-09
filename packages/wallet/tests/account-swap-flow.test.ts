@@ -19,7 +19,7 @@ import {
     executeAccountSwap as executeAccountSwapImpl,
     resolveAccountSwapPassword,
 } from '../src/lib/account-swap'
-import type { RelayQuoteResponse } from '../src/lib/relay-link'
+import type { RelayIntentStatus, RelayQuoteResponse } from '../src/lib/relay-link'
 import { testKeystoreBundle } from './helpers/keystore-bundle'
 import { parseHex } from './helpers/hex'
 
@@ -88,7 +88,7 @@ function executeAccountSwap(
     })
 }
 
-import { LoginProfileError, type RelayerSessionKeystoreV2 } from '../src/lib/keystore'
+import { LoginProfileError, type KeystoreBundle, type RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import { typedMock } from './helpers/typed-mock'
 import type { AccountSwapDeps } from '../src/lib/account-swap'
 import { PromptCancelledError } from '../src/lib/password-readline'
@@ -447,9 +447,9 @@ test('executeAccountSwap accepts successful bundles without a statusCode', async
 })
 
 test('executeAccountSwap completes a bridge and polls for destination fill', async () => {
-    const pollIntentStatus = mock(async () => ({
+    const pollIntentStatus = mock(async (): Promise<RelayIntentStatus> => ({
         status: 'success',
-        txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
+        txHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const],
     }))
 
     const recipient = '0x2222222222222222222222222222222222222222'
@@ -507,9 +507,9 @@ test('executeAccountSwap completes a bridge and polls for destination fill', asy
 })
 
 test('executeAccountSwap does not treat source intent hashes as destination tx hashes', async () => {
-    const pollIntentStatus = mock(async () => ({
+    const pollIntentStatus = mock(async (): Promise<RelayIntentStatus> => ({
         status: 'success',
-        inTxHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
+        inTxHashes: ['0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const],
     }))
 
     const result = await executeAccountSwap(
@@ -1468,15 +1468,20 @@ test('executeAccountSwap validates named session network against requested env a
                 yes: true,
             },
             {
-                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => ({
-                    ...makeKeystoreBundle(),
-                    root: {
-                        ...makeKeystoreBundle().root,
-                        sessionRef: {
-                            dir: 'sessions',
+                readKeystoreBundle: typedMock<AccountSwapDeps['readKeystoreBundle']>(async () => {
+                    const bundle = {
+                        ...makeKeystoreBundle(),
+                        root: {
+                            ...makeKeystoreBundle().root,
+                            sessionRef: {
+                                dir: 'sessions',
+                            },
                         },
-                    },
-                })),
+                    }
+
+                    // SAFETY: this suite asserts executeAccountSwap rejects a sessionRef that omits active.
+                    return bundle as unknown as KeystoreBundle
+                }),
                 readSessionKeystoreFile: mock(async () =>
                     makeSessionKeystore({
                         network: {

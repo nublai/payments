@@ -6,7 +6,7 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFi
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, mock, test } from 'bun:test'
-import { decodeFunctionData, type Address, type Hex } from 'viem'
+import { decodeFunctionData, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { accountAbi } from '@nubl/contracts/abis'
 import { JsonRpcClientError, type Call } from '@nubl/relayer-client'
@@ -16,7 +16,9 @@ import { sealRotationMarker, type SessionRotateDeps } from '../src/lib/session-r
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { installFormerStageDeployments } from './helpers/former-deployment-env'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
-import { typedMock } from './helpers/typed-mock'
+import { passthroughKeystoreLock, typedMock } from './helpers/typed-mock'
+import { testKeystoreBundleFrom } from './helpers/keystore-bundle'
+import { testBaseKeys } from './helpers/authorized-key'
 
 const account = '0x1111111111111111111111111111111111111111'
 
@@ -44,28 +46,19 @@ const network = {
     chainId: 8453,
 }
 
-type PreparedInput = {
-    network: { chainId: number; env: 'stage' }
-    from: Address
-    calls: Call[]
-    nonce: bigint
-    expiry?: bigint
-    payer?: Address
-    paymentToken?: Address
-    paymentMaxAmount?: bigint
-}
+type PreparedInput = Parameters<SessionRotateDeps['prepareCalls']>[0]
 
 function rootBundle(active = 'default') {
-    return {
-        root: {
+    return testKeystoreBundleFrom(
+        {
             addresses: { root: account, delegated: account },
             sessionRef: { active, dir: 'sessions' },
             network,
             createdAt: '2020-01-01T00:00:00.000Z',
             checkpoint: 'delegated',
         },
-        session: { addresses: { session: oldAddress } },
-    }
+        { addresses: { session: oldAddress, delegated: account } },
+    )
 }
 
 async function stageDir(prefix: string) {
@@ -109,7 +102,7 @@ async function writeRealSession(path: string, name: string, key: Hex) {
 }
 
 function quotePreparer(captured: PreparedInput[]) {
-    return mock(async (input: PreparedInput) => {
+    return typedMock<SessionRotateDeps['prepareCalls']>(async (input) => {
         captured.push(input)
 
         return matchingPreparedCalls({
@@ -134,16 +127,16 @@ function decodeCalls(calls: Call[]) {
 
 function baseDeps<E>(extra?: E) {
     return {
-        withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(async (_path: string, fn: () => Promise<unknown>) => fn()),
+        withKeystoreLock: typedMock<SessionRotateDeps['withKeystoreLock']>(passthroughKeystoreLock),
         readKeystoreBundle: typedMock<SessionRotateDeps['readKeystoreBundle']>(async () => rootBundle()),
         decryptRootKeystore: typedMock<SessionRotateDeps['decryptRootKeystore']>(async () => ({ rootPrivateKey })),
         generatePrivateKey: typedMock<SessionRotateDeps['generatePrivateKey']>(() => newKey),
         readNonce: typedMock<SessionRotateDeps['readNonce']>(async () => 1n),
         readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
         readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
-        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-        })),
+        getKeys: typedMock<SessionRotateDeps['getKeys']>(async () =>
+            testBaseKeys(computeSessionKeyHash(oldAddress)),
+        ),
         ...extra,
     }
 }
@@ -195,9 +188,7 @@ test('a send throw before an id returns keeps the key and resume settles from ge
 
         const resumePrepares: PreparedInput[] = []
 
-        const getKeys = mock(async () => ({
-            '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-        }))
+        const getKeys = mock(async () => testBaseKeys(computeSessionKeyHash(oldAddress)))
 
         await expect(
             executeSessionRotate(
@@ -225,9 +216,7 @@ test('a send throw before an id returns keeps the key and resume settles from ge
         const settled = await executeSessionRotate(
             { env: 'stage', chain: 'base', keystorePath, password, resume: true },
             baseDeps({
-                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
-                    '0x2105': [{ hash: computeSessionKeyHash(newAddress) }],
-                })),
+                getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(newAddress))),
                 executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
                 prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer(settlePrepares)),
                 signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => {
@@ -361,9 +350,7 @@ test('an edited marker is refused before resume signs', async () => {
             executeSessionRotate(
                 { env: 'stage', chain: 'base', keystorePath, password, resume: true },
                 baseDeps({
-                    getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => ({
-                        '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }],
-                    })),
+                    getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(oldAddress))),
                     executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(executeSignedCalls),
                     prepareCalls: typedMock<SessionRotateDeps['prepareCalls']>(quotePreparer(prepares)),
                     signTypedData: typedMock<SessionRotateDeps['signTypedData']>(async () => rootPrivateKey),
@@ -476,7 +463,7 @@ test('abandon reports on-chain keys and removes only the marker', async () => {
         const getKeys = mock(async () => {
             markerPresentAtGetKeys = (await readdir(sessions)).includes('.rotation.json')
 
-            return { '0x2105': [{ hash: computeSessionKeyHash(oldAddress) }] }
+            return testBaseKeys(computeSessionKeyHash(oldAddress))
         })
 
         const result = await executeSessionRotate(

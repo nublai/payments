@@ -7,7 +7,7 @@ import { type ExecuteSignedCallsDeps } from '../src/lib/execute-calls'
 import { executeAccountSend, executeSignedCalls } from './helpers/stub-execute'
 import { discloseFeeCap } from '../src/lib/intent-payment'
 import { estimateCombinedGasCeiling, localCombinedGasCeiling } from '../src/lib/gas-ceiling'
-import { getEnvRelayerUrl, getUsdcAddressByChainId } from '../src/lib/network-config'
+import { getEnvRelayerUrl, getUsdcAddressByChainId, type EnvName } from '../src/lib/network-config'
 import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { confirmedBundle } from './helpers/bundle-status'
@@ -43,7 +43,7 @@ const ARBITRUM_USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
 const BASE_SEPOLIA_USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
 
 const SIG =
-    '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b'
+    '0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b' as const
 
 const CALLS: Call[] = [{ target: TARGET, value: 0n, data: '0x1234' }]
 
@@ -75,7 +75,7 @@ function preparedQuote(
     chainId: number,
     capOverride?: bigint,
     orchestrator: Address = ORCHESTRATOR,
-) {
+): PrepareCallsResponse {
     const cap = capOverride ?? input.paymentMaxAmount ?? 0n
     const payer = input.payer ?? zeroAddress
     const paymentToken = input.paymentToken ?? zeroAddress
@@ -150,7 +150,7 @@ function preparedQuote(
         context: {
             quote: {
                 quotes: [quote],
-                signature: '0x',
+                signature: '0x' as const,
                 ttl: 2_000_000_000 } } }
 }
 
@@ -593,7 +593,7 @@ test('prod send returns the fee cap for human and json output', async () => {
         readNonce: typedMock<AccountSendDeps['readNonce']>(async () => 2n),
         prepareCalls: typedMock<AccountSendDeps['prepareCalls']>(
             async (
-                input: PrepareInput & { network: { env: 'prod'; chainId: number } },
+                input: PrepareInput & { network: { env: EnvName; chainId: number } },
             ) =>
                 preparedQuote(
                     input,

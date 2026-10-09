@@ -5,7 +5,7 @@ import { typedMock } from './helpers/typed-mock'
 test('executeSessionStop does not unlink pid/socket when process does not exit after SIGTERM', async () => {
     process.env.TW_AGENT_SOCK = '/tmp/tw-session-stop-nonexit.sock'
 
-    const unlinkMock = typedMock<SessionStopDeps['unlink']>(async (_path: string) => {})
+    const unlinkMock = typedMock<SessionStopDeps['unlink']>(async () => {})
 
     const result = await executeSessionStop({
         readPidFromFile: async () => 12345,
@@ -26,8 +26,8 @@ test('executeSessionStop does not unlink pid/socket when process does not exit a
 test('executeSessionStop reports cleanup unlink errors on stale pid/socket cleanup', async () => {
     process.env.TW_AGENT_SOCK = '/tmp/tw-session-stop-stale.sock'
 
-    const unlinkMock = typedMock<SessionStopDeps['unlink']>(async (path: string) => {
-        if (path.endsWith('.pid')) {
+    const unlinkMock = typedMock<SessionStopDeps['unlink']>(async (path) => {
+        if (String(path).endsWith('.pid')) {
             throw new Error('permission denied')
         }
     })

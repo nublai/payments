@@ -9,6 +9,7 @@ import { matchingPreparedCalls } from './helpers/matching-prepared'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { typedMock } from './helpers/typed-mock'
 import type { AccountSwapDeps } from '../src/lib/account-swap'
+import type { RelayQuoteResponse } from '../src/lib/relay-link'
 
 let restoreFormerProdDeployments = () => {}
 
@@ -95,7 +96,7 @@ function quoteWithCall(input: {
     chainId?: number
     kind?: string
     currencyInAmount?: string
-}) {
+}): RelayQuoteResponse {
     return {
         requestId: 'relay-request-1',
         steps: [
@@ -132,7 +133,7 @@ function attackTransferData(): Hex {
 }
 
 function runQuote(input: {
-    quote: ReturnType<typeof quoteWithCall> | Record<string, unknown>
+    quote: RelayQuoteResponse
     yes?: boolean
     amount?: string
     fromToken?: string

@@ -459,15 +459,15 @@ test('executeAccountCreate writes split root and session keystores', async () =>
 
 test('executeAccountCreate resume loads split bundle and avoids key generation', async () => {
     const rootPrivateKey =
-        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
+        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as const
 
     const sessionPrivateKey =
-        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7'
+        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' as const
 
     const rootKeystore = makeRootKeystore()
     const sessionKeystore = makeSessionKeystore()
 
-    const generateKey = mock(() => rootPrivateKey)
+    const generateKey = typedMock<AccountCreateDeps['generatePrivateKey']>(() => rootPrivateKey)
 
     const result = await executeAccountCreate(
         {
@@ -476,7 +476,7 @@ test('executeAccountCreate resume loads split bundle and avoids key generation',
             keystorePath: '/tmp/test-keystore.json',
             resume: true },
         {
-            generatePrivateKey: typedMock<AccountCreateDeps['generatePrivateKey']>(generateKey),
+            generatePrivateKey: generateKey,
             readKeystoreBundle: typedMock<AccountCreateDeps['readKeystoreBundle']>(async () => ({
                 rootPath: '/tmp/test-keystore.json',
                 sessionPath: '/tmp/sessions/default.json',
