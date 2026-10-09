@@ -172,7 +172,7 @@ export function pendingRecordFromSlots(input: {
     callGrants?: readonly SwapCallGrant[]
     keyExpiry?: PendingQuoteLimitRecord['keyExpiry']
 }): PendingQuoteLimitRecord {
-    return {
+    const record: PendingQuoteLimitRecord = {
         version: PENDING_QUOTE_LIMIT_VERSION,
         account: getAddress(input.account),
         keyHash: input.keyHash,
@@ -189,8 +189,13 @@ export function pendingRecordFromSlots(input: {
             target: getAddress(grant.target),
             selector: grant.selector,
         })),
-        ...(input.keyExpiry ? { keyExpiry: input.keyExpiry } : {}),
     }
+
+    if (input.keyExpiry) {
+        record.keyExpiry = input.keyExpiry
+    }
+
+    return record
 }
 
 export function grantsFromPending(record: PendingQuoteLimitRecord): SwapCallGrant[] {

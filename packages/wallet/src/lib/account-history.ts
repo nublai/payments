@@ -184,15 +184,19 @@ export async function executeAccountHistory(
             throw new AccountHistoryError('RELAYER_ERROR', result.error)
         }
 
-        return {
+        const networkScope: AccountHistoryResult['networkScope'] = {
+            env: options.env,
+        }
+
+        if (chainIds) {
+            networkScope.chainIds = chainIds
+        }
+
+        const history: AccountHistoryResult = {
             type: 'account_history',
             status: 'complete',
             address,
-            ...(keystorePath ? { keystorePath } : {}),
-            networkScope: {
-                env: options.env,
-                ...(chainIds ? { chainIds } : {}),
-            },
+            networkScope,
             page: {
                 limit,
                 offset,
@@ -206,6 +210,12 @@ export async function executeAccountHistory(
                 createdAt: item.createdAt,
             })),
         }
+
+        if (keystorePath) {
+            history.keystorePath = keystorePath
+        }
+
+        return history
     } catch (error) {
         throw toAccountHistoryError(error, { usedAddressOverride: Boolean(options.address) })
     }

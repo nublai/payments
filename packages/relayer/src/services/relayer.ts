@@ -753,20 +753,21 @@ export class RelayerService {
                 // Call Simulator.simulateGasUsed via eth_call
                 // On success, returns gasUsed directly
                 // On failure, reverts with the underlying error
-                const result = await this.publicClient.call({
-                    to: this.config.contracts.simulator,
-                    data: calldata,
-                    ...(delegationCode
-                        ? {
-                              stateOverride: [
-                                  {
-                                      address: request.eoa as Address,
-                                      code: delegationCode,
-                                  },
-                              ],
-                          }
-                        : {}),
-                })
+                const result = delegationCode
+                    ? await this.publicClient.call({
+                          to: this.config.contracts.simulator,
+                          data: calldata,
+                          stateOverride: [
+                              {
+                                  address: request.eoa as Address,
+                                  code: delegationCode,
+                              },
+                          ],
+                      })
+                    : await this.publicClient.call({
+                          to: this.config.contracts.simulator,
+                          data: calldata,
+                      })
 
                 // If successful, decode the returned gasUsed value
                 if (result.data) {

@@ -490,12 +490,17 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
         newKeyHash: maybe.newKeyHash as Hex,
         narrow: maybe.narrow,
         fullAccess: maybe.fullAccess,
-        ...(account ? { account } : {}),
-        ...(oldKeyHash ? { oldKeyHash } : {}),
-        ...(permissions ? { permissions } : {}),
-        ...(mac ? { mac } : {}),
-        ...(macKdf ? { macKdf } : {}),
     }
+
+    if (account) bound.account = account
+
+    if (oldKeyHash) bound.oldKeyHash = oldKeyHash
+
+    if (permissions) bound.permissions = permissions
+
+    if (mac) bound.mac = mac
+
+    if (macKdf) bound.macKdf = macKdf
 
     if (maybe.status === 'pending') {
         return { ...bound, status: 'pending' }
@@ -803,7 +808,7 @@ function markRotationIntentSubmitted(
     intent: RotationIntent,
     bundleId?: string,
 ): SubmittedRotationIntentPayload {
-    return {
+    const payload: SubmittedRotationIntentPayload = {
         oldSessionName: intent.oldSessionName,
         newSessionName: intent.newSessionName,
         chain: intent.chain,
@@ -811,13 +816,20 @@ function markRotationIntentSubmitted(
         newKeyHash: intent.newKeyHash,
         narrow: intent.narrow,
         fullAccess: intent.fullAccess,
-        ...(intent.account ? { account: intent.account } : {}),
-        ...(intent.oldKeyHash ? { oldKeyHash: intent.oldKeyHash } : {}),
-        ...(intent.permissions ? { permissions: intent.permissions } : {}),
-        ...(intent.macKdf ? { macKdf: intent.macKdf } : {}),
         status: 'submitted',
-        ...(bundleId ? { bundleId } : {}),
     }
+
+    if (intent.account) payload.account = intent.account
+
+    if (intent.oldKeyHash) payload.oldKeyHash = intent.oldKeyHash
+
+    if (intent.permissions) payload.permissions = intent.permissions
+
+    if (intent.macKdf) payload.macKdf = intent.macKdf
+
+    if (bundleId) payload.bundleId = bundleId
+
+    return payload
 }
 
 function isPossiblySubmittedRotation(error: unknown): boolean {

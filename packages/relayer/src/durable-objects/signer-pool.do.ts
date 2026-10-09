@@ -217,10 +217,13 @@ export class SignerPoolDO extends DurableObject<Env> {
 
                 const code = error instanceof SignerPoolSendError ? error.code : undefined
 
-                return Response.json(
-                    { error: message, broadcastAttempted, ...(code ? { code } : {}) },
-                    { status: 500 },
-                )
+                const errorBody: SignerError = { error: message, broadcastAttempted }
+
+                if (code) {
+                    errorBody.code = code
+                }
+
+                return Response.json(errorBody, { status: 500 })
             }
 
             return Response.json({ error: message } as SignerError, { status: 500 })

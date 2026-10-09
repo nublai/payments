@@ -54,6 +54,30 @@ import { ipv6Prefix56, upgradeClientIp, type RateBucket } from './upgrade-rate-l
 
 export type PaidUpgradeRateAction = 'peek' | 'commit' | 'reserve' | 'release'
 
+type PaidUpgradeRateLimitBody = {
+    action: PaidUpgradeRateAction
+    kind: 'paid-upgrade'
+    chainId: number
+    account: string
+    ip: string
+    reservedAt?: number
+}
+
+type PaidUpgradeSettleGasBody = {
+    action: 'settle-gas'
+    hold: string
+    gas: string
+    failure: boolean
+    txHash?: Hex
+}
+
+type PaidUpgradeEnqueueReceiptBody = {
+    action: 'enqueue-receipt'
+    txHash: Hex
+    nonce?: number
+    signerName?: string
+}
+
 /**
  * Paid-upgrade windows. These keys are not the sponsored identity buckets.
  * Address, IP, and IPv6 /56 share one 10 minute window on prepare and send.
@@ -614,17 +638,22 @@ async function postPaidUpgradeRateLimit(
     let response: Response
 
     try {
+        const rateLimitBody: PaidUpgradeRateLimitBody = {
+            action: input.action,
+            kind: 'paid-upgrade',
+            chainId,
+            account: input.account,
+            ip: input.ip,
+        }
+
+        if (input.reservedAt !== undefined) {
+            rateLimitBody.reservedAt = input.reservedAt
+        }
+
         response = await pool.fetch(`http://do/upgrade-rate-limit?poolName=pool-${chainId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: input.action,
-                kind: 'paid-upgrade',
-                chainId,
-                account: input.account,
-                ip: input.ip,
-                ...(input.reservedAt !== undefined ? { reservedAt: input.reservedAt } : {}),
-            }),
+            body: JSON.stringify(rateLimitBody),
         })
     } catch (error) {
         logger.error({ error, chainId }, 'paid upgrade rate limit unavailable')
@@ -795,13 +824,18 @@ export async function settlePaidUpgradeGas(
     chainId: number,
     input: { gasUsed: bigint; failure: boolean; txHash?: Hex },
 ): Promise<void> {
-    const result = await postPaidUpgradeGas(env, chainId, {
+    const settleBody: PaidUpgradeSettleGasBody = {
         action: 'settle-gas',
         hold: PAID_UPGRADE_GAS_HOLD.toString(),
         gas: input.gasUsed.toString(),
         failure: input.failure,
-        ...(input.txHash ? { txHash: input.txHash } : {}),
-    })
+    }
+
+    if (input.txHash) {
+        settleBody.txHash = input.txHash
+    }
+
+    const result = await postPaidUpgradeGas(env, chainId, settleBody)
 
     if (result.overBudget) {
         logger.error(
@@ -824,12 +858,20 @@ export async function enqueuePaidUpgradeReceipt(
     txHash: Hex,
     broadcast?: { nonce?: number; signerName?: string },
 ): Promise<void> {
-    const result = await postPaidUpgradeGas(env, chainId, {
+    const enqueueBody: PaidUpgradeEnqueueReceiptBody = {
         action: 'enqueue-receipt',
         txHash,
-        ...(broadcast?.nonce !== undefined ? { nonce: broadcast.nonce } : {}),
-        ...(broadcast?.signerName ? { signerName: broadcast.signerName } : {}),
-    })
+    }
+
+    if (broadcast?.nonce !== undefined) {
+        enqueueBody.nonce = broadcast.nonce
+    }
+
+    if (broadcast?.signerName) {
+        enqueueBody.signerName = broadcast.signerName
+    }
+
+    const result = await postPaidUpgradeGas(env, chainId, enqueueBody)
 
     if (!result.allowed) {
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')

@@ -23,6 +23,15 @@ export const OIDC_ALGORITHMS = ['RS256', 'ES256'] as const
 
 export const OIDC_CLOCK_SKEW_SECONDS = 60
 
+type OidcJwtVerifyOptions = {
+    issuer: string
+    algorithms: Array<(typeof OIDC_ALGORITHMS)[number]>
+    clockTolerance: number
+    currentDate: Date
+    requiredClaims: string[]
+    audience?: string
+}
+
 const MAX_WALLETS_CLAIM = 16
 
 /**
@@ -219,14 +228,23 @@ export function createOidcIdentityProvider(): IdentityProvider {
             let payload: JWTPayload
 
             try {
-                const verified = await jwtVerify(parsed.token, oidcRemoteJwks(config.jwksUrl), {
+                const verifyOptions: OidcJwtVerifyOptions = {
                     issuer: config.issuer,
                     algorithms: [...OIDC_ALGORITHMS],
                     clockTolerance: OIDC_CLOCK_SKEW_SECONDS,
                     currentDate: new Date(ctx.nowSeconds * 1000),
                     requiredClaims: ['exp'],
-                    ...(peekJwtHasAudience(parsed.token) ? { audience: config.clientId } : {}),
-                })
+                }
+
+                if (peekJwtHasAudience(parsed.token)) {
+                    verifyOptions.audience = config.clientId
+                }
+
+                const verified = await jwtVerify(
+                    parsed.token,
+                    oidcRemoteJwks(config.jwksUrl),
+                    verifyOptions,
+                )
 
                 payload = verified.payload
             } catch (error) {
