@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BundleStatusDO, type TxStatusResponse } from '../../src/durable-objects/bundle-status.do'
 import { logger } from '../../src/lib/logger'
 
@@ -161,6 +161,8 @@ describe('BundleStatusDO status resolution', () => {
     beforeEach(() => {
         mockLoggerWarn.mockClear()
     })
+
+    afterAll(() => mockLoggerWarn.mockRestore())
 
     it('logs signer fetch failures via bundle status resolution path', async () => {
         const { stub } = createDoStub({

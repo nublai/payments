@@ -3,7 +3,6 @@ import { vi } from 'vitest'
 import type { Erc8128ChainClient } from '../../src/auth/erc8128/verify'
 import type { RelayerChainClient } from '../../src/lib/viem-utils'
 import type { RpcHandlerDeps } from '../../src/rpc/types'
-import type { FeeEstimate } from '../../src/services/fees'
 import type { RelayerService } from '../../src/services/relayer'
 import type { RelayerConfig } from '../../src/types/env'
 import { silentLogger } from './logger'
@@ -81,20 +80,6 @@ export function fixedChainConfig(
     config: RelayerConfig = testRelayerConfig(),
 ): NonNullable<RpcHandlerDeps['getChainConfig']> {
     return () => config
-}
-
-export const positiveFeeEstimate = {
-    baseFeePerGas: 1_000_000_000n,
-    maxPriorityFeePerGas: 1_000_000_000n,
-    maxFeePerGas: 2_000_000_000n,
-    totalGas: 100_000n,
-    paymentAmount: 200_000_000_000_000n,
-} satisfies FeeEstimate
-
-export function stubFeeEstimate(
-    estimate: FeeEstimate = positiveFeeEstimate,
-): NonNullable<RpcHandlerDeps['getFeeEstimate']> {
-    return async () => estimate
 }
 
 export function stubUsdPrice(
