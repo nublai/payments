@@ -153,21 +153,37 @@ function summarizeBucket(label: string, rows: BundleTelemetry[]): void {
         return
     }
 
-    const simulationDeltas = rows
-        .map((r) => toBigInt(r.simulationDelta))
-        .filter((v): v is bigint => v !== null)
+    const simulationDeltas: bigint[] = []
 
-    const combinedDeltas = rows
-        .map((r) => toBigInt(r.combinedDelta))
-        .filter((v): v is bigint => v !== null)
+    for (const r of rows) {
+        const v = toBigInt(r.simulationDelta)
 
-    const txEstimateDeltas = rows
-        .map((r) => toBigInt(r.txEstimateDelta))
-        .filter((v): v is bigint => v !== null)
+        if (v !== null) simulationDeltas.push(v)
+    }
 
-    const actualGasUsed = rows
-        .map((r) => toBigInt(r.actualGasUsed))
-        .filter((v): v is bigint => v !== null)
+    const combinedDeltas: bigint[] = []
+
+    for (const r of rows) {
+        const v = toBigInt(r.combinedDelta)
+
+        if (v !== null) combinedDeltas.push(v)
+    }
+
+    const txEstimateDeltas: bigint[] = []
+
+    for (const r of rows) {
+        const v = toBigInt(r.txEstimateDelta)
+
+        if (v !== null) txEstimateDeltas.push(v)
+    }
+
+    const actualGasUsed: bigint[] = []
+
+    for (const r of rows) {
+        const v = toBigInt(r.actualGasUsed)
+
+        if (v !== null) actualGasUsed.push(v)
+    }
 
     const line = (name: string, values: bigint[]): void => {
         if (values.length === 0) {
