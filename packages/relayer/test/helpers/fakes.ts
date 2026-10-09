@@ -1,7 +1,6 @@
 import { vi } from 'vitest'
 
 import type { Erc8128ChainClient } from '../../src/auth/erc8128/verify'
-import type { Logger } from '../../src/lib/logger'
 import type { RelayerChainClient } from '../../src/lib/viem-utils'
 import type { RpcHandlerDeps } from '../../src/rpc/types'
 import type { FeeEstimate } from '../../src/services/fees'
@@ -84,12 +83,6 @@ export function fixedChainConfig(
     return () => config
 }
 
-export function fixedChainIds(
-    chainIds: number[],
-): NonNullable<RpcHandlerDeps['getChainIds']> {
-    return () => chainIds
-}
-
 export const positiveFeeEstimate = {
     baseFeePerGas: 1_000_000_000n,
     maxPriorityFeePerGas: 1_000_000_000n,
@@ -108,20 +101,6 @@ export function stubUsdPrice(
     resolve: (assetUid: string) => bigint | null = () => 10n ** 18n,
 ): NonNullable<RpcHandlerDeps['getUsdPrice']> {
     return async (assetUid) => resolve(assetUid)
-}
-
-export function recordingLogger(warn: Logger['warn'] = () => {}): Logger {
-    const log: Logger = {
-        info() {},
-        warn,
-        error() {},
-        debug() {},
-        child() {
-            return log
-        },
-    }
-
-    return log
 }
 
 export { silentLogger }

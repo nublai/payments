@@ -148,7 +148,6 @@ const createMockCtx = (envOverrides: Partial<Env> = {}): TestRpcContext => ({
         createRelayerService: stubPrepareRelayer(mockPrepareIntent),
         getFeeEstimate: mockGetFeeEstimate,
         getUsdPrice: async () => 1n * 10n ** 18n,
-        formatPriceForQuote: () => '0x0',
         createIntentNonceProvider: mockCreateIntentNonceProvider,
         getChainConfig: fixedChainConfig(
             testRelayerConfig({

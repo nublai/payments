@@ -1,7 +1,7 @@
-import { getChainConfig, getChainIds } from '../config'
+import { getChainConfig } from '../config'
 import { createRelayerPublicClient } from '../lib/viem-utils'
 import { getFeeEstimate } from '../services/fees'
-import { formatPriceForQuote, getUsdPrice } from '../services/price-oracle'
+import { getUsdPrice } from '../services/price-oracle'
 import { RelayerService, createIntentNonceProvider } from '../services/relayer'
 
 import type { RpcContext, RpcHandlerDeps } from './types'
@@ -18,12 +18,10 @@ export function rpcHandlerIo(ctx: RpcContext): Required<RpcHandlerDeps> {
 
     return {
         createRelayerPublicClient: deps?.createRelayerPublicClient ?? createRelayerPublicClient,
-        getChainIds: deps?.getChainIds ?? getChainIds,
         getChainConfig: deps?.getChainConfig ?? getChainConfig,
         createRelayerService: deps?.createRelayerService ?? defaultCreateRelayerService,
         getFeeEstimate: deps?.getFeeEstimate ?? getFeeEstimate,
         getUsdPrice: deps?.getUsdPrice ?? getUsdPrice,
-        formatPriceForQuote: deps?.formatPriceForQuote ?? formatPriceForQuote,
         createIntentNonceProvider: deps?.createIntentNonceProvider ?? createIntentNonceProvider,
     }
 }

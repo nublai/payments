@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { CONTRACT_ERROR, RpcError } from '../../src/rpc/errors'
 import { handleGetKeys } from '../../src/rpc/methods/getKeys'
-import { fixedChainConfig, fixedChainIds, mockedRelayerChainClient } from '../helpers/fakes'
+import { fixedChainConfig, mockedRelayerChainClient } from '../helpers/fakes'
 import { testRelayerConfig } from '../helpers/relayer'
 
 const { client, mockGetCode, mockReadContract } = mockedRelayerChainClient()
@@ -22,7 +22,6 @@ const createMockCtx = (): RpcContext => ({
         CHAIN_IDS: '31337',
     },
     deps: {
-        getChainIds: fixedChainIds([31337]),
         getChainConfig: fixedChainConfig(
             testRelayerConfig({
                 rpcUrl: 'http://127.0.0.1:8545',

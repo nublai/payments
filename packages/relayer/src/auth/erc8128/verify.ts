@@ -28,7 +28,6 @@ export interface Erc8128Config {
     requireNonReplayable: boolean
     nonceStore: NonceStore
     getChainClient?: (chainId: number, env: Partial<Env>) => Erc8128ChainClient
-    verifyRequest?: typeof verifyRequest
 }
 
 export interface Erc8128VerificationContext {
@@ -95,7 +94,6 @@ export async function verifyErc8128Request(
     }
 
     const resolveClient = cfg.getChainClient ?? getChainClient
-    const runVerify = cfg.verifyRequest ?? verifyRequest
 
     const verifyMessage = async (args: VerifyMessageArgs): Promise<boolean> => {
         const keyId = keyIdByAddress.get(args.address.toLowerCase())
@@ -164,7 +162,7 @@ export async function verifyErc8128Request(
         }
     }
 
-    const result = await runVerify(
+    const result = await verifyRequest(
         ctx.request,
         verifyMessage,
         {

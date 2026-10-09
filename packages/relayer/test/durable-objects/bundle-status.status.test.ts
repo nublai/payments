@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BundleStatusDO, type TxStatusResponse } from '../../src/durable-objects/bundle-status.do'
-import { recordingLogger } from '../helpers/fakes'
+import { logger } from '../../src/lib/logger'
 
-const log = recordingLogger()
-
-const mockLoggerWarn = vi.spyOn(log, 'warn')
+const mockLoggerWarn = vi.spyOn(logger, 'warn')
 
 type BundleTxRow = {
     bundle_id: string
@@ -105,7 +103,6 @@ type BundleStatusHost = {
             get: (signerName: string) => { fetch: (url: string) => Promise<Response> }
         }
     }
-    log: ReturnType<typeof recordingLogger>
     get_bundle_status: BundleStatusDO['get_bundle_status']
     ensureBundleTransactionsSchema: () => void
 }
@@ -127,7 +124,6 @@ function createDoStub(args: {
     const stub: BundleStatusHost = Object.create(BundleStatusDO.prototype)
 
     stub.sql = sql
-    stub.log = log
     stub.ctx = { id: { name: 'bundle-status-137' } }
     stub.env = {
         RELAYER_COUNT: args.relayerCount ?? '2',
@@ -163,7 +159,7 @@ function makeConfirmedTxStatus(): TxStatusResponse {
 
 describe('BundleStatusDO status resolution', () => {
     beforeEach(() => {
-        vi.clearAllMocks()
+        mockLoggerWarn.mockClear()
     })
 
     it('logs signer fetch failures via bundle status resolution path', async () => {

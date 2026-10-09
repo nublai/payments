@@ -16,6 +16,7 @@ import { computeErc1271Digest, wrapSignature } from '../../lib/erc1271'
 import { logger } from '../../lib/logger'
 import { hasCode } from '../../lib/viem-utils'
 import { parseHexChainId, requireParam, validateAddress, unwrapParams } from '../../lib/rpc-utils'
+import { getChainIds } from '../../config'
 import { rpcHandlerIo } from '../handler-io'
 
 // =============================================================================
@@ -65,7 +66,7 @@ export async function handleVerifySignature(
     }
 
     const requestedChainId = parseHexChainId(chainIdParam, 'chain_id')
-    const supportedChainIds = io.getChainIds(env)
+    const supportedChainIds = getChainIds(env)
 
     if (supportedChainIds.length > 0 && !supportedChainIds.includes(requestedChainId)) {
         throw new RpcError(INVALID_PARAMS, `Unsupported chain ID: ${requestedChainId}`)

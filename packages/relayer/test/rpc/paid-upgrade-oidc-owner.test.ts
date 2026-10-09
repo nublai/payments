@@ -41,9 +41,8 @@ import { testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
 import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 import { stubPrepareRelayer, stubUsdPrice } from '../helpers/fakes'
-import { testIntentNonceProvider } from '../helpers/relayer'
 import type { FeeEstimate } from '../../src/services/fees'
-import type { IntentNonceProvider, PrepareIntentResult, RelayerService } from '../../src/services/relayer'
+import type { PrepareIntentResult, RelayerService } from '../../src/services/relayer'
 
 const mockPrepareIntent = vi.fn<RelayerService['prepareIntent']>()
 
@@ -54,16 +53,6 @@ const paidUpgradeFee = {
     totalGas: 100_000n,
     paymentAmount: 1_000_000_000_000_000n,
 } satisfies FeeEstimate
-
-function unusedNonceProvider(): IntentNonceProvider {
-    return testIntentNonceProvider(async () => ({
-        nonce: 0n,
-        draftId: 'unused',
-        createdAtMs: 0,
-        expiresAtMs: 0,
-        fromCache: false,
-    }))
-}
 
 const CHAIN_ID = 8453
 
@@ -231,7 +220,6 @@ function createCtx(): RpcContext {
             getUsdPrice: stubUsdPrice((assetUid) =>
                 assetUid === 'usdc' ? 10n ** 18n : 3000n * 10n ** 18n,
             ),
-            createIntentNonceProvider: () => unusedNonceProvider(),
         },
     }
 }

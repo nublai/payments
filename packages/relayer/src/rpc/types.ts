@@ -68,7 +68,6 @@ export interface RpcCaller {
  */
 export interface RpcHandlerDeps {
     createRelayerPublicClient?: (chainId: number, rpcUrl: string) => RelayerChainClient
-    getChainIds?: (env: Env) => number[]
     getChainConfig?: (env: Env, chainId: number) => RelayerConfig
     createRelayerService?: (
         config: RelayerConfig,
@@ -82,7 +81,6 @@ export interface RpcHandlerDeps {
         config: FeeConfig,
     ) => Promise<FeeEstimate>
     getUsdPrice?: typeof import('../services/price-oracle').getUsdPrice
-    formatPriceForQuote?: typeof import('../services/price-oracle').formatPriceForQuote
     createIntentNonceProvider?: typeof import('../services/relayer').createIntentNonceProvider
 }
 

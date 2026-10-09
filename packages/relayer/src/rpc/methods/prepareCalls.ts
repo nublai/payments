@@ -14,8 +14,10 @@ import {
     DRAFT_CONFLICT,
     SIMULATION_FAILED,
 } from '../errors'
+import { getChainIds } from '../../config'
 import { getChainConfig as getChainAssetsConfig } from '../../config/chains'
 import { logger } from '../../lib/logger'
+import { formatPriceForQuote } from '../../services/price-oracle'
 import { isPaymentEnabled } from '../../services/relayer'
 import { rpcHandlerIo } from '../handler-io'
 import { isLocalDevContext, quoteSigningSecret } from '../../config/runtime-context'
@@ -69,7 +71,7 @@ export async function handlePrepareCalls(
     }
 
     const requestedChainId = parseHexChainId(typedParams.chain_id, 'chain_id')
-    const supportedChainIds = io.getChainIds(env)
+    const supportedChainIds = getChainIds(env)
 
     if (supportedChainIds.length > 0 && !supportedChainIds.includes(requestedChainId)) {
         throw new RpcError(INVALID_PARAMS, `Unsupported chain ID: ${requestedChainId}`)
@@ -219,7 +221,7 @@ export async function handlePrepareCalls(
         )
     }
 
-    const ethPriceHex = io.formatPriceForQuote(nativeUsdPrice)
+    const ethPriceHex = formatPriceForQuote(nativeUsdPrice)
     // A zero-payer intent is not charged. The native gas estimate stays in
     // nativeFeeEstimate; paymentAmount is only the fee the quote will pull.
     const paymentEnabled = isPaymentEnabled(payer ?? zeroAddress, paymentToken ?? zeroAddress)

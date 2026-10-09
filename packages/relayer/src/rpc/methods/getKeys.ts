@@ -13,6 +13,7 @@ import { RpcError, ACCOUNT_NOT_DELEGATED, CONTRACT_ERROR } from '../errors'
 import { logger } from '../../lib/logger'
 import { toHexChainId, hasCode } from '../../lib/viem-utils'
 import { parseHexChainId, requireParam, validateAddress, unwrapParams } from '../../lib/rpc-utils'
+import { getChainIds } from '../../config'
 import { rpcHandlerIo } from '../handler-io'
 import type { KeyType } from '../schema/upgradeAccount'
 import {
@@ -101,7 +102,7 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
     if (typedParams?.chainIds && typedParams.chainIds.length > 0) {
         chainIdsToCheck = typedParams.chainIds.map((value) => parseHexChainId(value, 'chainId'))
     } else {
-        chainIdsToCheck = io.getChainIds(env)
+        chainIdsToCheck = getChainIds(env)
     }
 
     const results: GetKeysResult = {}
