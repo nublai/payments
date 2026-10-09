@@ -136,10 +136,8 @@ async function postJson(relayerUrl: string, body: string, options?: JsonRpcTrans
 
     const httpAuth = options?.httpAuth
 
-    const sign = httpAuth?.signRequest ?? signRequest
-
     const response = httpAuth?.signer
-        ? await fetch(await sign(request, httpAuth.signer, httpAuth.signOptions), {
+        ? await fetch(await signRequest(request, httpAuth.signer, httpAuth.signOptions), {
               redirect: 'manual',
           })
         : await fetch(request, { redirect: 'manual' })

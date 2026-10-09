@@ -5,14 +5,15 @@ import { authIdentityOwnsAccount, runWithAuthIdentity } from '../../src/auth/ide
 import {
     createPrivyProvider as createPrivyProviderImpl,
     type PrivyAuthClient,
+    type PrivyIdentityDeps,
 } from '../../src/auth/providers/privy'
 import { testEnv } from '../helpers/env'
 
-const verifyAuthTokenMock = vi.fn()
+const verifyAuthTokenMock = vi.fn<PrivyAuthClient['verifyAuthToken']>()
 
-const getUserByWalletAddressMock = vi.fn()
+const getUserByWalletAddressMock = vi.fn<PrivyAuthClient['getUserByWalletAddress']>()
 
-const createClient = vi.fn((_appId: string, _appSecret: string): PrivyAuthClient => ({
+const createClient = vi.fn<NonNullable<PrivyIdentityDeps['createClient']>>((_appId, _appSecret) => ({
     verifyAuthToken: verifyAuthTokenMock,
     getUserByWalletAddress: getUserByWalletAddressMock,
 }))

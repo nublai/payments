@@ -7,7 +7,7 @@
  * address is still refused.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Hono } from 'hono'
 import { bytesToHex, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -20,20 +20,13 @@ import type { JsonRpcResponse } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
 import { stubNamespace, testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
-import { stubErc8128ChainClient } from '../helpers/fakes'
+import { mockedErc8128ChainClient } from '../helpers/fakes'
 
-const readContract = vi.fn(async () => {
-    throw new Error('no key')
-})
+const { client, mockReadContract } = mockedErc8128ChainClient()
 
 function erc8128Provider() {
     return createErc8128Provider({
-        getChainClient: () =>
-            stubErc8128ChainClient({
-                getCode: async () => undefined,
-                readContract,
-                verifyMessage: async () => false,
-            }),
+        getChainClient: () => client,
     })
 }
 
@@ -176,7 +169,7 @@ describe('ERC-8128 binds the account on sponsored upgrade methods', () => {
 
         for (const method of METHODS) {
             for (const { label, chainId } of cases) {
-                readContract.mockClear()
+                mockReadContract.mockClear()
                 const key = generatePrivateKey()
                 const env = prodEnv()
                 const request = () => cliRequest(key, method, { address: other, chainId })

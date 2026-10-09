@@ -1,16 +1,29 @@
 import { getAddress, isAddress, type Address } from 'viem'
 import { PrivyClient } from '@privy-io/server-auth'
 
-export type PrivyAuthClient = Pick<PrivyClient, 'verifyAuthToken' | 'getUserByWalletAddress'>
-
-export type PrivyIdentityDeps = {
-    createClient?: (appId: string, appSecret: string) => PrivyAuthClient
-}
-
 import type { Env } from '../../types/env'
 import { authProviderFromIdentity, type IdentityProvider, type IdentityResult } from '../identity-provider'
 import { isPrivyEnabled, tokenTargetsOidc } from '../oidc-config'
 import type { AuthProvider } from '../types'
+
+export type PrivyAuthClaims = {
+    appId: string
+    userId: string
+}
+
+export type PrivyAuthUser = {
+    id?: string
+    linkedAccounts?: Array<{ type?: string; address?: string }>
+}
+
+export type PrivyAuthClient = {
+    verifyAuthToken: (token: string) => Promise<PrivyAuthClaims>
+    getUserByWalletAddress: (address: string) => Promise<PrivyAuthUser | null | undefined>
+}
+
+export type PrivyIdentityDeps = {
+    createClient?: (appId: string, appSecret: string) => PrivyAuthClient
+}
 
 function parseBearerToken(
     request: Request,

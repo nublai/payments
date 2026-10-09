@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RelayerService } from '../src/services/relayer'
-import { stubRelayerChainClient } from './helpers/fakes'
+import { mockedRelayerChainClient } from './helpers/fakes'
 import { silentLogger } from './helpers/logger'
 
 const EOA = '0x00000000000000000000000000000000000000aa'
@@ -10,9 +10,7 @@ const ACCOUNT_PROXY = '0x2345678901234567890123456789012345678901'
 
 const OTHER = '0x00000000000000000000000000000000000000bb'
 
-const mockGetCode = vi.fn()
-
-const mockCall = vi.fn()
+const { client, mockGetCode, mockCall } = mockedRelayerChainClient()
 
 function relayer(): RelayerService {
     return new RelayerService(
@@ -34,10 +32,7 @@ function relayer(): RelayerService {
         undefined,
         undefined,
         {
-            publicClient: stubRelayerChainClient({
-                getCode: mockGetCode,
-                call: mockCall,
-            }),
+            publicClient: client,
         },
     )
 }

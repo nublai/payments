@@ -1,14 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RelayerService, type IntentNonceProvider } from '../src/services/relayer'
-import { stubRelayerChainClient } from './helpers/fakes'
+import { mockedRelayerChainClient } from './helpers/fakes'
 import { testIntentNonceProvider, testLogger, testRelayerConfig } from './helpers/relayer'
 
-const mockReadContract = vi.fn()
-
-const mockGetCode = vi.fn()
-
-const mockCall = vi.fn()
+const { client, mockReadContract, mockGetCode, mockCall } = mockedRelayerChainClient()
 
 function makeRelayer(intentNonceProvider?: {
     acquireOrGetDraft: IntentNonceProvider['acquireOrGetDraft']
@@ -21,11 +17,7 @@ function makeRelayer(intentNonceProvider?: {
             : undefined,
         undefined,
         {
-            publicClient: stubRelayerChainClient({
-                readContract: mockReadContract,
-                getCode: mockGetCode,
-                call: mockCall,
-            }),
+            publicClient: client,
         },
     )
 }
@@ -40,7 +32,7 @@ describe('RelayerService prepareIntent nonce behavior', () => {
     })
 
     it('defaults missing seqKey to lane 0 before draft allocation', async () => {
-        const acquireOrGetDraft = vi.fn().mockResolvedValue({
+        const acquireOrGetDraft = vi.fn<IntentNonceProvider['acquireOrGetDraft']>().mockResolvedValue({
             nonce: 0n,
             draftId: 'd-1',
             createdAtMs: 1000,
@@ -65,7 +57,7 @@ describe('RelayerService prepareIntent nonce behavior', () => {
     })
 
     it('uses explicit nonce without draft allocation path', async () => {
-        const acquireOrGetDraft = vi.fn()
+        const acquireOrGetDraft = vi.fn<IntentNonceProvider['acquireOrGetDraft']>()
         const relayer = makeRelayer({ acquireOrGetDraft })
 
         const result = await relayer.prepareIntent({
@@ -83,7 +75,7 @@ describe('RelayerService prepareIntent nonce behavior', () => {
         vi.useFakeTimers()
         vi.setSystemTime(new Date('2026-02-13T12:00:00.000Z'))
 
-        const acquireOrGetDraft = vi.fn().mockResolvedValue({
+        const acquireOrGetDraft = vi.fn<IntentNonceProvider['acquireOrGetDraft']>().mockResolvedValue({
             nonce: 0n,
             draftId: 'd-1',
             createdAtMs: 1000,

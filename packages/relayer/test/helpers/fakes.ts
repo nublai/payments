@@ -1,3 +1,5 @@
+import { vi } from 'vitest'
+
 import type { Erc8128ChainClient } from '../../src/auth/erc8128/verify'
 import type { Logger } from '../../src/lib/logger'
 import type { RelayerChainClient } from '../../src/lib/viem-utils'
@@ -46,6 +48,28 @@ export function stubErc8128ChainClient(methods: {
         methods.verifyMessage ?? (async () => false)
 
     return { getCode, readContract, verifyMessage }
+}
+
+export function mockedRelayerChainClient() {
+    const client = stubRelayerChainClient({})
+
+    return {
+        client,
+        mockGetCode: vi.spyOn(client, 'getCode'),
+        mockReadContract: vi.spyOn(client, 'readContract'),
+        mockCall: vi.spyOn(client, 'call'),
+    }
+}
+
+export function mockedErc8128ChainClient() {
+    const client = stubErc8128ChainClient({})
+
+    return {
+        client,
+        mockGetCode: vi.spyOn(client, 'getCode'),
+        mockReadContract: vi.spyOn(client, 'readContract'),
+        mockVerifyMessage: vi.spyOn(client, 'verifyMessage'),
+    }
 }
 
 export function stubPrepareRelayer(

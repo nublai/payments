@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RelayerService } from '../src/services/relayer'
-import { stubRelayerChainClient } from './helpers/fakes'
+import { mockedRelayerChainClient } from './helpers/fakes'
 import { testLogger, testRelayerConfig } from './helpers/relayer'
 
-const mockGetCode = vi.fn()
-
-const mockCall = vi.fn()
+const { client, mockGetCode, mockCall } = mockedRelayerChainClient()
 
 describe('simulateIntent expiry unit guard', () => {
     beforeEach(() => {
@@ -17,10 +15,7 @@ describe('simulateIntent expiry unit guard', () => {
 
     it('rejects millisecond expiry values', async () => {
         const relayer = new RelayerService(testRelayerConfig(), testLogger(), undefined, undefined, {
-            publicClient: stubRelayerChainClient({
-                getCode: mockGetCode,
-                call: mockCall,
-            }),
+            publicClient: client,
         })
 
         const result = await relayer.simulateIntent({

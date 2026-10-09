@@ -13,20 +13,27 @@ import { handleGetCallsStatus } from '../../src/rpc/methods/getCallsStatus'
 import { handleGetCallsHistory } from '../../src/rpc/methods/getCallsHistory'
 import { RpcError, INVALID_PARAMS, SERVICE_UNAVAILABLE, SIMULATION_FAILED } from '../../src/rpc/errors'
 import type { Env } from '../../src/types/env'
-import type { IntentNonceProvider } from '../../src/services/relayer'
+import { getFeeEstimate } from '../../src/services/fees'
+import {
+    createIntentNonceProvider,
+    type IntentNonceProvider,
+    type PrepareIntentResult,
+    type RelayerService,
+} from '../../src/services/relayer'
+import { INTENT_TYPES } from '../../src/rpc/schema/intentTypes'
 import { testEnv } from '../helpers/env'
 import { parseJson } from '../helpers/rpc'
 import { jsonStub, namespaceStub, signerPoolWithFetch } from '../helpers/stubs'
 import { fixedChainConfig, stubPrepareRelayer } from '../helpers/fakes'
 import { testRelayerConfig } from '../helpers/relayer'
 
-const mockGetFeeEstimate = vi.fn()
+const mockGetFeeEstimate = vi.fn<typeof getFeeEstimate>()
 
-const mockPrepareIntent = vi.fn()
+const mockPrepareIntent = vi.fn<RelayerService['prepareIntent']>()
 
-const mockMarkSubmitted = vi.fn()
+const mockMarkSubmitted = vi.fn<IntentNonceProvider['markSubmitted']>()
 
-const mockCreateIntentNonceProvider = vi.fn()
+const mockCreateIntentNonceProvider = vi.fn<typeof createIntentNonceProvider>()
 
 const positiveFee = {
     baseFeePerGas: 1_000_000_000n,
@@ -34,6 +41,50 @@ const positiveFee = {
     maxFeePerGas: 2_000_000_000n,
     totalGas: 100_000n,
     paymentAmount: 200_000_000_000_000n,
+}
+
+const PREPARE_DIGEST =
+    '0xabababababababababababababababababababababababababababababababab'
+
+function preparedIntentResult(overrides: Partial<PrepareIntentResult> = {}): PrepareIntentResult {
+    return {
+        success: true,
+        typedData: {
+            domain: {
+                name: 'Orchestrator',
+                version: '0.5.5',
+                chainId: 8453,
+                verifyingContract: '0x3456789012345678901234567890123456789012',
+            },
+            types: INTENT_TYPES,
+            primaryType: 'Intent',
+            message: {
+                multichain: false,
+                eoa: '0x1234567890123456789012345678901234567890',
+                calls: [
+                    {
+                        to: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+                        value: 0n,
+                        data: '0x',
+                    },
+                ],
+                nonce: 1n,
+                payer: '0x0000000000000000000000000000000000000000',
+                paymentToken: '0x0000000000000000000000000000000000000000',
+                paymentMaxAmount: 0n,
+                combinedGas: 500000n,
+                encodedPreCalls: [],
+                encodedFundTransfers: [],
+                settler: '0x0000000000000000000000000000000000000000',
+                expiry: 1700000000n,
+            },
+        },
+        nonce: '1',
+        combinedGas: '500000',
+        expiry: '1700000000',
+        digest: PREPARE_DIGEST,
+        ...overrides,
+    }
 }
 
 beforeEach(() => {
@@ -163,19 +214,7 @@ describe('wallet_prepareCalls', () => {
     })
 
     it('should return typedData, digest, context with quote, and capabilities (spec-compliant)', async () => {
-        mockPrepareIntent.mockResolvedValue({
-            success: true,
-            typedData: {
-                domain: { name: 'Orchestrator', version: '0.5.5', chainId: 8453 },
-                types: {},
-                primaryType: 'Intent',
-                message: {},
-            },
-            nonce: '1',
-            combinedGas: '500000',
-            expiry: '1700000000',
-            digest: '0xdigest',
-        })
+        mockPrepareIntent.mockResolvedValue(preparedIntentResult())
 
         const ctx = createMockCtx()
 
@@ -235,19 +274,7 @@ describe('wallet_prepareCalls', () => {
     })
 
     it('passes expiry override from capabilities.meta to prepareIntent', async () => {
-        mockPrepareIntent.mockResolvedValue({
-            success: true,
-            typedData: {
-                domain: { name: 'Orchestrator', version: '0.5.5', chainId: 8453 },
-                types: {},
-                primaryType: 'Intent',
-                message: {},
-            },
-            nonce: '1',
-            combinedGas: '500000',
-            expiry: '1700000000',
-            digest: '0xdigest',
-        })
+        mockPrepareIntent.mockResolvedValue(preparedIntentResult())
 
         const ctx = createMockCtx()
 
@@ -305,20 +332,7 @@ describe('wallet_prepareCalls', () => {
     })
 
     function preparedOk() {
-        mockPrepareIntent.mockResolvedValue({
-            success: true,
-            typedData: {
-                domain: { name: 'Orchestrator', version: '0.5.5', chainId: 8453 },
-                types: {},
-                primaryType: 'Intent',
-                message: {},
-            },
-            nonce: '1',
-            combinedGas: '500000',
-            expiry: '1700000000',
-            digest: '0xdigest',
-            txGas: '21000',
-        })
+        mockPrepareIntent.mockResolvedValue(preparedIntentResult({ txGas: '21000' }))
     }
 
     it('fails when fee estimation throws instead of signing a zero fee', async () => {

@@ -7,12 +7,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { CONTRACT_ERROR, RpcError } from '../../src/rpc/errors'
 import { handleGetKeys } from '../../src/rpc/methods/getKeys'
-import { fixedChainConfig, fixedChainIds, stubRelayerChainClient } from '../helpers/fakes'
+import { fixedChainConfig, fixedChainIds, mockedRelayerChainClient } from '../helpers/fakes'
 import { testRelayerConfig } from '../helpers/relayer'
 
-const mockGetCode = vi.fn()
-
-const mockReadContract = vi.fn()
+const { client, mockGetCode, mockReadContract } = mockedRelayerChainClient()
 
 const account = '0x1234567890123456789012345678901234567890'
 
@@ -31,11 +29,7 @@ const createMockCtx = (): RpcContext => ({
                 chainId: 31337,
             }),
         ),
-        createRelayerPublicClient: () =>
-            stubRelayerChainClient({
-                getCode: mockGetCode,
-                readContract: mockReadContract,
-            }),
+        createRelayerPublicClient: () => client,
     },
 })
 
@@ -46,7 +40,7 @@ describe('wallet_getKeys permission lookup', () => {
     })
 
     it('returns a JSON-RPC error when spendAndExecuteInfos fails', async () => {
-        mockReadContract.mockImplementation(async (args: { functionName?: string }) => {
+        mockReadContract.mockImplementation(async (args) => {
             if (args.functionName === 'getKeys') {
                 return [
                     [
@@ -84,7 +78,7 @@ describe('wallet_getKeys permission lookup', () => {
             .toString(16)
             .padStart(64, '0')}`
 
-        mockReadContract.mockImplementation(async (args: { functionName?: string }) => {
+        mockReadContract.mockImplementation(async (args) => {
             if (args.functionName === 'getKeys') {
                 return [
                     [

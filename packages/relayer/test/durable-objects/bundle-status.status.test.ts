@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BundleStatusDO, type TxStatusResponse } from '../../src/durable-objects/bundle-status.do'
 import { recordingLogger } from '../helpers/fakes'
 
-const mockLoggerWarn = vi.fn()
+const log = recordingLogger()
+
+const mockLoggerWarn = vi.spyOn(log, 'warn')
 
 type BundleTxRow = {
     bundle_id: string
@@ -125,7 +127,7 @@ function createDoStub(args: {
     const stub: BundleStatusHost = Object.create(BundleStatusDO.prototype)
 
     stub.sql = sql
-    stub.log = recordingLogger(mockLoggerWarn)
+    stub.log = log
     stub.ctx = { id: { name: 'bundle-status-137' } }
     stub.env = {
         RELAYER_COUNT: args.relayerCount ?? '2',

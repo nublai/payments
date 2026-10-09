@@ -10,13 +10,13 @@ import { walletBindingStub } from '../../src/auth/wallet-binding-client'
 import { isIdentityProviderUnavailable } from '../../src/auth/types'
 import type {Env} from '../../src/types/env'
 import { workerEnv } from '../helpers/env'
-import type { PrivyAuthClient } from '../../src/auth/providers/privy'
+import type { PrivyAuthClient, PrivyIdentityDeps } from '../../src/auth/providers/privy'
 
-const verifyAuthTokenMock = vi.fn()
+const verifyAuthTokenMock = vi.fn<PrivyAuthClient['verifyAuthToken']>()
 
-const createPrivyClient = vi.fn((_appId: string, _appSecret: string): PrivyAuthClient => ({
+const createPrivyClient = vi.fn<NonNullable<PrivyIdentityDeps['createClient']>>((_appId, _appSecret) => ({
     verifyAuthToken: verifyAuthTokenMock,
-    getUserByWalletAddress: vi.fn(),
+    getUserByWalletAddress: vi.fn<PrivyAuthClient['getUserByWalletAddress']>(),
 }))
 
 function providers() {

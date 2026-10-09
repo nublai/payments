@@ -1,14 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { verifyErc8128Request, type Erc8128Config } from '../../src/auth/erc8128/verify'
-import { stubErc8128ChainClient } from '../helpers/fakes'
+import { mockedErc8128ChainClient } from '../helpers/fakes'
 
 const ADDRESS = '0x1111111111111111111111111111111111111111'
 
-const mocks = {
-    getCode: vi.fn(),
-    verifyMessage: vi.fn(),
-}
+const { client, mockGetCode, mockVerifyMessage } = mockedErc8128ChainClient()
 
 const driveVerifyRequest: NonNullable<Erc8128Config['verifyRequest']> = async (
     _request,
@@ -33,11 +30,11 @@ const driveVerifyRequest: NonNullable<Erc8128Config['verifyRequest']> = async (
 
 describe('verifyErc8128Request rpc fallback handling', () => {
     beforeEach(() => {
-        mocks.getCode.mockReset()
-        mocks.verifyMessage.mockReset()
+        mockGetCode.mockReset()
+        mockVerifyMessage.mockReset()
 
-        mocks.getCode.mockResolvedValue('0x1234')
-        mocks.verifyMessage.mockRejectedValue(new Error('rpc timeout'))
+        mockGetCode.mockResolvedValue('0x1234')
+        mockVerifyMessage.mockRejectedValue(new Error('rpc timeout'))
     })
 
     it('returns auth failure when chain verification calls reject', async () => {
@@ -62,11 +59,7 @@ describe('verifyErc8128Request rpc fallback handling', () => {
                 nonceStore: {
                     consumeNonce: vi.fn(async () => true),
                 },
-                getChainClient: () =>
-                    stubErc8128ChainClient({
-                        getCode: mocks.getCode,
-                        verifyMessage: mocks.verifyMessage,
-                    }),
+                getChainClient: () => client,
                 verifyRequest: driveVerifyRequest,
             },
         )
@@ -77,6 +70,6 @@ describe('verifyErc8128Request rpc fallback handling', () => {
                 code: 'BAD_SIGNATURE',
             }),
         )
-        expect(mocks.verifyMessage).toHaveBeenCalledTimes(2)
+        expect(mockVerifyMessage).toHaveBeenCalledTimes(2)
     })
 })

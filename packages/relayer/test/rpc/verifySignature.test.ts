@@ -6,12 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { RpcError, INVALID_PARAMS } from '../../src/rpc/errors'
 import { handleVerifySignature } from '../../src/rpc/methods/verifySignature'
-import { fixedChainConfig, fixedChainIds, stubRelayerChainClient } from '../helpers/fakes'
+import { fixedChainConfig, fixedChainIds, mockedRelayerChainClient } from '../helpers/fakes'
 import { testRelayerConfig } from '../helpers/relayer'
 
-const mockGetCode = vi.fn()
-
-const mockReadContract = vi.fn()
+const { client, mockGetCode, mockReadContract } = mockedRelayerChainClient()
 
 const createMockCtx = (): RpcContext => ({
     env: {
@@ -26,11 +24,7 @@ const createMockCtx = (): RpcContext => ({
                 chainId: 8453,
             }),
         ),
-        createRelayerPublicClient: () =>
-            stubRelayerChainClient({
-                getCode: mockGetCode,
-                readContract: mockReadContract,
-            }),
+        createRelayerPublicClient: () => client,
     },
 })
 

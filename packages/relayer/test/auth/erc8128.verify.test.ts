@@ -9,23 +9,14 @@ import {
     type Erc8128VerificationContext,
     type NonceStore,
 } from '../../src/auth/erc8128/verify'
-import { stubErc8128ChainClient } from '../helpers/fakes'
+import { mockedErc8128ChainClient } from '../helpers/fakes'
 
-const mockGetCode = vi.fn()
-
-const mockReadContract = vi.fn()
-
-const mockVerifyMessage = vi.fn()
+const { client, mockGetCode, mockReadContract, mockVerifyMessage } = mockedErc8128ChainClient()
 
 function verifyErc8128Request(ctx: Erc8128VerificationContext, cfg: Erc8128Config) {
     return verifyErc8128RequestImpl(ctx, {
         ...cfg,
-        getChainClient: () =>
-            stubErc8128ChainClient({
-                getCode: mockGetCode,
-                readContract: mockReadContract,
-                verifyMessage: mockVerifyMessage,
-            }),
+        getChainClient: () => client,
     })
 }
 

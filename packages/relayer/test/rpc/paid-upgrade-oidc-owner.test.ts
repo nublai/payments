@@ -43,9 +43,9 @@ import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 import { stubPrepareRelayer, stubUsdPrice } from '../helpers/fakes'
 import { testIntentNonceProvider } from '../helpers/relayer'
 import type { FeeEstimate } from '../../src/services/fees'
-import type { IntentNonceProvider } from '../../src/services/relayer'
+import type { IntentNonceProvider, PrepareIntentResult, RelayerService } from '../../src/services/relayer'
 
-const mockPrepareIntent = vi.fn()
+const mockPrepareIntent = vi.fn<RelayerService['prepareIntent']>()
 
 const paidUpgradeFee = {
     baseFeePerGas: 1n,
@@ -290,7 +290,7 @@ async function upgradeQuote(): Promise<PaidUpgradeQuote> {
     }
 }
 
-function preparedIntent(eoa: Address) {
+function preparedIntent(eoa: Address): PrepareIntentResult {
     return {
         success: true,
         typedData: {

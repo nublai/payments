@@ -27,12 +27,12 @@ export function secp256k1AccountKeyHash(signer: Address): Hex {
     return keccak256(encoded)
 }
 
+export type AccountKeyClient = Pick<PublicClient, 'readContract'>
+
 /**
  * True when `signer` is a live secp256k1 key registered on `account`.
  * A missing account, a revert, or an expired key is false.
  */
-export type AccountKeyClient = Pick<PublicClient, 'readContract'>
-
 export async function isOnChainAccountKey(
     client: AccountKeyClient,
     account: Address,
