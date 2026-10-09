@@ -121,20 +121,22 @@ async function handleBatch(
     }
 
     // Check if this batch can be optimized (all wallet_sendPreparedCalls)
-    const parsedRequests = requests
-        .map((req) => {
-            if (typeof req !== 'object' || req === null) return null
-            const obj = req as Record<string, unknown>
+    const parsedRequests: {
+        id: string | number | null
+        method: string
+        params: unknown
+    }[] = []
 
-            return {
-                id: obj.id as string | number | null,
-                method: obj.method as string,
-                params: obj.params,
-            }
+    for (const req of requests) {
+        if (typeof req !== 'object' || req === null) continue
+        const obj = req as Record<string, unknown>
+
+        parsedRequests.push({
+            id: obj.id as string | number | null,
+            method: obj.method as string,
+            params: obj.params,
         })
-        .filter(
-            (r): r is { id: string | number | null; method: string; params: unknown } => r !== null,
-        )
+    }
 
     if (canOptimizeBatch(parsedRequests)) {
         // Use batch optimization - combine into single execute(bytes[])
