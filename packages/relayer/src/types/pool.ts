@@ -247,8 +247,3 @@ export interface SignerError {
     /** False only when the signer returned before eth_sendRawTransaction. */
     broadcastAttempted?: boolean
 }
-
-/**
- * Union type for all queue jobs
- */
-export type QueueJob = MonitorJob
