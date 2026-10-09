@@ -140,7 +140,7 @@ export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson
     return mapTypedDataBigInt(typedData, false)
 }
 
-function isDaemonTypedData(value: TypedDataJson | DaemonTypedData): value is DaemonTypedData {
+function hasIntentTypedDataKeys(value: TypedDataJson | DaemonTypedData): boolean {
     return (
         isRecord(value) &&
         value.primaryType === 'Intent' &&
@@ -151,13 +151,16 @@ function isDaemonTypedData(value: TypedDataJson | DaemonTypedData): value is Dae
 }
 
 export function decodeTypedDataBigInt(value: unknown): DaemonTypedData {
-    const mapped = mapTypedDataBigInt(value, true)
+    const revived = mapTypedDataBigInt(value, true)
 
-    if (!isDaemonTypedData(mapped)) {
+    if (!hasIntentTypedDataKeys(revived)) {
         throw new Error('Invalid daemon typed data')
     }
 
-    return mapped
+    const mapped: unknown = revived
+
+    // SAFETY: only primaryType 'Intent' and object domain/types/message are checked here. Swap sessions go through reviewSwapSessionSignature and phrase-less through assessPhraseLessIntent before signTypedData; phrase-confirmed full-access sessions sign as-is by design. viem local signTypedData signs a 4-key payload whose domain is malformed, and throws during encoding if types are missing/unknown or message fields do not match the types.
+    return mapped as DaemonTypedData
 }
 
 export function normalizeSessionName(name: string): string {
