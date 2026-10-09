@@ -140,8 +140,24 @@ export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson
     return mapTypedDataBigInt(typedData, false)
 }
 
+function isDaemonTypedData(value: TypedDataJson | DaemonTypedData): value is DaemonTypedData {
+    return (
+        isRecord(value) &&
+        value.primaryType === 'Intent' &&
+        isRecord(value.domain) &&
+        isRecord(value.types) &&
+        isRecord(value.message)
+    )
+}
+
 export function decodeTypedDataBigInt(value: unknown): DaemonTypedData {
-    return mapTypedDataBigInt(value, true) as DaemonTypedData
+    const mapped = mapTypedDataBigInt(value, true)
+
+    if (!isDaemonTypedData(mapped)) {
+        throw new Error('Invalid daemon typed data')
+    }
+
+    return mapped
 }
 
 export function normalizeSessionName(name: string): string {
