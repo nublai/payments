@@ -12,8 +12,6 @@ import { jsonResponse, parseJson } from '../helpers/rpc'
 
 const RPC_URL = 'https://mainnet.base.org'
 
-const ETH_GET_BALANCE_RESULT = '0xde0b6b3a7640000'
-
 function requestUrl(input: Parameters<typeof fetch>[0]): string {
     if (input instanceof Request) return input.url
 
@@ -57,7 +55,7 @@ const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     return jsonResponse({
         jsonrpc: '2.0',
         id: rpc.id ?? 1,
-        result: ETH_GET_BALANCE_RESULT,
+        error: { code: -32602, message: 'Invalid params' },
     })
 })
 
@@ -139,10 +137,13 @@ beforeAll(() => {
 })
 
 afterAll(() => {
-    expect(fetchMock).toHaveBeenCalled()
-    expect(unexpectedFetches).toEqual([])
-    vi.restoreAllMocks()
-    restoreDeployment()
+    try {
+        expect(fetchMock).toHaveBeenCalled()
+        expect(unexpectedFetches).toEqual([])
+    } finally {
+        vi.restoreAllMocks()
+        restoreDeployment()
+    }
 })
 
 describe('wallet_getCapabilities', () => {
