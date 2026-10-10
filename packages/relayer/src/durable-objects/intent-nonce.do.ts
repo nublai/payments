@@ -55,7 +55,7 @@ const MIN_DRAFT_TTL_MS = 60 * 1000
 
 const MAX_DRAFT_TTL_MS = 60 * 60 * 1000
 
-type SqlCell = SqlStorageValue
+type SqlCell = string | number | bigint | ArrayBuffer | null
 
 type NonceSqlRow = {
     seq_key: SqlCell
@@ -89,10 +89,11 @@ function toPendingDraftRow(row: PendingDraftSqlRow): PendingDraftRow {
     }
 }
 
-function getSeqFromRows(rows: { seq: SqlCell }[]): bigint {
-    const first = rows[0]
+function getSeqFromRows(rows: unknown[]): bigint {
+    if (rows.length === 0) return 0n
 
-    if (first === undefined) return 0n
+    // SAFETY: the SELECT is `seq`; DO SQLite returns a cell we stringify into bigint.
+    const first = rows[0] as { seq: SqlCell }
 
     return BigInt(String(first.seq))
 }
@@ -210,16 +211,17 @@ export class IntentNonceDO extends DurableObject<Env> {
 
                 case '/status': {
                     // Get all tracked nonces and pending drafts
-                    const rows = this.sql.exec<NonceSqlRow>('SELECT seq_key, seq FROM nonces').toArray()
+                    const rows = this.sql.exec('SELECT seq_key, seq FROM nonces').toArray()
                     const nonces: Record<string, string> = {}
 
                     for (const row of rows) {
-                        const typed = toNonceRow(row)
+                        // SAFETY: SELECT seq_key, seq; cells are SqlCell values.
+                        const typed = toNonceRow(row as NonceSqlRow)
                         nonces[typed.seq_key] = typed.seq
                     }
 
                     const draftsRows = this.sql
-                        .exec<PendingDraftSqlRow>(
+                        .exec(
                             'SELECT seq_key, draft_id, nonce, draft_key, created_at_ms, expires_at_ms FROM pending_drafts',
                         )
                         .toArray()
@@ -236,7 +238,8 @@ export class IntentNonceDO extends DurableObject<Env> {
                     > = {}
 
                     for (const row of draftsRows) {
-                        const typed = toPendingDraftRow(row)
+                        // SAFETY: SELECT matches PendingDraftSqlRow columns.
+                        const typed = toPendingDraftRow(row as PendingDraftSqlRow)
                         drafts[typed.seq_key] = {
                             draftId: typed.draft_id,
                             nonce: typed.nonce,
@@ -449,7 +452,7 @@ export class IntentNonceDO extends DurableObject<Env> {
         // Using transactionSync for atomicity
         const result = this.ctx.storage.transactionSync(() => {
             // Get current value (or 0 if not exists)
-            const rows = this.sql.exec<{ seq: SqlCell }>('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
+            const rows = this.sql.exec('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
             const currentSeq = getSeqFromRows(rows)
             const nextSeq = currentSeq + 1n
 
@@ -475,7 +478,7 @@ export class IntentNonceDO extends DurableObject<Env> {
      */
     private peekNonce(seqKey: bigint): bigint {
         const key = seqKey.toString()
-        const rows = this.sql.exec<{ seq: SqlCell }>('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
+        const rows = this.sql.exec('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
         const seq = getSeqFromRows(rows)
 
         return (seqKey << 64n) | seq
@@ -528,7 +531,7 @@ export class IntentNonceDO extends DurableObject<Env> {
         const key = seqKey.toString()
 
         const result = this.ctx.storage.transactionSync(() => {
-            const rows = this.sql.exec<{ seq: SqlCell }>('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
+            const rows = this.sql.exec('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
             let currentSeq = getSeqFromRows(rows)
             let synced = false
 
@@ -559,19 +562,18 @@ export class IntentNonceDO extends DurableObject<Env> {
 
     private getDraftForSeqKey(seqKey: string): PendingDraftRow | null {
         const rows = this.sql
-            .exec<PendingDraftSqlRow>(
+            .exec(
                 'SELECT seq_key, draft_id, nonce, draft_key, created_at_ms, expires_at_ms FROM pending_drafts WHERE seq_key = ?',
                 seqKey,
             )
             .toArray()
 
-        const first = rows[0]
-
-        if (first === undefined) {
+        if (rows.length === 0) {
             return null
         }
 
-        return toPendingDraftRow(first)
+        // SAFETY: SELECT matches PendingDraftSqlRow columns.
+        return toPendingDraftRow(rows[0] as PendingDraftSqlRow)
     }
 
     private deleteExpiredDraftForSeqKey(seqKey: string, nowMs: number): void {
@@ -618,7 +620,7 @@ export class IntentNonceDO extends DurableObject<Env> {
             }
 
             const nonceRows = this.sql
-                .exec<{ seq: SqlCell }>('SELECT seq FROM nonces WHERE seq_key = ?', key)
+                .exec('SELECT seq FROM nonces WHERE seq_key = ?', key)
                 .toArray()
 
             let currentSeq = getSeqFromRows(nonceRows)

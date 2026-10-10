@@ -157,7 +157,6 @@ export type {
     Call,
     Intent,
     SignedIntent,
-    IntentTypedDataMessage,
     Transfer,
     SignedAuthorization,
     EIP712Domain,

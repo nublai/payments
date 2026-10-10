@@ -823,25 +823,26 @@ export class BundleStatusDO extends DurableObject<Env> {
 
     async getBundleTelemetry(bundleId: string): Promise<BundleGasTelemetry | null> {
         const rows = this.sql
-            .exec<{
-                bundle_id: string | number | null
-                chain_id: string | number | null
-                eoa: string | number | null
-                payment_enabled: string | number | null
-                simulation_gas: string | number | null
-                combined_gas: string | number | null
-                tx_gas: string | number | null
-                created_at: string | number | null
-            }>(
+            .exec(
                 `SELECT bundle_id, chain_id, eoa, payment_enabled, simulation_gas, combined_gas, tx_gas, created_at
                  FROM bundle_gas_telemetry WHERE bundle_id = ?`,
                 bundleId,
             )
             .toArray()
 
-        const row = rows[0]
+        if (rows.length === 0) return null
 
-        if (row === undefined) return null
+        // SAFETY: SELECT lists these telemetry columns; cells are string/number/null.
+        const row = rows[0] as {
+            bundle_id: string | number | null
+            chain_id: string | number | null
+            eoa: string | number | null
+            payment_enabled: string | number | null
+            simulation_gas: string | number | null
+            combined_gas: string | number | null
+            tx_gas: string | number | null
+            created_at: string | number | null
+        }
 
         return {
             bundleId: String(row.bundle_id),
@@ -863,20 +864,14 @@ export class BundleStatusDO extends DurableObject<Env> {
         const normalizedEoa = eoa.toLowerCase()
 
         const countRows = this.sql
-            .exec<{ count: string | number | null }>(
-                'SELECT COUNT(*) as count FROM bundle_gas_telemetry WHERE eoa = ?',
-                normalizedEoa,
-            )
+            .exec('SELECT COUNT(*) as count FROM bundle_gas_telemetry WHERE eoa = ?', normalizedEoa)
             .toArray()
 
-        const total = Number(countRows[0]?.count ?? 0)
+        // SAFETY: COUNT(*) as count returns a numeric cell.
+        const total = Number((countRows[0] as { count: string | number | null }).count ?? 0)
 
         const itemRows = this.sql
-            .exec<{
-                bundle_id: string | number | null
-                chain_id: string | number | null
-                created_at: string | number | null
-            }>(
+            .exec(
                 'SELECT bundle_id, chain_id, created_at FROM bundle_gas_telemetry WHERE eoa = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
                 normalizedEoa,
                 limit,
@@ -885,10 +880,17 @@ export class BundleStatusDO extends DurableObject<Env> {
             .toArray()
 
         const items = itemRows.map((row) => {
+            // SAFETY: SELECT bundle_id, chain_id, created_at.
+            const r = row as {
+                bundle_id: string | number | null
+                chain_id: string | number | null
+                created_at: string | number | null
+            }
+
             return {
-                bundleId: String(row.bundle_id),
-                chainId: Number(row.chain_id),
-                createdAt: Number(row.created_at),
+                bundleId: String(r.bundle_id),
+                chainId: Number(r.chain_id),
+                createdAt: Number(r.created_at),
             }
         })
 

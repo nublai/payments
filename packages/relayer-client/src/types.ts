@@ -97,22 +97,6 @@ export interface Intent {
     supportedAccountImplementation?: Address
 }
 
-/** EIP-712 Intent message. Same shape as PrepareCallsResponse['typedData']['message']. */
-export type IntentTypedDataMessage = {
-    multichain: boolean
-    eoa: Address
-    calls: readonly { to: Address; value: bigint; data: Hex }[]
-    nonce: bigint
-    payer: Address
-    paymentToken: Address
-    paymentMaxAmount: bigint
-    combinedGas: bigint
-    encodedPreCalls: readonly Hex[]
-    encodedFundTransfers: readonly Hex[]
-    settler: Address
-    expiry: bigint
-}
-
 /**
  * Result of signIntent containing both the intent and metadata for sponsorship
  */
@@ -126,7 +110,20 @@ export interface SignedIntent {
         domain: EIP712Domain
         types: typeof INTENT_TYPES
         primaryType: 'Intent'
-        message: IntentTypedDataMessage
+        message: {
+            multichain: boolean
+            eoa: Address
+            calls: readonly { to: Address; value: bigint; data: Hex }[]
+            nonce: bigint
+            payer: Address
+            paymentToken: Address
+            paymentMaxAmount: bigint
+            combinedGas: bigint
+            encodedPreCalls: readonly Hex[]
+            encodedFundTransfers: readonly Hex[]
+            settler: Address
+            expiry: bigint
+        }
     }
 }
 
