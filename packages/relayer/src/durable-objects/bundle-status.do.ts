@@ -67,6 +67,11 @@ interface BundleGasTelemetry {
     createdAt: number
 }
 
+type BundlesByEoaResult = {
+    items: Array<{ bundleId: string; chainId: number; createdAt: number }>
+    total: number
+}
+
 /**
  * BundleStatusDO - SQLite-backed bundle status tracking
  */
@@ -860,7 +865,7 @@ export class BundleStatusDO extends DurableObject<Env> {
         eoa: string,
         limit: number,
         offset: number,
-    ): { items: Array<{ bundleId: string; chainId: number; createdAt: number }>; total: number } {
+    ): BundlesByEoaResult {
         const normalizedEoa = eoa.toLowerCase()
 
         const countRows = this.sql

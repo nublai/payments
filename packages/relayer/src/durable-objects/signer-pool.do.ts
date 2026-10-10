@@ -93,6 +93,24 @@ const DEFAULT_SIGNER_COUNT = 1
 
 const DEFAULT_MAX_PENDING_TOTAL = 1000
 
+type UpgradeRateLimitResult = { allowed: boolean; reservedAt?: number }
+
+type PaidUpgradeGasResult = {
+    allowed: boolean
+    gas?: number
+    held?: number
+    failures?: number
+    overBudget?: boolean
+}
+
+type GasBooks = { gasSpent: number; heldGas: number; failures: number }
+
+type PoolConfig = {
+    numSigners: number
+    chainId: number
+    maxPendingTotal: number
+}
+
 /**
  * SignerPoolDO - Stateless coordinator (SQLite-backed for consistency)
  */
@@ -256,7 +274,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         ip?: string
         identity?: string
         reservedAt?: number
-    }): { allowed: boolean; reservedAt?: number } {
+    }): UpgradeRateLimitResult {
         const knownAction =
             body.action === undefined ||
             body.action === 'peek' ||
@@ -407,13 +425,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         signerName?: string
         found?: boolean
         nonceConsumed?: boolean
-    }): {
-        allowed: boolean
-        gas?: number
-        held?: number
-        failures?: number
-        overBudget?: boolean
-    } {
+    }): PaidUpgradeGasResult {
         if (typeof body.chainId !== 'number' || !Number.isInteger(body.chainId)) {
             return { allowed: false }
         }
@@ -706,7 +718,7 @@ export class SignerPoolDO extends DurableObject<Env> {
     private readGasBooks(
         sql: SqlStorage,
         dayStart: number,
-    ): { gasSpent: number; heldGas: number; failures: number } {
+    ): GasBooks {
         const rows = sql
             .exec<{ day_start: number; gas: number; held: number; failures: number }>(
                 `SELECT day_start, gas, held, failures FROM paid_upgrade_gas_budget WHERE id = 1`,
@@ -1096,11 +1108,7 @@ export class SignerPoolDO extends DurableObject<Env> {
     /**
      * Get pool configuration from environment
      */
-    private getConfig(): {
-        numSigners: number
-        chainId: number
-        maxPendingTotal: number
-    } {
+    private getConfig(): PoolConfig {
         const chainId = this.getChainIdFromName()
 
         return {

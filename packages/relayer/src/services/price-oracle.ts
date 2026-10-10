@@ -370,7 +370,9 @@ export function resetPriceRegistry(): void {
     registry.lastFetch = 0
 }
 
-export function getRegistryState(): { lastFetch: number; prices: Record<string, string> } {
+type RegistryState = { lastFetch: number; prices: Record<string, string> }
+
+export function getRegistryState(): RegistryState {
     const prices: Record<string, string> = {}
 
     for (const [assetUid, tick] of registry.prices.entries()) {

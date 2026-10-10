@@ -16,7 +16,9 @@ import { walletBindingStub } from '../../auth/wallet-binding-client'
 import { resolveChainId } from './shared/account-helpers'
 import type { IssueBindNonceParams } from '../schema/bindAccount'
 
-export function requireOidcCaller(): { issuer: string; subject: string } {
+type OidcCaller = { issuer: string; subject: string }
+
+export function requireOidcCaller(): OidcCaller {
     const identity = currentAuthIdentity()
 
     if (!identity || identity.provider !== 'oidc' || !identity.issuer || !identity.userId) {

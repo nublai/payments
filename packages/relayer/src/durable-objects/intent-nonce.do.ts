@@ -38,6 +38,8 @@ interface AcquireOrGetDraftResult {
     fromCache: boolean
 }
 
+type AcquiredNonce = { nonce: bigint; synced: boolean }
+
 interface AcquireOrGetDraftConflict {
     error: string
     conflictDraftId: string
@@ -527,7 +529,7 @@ export class IntentNonceDO extends DurableObject<Env> {
     private acquireNonceSynced(
         seqKey: bigint,
         onChainSeq: bigint,
-    ): { nonce: bigint; synced: boolean } {
+    ): AcquiredNonce {
         const key = seqKey.toString()
 
         const result = this.ctx.storage.transactionSync(() => {
