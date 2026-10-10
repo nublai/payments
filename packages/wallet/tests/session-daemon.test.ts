@@ -240,6 +240,78 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
     }
 })
 
+test('a phrase-confirmed session refuses a typed-data domain that does not match the session chain and orchestrator', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-domain-'))
+    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const daemon = await runSessionDaemon()
+    const client = new SessionDaemonClient()
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY)
+
+    try {
+        const load = await client.loadKey({
+            name: 'default',
+            privateKey: TEST_PRIVATE_KEY,
+            address: account.address,
+            durationSeconds: 60,
+            phraseConfirmed: true,
+            env: 'prod',
+        })
+
+        expect(load?.ok).toBe(true)
+
+        const correct = orchestratorIntent(account.address, '0x')
+
+        const wrongChain = {
+            ...correct,
+            domain: {
+                ...correct.domain,
+                chainId: 1,
+            },
+        }
+
+        const refusedChain = await client.sign('default', wrongChain)
+        const wrongChainSignature = await account.signTypedData(wrongChain)
+
+        expect(refusedChain?.ok).toBe(false)
+        expect(JSON.stringify(refusedChain)).not.toContain(wrongChainSignature)
+
+        if (refusedChain && !refusedChain.ok) {
+            expect(refusedChain.error.code).toBe('INVALID_REQUEST')
+            expect(refusedChain.error.message).toMatch(/chainId|verifyingContract/)
+        }
+
+        const wrongContract = {
+            ...correct,
+            domain: {
+                ...correct.domain,
+                verifyingContract: zeroAddress,
+            },
+        }
+
+        const refusedContract = await client.sign('default', wrongContract)
+        const wrongContractSignature = await account.signTypedData(wrongContract)
+
+        expect(refusedContract?.ok).toBe(false)
+        expect(JSON.stringify(refusedContract)).not.toContain(wrongContractSignature)
+
+        if (refusedContract && !refusedContract.ok) {
+            expect(refusedContract.error.code).toBe('INVALID_REQUEST')
+            expect(refusedContract.error.message).toMatch(/chainId|verifyingContract/)
+        }
+
+        const signed = await client.sign('default', correct)
+
+        expect(signed?.ok).toBe(true)
+
+        if (signed?.ok) {
+            const direct = await account.signTypedData(correct)
+            expect(signed.result).toBe(direct)
+        }
+    } finally {
+        await daemon.stop()
+    }
+})
+
 test('daemon drops oversized payload without newline', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
