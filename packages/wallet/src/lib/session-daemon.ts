@@ -24,6 +24,7 @@ import {
     assessPhraseLessIntent,
     PhraseLessSignError,
     reviewSwapSessionSignature,
+    typesMatch,
 } from './session-daemon-policy'
 import { chainsForEnv, getChainConfig, type EnvName } from './network-config'
 import { resolveOrchestratorAddress } from './orchestrator-address'
@@ -630,6 +631,21 @@ export async function runSessionDaemon(options?: {
                                         await saveSpendLedger(ledgerPath, spendLedger)
                                         throw error
                                     }
+
+                                    return
+                                }
+
+                                if (
+                                    request.params.typedData.primaryType !== 'Intent' ||
+                                    !typesMatch(request.params.typedData.types)
+                                ) {
+                                    writeResponse(
+                                        buildError(
+                                            request.id,
+                                            DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                            'Session refused typed data that is not an Intent',
+                                        ),
+                                    )
 
                                     return
                                 }
