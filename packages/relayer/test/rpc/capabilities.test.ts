@@ -22,29 +22,36 @@ function requestUrl(input: Parameters<typeof fetch>[0]): string {
     return input
 }
 
+const unexpectedFetches: string[] = []
+
+function recordUnexpected(reason: string): never {
+    unexpectedFetches.push(reason)
+    throw new Error(reason)
+}
+
 const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = requestUrl(input)
 
     if (url !== RPC_URL) {
-        throw new Error(`unexpected fetch URL: ${url}`)
+        recordUnexpected(`unexpected fetch URL: ${url}`)
     }
 
     const httpMethod = init?.method ?? (input instanceof Request ? input.method : 'GET')
 
     if (httpMethod !== 'POST') {
-        throw new Error(`unexpected fetch HTTP method: ${httpMethod}`)
+        recordUnexpected(`unexpected fetch HTTP method: ${httpMethod}`)
     }
 
     const body = init?.body ?? (input instanceof Request ? await input.text() : undefined)
 
     if (!body) {
-        throw new Error('unexpected fetch: missing JSON-RPC body')
+        recordUnexpected('unexpected fetch: missing JSON-RPC body')
     }
 
     const rpc = parseJson<JsonRpcRequest>(String(body))
 
     if (rpc.method !== 'eth_getBalance') {
-        throw new Error(`unexpected JSON-RPC method: ${rpc.method}`)
+        recordUnexpected(`unexpected JSON-RPC method: ${rpc.method}`)
     }
 
     return jsonResponse({
@@ -132,6 +139,8 @@ beforeAll(() => {
 })
 
 afterAll(() => {
+    expect(fetchMock).toHaveBeenCalled()
+    expect(unexpectedFetches).toEqual([])
     vi.restoreAllMocks()
     restoreDeployment()
 })
