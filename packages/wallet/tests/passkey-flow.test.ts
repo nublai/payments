@@ -116,7 +116,7 @@ function generateP256(): { privateKey: KeyObject; publicKey: Hex } {
     return { privateKey, publicKey: encodeP256PublicKey(x, y) }
 }
 
-async function rpc(method: string, params: unknown[]): Promise<unknown> {
+async function rpc(method: string, params: unknown[]): Promise<void> {
     const response = await fetch(RPC_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -130,8 +130,6 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
     if (!response.ok || body.error) {
         throw new Error(body.error?.message ?? `${method} failed`)
     }
-
-    return body.result
 }
 
 async function waitForRpc(): Promise<void> {

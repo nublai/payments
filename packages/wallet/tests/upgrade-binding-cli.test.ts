@@ -430,6 +430,26 @@ function sendPayload(input: {
     }
 }
 
+type MockRelayerReply =
+    | string
+    | ReturnType<typeof capabilities>
+    | ReturnType<typeof evilAuthPayload>
+    | ReturnType<typeof attackerCallPayload>
+    | ReturnType<typeof sendPayload>
+    | Awaited<ReturnType<typeof honestUpgradePayload>>
+    | { txHash: string }
+    | { id: string }
+    | {
+          id: string
+          status: number
+          receipts: Array<{
+              transaction_hash: string
+              block_number: string
+              gas_used: string
+              status: boolean
+          }>
+      }
+
 class MockRelayer {
     readonly calls: Recorded[] = []
     private server: Server | undefined
@@ -518,7 +538,7 @@ class MockRelayer {
         })
     }
 
-    private async reply(method: string, params: unknown): Promise<unknown> {
+    private async reply(method: string, params: unknown): Promise<MockRelayerReply> {
         if (method === 'eth_chainId') return `0x${this.chainId.toString(16)}`
 
         if (method === 'eth_getCode') return '0x'

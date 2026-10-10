@@ -84,6 +84,53 @@ test('protocol rejects invalid request and response payloads', () => {
     ).toThrow('Unknown daemon response error code')
 })
 
+test('protocol parses and decodes non-Intent (Permit) typed data; the daemon decides whether to sign', () => {
+    const parsed = parseDaemonRequest(
+        JSON.stringify({
+            id: 'permit-1',
+            method: 'sign',
+            params: {
+                sessionName: 'full-access',
+                typedData: {
+                    domain: {
+                        name: 'USD Coin',
+                        version: '2',
+                        chainId: 8453,
+                        verifyingContract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                    },
+                    types: {
+                        Permit: [
+                            { name: 'owner', type: 'address' },
+                            { name: 'spender', type: 'address' },
+                            { name: 'value', type: 'uint256' },
+                            { name: 'nonce', type: 'uint256' },
+                            { name: 'deadline', type: 'uint256' },
+                        ],
+                    },
+                    primaryType: 'Permit',
+                    message: {
+                        owner: '0x1111111111111111111111111111111111111111',
+                        spender: '0x2222222222222222222222222222222222222222',
+                        value: '$bigint:1000000',
+                        nonce: '$bigint:0',
+                        deadline: '$bigint:1700000000',
+                    },
+                },
+            },
+        }),
+    )
+
+    expect(parsed.method).toBe('sign')
+
+    if (parsed.method !== 'sign') {
+        throw new Error('Expected sign method')
+    }
+
+    expect(`${parsed.params.typedData.primaryType}`).toBe('Permit')
+    expect(parsed.params.typedData.domain.name).toBe('USD Coin')
+    expect(() => JSON.stringify(parsed.params.typedData.message)).toThrow(/BigInt/)
+})
+
 test('protocol rejects sign request with missing or invalid typedData', () => {
     expect(() =>
         parseDaemonRequest('{"id":"a","method":"sign","params":{"sessionName":"s1"}}'),

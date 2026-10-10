@@ -614,7 +614,20 @@ async function deriveMarkerMacKey(password: string, params: KdfParams): Promise<
     return Buffer.from(derived)
 }
 
-function canonicalPermissions(permissions: RotationPermissions | undefined): unknown {
+type CanonicalRotationPermissions =
+    | null
+    | { kind: 'narrow' | 'fullAccess' }
+    | {
+          kind: 'custom'
+          selectors: string[]
+          spendLimit: string
+          spendPeriod: SpendPeriod
+          target: string
+      }
+
+function canonicalPermissions(
+    permissions: RotationPermissions | undefined,
+): CanonicalRotationPermissions {
     if (!permissions) return null
 
     if (permissions.kind !== 'custom') return { kind: permissions.kind }

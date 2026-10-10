@@ -120,7 +120,7 @@ function loadAccountCreationBytecode(): Hex {
     return (object.startsWith('0x') ? object : `0x${object}`) as Hex
 }
 
-async function rpc(rpcUrl: string, method: string, params: unknown[]): Promise<unknown> {
+async function rpc(rpcUrl: string, method: string, params: unknown[]): Promise<void> {
     const response = await fetch(rpcUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -135,8 +135,6 @@ async function rpc(rpcUrl: string, method: string, params: unknown[]): Promise<u
             body.error?.message ?? `${method} failed (${response.status})`,
         )
     }
-
-    return body.result
 }
 
 /**

@@ -1255,11 +1255,24 @@ function relayerKeys(permissions: unknown[]): Record<string, unknown[]> {
     }
 }
 
-function jsonRpcReply(body: string, respond: (message: { id?: unknown; method?: string; params?: unknown }) => unknown): unknown {
-    const parsed = parseJson<
-        | { id?: unknown; method?: string; params?: unknown }
-        | { id?: unknown; method?: string; params?: unknown }[]
-    >(body)
+type JsonRpcStubId = string | number | null
+
+type JsonRpcStubRequest = { id?: JsonRpcStubId; method?: string; params?: unknown }
+
+type RelayerKeyTable = ReturnType<typeof relayerKeys>
+
+type JsonRpcStubResponse = {
+    jsonrpc: '2.0'
+    id: JsonRpcStubId
+    result?: string | RelayerKeyTable | null
+    error?: { code: number; message: string }
+}
+
+function jsonRpcReply(
+    body: string,
+    respond: (message: JsonRpcStubRequest) => JsonRpcStubResponse,
+): JsonRpcStubResponse | JsonRpcStubResponse[] {
+    const parsed = parseJson<JsonRpcStubRequest | JsonRpcStubRequest[]>(body)
 
     if (Array.isArray(parsed)) return parsed.map((message) => respond(message))
 
@@ -1268,7 +1281,7 @@ function jsonRpcReply(body: string, respond: (message: { id?: unknown; method?: 
 
 async function serveJson(
     port: number,
-    respond: (message: { id?: unknown; method?: string; params?: unknown }) => unknown,
+    respond: (message: JsonRpcStubRequest) => JsonRpcStubResponse,
 ): Promise<{ url: string; close: () => Promise<void> }> {
     const server = createServer((req, res) => {
         const chunks: Buffer[] = []
@@ -1314,7 +1327,7 @@ async function serveJson(
 }
 
 function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
-    return (message: { id?: unknown; method?: string; params?: unknown }) => {
+    return (message: JsonRpcStubRequest): JsonRpcStubResponse => {
         const id = message.id ?? null
 
         if (message.method === 'eth_chainId') {
@@ -1397,8 +1410,8 @@ function chainResponder(keys: ScriptedKey[] | ChainScript | 'error') {
     }
 }
 
-function relayerResponder(result: unknown | 'error') {
-    return (message: { id?: unknown }) => {
+function relayerResponder(result: RelayerKeyTable | 'error') {
+    return (message: { id?: JsonRpcStubId }): JsonRpcStubResponse => {
         if (result === 'error') {
             return {
                 jsonrpc: '2.0',
@@ -1413,7 +1426,7 @@ function relayerResponder(result: unknown | 'error') {
 
 async function expectUnlockRequiresPhrase(
     chain: ScriptedKey[] | ChainScript | 'error' | 'down',
-    relayer: unknown | 'error',
+    relayer: RelayerKeyTable | 'error',
 ) {
     const chainServer = chain === 'down' ? undefined : await serveJson(8545, chainResponder(chain))
     const relayerServer = await serveJson(0, relayerResponder(relayer))

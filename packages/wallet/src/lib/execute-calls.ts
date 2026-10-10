@@ -278,7 +278,7 @@ export async function executeSignedCalls(
         throw markPossiblySubmitted(error)
     }
 
-    const tagBundle = (error: unknown): unknown => {
+    const tagBundle = (error: unknown): Error => {
         if (error instanceof Error) {
             ;(error as Error & { bundleId?: string }).bundleId = submission.id
 

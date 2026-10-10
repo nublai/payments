@@ -9,8 +9,10 @@ import type { PrepareCallsContext } from '../actions/prepareCalls'
 /**
  * JSON replacer that converts BigInt to string for serialization
  */
-export function bigIntReplacer(_key: string, value: unknown): unknown {
-    return typeof value === 'bigint' ? value.toString() : value
+export function bigIntReplacer(_key: string, value: {} | null | undefined): {} | null | undefined {
+    if (typeof value === 'bigint') return value.toString()
+
+    return value
 }
 
 /**

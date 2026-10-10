@@ -92,7 +92,18 @@ export type DaemonResponse =
 
 export const BIGINT_TAG_PREFIX = '$bigint:'
 
-function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
+/** JSON-shaped typed data, plus bigint before encode and after decode. */
+export type TypedDataJson =
+    | string
+    | number
+    | boolean
+    | bigint
+    | null
+    | undefined
+    | TypedDataJson[]
+    | { [key: string]: TypedDataJson }
+
+function mapTypedDataBigInt(value: unknown, revive: boolean): TypedDataJson {
     if (typeof value === 'bigint') {
         return `${BIGINT_TAG_PREFIX}${value.toString()}`
     }
@@ -112,7 +123,7 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
     }
 
     if (isRecord(value)) {
-        const mapped: Record<string, unknown> = {}
+        const mapped: { [key: string]: TypedDataJson } = {}
 
         for (const [key, entry] of Object.entries(value)) {
             mapped[key] = mapTypedDataBigInt(entry, revive)
@@ -121,15 +132,63 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
         return mapped
     }
 
-    return value
+    // SAFETY: after bigint/array/record, a typed-data node is a JSON leaf.
+    return value as string | number | boolean | null | undefined
 }
 
-export function encodeTypedDataBigInt(typedData: DaemonTypedData): unknown {
+/** A record the parse site already proved with `isRecord`. */
+type ParsedTypedDataRecord = {
+    primaryType?: unknown
+    domain?: unknown
+    types?: unknown
+    message?: unknown
+}
+
+function reviveTypedDataInPlace(value: ParsedTypedDataRecord): void {
+    const nodes: unknown[] = [value]
+
+    while (nodes.length > 0) {
+        const node = nodes.pop()
+
+        if (Array.isArray(node)) {
+            for (let index = 0; index < node.length; index++) {
+                const entry = node[index]
+
+                if (Array.isArray(entry) || isRecord(entry)) {
+                    nodes.push(entry)
+                } else {
+                    node[index] = mapTypedDataBigInt(entry, true)
+                }
+            }
+
+            continue
+        }
+
+        if (!isRecord(node)) {
+            continue
+        }
+
+        for (const key of Object.keys(node)) {
+            const entry = node[key]
+
+            if (Array.isArray(entry) || isRecord(entry)) {
+                nodes.push(entry)
+            } else {
+                node[key] = mapTypedDataBigInt(entry, true)
+            }
+        }
+    }
+}
+
+export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson {
     return mapTypedDataBigInt(typedData, false)
 }
 
-export function decodeTypedDataBigInt(value: unknown): DaemonTypedData {
-    return mapTypedDataBigInt(value, true) as DaemonTypedData
+export function decodeTypedDataBigInt(value: ParsedTypedDataRecord): DaemonTypedData {
+    reviveTypedDataInPlace(value)
+
+    // SAFETY: parseDaemonRequest only proves typedData is a record; this function revives `$bigint:` tags. The swap path reviews the payload. The phrase-less path allows only Orchestrator intents. The phrase-confirmed path refuses anything that is not primaryType 'Intent' with typesMatch, refuses a custom EIP712Domain, and checks domain.chainId (number or bigint, in the env's chains) and verifyingContract against that chain's Orchestrator before signTypedData.
+    return value as DaemonTypedData
 }
 
 export function normalizeSessionName(name: string): string {

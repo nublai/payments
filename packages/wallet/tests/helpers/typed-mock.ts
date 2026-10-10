@@ -13,7 +13,7 @@ export function typedMock<F extends (...args: never[]) => void>(impl: F): F & Mo
 }
 
 /** First argument of the first recorded mock call after the test already asserted a call. */
-export function firstMockArg<F extends (...args: never[]) => unknown>(fn: Mock<F>): Parameters<F>[0] {
+export function firstMockArg<F extends (...args: never[]) => void>(fn: Mock<F>): Parameters<F>[0] {
     const args = fn.mock.calls[0]
 
     if (args === undefined) throw new Error('expected a mock call')

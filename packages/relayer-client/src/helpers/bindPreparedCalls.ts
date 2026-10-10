@@ -202,8 +202,8 @@ export function parseQuotePaymentAmount(
 }
 
 export function firstQuotePaymentAmount(prepared: {
-    context?: { quote?: { quotes?: Array<{ paymentAmount?: unknown }> } }
-}): unknown {
+    context?: { quote?: { quotes?: Array<{ paymentAmount?: string }> } }
+}): string | undefined {
     return prepared.context?.quote?.quotes?.[0]?.paymentAmount
 }
 
