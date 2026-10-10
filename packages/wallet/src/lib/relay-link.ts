@@ -65,7 +65,15 @@ export type RelayQuoteResponse = {
     protocol?: {
         v2?: {
             orderId?: string
-            orderData?: Record<string, unknown>
+            orderData?: {
+                version?: unknown
+                solverChainId?: unknown
+                solver?: unknown
+                salt?: unknown
+                inputs?: unknown
+                output?: unknown
+                fees?: unknown
+            }
         }
     }
 }

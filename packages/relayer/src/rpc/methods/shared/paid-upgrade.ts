@@ -78,6 +78,27 @@ type PaidUpgradeEnqueueReceiptBody = {
     signerName?: string
 }
 
+type PaidUpgradeReserveGasBody = {
+    action: 'reserve-gas'
+    gas: string
+}
+
+type PaidUpgradeReleaseGasBody = {
+    action: 'release-gas'
+    gas: string
+}
+
+type PaidUpgradeReconcileBody = {
+    action: 'reconcile-pending'
+}
+
+type PaidUpgradeGasBody =
+    | PaidUpgradeReserveGasBody
+    | PaidUpgradeReleaseGasBody
+    | PaidUpgradeSettleGasBody
+    | PaidUpgradeEnqueueReceiptBody
+    | PaidUpgradeReconcileBody
+
 /**
  * Paid-upgrade windows. These keys are not the sponsored identity buckets.
  * Address, IP, and IPv6 /56 share one 10 minute window on prepare and send.
@@ -748,7 +769,7 @@ export async function releasePaidUpgradeRateLimit(
 async function postPaidUpgradeGas(
     env: Env,
     chainId: number,
-    body: Record<string, unknown>,
+    body: PaidUpgradeGasBody,
 ): Promise<{ allowed: boolean; gas?: number; failures?: number; overBudget?: boolean; pending?: Hex[] }> {
     const pool = getSignerPool(env, chainId)
     let response: Response

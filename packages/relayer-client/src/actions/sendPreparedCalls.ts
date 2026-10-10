@@ -46,7 +46,7 @@ export async function sendPreparedCalls(
 ): Promise<SendPreparedCallsResponse> {
     const transport = createRelayerTransport(client)
 
-    const rpcParams: Record<string, unknown> = {
+    const rpcParams: SendPreparedCallsParams = {
         context: params.context,
         signature: params.signature,
     }

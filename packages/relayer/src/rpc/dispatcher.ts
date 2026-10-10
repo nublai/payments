@@ -129,7 +129,9 @@ async function handleBatch(
 
     for (const req of requests) {
         if (typeof req !== 'object' || req === null) continue
-        const obj = req as Record<string, unknown>
+
+        // SAFETY: req is a non-null object; only id/method/params are read, matching JSON-RPC request keys.
+        const obj = req as { id?: unknown; method?: unknown; params?: unknown }
 
         parsedRequests.push({
             id: obj.id as string | number | null,
@@ -180,7 +182,12 @@ function validateRequest(body: unknown): JsonRpcErrorObject | null {
         return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
     }
 
-    const obj = body as Record<string, unknown>
+    const obj = {
+        jsonrpc: 'jsonrpc' in body ? body.jsonrpc : undefined,
+        method: 'method' in body ? body.method : undefined,
+        id: 'id' in body ? body.id : undefined,
+        params: 'params' in body ? body.params : undefined,
+    }
 
     // Must have jsonrpc: "2.0"
     if (obj.jsonrpc !== '2.0') {
@@ -220,12 +227,13 @@ function validateRequest(body: unknown): JsonRpcErrorObject | null {
  */
 function extractId(body: unknown): string | number | null {
     if (typeof body !== 'object' || body === null) return null
-    const obj = body as Record<string, unknown>
 
-    if (obj.id === undefined) return null
+    const id = 'id' in body ? body.id : undefined
 
-    if (obj.id === null || typeof obj.id === 'string' || typeof obj.id === 'number') {
-        return obj.id
+    if (id === undefined) return null
+
+    if (id === null || typeof id === 'string' || typeof id === 'number') {
+        return id
     }
 
     return null

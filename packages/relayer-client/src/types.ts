@@ -110,7 +110,20 @@ export interface SignedIntent {
         domain: EIP712Domain
         types: typeof INTENT_TYPES
         primaryType: 'Intent'
-        message: Record<string, unknown>
+        message: {
+            multichain: boolean
+            eoa: Address
+            calls: readonly { to: Address; value: bigint; data: Hex }[]
+            nonce: bigint
+            payer: Address
+            paymentToken: Address
+            paymentMaxAmount: bigint
+            combinedGas: bigint
+            encodedPreCalls: readonly Hex[]
+            encodedFundTransfers: readonly Hex[]
+            settler: Address
+            expiry: bigint
+        }
     }
 }
 

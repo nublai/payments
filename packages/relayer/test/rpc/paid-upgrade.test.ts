@@ -83,7 +83,7 @@ const rpc = {
     receiptMissing: false,
 }
 
-const gasLog: Array<Record<string, unknown>> = []
+const gasLog: PoolRequestBody[] = []
 
 let gasSpent = 0n
 

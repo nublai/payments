@@ -92,13 +92,21 @@ async function signToken(input: {
     walletsClaim?: string
     secret?: Uint8Array
 }): Promise<string> {
-    const claims: Record<string, unknown> = {}
+    type SignTokenClaims = {
+        client_id?: string
+        wallets?: unknown
+    }
+
+    const claims: SignTokenClaims = {}
 
     if (input.clientId) claims.client_id = input.clientId
 
-    if (input.wallets !== undefined) claims[input.walletsClaim ?? 'wallets'] = input.wallets
+    const payload =
+        input.wallets === undefined
+            ? claims
+            : { ...claims, [input.walletsClaim ?? 'wallets']: input.wallets }
 
-    const builder = new SignJWT(claims)
+    const builder = new SignJWT(payload)
         .setProtectedHeader({ alg: input.alg ?? 'RS256', kid: input.kid ?? KID, typ: 'JWT' })
         .setIssuer(input.issuer ?? ISSUER)
         .setSubject(input.subject ?? 'user_1')
@@ -140,7 +148,14 @@ async function withJwks<T>(
     }
 }
 
-function noneToken(payload: Record<string, unknown>): string {
+function noneToken(payload: {
+    iss: string
+    sub: string
+    aud: string
+    exp: number
+    nbf: number
+    iat: number
+}): string {
     const encode = (value: string) => {
         const bytes = new TextEncoder().encode(value)
         let binary = ''

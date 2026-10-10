@@ -1,5 +1,13 @@
 import type { Hex } from 'viem'
 
+type RpcJson =
+    | null
+    | boolean
+    | number
+    | string
+    | RpcJson[]
+    | { [key: string]: RpcJson }
+
 /**
  * Result of wallet_getCallsStatus
  */
@@ -17,5 +25,6 @@ export interface GetCallsStatusResult {
         /** Intent execution error (bytes4 selector, e.g., 0x9054c912 for ExceededSpendLimit) */
         intent_error?: Hex
     }>
-    capabilities?: Record<string, unknown>
+    /** Unused extension bag. Values are JSON only. */
+    capabilities?: { [key: string]: RpcJson }
 }

@@ -40,29 +40,28 @@ export async function readAgentChannelRegistry(
             typeof parsed !== 'object' ||
             parsed === null ||
             !('version' in parsed) ||
-            (parsed as { version?: unknown }).version !== AGENT_CHANNEL_REGISTRY_VERSION ||
+            parsed.version !== AGENT_CHANNEL_REGISTRY_VERSION ||
             !('channels' in parsed) ||
-            typeof (parsed as { channels?: unknown }).channels !== 'object' ||
-            (parsed as { channels?: unknown }).channels === null
+            typeof parsed.channels !== 'object' ||
+            parsed.channels === null
         ) {
             throw new Error(`Unsupported agent channel registry format at ${path}`)
         }
 
-        const channels = (parsed as { channels: Record<string, unknown> }).channels
-
-        for (const [key, value] of Object.entries(channels)) {
+        for (const [key, value] of Object.entries(parsed.channels)) {
             if (typeof key !== 'string' || typeof value !== 'string') {
                 throw new Error(`Invalid agent channel registry entry at ${path}`)
             }
         }
 
+        // SAFETY: version and channels were checked; extra enumerable fields stay on parsed.
         return parsed as AgentChannelRegistryFile
     } catch (error) {
         if (
             typeof error === 'object' &&
             error !== null &&
             'code' in error &&
-            (error as { code?: unknown }).code === 'ENOENT'
+            error.code === 'ENOENT'
         ) {
             return defaultRegistry()
         }

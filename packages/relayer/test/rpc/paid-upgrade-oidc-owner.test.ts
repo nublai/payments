@@ -82,9 +82,9 @@ const rpc = {
     receiptGas: '0x44444',
 }
 
-const gasLog: Array<Record<string, unknown>> = []
+const gasLog: PoolRequestBody[] = []
 
-const rateBodies: Array<Record<string, unknown>> = []
+const rateBodies: PoolRequestBody[] = []
 
 let captures: unknown[] = []
 

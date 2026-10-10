@@ -38,9 +38,27 @@ type ChainMeta = {
 }
 
 type RpcTypedDataPayload = {
-    domain: Record<string, unknown>
+    domain: {
+        name?: string
+        version?: string
+        chainId?: number | string
+        verifyingContract?: string
+    }
     types: Record<string, Array<{ name: string; type: string }>>
-    message: Record<string, unknown>
+    message: {
+        multichain?: boolean
+        eoa?: string
+        calls?: Array<{ to?: string; value?: string | bigint; data?: string }>
+        nonce?: string | bigint
+        payer?: string
+        paymentToken?: string
+        paymentMaxAmount?: string | bigint
+        combinedGas?: string | bigint
+        encodedPreCalls?: string[]
+        encodedFundTransfers?: string[]
+        settler?: string
+        expiry?: string | bigint
+    }
     primaryType: string
 }
 

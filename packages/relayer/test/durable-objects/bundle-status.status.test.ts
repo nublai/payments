@@ -11,6 +11,10 @@ type BundleTxRow = {
     created_at: number
 }
 
+type MockSqlRow =
+    | { tx_id: string; signer_name: string | null; created_at: number }
+    | { name: string }
+
 class MockSqlStorage {
     public readonly queries: Array<{ query: string; params: unknown[] }> = []
 
@@ -25,7 +29,7 @@ class MockSqlStorage {
         ],
     ) {}
 
-    exec(query: string, ...params: unknown[]): { toArray: () => Array<Record<string, unknown>> } {
+    exec(query: string, ...params: unknown[]): { toArray: () => MockSqlRow[] } {
         this.queries.push({ query, params })
 
         if (query.startsWith('SELECT tx_id, signer_name, created_at FROM bundle_transactions')) {
@@ -86,7 +90,7 @@ class MockSqlStorage {
         return this.rows([])
     }
 
-    private rows(values: Array<Record<string, unknown>>) {
+    private rows(values: MockSqlRow[]) {
         return {
             toArray: () => values }
     }

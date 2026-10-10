@@ -203,6 +203,22 @@ export interface EIP712Domain {
     verifyingContract: Address
 }
 
+/** Intent EIP-712 message on the JSON-RPC wire (uint fields are decimal strings). */
+export interface PrepareCallsIntentMessage {
+    multichain: boolean
+    eoa: Address
+    calls: Array<{ to: Address; value: string; data: Hex }>
+    nonce: string
+    payer: Address
+    paymentToken: Address
+    paymentMaxAmount: string
+    combinedGas: string
+    encodedPreCalls: Hex[]
+    encodedFundTransfers: Hex[]
+    settler: Address
+    expiry: string
+}
+
 /**
  * Result of wallet_prepareCalls (spec-compliant)
  */
@@ -213,7 +229,7 @@ export interface PrepareCallsResult {
         domain: EIP712Domain
         types: IntentTypes
         primaryType: 'Intent'
-        message: Record<string, unknown>
+        message: PrepareCallsIntentMessage
     }
     capabilities: PrepareCallsCapabilities
     signature: Hex

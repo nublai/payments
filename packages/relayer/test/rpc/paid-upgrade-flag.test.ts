@@ -73,9 +73,9 @@ const disabled = {
         /Paid account upgrades are disabled.*wallet_prepareUpgradeAccount.*wallet_upgradeAccount.*sponsored/,
     ) }
 
-const rateBodies: Array<Record<string, unknown>> = []
+const rateBodies: PoolRequestBody[] = []
 
-const gasLog: Array<Record<string, unknown>> = []
+const gasLog: PoolRequestBody[] = []
 
 const rpcMethods: string[] = []
 

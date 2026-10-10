@@ -111,7 +111,15 @@ function usdcSwap(): Call[] {
   ];
 }
 
-function intent(calls: Call[], overrides: Record<string, unknown> = {}) {
+function intent(
+    calls: Call[],
+    overrides: Partial<{
+        multichain: boolean
+        encodedFundTransfers: Hex[]
+        settler: Address
+        encodedPreCalls: Hex[]
+    }> = {},
+) {
   return {
     domain: {
       name: "Orchestrator",

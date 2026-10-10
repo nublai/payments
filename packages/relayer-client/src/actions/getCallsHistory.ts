@@ -1,7 +1,7 @@
 import type { Address } from 'viem'
 import type { RelayerPublicClient } from '../types'
 import { createRelayerTransport } from '../transport'
-import type { RpcGetCallsHistoryResult } from '../rpc-schema'
+import type { RpcGetCallsHistoryParams, RpcGetCallsHistoryResult } from '../rpc-schema'
 
 interface GetCallsHistoryParamsBase {
     /** EOA address to fetch history for */
@@ -51,7 +51,7 @@ export async function getCallsHistory(
     try {
         const transport = createRelayerTransport(client)
 
-        const rpcParams: Record<string, unknown> = { address: params.address }
+        const rpcParams: RpcGetCallsHistoryParams = { address: params.address }
 
         if (params.chainIds && params.chainIds.length > 0) {
             rpcParams.chainIds = params.chainIds.map((id) => `0x${id.toString(16)}`)

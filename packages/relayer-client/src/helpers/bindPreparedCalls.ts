@@ -291,7 +291,9 @@ function readCalls(value: unknown, label: string): NormalizedCall[] {
 
     return value.map((item, index) => {
         if (item === null || typeof item !== 'object') refuse(`invalid ${label}[${index}]`)
-        const call = item as Record<string, unknown>
+
+        // SAFETY: item is a non-null object; only to/value/data are read, each through a typed parser.
+        const call = item as { to?: unknown; value?: unknown; data?: unknown }
 
         return {
             to: readAddress(call.to, `${label}[${index}].to`),
@@ -317,7 +319,22 @@ function parseTypedIntent(prepared: PrepareCallsResponse): NormalizedIntent {
     const message = prepared.typedData?.message as unknown
 
     if (message === null || typeof message !== 'object') refuse('typed data message is missing')
-    const record = message as Record<string, unknown>
+
+    // SAFETY: message is a non-null object; each Intent field is parsed below before use.
+    const record = message as {
+        multichain?: unknown
+        eoa?: unknown
+        calls?: unknown
+        nonce?: unknown
+        payer?: unknown
+        paymentToken?: unknown
+        paymentMaxAmount?: unknown
+        combinedGas?: unknown
+        encodedPreCalls?: unknown
+        encodedFundTransfers?: unknown
+        settler?: unknown
+        expiry?: unknown
+    }
 
     if (prepared.typedData.primaryType !== 'Intent') refuse('typed data primary type does not match')
 
@@ -347,7 +364,22 @@ function optionalAddress(value: unknown, fallback: Address): Address {
 
 function parseQuoteIntent(intent: unknown): NormalizedIntent & { settlerContext: Hex } {
     if (intent === null || typeof intent !== 'object') refuse('quote does not match the signed intent')
-    const record = intent as Record<string, unknown>
+
+    // SAFETY: intent is a non-null object; each quote field is parsed below before use.
+    const record = intent as {
+        eoa?: unknown
+        calls?: unknown
+        nonce?: unknown
+        payer?: unknown
+        paymentToken?: unknown
+        paymentMaxAmount?: unknown
+        combinedGas?: unknown
+        encodedPreCalls?: unknown
+        encodedFundTransfers?: unknown
+        settler?: unknown
+        settlerContext?: unknown
+        expiry?: unknown
+    }
 
     return {
         multichain: false,

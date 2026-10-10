@@ -1,4 +1,4 @@
-import type { Address, Hex } from 'viem'
+import type { Hex } from 'viem'
 import { zeroAddress, createPublicClient, http } from 'viem'
 import { hashTypedData } from 'viem/utils'
 import type { RpcContext } from '../types'
@@ -417,20 +417,25 @@ export async function handlePrepareCalls(
                 : undefined,
     }
 
-    const message: Record<string, unknown> = {}
+    const source = result.typedData.message
 
-    for (const [key, value] of Object.entries(result.typedData.message)) {
-        if (typeof value === 'bigint') {
-            message[key] = value.toString()
-        } else if (Array.isArray(value) && key === 'calls') {
-            message[key] = (value as Array<{ to: Address; value: bigint; data: Hex }>).map((c) => ({
-                to: c.to,
-                value: c.value.toString(),
-                data: c.data,
-            }))
-        } else {
-            message[key] = value
-        }
+    const message = {
+        multichain: source.multichain,
+        eoa: source.eoa,
+        calls: source.calls.map((c) => ({
+            to: c.to,
+            value: c.value.toString(),
+            data: c.data,
+        })),
+        nonce: source.nonce.toString(),
+        payer: source.payer,
+        paymentToken: source.paymentToken,
+        paymentMaxAmount: source.paymentMaxAmount.toString(),
+        combinedGas: source.combinedGas.toString(),
+        encodedPreCalls: source.encodedPreCalls,
+        encodedFundTransfers: source.encodedFundTransfers,
+        settler: source.settler,
+        expiry: source.expiry.toString(),
     }
 
     return {

@@ -44,8 +44,21 @@ declare global {
     }
 }
 
-function summarizeActiveResource(resource: unknown): Record<string, unknown> {
-    const summary: Record<string, unknown> = {}
+type HandleSummary = {
+    type?: string
+    value?: string
+    hasRef?: boolean | 'error'
+    fd?: unknown
+    localAddress?: unknown
+    localPort?: unknown
+    remoteAddress?: unknown
+    remotePort?: unknown
+    bytesRead?: unknown
+    bytesWritten?: unknown
+}
+
+function summarizeActiveResource(resource: unknown): HandleSummary {
+    const summary: HandleSummary = {}
 
     if (typeof resource !== 'object' || resource === null) {
         return { value: String(resource) }
