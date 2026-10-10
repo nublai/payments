@@ -46,7 +46,7 @@ function makeTypedData(): PrepareCallsResponse['typedData'] {
             name: 'signer-test',
             version: '1',
             chainId: 8453,
-            verifyingContract: '0x2222222222222222222222222222222222222222',
+            verifyingContract: '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8',
         },
         types: INTENT_TYPES,
         primaryType: 'Intent',

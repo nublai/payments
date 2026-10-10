@@ -24,8 +24,10 @@ import {
     assessPhraseLessIntent,
     PhraseLessSignError,
     reviewSwapSessionSignature,
+    typesMatch,
 } from './session-daemon-policy'
-import type { EnvName } from './network-config'
+import { chainsForEnv, getChainConfig, type EnvName } from './network-config'
+import { resolveOrchestratorAddress } from './orchestrator-address'
 
 const REQUEST_MAX_BYTES = 256 * 1024
 
@@ -129,12 +131,7 @@ export type RunningSessionDaemon = {
 }
 
 function isErrnoCode(error: unknown, code: string): boolean {
-    return (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        (error as { code?: unknown }).code === code
-    )
+    return isRecord(error) && error.code === code
 }
 
 async function unlinkIfExists(path: string): Promise<void> {
@@ -166,6 +163,42 @@ function buildError(id: string, code: DaemonErrorCode, message: string): DaemonR
         id,
         error: { code, message },
     }
+}
+
+function phraseConfirmedDomainMatches(
+    domain:
+        | {
+              chainId: number
+              verifyingContract: Address
+          }
+        | undefined,
+    env: EnvName | undefined,
+): boolean {
+    if (!env || !domain) {
+        return false
+    }
+
+    const chainIdType = typeof domain.chainId
+
+    if (chainIdType !== 'number' && chainIdType !== 'bigint') {
+        return false
+    }
+
+    for (const chainName of chainsForEnv(env)) {
+        const chainId = getChainConfig(chainName).chainId
+
+        try {
+            if (BigInt(domain.chainId) !== BigInt(chainId)) {
+                continue
+            }
+
+            return getAddress(domain.verifyingContract) === resolveOrchestratorAddress(env, chainId)
+        } catch {
+            return false
+        }
+    }
+
+    return false
 }
 
 function getLiveSessionOrWriteError(
@@ -599,6 +632,39 @@ export async function runSessionDaemon(options?: {
                                         await saveSpendLedger(ledgerPath, spendLedger)
                                         throw error
                                     }
+
+                                    return
+                                }
+
+                                if (
+                                    request.params.typedData.primaryType !== 'Intent' ||
+                                    !typesMatch(request.params.typedData.types) ||
+                                    Object.hasOwn(request.params.typedData.types, 'EIP712Domain')
+                                ) {
+                                    writeResponse(
+                                        buildError(
+                                            request.id,
+                                            DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                            'Session refused typed data that is not an Intent',
+                                        ),
+                                    )
+
+                                    return
+                                }
+
+                                if (
+                                    !phraseConfirmedDomainMatches(
+                                        request.params.typedData.domain,
+                                        entry.env,
+                                    )
+                                ) {
+                                    writeResponse(
+                                        buildError(
+                                            request.id,
+                                            DAEMON_ERROR_CODES.INVALID_REQUEST,
+                                            'Session refused typed data whose domain chainId or verifyingContract does not match this session',
+                                        ),
+                                    )
 
                                     return
                                 }

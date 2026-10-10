@@ -89,7 +89,7 @@ function asHex(value: unknown, label: string): Hex {
     return value as Hex
 }
 
-function typesMatch(types: unknown): boolean {
+export function typesMatch(types: unknown): boolean {
     if (!isRecord(types)) return false
 
     return (
