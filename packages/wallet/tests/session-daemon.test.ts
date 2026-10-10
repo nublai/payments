@@ -8,7 +8,13 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { INTENT_TYPES } from '@nubl/relayer-client'
 import { runSessionDaemon } from '../src/lib/session-daemon'
 import { SessionDaemonClient } from '../src/lib/session-daemon-client'
-import type { DaemonTypedData } from '../src/lib/session-daemon-protocol'
+import {
+    encodeTypedDataBigInt,
+    parseDaemonResponse,
+    type DaemonResponse,
+    type DaemonTypedData,
+} from '../src/lib/session-daemon-protocol'
+import { isRecord } from '../src/lib/type-guards'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { emptyHex } from './helpers/hex'
 
@@ -109,9 +115,9 @@ test('daemon load/list/sign/expiry lifecycle works', async () => {
     await daemon.stop()
 })
 
-const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f'
+const ROUTER = '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f' as const
 
-const PROD_BASE_ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8'
+const PROD_BASE_ORCHESTRATOR = '0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8' as const
 
 function routerMulticall(user: Address, innerSelector: Hex): Hex {
     return encodeFunctionData({
@@ -240,6 +246,197 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
     }
 })
 
+test('a phrase-confirmed session refuses a typed-data domain that does not match the session chain and orchestrator', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-domain-'))
+    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const daemon = await runSessionDaemon()
+    const client = new SessionDaemonClient()
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY)
+
+    try {
+        const load = await client.loadKey({
+            name: 'default',
+            privateKey: TEST_PRIVATE_KEY,
+            address: account.address,
+            durationSeconds: 60,
+            phraseConfirmed: true,
+            env: 'prod',
+        })
+
+        expect(load?.ok).toBe(true)
+
+        const correct = orchestratorIntent(account.address, '0x')
+
+        const wrongChain = {
+            ...correct,
+            domain: {
+                ...correct.domain,
+                chainId: 1,
+            },
+        }
+
+        const refusedChain = await client.sign('default', wrongChain)
+        const wrongChainSignature = await account.signTypedData(wrongChain)
+
+        expect(refusedChain?.ok).toBe(false)
+        expect(JSON.stringify(refusedChain)).not.toContain(wrongChainSignature)
+
+        if (refusedChain && !refusedChain.ok) {
+            expect(refusedChain.error.code).toBe('INVALID_REQUEST')
+            expect(refusedChain.error.message).toMatch(/chainId|verifyingContract/)
+        }
+
+        const wrongContract = {
+            ...correct,
+            domain: {
+                ...correct.domain,
+                verifyingContract: zeroAddress,
+            },
+        }
+
+        const refusedContract = await client.sign('default', wrongContract)
+        const wrongContractSignature = await account.signTypedData(wrongContract)
+
+        expect(refusedContract?.ok).toBe(false)
+        expect(JSON.stringify(refusedContract)).not.toContain(wrongContractSignature)
+
+        if (refusedContract && !refusedContract.ok) {
+            expect(refusedContract.error.code).toBe('INVALID_REQUEST')
+            expect(refusedContract.error.message).toMatch(/chainId|verifyingContract/)
+        }
+
+        const signed = await client.sign('default', correct)
+
+        expect(signed?.ok).toBe(true)
+
+        if (signed?.ok) {
+            const direct = await account.signTypedData(correct)
+            expect(signed.result).toBe(direct)
+        }
+
+        const encodedBigintChain = encodeTypedDataBigInt(correct)
+
+        if (!isRecord(encodedBigintChain) || !isRecord(encodedBigintChain.domain)) {
+            throw new Error('typed data encoding failed')
+        }
+
+        encodedBigintChain.domain.chainId = '$bigint:8453'
+
+        const signedBigintChain = await sendSignOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            JSON.stringify(encodedBigintChain),
+        )
+
+        const bigintDirect = await account.signTypedData(correct)
+
+        expect(signedBigintChain.error).toBeUndefined()
+        expect(signedBigintChain.result).toEqual({ signature: bigintDirect })
+
+        const permit = {
+            domain: {
+                name: 'USD Coin',
+                version: '2',
+                chainId: 8453,
+                verifyingContract: PROD_BASE_ORCHESTRATOR,
+            },
+            types: {
+                Permit: [
+                    { name: 'owner', type: 'address' },
+                    { name: 'spender', type: 'address' },
+                    { name: 'value', type: 'uint256' },
+                    { name: 'nonce', type: 'uint256' },
+                    { name: 'deadline', type: 'uint256' },
+                ],
+            },
+            primaryType: 'Permit' as const,
+            message: {
+                owner: account.address,
+                spender: ROUTER,
+                value: 1n,
+                nonce: 0n,
+                deadline: 2_000_000_000n,
+            },
+        }
+
+        const permitSignature = await account.signTypedData(permit)
+
+        const refusedPermit = await sendSignOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            JSON.stringify({
+                domain: permit.domain,
+                types: permit.types,
+                primaryType: permit.primaryType,
+                message: {
+                    owner: permit.message.owner,
+                    spender: permit.message.spender,
+                    value: `$bigint:${permit.message.value.toString()}`,
+                    nonce: `$bigint:${permit.message.nonce.toString()}`,
+                    deadline: `$bigint:${permit.message.deadline.toString()}`,
+                },
+            }),
+        )
+
+        expect(refusedPermit.error).toBeDefined()
+        expect(JSON.stringify(refusedPermit)).not.toContain(permitSignature)
+
+        if (refusedPermit.error) {
+            expect(refusedPermit.error.code).toBe('INVALID_REQUEST')
+            expect(refusedPermit.error.message).toMatch(/Intent/)
+        }
+
+        const encodedStringChain = encodeTypedDataBigInt(correct)
+
+        if (!isRecord(encodedStringChain) || !isRecord(encodedStringChain.domain)) {
+            throw new Error('typed data encoding failed')
+        }
+
+        encodedStringChain.domain.chainId = '8453'
+
+        const refusedStringChain = await sendSignOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            JSON.stringify(encodedStringChain),
+        )
+
+        expect(refusedStringChain.error).toBeDefined()
+        expect(JSON.stringify(refusedStringChain)).not.toContain('"signature"')
+
+        if (refusedStringChain.error) {
+            expect(refusedStringChain.error.code).toBe('INVALID_REQUEST')
+            expect(refusedStringChain.error.message).toMatch(/chainId|verifyingContract/)
+        }
+
+        const encodedCustomDomain = encodeTypedDataBigInt(correct)
+
+        if (!isRecord(encodedCustomDomain) || !isRecord(encodedCustomDomain.types)) {
+            throw new Error('typed data encoding failed')
+        }
+
+        encodedCustomDomain.types.EIP712Domain = [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+        ]
+
+        const refusedCustomDomain = await sendSignOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            JSON.stringify(encodedCustomDomain),
+        )
+
+        expect(refusedCustomDomain.error).toBeDefined()
+        expect(JSON.stringify(refusedCustomDomain)).not.toContain('"signature"')
+
+        if (refusedCustomDomain.error) {
+            expect(refusedCustomDomain.error.code).toBe('INVALID_REQUEST')
+            expect(refusedCustomDomain.error.message).toMatch(/Intent/)
+        }
+    } finally {
+        await daemon.stop()
+    }
+})
+
 test('daemon drops oversized payload without newline', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
@@ -262,3 +459,41 @@ test('daemon drops oversized payload without newline', async () => {
 
     await daemon.stop()
 })
+
+async function sendSignOverSocket(
+    socketPath: string,
+    sessionName: string,
+    typedDataJson: string,
+): Promise<DaemonResponse> {
+    const socket = net.createConnection(socketPath)
+    let buffer = ''
+
+    await new Promise<void>((resolve, reject) => {
+        socket.once('connect', () => resolve())
+        socket.once('error', reject)
+    })
+
+    const line = `{"id":"sign","method":"sign","params":{"sessionName":${JSON.stringify(sessionName)},"typedData":${typedDataJson}}}\n`
+
+    const response = await new Promise<DaemonResponse>((resolve, reject) => {
+        socket.on('data', (chunk: string) => {
+            buffer += chunk
+            const newlineIdx = buffer.indexOf('\n')
+
+            if (newlineIdx === -1) {
+                return
+            }
+
+            try {
+                resolve(parseDaemonResponse(buffer.slice(0, newlineIdx)))
+            } catch (error) {
+                reject(error)
+            }
+        })
+        socket.write(line)
+    })
+
+    socket.destroy()
+
+    return response
+}
