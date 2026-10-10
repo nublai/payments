@@ -168,7 +168,7 @@ export async function executeSessionStart(
     }
 }
 
-function debugSessionStart(message: string, details?: unknown): void {
+function debugSessionStart(message: string, details?: { pid: number }): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }

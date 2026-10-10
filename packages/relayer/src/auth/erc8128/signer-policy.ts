@@ -269,6 +269,7 @@ export function bindingFromRpcBody(
 
     for (const item of items) {
         if (!isNonNullObject(item)) continue
+        // SAFETY: item is a non-null object; only method and params are read, then parsed.
         const record = item as { method?: unknown; params?: unknown }
 
         if (typeof record.method !== 'string') continue

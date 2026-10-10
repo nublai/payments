@@ -1012,7 +1012,18 @@ test('send signs an honest local zero-fee intent', async () => {
     expect(server.methods).toContain('wallet_sendPreparedCalls')
 }, 90_000)
 
-function frame(message: unknown): string {
+function frame(message: {
+    jsonrpc: string
+    id?: number
+    method: string
+    params?: {
+        protocolVersion?: string
+        capabilities?: { [key: string]: never }
+        clientInfo?: { name: string; version: string }
+        name?: string
+        arguments?: { [key: string]: string }
+    }
+}): string {
     return `${JSON.stringify(message)}\n`
 }
 

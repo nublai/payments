@@ -146,7 +146,7 @@ export async function executeSessionStop(
     }
 }
 
-function debugSessionStop(message: string, details?: unknown): void {
+function debugSessionStop(message: string, details?: { path: string; message: string }): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }

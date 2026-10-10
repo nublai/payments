@@ -718,7 +718,10 @@ export async function executeAccountSend(
     }
 }
 
-function debugSignerFallback(command: 'account_send', details: unknown): void {
+function debugSignerFallback(
+    command: 'account_send',
+    details: { reason: string; sessionName: string },
+): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }

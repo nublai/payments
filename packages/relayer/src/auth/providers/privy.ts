@@ -100,9 +100,11 @@ async function upgradeAccountsFromRequest(
 
     for (const item of items) {
         if (!item || typeof item !== 'object') continue
+        // SAFETY: item is a non-null object; only method is read, then checked as a string.
         const method = (item as { method?: unknown }).method
 
         if (typeof method !== 'string' || !UPGRADE_METHODS.has(method)) continue
+        // SAFETY: item is a non-null object; only params is read, then parsed as RPC params.
         const address = upgradeAccountAddress(method, (item as { params?: unknown }).params)
 
         if (address === 'invalid' || address === undefined) {

@@ -61,7 +61,7 @@ function prodEnv(overrides: Partial<Env> = {}): Env {
     return env
 }
 
-function upgradeParams(method: UpgradeMethod, address: Address, chainId: unknown) {
+function upgradeParams(method: UpgradeMethod, address: Address, chainId: string | number | undefined) {
     const chain = chainId === undefined ? {} : { chainId }
 
     return method === 'wallet_prepareUpgradeAccount'
@@ -72,7 +72,7 @@ function upgradeParams(method: UpgradeMethod, address: Address, chainId: unknown
 async function cliRequest(
     key: Hex,
     method: UpgradeMethod,
-    target?: { address?: Address; chainId?: unknown },
+    target?: { address?: Address; chainId?: string | number | undefined },
 ): Promise<Request> {
     const account = privateKeyToAccount(key)
     const chainId = target && 'chainId' in target ? target.chainId : `0x${CHAIN_ID.toString(16)}`
@@ -160,7 +160,7 @@ describe('ERC-8128 binds the account on sponsored upgrade methods', () => {
     it('refuses the same fresh key for a different address, on any chain id', async () => {
         const other = privateKeyToAccount(generatePrivateKey()).address
 
-        const cases: Array<{ label: string; chainId: unknown }> = [
+        const cases: Array<{ label: string; chainId: string | number | undefined }> = [
             { label: 'same chain', chainId: `0x${CHAIN_ID.toString(16)}` },
             { label: 'numeric chain', chainId: CHAIN_ID },
             { label: 'mismatched chain', chainId: '0x14a34' },

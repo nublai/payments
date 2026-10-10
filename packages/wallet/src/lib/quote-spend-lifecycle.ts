@@ -794,7 +794,7 @@ async function submitRootCalls(input: {
     }
 }
 
-function isEnoent(error: unknown): boolean {
+function isEnoent(error: unknown): error is { code: 'ENOENT' } {
     return (
         typeof error === 'object' &&
         error !== null &&

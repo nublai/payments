@@ -124,7 +124,7 @@ function getEthBalanceData(user: Address): Hex {
     })
 }
 
-function decodeWord(data: unknown): bigint {
+function decodeWord(data: RpcJson | undefined): bigint {
     if (typeof data !== 'string' || !/^0x[0-9a-fA-F]*$/.test(data)) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
@@ -356,7 +356,7 @@ async function readBefore(
 type SimLog = { address?: string; topics?: string[]; data?: string }
 
 function parseSimulateResult(
-    result: unknown,
+    result: RpcJson,
     userCallCount: number,
 ): { words: bigint[]; logs: SimLog[] | undefined } {
     if (!Array.isArray(result) || !result[0] || typeof result[0] !== 'object') {

@@ -54,7 +54,9 @@ function parseTxHash(value: unknown): Hex | undefined {
     return value as Hex
 }
 
-function isTransactionMissing(error: unknown): boolean {
+function isTransactionMissing(
+    error: unknown,
+): error is { name: 'TransactionNotFoundError' | 'TransactionReceiptNotFoundError' } {
     if (!error || typeof error !== 'object') return false
     const name = 'name' in error && typeof error.name === 'string' ? error.name : ''
 

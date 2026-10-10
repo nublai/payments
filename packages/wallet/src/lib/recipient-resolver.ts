@@ -6,9 +6,9 @@ export type RecipientResolutionErrorCode = 'INVALID_RECIPIENT' | 'RECIPIENT_UNRE
 
 export class RecipientResolutionError extends Error {
     code: RecipientResolutionErrorCode
-    details?: unknown
+    details?: string
 
-    constructor(code: RecipientResolutionErrorCode, message: string, details?: unknown) {
+    constructor(code: RecipientResolutionErrorCode, message: string, details?: string) {
         super(message)
         this.name = 'RecipientResolutionError'
         this.code = code

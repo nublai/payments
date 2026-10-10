@@ -754,7 +754,7 @@ type WriteJsonAtomicOptions = {
     emptyMessage: string
 }
 
-function isEnoent(error: unknown): boolean {
+function isEnoent(error: unknown): error is { code: 'ENOENT' } {
     return (
         typeof error === 'object' &&
         error !== null &&
@@ -800,7 +800,7 @@ export async function ensureOwnerOnlyDirectory(dir: string): Promise<void> {
 
 async function writeJsonAtomic(
     path: string,
-    data: unknown,
+    data: RelayerRootKeystoreV2 | AnySessionKeystore,
     options: WriteJsonAtomicOptions,
 ): Promise<void> {
     const overwrite = options?.overwrite ?? false

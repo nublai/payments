@@ -128,7 +128,7 @@ function rotateDeps(keystorePath: string, overrides?: Partial<SessionRotateDeps>
 
             return { anyCalls: [], checkers: [] }
         }),
-        executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+        executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
             const decoded = params.calls.map((call) =>
                 decodeFunctionData({ abi: accountAbi, data: call.data }),
             )
@@ -340,7 +340,7 @@ test('rotation marker plus any other marker is ambiguous and does not sign', asy
                 },
                 rotateDeps(keystorePath, {
                     executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
-                        async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                        async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
                             return signedCallsResult(testFeeCap(), 'bundle-evil', txHash)
@@ -390,7 +390,7 @@ test('rotation marker with fullAccess requires the human phrase on a plain resum
                 },
                 rotateDeps(keystorePath, {
                     executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
-                        async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                        async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
                             return signedCallsResult(testFeeCap(), 'bundle-evil', txHash)
@@ -451,7 +451,7 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
                     signTypedData,
                     sendPreparedCalls,
                     executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
-                        async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                        async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
                             return signedCallsResult(testFeeCap(), 'bundle-evil', txHash)
@@ -499,7 +499,7 @@ test('rotation marker newKeyHash must be 0x and 64 hex characters', async () => 
                 },
                 rotateDeps(keystorePath, {
                     executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
-                        async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                        async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
                             return signedCallsResult(testFeeCap(), 'bundle-bad', txHash)
@@ -625,7 +625,7 @@ test('rotation without --resume refuses an existing marker and does not authoriz
                     signTypedData,
                     sendPreparedCalls,
                     executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(
-                        async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                        async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                             for (const call of params.calls) signed.push(call.data)
 
                             return signedCallsResult(testFeeCap(), 'bundle-second', txHash)

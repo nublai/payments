@@ -43,7 +43,26 @@ const password = 'proof-password'
 
 const recipient = '0x1111111111111111111111111111111111111111'
 
-function frame(message: unknown): string {
+type McpToolArgument =
+    | string
+    | number
+    | boolean
+    | null
+    | McpToolArgument[]
+    | { [key: string]: McpToolArgument }
+
+function frame(message: {
+    jsonrpc: string
+    id?: number
+    method: string
+    params?: {
+        protocolVersion?: string
+        capabilities?: { [key: string]: never }
+        clientInfo?: { name: string; version: string }
+        name?: string
+        arguments?: { [key: string]: McpToolArgument }
+    }
+}): string {
     return `${JSON.stringify(message)}\n`
 }
 
@@ -97,14 +116,6 @@ function runCli(
         })
     })
 }
-
-type McpToolArgument =
-    | string
-    | number
-    | boolean
-    | null
-    | McpToolArgument[]
-    | { [key: string]: McpToolArgument }
 
 function callMcpTool(
     name: string,

@@ -874,7 +874,18 @@ export async function runSessionDaemonEntry(keepStdio = false): Promise<RunningS
     })
 }
 
-function debugDaemon(message: string, details?: unknown): void {
+function debugDaemon(
+    message: string,
+    details?: {
+        linePreview?: string
+        error?: string
+        method?: string
+        id?: string | number | null
+        socketPath?: string
+        message?: string
+        signal?: NodeJS.Signals
+    },
+): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }
