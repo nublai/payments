@@ -1,5 +1,5 @@
 import type { Hex } from 'viem'
-import type { RpcContext } from '../types'
+import type { JsonRpcParams, RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { GetCallsStatusResult } from '../schema/getCallsStatus'
 import { getChainIds } from '../../config'
@@ -13,7 +13,7 @@ export type { GetCallsStatusResult } from '../schema/getCallsStatus'
  * wallet_getCallsStatus - Get status of a submitted bundle.
  */
 export async function handleGetCallsStatus(
-    params: unknown,
+    params: JsonRpcParams | string | { id?: string } | undefined,
     ctx: RpcContext,
 ): Promise<GetCallsStatusResult> {
     const env = ctx.env as Env

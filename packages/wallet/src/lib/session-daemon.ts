@@ -130,7 +130,7 @@ export type RunningSessionDaemon = {
     untilStopped: Promise<void>
 }
 
-function isErrnoCode(error: unknown, code: string): boolean {
+function isErrnoCode(error: unknown, code: string): error is { code: string } {
     return isRecord(error) && 'code' in error && error.code === code
 }
 
@@ -874,7 +874,18 @@ export async function runSessionDaemonEntry(keepStdio = false): Promise<RunningS
     })
 }
 
-function debugDaemon(message: string, details?: unknown): void {
+function debugDaemon(
+    message: string,
+    details?: {
+        linePreview?: string
+        error?: string
+        method?: string
+        id?: string | number | null
+        socketPath?: string
+        message?: string
+        signal?: NodeJS.Signals
+    },
+): void {
     if (process.env.TW_DAEMON_DEBUG !== '1') {
         return
     }

@@ -1,7 +1,7 @@
 import { constants } from 'node:fs'
 import { access, readFile, unlink, writeFile } from 'node:fs/promises'
 
-export function isErrnoNotFound(error: unknown): boolean {
+export function isErrnoNotFound(error: unknown): error is { code: 'ENOENT' } {
     return (
         typeof error === 'object' &&
         error !== null &&
@@ -10,7 +10,7 @@ export function isErrnoNotFound(error: unknown): boolean {
     )
 }
 
-function isErrnoCode(error: unknown, code: string): boolean {
+function isErrnoCode(error: unknown, code: string): error is { code: string } {
     return (
         typeof error === 'object' &&
         error !== null &&

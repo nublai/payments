@@ -1,6 +1,7 @@
 import { isAddress, type Address } from 'viem'
 
 import { unwrapParams } from '../../lib/rpc-utils'
+import type { JsonRpcParams } from '../../rpc/types'
 import { isLocalDevContext } from '../../config/runtime-context'
 import { parseAuthProtectedMethods } from '../policy'
 
@@ -269,7 +270,7 @@ export function bindingFromRpcBody(
 
     for (const item of items) {
         if (!isNonNullObject(item)) continue
-        const record = item as { method?: unknown; params?: unknown }
+        const record = item as { method?: unknown; params?: JsonRpcParams | RpcBindingParams }
 
         if (typeof record.method !== 'string') continue
 

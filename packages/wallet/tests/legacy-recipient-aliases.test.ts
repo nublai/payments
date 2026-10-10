@@ -4,7 +4,13 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { hasLegacyRecipientAlias } from '../src/lib/legacy-recipient-aliases'
 
-async function withLegacyContactsFile<T>(contents: unknown, run: () => Promise<T>): Promise<T> {
+async function withLegacyContactsFile<T>(
+    contents: {
+        version: number
+        contacts: { [name: string]: { address: string | number; ens: null } } | null
+    },
+    run: () => Promise<T>,
+): Promise<T> {
     const contactsPath = join(homedir(), '.config', 'agentic-payments', 'tw', 'contacts.json')
     let previousContents: string | null = null
 

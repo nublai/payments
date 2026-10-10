@@ -20,6 +20,9 @@ type RpcJson =
     | RpcJson[]
     | { [key: string]: RpcJson }
 
+/** Positional array or named object after JSON-RPC request validation. */
+export type JsonRpcParams = RpcJson[] | { [key: string]: RpcJson }
+
 /**
  * JSON-RPC 2.0 Request object
  */
@@ -31,7 +34,7 @@ export interface JsonRpcRequest {
     /** Method name to invoke */
     method: string
     /** Optional parameters - either array (positional) or object (named JSON) */
-    params?: unknown[] | { [key: string]: RpcJson }
+    params?: JsonRpcParams
 }
 
 /**
@@ -109,7 +112,7 @@ export interface RpcContext {
 /**
  * Method handler function signature
  */
-export type MethodHandler<TParams = unknown, TResult = unknown> = (
+export type MethodHandler<TParams = JsonRpcParams | undefined, TResult = unknown> = (
     params: TParams,
     ctx: RpcContext,
 ) => Promise<TResult>

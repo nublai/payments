@@ -4,6 +4,7 @@
 
 import type { Address } from 'viem'
 import { RpcError, INVALID_PARAMS } from '../rpc/errors'
+import type { JsonRpcParams } from '../rpc/types'
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
@@ -34,7 +35,7 @@ export function requireParam<T>(value: T | null | undefined, paramName: string):
 /**
  * Unwrap JSON-RPC params (array or object) into a single typed object.
  */
-export function unwrapParams<T>(params: unknown): T | undefined {
+export function unwrapParams<T>(params: JsonRpcParams | T | undefined): T | undefined {
     if (Array.isArray(params)) {
         return params[0] as T | undefined
     }

@@ -168,7 +168,17 @@ function upgradeBody(auth: Hex, account: Address, delegation: Address = DELEGATI
 
 async function post(
     env: Env,
-    body: unknown,
+    body: {
+        jsonrpc: '2.0'
+        id: number
+        method: string
+        params: ReturnType<typeof upgradeBody>['params'] | Array<{
+            address: Address
+            delegation: Address
+            chainId: string
+            capabilities: { authorizeKeys: never[] }
+        }>
+    },
     providers: AuthProvider[],
 ): Promise<{ status: number; json: unknown; text: string }> {
     const response = await createApp(providers).request(

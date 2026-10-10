@@ -1,7 +1,7 @@
 import type { Hex } from 'viem'
 import { zeroAddress, createPublicClient, http } from 'viem'
 import { hashTypedData } from 'viem/utils'
-import type { RpcContext } from '../types'
+import type { JsonRpcParams, RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import { getFeeConfig, getGasConfig, getPriceOracleConfig } from '../../types/env'
 import { convertToFeeToken } from '../../services/fees'
@@ -51,7 +51,7 @@ import {
  * wallet_prepareCalls - Prepare calls for signing.
  */
 export async function handlePrepareCalls(
-    params: unknown,
+    params: JsonRpcParams | PrepareCallsParams | undefined,
     ctx: RpcContext,
 ): Promise<PrepareCallsResult> {
     const env = ctx.env as Env

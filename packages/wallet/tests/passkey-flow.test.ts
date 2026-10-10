@@ -213,7 +213,16 @@ function parseCliJson(stdout: string): {
     return JSON.parse(stdout.slice(start, end + 1))
 }
 
-function frame(message: unknown): string {
+function frame(message: {
+    jsonrpc: string
+    id?: number
+    method: string
+    params?: {
+        protocolVersion?: string
+        capabilities?: { [capability: string]: { [key: string]: never } }
+        clientInfo?: { name: string; version: string }
+    }
+}): string {
     return `${JSON.stringify(message)}\n`
 }
 

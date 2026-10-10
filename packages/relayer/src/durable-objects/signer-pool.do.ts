@@ -48,20 +48,22 @@ import {
     paidUpgradeReceiptOutcome,
 } from '../rpc/methods/shared/paid-upgrade'
 
-function parseTxHash(value: unknown): Hex | undefined {
+function parseTxHash(value: string | undefined): Hex | undefined {
     if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return undefined
 
     return value as Hex
 }
 
-function isTransactionMissing(error: unknown): boolean {
+function isTransactionMissing(
+    error: unknown,
+): error is { name: 'TransactionNotFoundError' | 'TransactionReceiptNotFoundError' } {
     if (!error || typeof error !== 'object') return false
     const name = 'name' in error && typeof error.name === 'string' ? error.name : ''
 
     return name === 'TransactionNotFoundError' || name === 'TransactionReceiptNotFoundError'
 }
 
-function parseGasUnits(value: unknown): number | undefined {
+function parseGasUnits(value: string | undefined): number | undefined {
     if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) return undefined
     const parsed = Number(value)
 
@@ -768,13 +770,13 @@ export class SignerPoolDO extends DurableObject<Env> {
             .toArray()[0]
     }
 
-    private receiptNonce(value: unknown): number | null {
+    private receiptNonce(value: number | undefined): number | null {
         if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
 
         return value
     }
 
-    private receiptSigner(value: unknown): string | null {
+    private receiptSigner(value: string | undefined): string | null {
         if (typeof value !== 'string') return null
         const trimmed = value.trim()
 

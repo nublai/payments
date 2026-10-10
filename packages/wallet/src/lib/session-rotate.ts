@@ -849,7 +849,7 @@ function markRotationIntentSubmitted(
     return submitted
 }
 
-function isPossiblySubmittedRotation(error: unknown): boolean {
+function isPossiblySubmittedRotation(error: unknown): error is { rotationPossiblySubmitted: true } {
     return (
         typeof error === 'object' &&
         error !== null &&
@@ -1044,7 +1044,7 @@ function partialRotationError(chain: ChainName, failed: ChainName[]): SessionRot
     )
 }
 
-function isBundleWaitTimeout(error: unknown): boolean {
+function isBundleWaitTimeout(error: unknown): error is Error {
     return error instanceof Error && error.message.includes('Timeout waiting for bundle')
 }
 
@@ -1142,7 +1142,7 @@ function requireMarkerBinding(intent: RotationIntent): asserts intent is Rotatio
     }
 }
 
-function isEnoent(error: unknown): boolean {
+function isEnoent(error: unknown): error is { code: 'ENOENT' } {
     return (
         typeof error === 'object' &&
         error !== null &&

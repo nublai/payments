@@ -5,7 +5,7 @@ import type { Env } from '../types/env'
 import { setRpcCaller } from './caller'
 import { authorizeRequest } from './engine'
 import { runWithAuthIdentity } from './identity'
-import { extractAuthRequirement, resolveAuthProtectedMethods } from './policy'
+import { extractAuthRequirement, resolveAuthProtectedMethods, type JsonRpcId } from './policy'
 import type { AuthFailure, AuthProvider } from './types'
 
 interface MiddlewareDeps {
@@ -13,7 +13,7 @@ interface MiddlewareDeps {
     nowSeconds?: () => number
 }
 
-function unauthorizedResponse(id: unknown | null, failure: AuthFailure) {
+function unauthorizedResponse(id: JsonRpcId, failure: AuthFailure) {
     return {
         jsonrpc: '2.0' as const,
         id,

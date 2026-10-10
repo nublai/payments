@@ -192,7 +192,7 @@ async function signAuth(key: Hex, delegation: Address, nonce: number): Promise<H
     })
 }
 
-async function post(env: Env, body: unknown, userId: string) {
+async function post(env: Env, body: ReturnType<typeof upgradeBody>, userId: string) {
     const response = await createApp([providerFor(userId)]).request(
         'http://localhost/',
         {

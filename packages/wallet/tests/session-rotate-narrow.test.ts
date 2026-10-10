@@ -124,7 +124,7 @@ test('executeSessionRotate --narrow revokes the old key and installs the narrow 
                 readGuardCleanup: typedMock<SessionRotateDeps['readGuardCleanup']>(async () => ({ anyCalls: [], checkers: [] })),
                 readActiveUsdcDaily: typedMock<SessionRotateDeps['readActiveUsdcDaily']>(async () => 0n),
                 getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testKeys('0x7a69', [testAuthorizedKey(computeSessionKeyHash(newAddress))])),
-                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
 
                     return signedCallsResult(testFeeCap(), 'bundle-narrow')
@@ -297,7 +297,7 @@ test('executeSessionRotate --narrow clears ANY_KEYHASH calls and call checkers',
                         },
                     ],
                 })),
-                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+                executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                     for (const call of params.calls) captured.push(call.data)
 
                     return signedCallsResult(testFeeCap(), 'bundle-clear')
@@ -758,7 +758,7 @@ test('a tampered pending marker is not authorized', async () => {
                 return testSessionKeystore(attacker, account, { name: 'attacker' })
             }),
             getKeys: typedMock<SessionRotateDeps['getKeys']>(async () => testBaseKeys(computeSessionKeyHash(newAddress))),
-            executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: unknown, params: { calls: { data: Hex }[] }) => {
+            executeSignedCalls: typedMock<SessionRotateDeps['executeSignedCalls']>(async (_deps: Parameters<SessionRotateDeps['executeSignedCalls']>[0], params: { calls: { data: Hex }[] }) => {
                 for (const call of params.calls) signed.push(call.data)
 
                 return signedCallsResult(testFeeCap(), 'bundle-tamper')

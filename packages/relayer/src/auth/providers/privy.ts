@@ -5,6 +5,7 @@ import type { Env } from '../../types/env'
 import { authProviderFromIdentity, type IdentityProvider, type IdentityResult } from '../identity-provider'
 import { isPrivyEnabled, tokenTargetsOidc } from '../oidc-config'
 import type { AuthProvider } from '../types'
+import type { JsonRpcParams } from '../../rpc/types'
 
 export type PrivyAuthClaims = {
     appId: string
@@ -69,7 +70,10 @@ function classifyPrivyError(error: unknown): {
 
 const UPGRADE_METHODS = new Set(['wallet_prepareUpgradeAccount', 'wallet_upgradeAccount'])
 
-function upgradeAccountAddress(method: string, params: unknown): Address | 'invalid' | undefined {
+function upgradeAccountAddress(
+    method: string,
+    params: JsonRpcParams | undefined,
+): Address | 'invalid' | undefined {
     const first = Array.isArray(params) ? params[0] : params
 
     if (!first || typeof first !== 'object') return 'invalid'
@@ -103,7 +107,7 @@ async function upgradeAccountsFromRequest(
         const method = (item as { method?: unknown }).method
 
         if (typeof method !== 'string' || !UPGRADE_METHODS.has(method)) continue
-        const address = upgradeAccountAddress(method, (item as { params?: unknown }).params)
+        const address = upgradeAccountAddress(method, (item as { params?: JsonRpcParams }).params)
 
         if (address === 'invalid' || address === undefined) {
             invalid = true

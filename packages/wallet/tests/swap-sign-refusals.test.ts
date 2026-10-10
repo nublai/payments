@@ -147,7 +147,7 @@ function intent(
   };
 }
 
-function refusal(typedData: unknown): {
+function refusal(typedData: ReturnType<typeof intent>): {
   name?: string;
   code?: string;
   message?: string;

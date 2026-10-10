@@ -8,7 +8,7 @@ const signerAccount = privateKeyToAccount(
     '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
 )
 
-function successResponse(id: number, result: unknown = 'ok') {
+function successResponse(id: number, result: string = 'ok') {
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

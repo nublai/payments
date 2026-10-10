@@ -12,7 +12,11 @@ import {
     handleSendPreparedCalls,
 } from '../../src/rpc/methods/sendPreparedCalls'
 
-const createMockCtx = (body: unknown): RpcContext => {
+const createMockCtx = (body: {
+    error: string
+    code: string
+    broadcastAttempted: boolean
+}): RpcContext => {
     return {
         env: {
             RPC_URL: 'https://example.com/rpc',

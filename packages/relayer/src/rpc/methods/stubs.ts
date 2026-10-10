@@ -5,7 +5,7 @@
  * These return a "method not implemented" error.
  */
 
-import type { RpcContext } from '../types'
+import type { JsonRpcParams, RpcContext } from '../types'
 import { RpcError, METHOD_NOT_IMPLEMENTED } from '../errors'
 
 /**
@@ -13,6 +13,6 @@ import { RpcError, METHOD_NOT_IMPLEMENTED } from '../errors'
  *
  * Not yet implemented.
  */
-export async function handleGetAssets(_params: unknown, _ctx: RpcContext): Promise<never> {
+export async function handleGetAssets(_params: JsonRpcParams | undefined, _ctx: RpcContext): Promise<never> {
     throw new RpcError(METHOD_NOT_IMPLEMENTED, 'wallet_getAssets not implemented')
 }
