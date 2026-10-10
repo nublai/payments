@@ -5,7 +5,7 @@
 import type { Address } from 'viem'
 
 // Token addresses on Base mainnet
-export const BASE_TOKENS: Record<string, Address> = {
+export const BASE_TOKENS = {
     USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     WETH: '0x4200000000000000000000000000000000000006',
-}
+} as const satisfies Record<'USDC' | 'WETH', Address>

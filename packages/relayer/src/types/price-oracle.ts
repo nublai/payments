@@ -13,13 +13,13 @@ export interface PriceOracleConfig {
     fallbackUsdPrices?: Record<AssetUid, string>
 }
 
-export const DEFAULT_ASSET_MAPPING: AssetMapping = {
+export const DEFAULT_ASSET_MAPPING = {
     eth: 'ethereum',
     pol: 'polygon-ecosystem-token',
     weth: 'ethereum',
     usdc: 'usd-coin',
     usdt: 'tether',
-}
+} as const satisfies AssetMapping
 
 export const DEFAULT_RATE_TTL_MS = 300_000
 
@@ -31,8 +31,8 @@ export const DEFAULT_COINGECKO_URL = 'https://pro-api.coingecko.com/api/v3/simpl
 
 export const DEFAULT_ETH_USD_FALLBACK = '3000'
 
-export const DEFAULT_FALLBACK_USD_PRICES: Record<AssetUid, string> = {
+export const DEFAULT_FALLBACK_USD_PRICES = {
     pol: '0.1',
     usdc: '1',
     usdt: '1',
-}
+} as const satisfies Record<'pol' | 'usdc' | 'usdt', string>
