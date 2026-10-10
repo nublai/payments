@@ -98,7 +98,7 @@ function getSeqFromRows(rows: unknown[]): bigint {
     return BigInt(String(first.seq))
 }
 
-function coerceDraftTtlMs(value: number | undefined): number {
+function coerceDraftTtlMs(value: unknown): number {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
         return DEFAULT_DRAFT_TTL_MS
     }

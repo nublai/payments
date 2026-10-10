@@ -4,7 +4,7 @@
  * Methods for checking service health, liveness, and readiness.
  */
 
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import { getChainConfig, getChainIds } from '../../config'
 import { jsonRpcRequest } from '../../lib/json-rpc'
@@ -16,7 +16,7 @@ import { jsonRpcRequest } from '../../lib/json-rpc'
  * @param _ctx - RPC context
  * @returns "ok" string
  */
-export async function handleHealth(_params: JsonRpcParams | undefined, _ctx: RpcContext): Promise<string> {
+export async function handleHealth(_params: unknown, _ctx: RpcContext): Promise<string> {
     return 'ok'
 }
 
@@ -30,7 +30,7 @@ export async function handleHealth(_params: JsonRpcParams | undefined, _ctx: Rpc
  * @param _ctx - RPC context
  * @returns true boolean
  */
-export async function handleLive(_params: JsonRpcParams | undefined, _ctx: RpcContext): Promise<boolean> {
+export async function handleLive(_params: unknown, _ctx: RpcContext): Promise<boolean> {
     return true
 }
 
@@ -47,7 +47,7 @@ export async function handleLive(_params: JsonRpcParams | undefined, _ctx: RpcCo
  * @param _ctx - RPC context
  * @returns true boolean if ready, throws error otherwise
  */
-export async function handleReady(_params: JsonRpcParams | undefined, _ctx: RpcContext): Promise<boolean> {
+export async function handleReady(_params: unknown, _ctx: RpcContext): Promise<boolean> {
     const env = _ctx.env as Env
     const chainIds = getChainIds(env)
 

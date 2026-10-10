@@ -173,13 +173,8 @@ export function signedPaymentMaxForQuote(paymentAmount: bigint): bigint {
     return paymentAmount + feeCapMargin(paymentAmount)
 }
 
-type QuotePaymentAmount = string | number | bigint | null | undefined
-
-/** EIP-712 / quote wire cell: JSON scalars plus bigint after revive. */
-type IntentField = QuotePaymentAmount | boolean
-
 export function parseQuotePaymentAmount(
-    value: QuotePaymentAmount,
+    value: unknown,
 ): { ok: true; amount: bigint } | { ok: false; reason: 'missing' | 'invalid' } {
     if (value === undefined || value === null || value === '') return { ok: false, reason: 'missing' }
 
@@ -218,7 +213,7 @@ export function firstQuotePaymentAmount(prepared: {
  * quotes sign cap 0.
  */
 export function resolveSignedFeeCap(input: {
-    paymentAmount: QuotePaymentAmount
+    paymentAmount: unknown
     ceiling: bigint
     zeroFee: boolean
 }): bigint {
@@ -245,7 +240,7 @@ export function resolveSignedFeeCap(input: {
     return cap
 }
 
-function readUint(value: IntentField, label: string): bigint {
+function readUint(value: unknown, label: string): bigint {
     if (typeof value === 'bigint') return value
 
     if (typeof value === 'number' && Number.isInteger(value)) return BigInt(value)
@@ -261,7 +256,7 @@ function readUint(value: IntentField, label: string): bigint {
     refuse(`missing ${label}`)
 }
 
-function readAddress(value: IntentField, label: string): Address {
+function readAddress(value: unknown, label: string): Address {
     if (typeof value !== 'string') refuse(`missing ${label}`)
 
     try {
@@ -271,13 +266,13 @@ function readAddress(value: IntentField, label: string): Address {
     }
 }
 
-function readHex(value: IntentField, label: string): Hex {
+function readHex(value: unknown, label: string): Hex {
     if (typeof value !== 'string' || !value.startsWith('0x')) refuse(`invalid ${label}`)
 
     return value.toLowerCase() as Hex
 }
 
-function readHexList(value: IntentField | IntentField[], label: string): Hex[] {
+function readHexList(value: unknown, label: string): Hex[] {
     if (value === undefined || value === null) return []
 
     if (!Array.isArray(value)) refuse(`invalid ${label}`)
@@ -291,19 +286,14 @@ function sameHexList(actual: readonly Hex[], expected: readonly Hex[]): boolean 
     return actual.every((item, index) => item.toLowerCase() === expected[index]?.toLowerCase())
 }
 
-function readCalls(
-    value:
-        | Array<{ to?: IntentField; value?: IntentField; data?: IntentField }>
-        | IntentField,
-    label: string,
-): NormalizedCall[] {
+function readCalls(value: unknown, label: string): NormalizedCall[] {
     if (!Array.isArray(value)) refuse(`missing ${label}`)
 
     return value.map((item, index) => {
         if (item === null || typeof item !== 'object') refuse(`invalid ${label}[${index}]`)
 
         // SAFETY: item is a non-null object; only to/value/data are read, each through a typed parser.
-        const call = item as { to?: IntentField; value?: IntentField; data?: IntentField }
+        const call = item as { to?: unknown; value?: unknown; data?: unknown }
 
         return {
             to: readAddress(call.to, `${label}[${index}].to`),
@@ -332,18 +322,18 @@ function parseTypedIntent(prepared: PrepareCallsResponse): NormalizedIntent {
 
     // SAFETY: message is a non-null object; each Intent field is parsed below before use.
     const record = message as {
-        multichain?: IntentField
-        eoa?: QuotePaymentAmount
-        calls?: Array<{ to?: IntentField; value?: IntentField; data?: IntentField }> | IntentField
-        nonce?: IntentField
-        payer?: IntentField
-        paymentToken?: IntentField
-        paymentMaxAmount?: IntentField
-        combinedGas?: IntentField
-        encodedPreCalls?: IntentField | IntentField[]
-        encodedFundTransfers?: IntentField | IntentField[]
-        settler?: IntentField
-        expiry?: IntentField
+        multichain?: unknown
+        eoa?: unknown
+        calls?: unknown
+        nonce?: unknown
+        payer?: unknown
+        paymentToken?: unknown
+        paymentMaxAmount?: unknown
+        combinedGas?: unknown
+        encodedPreCalls?: unknown
+        encodedFundTransfers?: unknown
+        settler?: unknown
+        expiry?: unknown
     }
 
     if (prepared.typedData.primaryType !== 'Intent') refuse('typed data primary type does not match')
@@ -366,7 +356,7 @@ function parseTypedIntent(prepared: PrepareCallsResponse): NormalizedIntent {
     }
 }
 
-function optionalAddress(value: QuotePaymentAmount, fallback: Address): Address {
+function optionalAddress(value: unknown, fallback: Address): Address {
     if (value === undefined || value === null || value === '') return fallback
 
     return readAddress(value, 'quote address')
@@ -377,18 +367,18 @@ function parseQuoteIntent(intent: unknown): NormalizedIntent & { settlerContext:
 
     // SAFETY: intent is a non-null object; each quote field is parsed below before use.
     const record = intent as {
-        eoa?: QuotePaymentAmount
-        calls?: Array<{ to?: QuotePaymentAmount; value?: QuotePaymentAmount; data?: QuotePaymentAmount }> | QuotePaymentAmount
-        nonce?: QuotePaymentAmount
-        payer?: QuotePaymentAmount
-        paymentToken?: QuotePaymentAmount
-        paymentMaxAmount?: QuotePaymentAmount
-        combinedGas?: QuotePaymentAmount
-        encodedPreCalls?: QuotePaymentAmount | QuotePaymentAmount[]
-        encodedFundTransfers?: QuotePaymentAmount | QuotePaymentAmount[]
-        settler?: QuotePaymentAmount
-        settlerContext?: QuotePaymentAmount
-        expiry?: QuotePaymentAmount
+        eoa?: unknown
+        calls?: unknown
+        nonce?: unknown
+        payer?: unknown
+        paymentToken?: unknown
+        paymentMaxAmount?: unknown
+        combinedGas?: unknown
+        encodedPreCalls?: unknown
+        encodedFundTransfers?: unknown
+        settler?: unknown
+        settlerContext?: unknown
+        expiry?: unknown
     }
 
     return {
@@ -590,7 +580,7 @@ export function bindPreparedCalls(
         }
 
         const parsedPayment = parseQuotePaymentAmount(
-            (quote as { paymentAmount?: QuotePaymentAmount }).paymentAmount,
+            (quote as { paymentAmount?: unknown }).paymentAmount,
         )
 
         if (!parsedPayment.ok) {

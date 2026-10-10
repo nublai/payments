@@ -1,4 +1,4 @@
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type {
     AuthorizeKeyResponse,
@@ -50,7 +50,7 @@ export type {
  * wallet_prepareUpgradeAccount - Prepare an EOA for upgrade to EIP-7702 smart account.
  */
 export async function handlePrepareUpgradeAccount(
-    params: JsonRpcParams | PrepareUpgradeParams | undefined,
+    params: unknown,
     ctx: RpcContext,
 ): Promise<PrepareUpgradeResult> {
     const env = ctx.env as Env

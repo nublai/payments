@@ -1,4 +1,4 @@
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type {
     GetCallsHistoryParams,
@@ -104,7 +104,7 @@ async function ensureCurrentEntry(
  * wallet_getCallsHistory - Returns paginated history of call bundles for an EOA address
  */
 export async function handleGetCallsHistory(
-    params: JsonRpcParams | GetCallsHistoryParams | undefined,
+    params: unknown,
     ctx: RpcContext,
 ): Promise<GetCallsHistoryResult> {
     const env = ctx.env as Env

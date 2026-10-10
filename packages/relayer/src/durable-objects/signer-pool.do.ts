@@ -48,7 +48,7 @@ import {
     paidUpgradeReceiptOutcome,
 } from '../rpc/methods/shared/paid-upgrade'
 
-function parseTxHash(value: string | undefined): Hex | undefined {
+function parseTxHash(value: unknown): Hex | undefined {
     if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return undefined
 
     return value as Hex
@@ -63,7 +63,7 @@ function isTransactionMissing(
     return name === 'TransactionNotFoundError' || name === 'TransactionReceiptNotFoundError'
 }
 
-function parseGasUnits(value: string | undefined): number | undefined {
+function parseGasUnits(value: unknown): number | undefined {
     if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) return undefined
     const parsed = Number(value)
 
@@ -770,13 +770,13 @@ export class SignerPoolDO extends DurableObject<Env> {
             .toArray()[0]
     }
 
-    private receiptNonce(value: number | undefined): number | null {
+    private receiptNonce(value: unknown): number | null {
         if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
 
         return value
     }
 
-    private receiptSigner(value: string | undefined): string | null {
+    private receiptSigner(value: unknown): string | null {
         if (typeof value !== 'string') return null
         const trimmed = value.trim()
 

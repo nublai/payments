@@ -1,6 +1,6 @@
 import { getAddress, type Hex } from 'viem'
 
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import { RpcError, INVALID_PARAMS, INVALID_SIGNATURE, NONCE_ERROR, RATE_LIMITED } from '../errors'
 import { requireParam, unwrapParams, validateAddress } from '../../lib/rpc-utils'
@@ -16,7 +16,7 @@ import { requireOidcCaller } from './issueBindNonce'
 import type { BindAccountParams } from '../schema/bindAccount'
 
 export async function bindAccount(
-    params: JsonRpcParams | BindAccountParams | undefined,
+    params: unknown,
     env: Env,
     nowSeconds: number,
     ip?: string,
@@ -128,7 +128,7 @@ export async function bindAccount(
     return { address, issuer: caller.issuer, sub: caller.subject }
 }
 
-export async function handleBindAccount(params: JsonRpcParams | BindAccountParams | undefined, ctx: RpcContext) {
+export async function handleBindAccount(params: unknown, ctx: RpcContext) {
     return bindAccount(
         params,
         ctx.env as Env,

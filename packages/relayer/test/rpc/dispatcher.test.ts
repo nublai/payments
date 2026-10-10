@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { dispatch } from '../../src/rpc/dispatcher'
-import type { JsonRpcParams, MethodRegistry, RpcContext } from '../../src/rpc/types'
+import type { MethodRegistry, RpcContext } from '../../src/rpc/types'
 import { requireJsonRpcBatch } from '../helpers/rpc'
 import {
     PARSE_ERROR,
@@ -20,7 +20,7 @@ const mockCtx: RpcContext = {
 }
 
 // Test method handlers
-const echoHandler = vi.fn(async (params: JsonRpcParams | undefined) => params)
+const echoHandler = vi.fn(async (params: unknown) => params)
 
 const errorHandler = vi.fn(async () => {
     throw new RpcError(-32000, 'Test error', { detail: 'test' })
@@ -56,7 +56,7 @@ describe('JSON-RPC Dispatcher', () => {
 
         it('should return result on success', async () => {
             const methods: MethodRegistry = {
-                test_add: async (params: JsonRpcParams | undefined) => {
+                test_add: async (params: unknown) => {
                     if (!Array.isArray(params) || params.length !== 2) {
                         throw new Error('expected two numeric params')
                     }
@@ -252,7 +252,7 @@ describe('JSON-RPC Dispatcher', () => {
         })
 
         it('should handle request with object params (named)', async () => {
-            const namedHandler = vi.fn(async (params: JsonRpcParams | undefined) => params)
+            const namedHandler = vi.fn(async (params: unknown) => params)
 
             const methods: MethodRegistry = {
                 test_named: namedHandler,
@@ -279,7 +279,7 @@ describe('JSON-RPC Dispatcher', () => {
     describe('batch requests', () => {
         it('should process array of requests', async () => {
             const methods: MethodRegistry = {
-                test_echo: async (params: JsonRpcParams | undefined) => params,
+                test_echo: async (params: unknown) => params,
             }
 
             const requests = [
@@ -295,7 +295,7 @@ describe('JSON-RPC Dispatcher', () => {
 
         it('should return array of responses in same order', async () => {
             const methods: MethodRegistry = {
-                test_echo: async (params: JsonRpcParams | undefined) => params,
+                test_echo: async (params: unknown) => params,
             }
 
             const requests = [
@@ -316,7 +316,7 @@ describe('JSON-RPC Dispatcher', () => {
 
         it('should handle mixed success/error in batch', async () => {
             const methods: MethodRegistry = {
-                test_echo: async (params: JsonRpcParams | undefined) => params,
+                test_echo: async (params: unknown) => params,
                 test_error: async () => {
                     throw new RpcError(-32000, 'Error')
                 },
@@ -394,7 +394,7 @@ describe('JSON-RPC Dispatcher', () => {
 
         it('should filter out notifications from batch response', async () => {
             const methods: MethodRegistry = {
-                test_echo: async (params: JsonRpcParams | undefined) => params,
+                test_echo: async (params: unknown) => params,
             }
 
             const requests = [

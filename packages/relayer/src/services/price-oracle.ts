@@ -145,7 +145,7 @@ function parseDecimalToScaledBigInt(value: string, scale: number = 18): bigint |
     return rounded * sign
 }
 
-function normalizeUsdPrice(value: number | string | undefined): UsdPrice | null {
+function normalizeUsdPrice(value: unknown): UsdPrice | null {
     if (typeof value === 'number' && Number.isFinite(value)) {
         const parsed = parseDecimalToScaledBigInt(value.toString(), 18)
 

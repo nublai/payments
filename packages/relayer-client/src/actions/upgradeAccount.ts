@@ -117,7 +117,7 @@ function normalizeTxHash(value: unknown): Hex | undefined {
     return `0x${withoutPrefix}` as Hex
 }
 
-function isDelegationConfirmationRace(error: unknown): error is Error {
+function isDelegationConfirmationRace(error: unknown): boolean {
     if (!(error instanceof Error)) return false
 
     return error.message.includes('Delegation not confirmed after transaction mined')

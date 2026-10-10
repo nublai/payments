@@ -1,5 +1,5 @@
 import { getAddress, type Address, type Hex } from 'viem'
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { CreateAccountTransaction, SendResult } from '../../types/pool'
 import type { UpgradeAccountParams, UpgradeAccountResult } from '../schema/upgradeAccount'
@@ -37,7 +37,7 @@ export { waitForDelegationCode }
  * wallet_upgradeAccount - Execute the EOA upgrade after user signing.
  */
 export async function handleUpgradeAccount(
-    params: JsonRpcParams | UpgradeAccountParams | undefined,
+    params: unknown,
     ctx: RpcContext,
 ): Promise<UpgradeAccountResult> {
     const env = ctx.env as Env

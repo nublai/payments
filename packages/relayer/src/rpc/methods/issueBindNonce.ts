@@ -1,6 +1,6 @@
 import { getAddress, type Address } from 'viem'
 
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import { RpcError, INVALID_PARAMS, NONCE_ERROR, RATE_LIMITED } from '../errors'
 import { requireParam, unwrapParams, validateAddress } from '../../lib/rpc-utils'
@@ -27,7 +27,7 @@ export function requireOidcCaller(): { issuer: string; subject: string } {
 }
 
 export async function issueBindNonce(
-    params: JsonRpcParams | IssueBindNonceParams | undefined,
+    params: unknown,
     env: Env,
     nowSeconds: number,
     ip?: string,
@@ -106,7 +106,7 @@ export async function issueBindNonce(
     }
 }
 
-export async function handleIssueBindNonce(params: JsonRpcParams | IssueBindNonceParams | undefined, ctx: RpcContext) {
+export async function handleIssueBindNonce(params: unknown, ctx: RpcContext) {
     return issueBindNonce(
         params,
         ctx.env as Env,

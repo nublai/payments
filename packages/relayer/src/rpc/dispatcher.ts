@@ -9,7 +9,6 @@ import type {
     JsonRpcRequest,
     JsonRpcResponse,
     JsonRpcErrorObject,
-    JsonRpcParams,
     MethodRegistry,
     RpcContext,
 } from './types'
@@ -125,14 +124,14 @@ async function handleBatch(
     const parsedRequests: {
         id: string | number | null
         method: string
-        params: JsonRpcParams | undefined
+        params: unknown
     }[] = []
 
     for (const req of requests) {
         if (typeof req !== 'object' || req === null) continue
 
         // SAFETY: req is a non-null object; only id/method/params are read, matching JSON-RPC request keys.
-        const obj = req as { id?: unknown; method?: unknown; params?: JsonRpcParams }
+        const obj = req as { id?: unknown; method?: unknown; params?: unknown }
 
         parsedRequests.push({
             id: obj.id as string | number | null,

@@ -26,7 +26,7 @@ export type SessionStartResult = {
     untilStopped?: Promise<void>
 }
 
-function isErrnoCode(error: unknown, code: string): error is { code: string } {
+function isErrnoCode(error: unknown, code: string): boolean {
     return (
         typeof error === 'object' &&
         error !== null &&

@@ -1044,7 +1044,7 @@ function partialRotationError(chain: ChainName, failed: ChainName[]): SessionRot
     )
 }
 
-function isBundleWaitTimeout(error: unknown): error is Error {
+function isBundleWaitTimeout(error: unknown): boolean {
     return error instanceof Error && error.message.includes('Timeout waiting for bundle')
 }
 

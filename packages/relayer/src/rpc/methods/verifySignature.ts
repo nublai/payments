@@ -7,7 +7,7 @@
 
 import { type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
 import type { VerifySignatureParams, VerifySignatureResult } from '../schema/verifySignature'
@@ -45,7 +45,7 @@ export type {
  * 6. Response Construction - Return valid + proof or invalid
  */
 export async function handleVerifySignature(
-    params: JsonRpcParams | VerifySignatureParams | undefined,
+    params: unknown,
     ctx: RpcContext,
 ): Promise<VerifySignatureResult> {
     const env = ctx.env as Env

@@ -1,5 +1,5 @@
 import { createPublicClient, http, type Address, type SignedAuthorization } from 'viem'
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type {
     IntentStruct,
@@ -230,7 +230,7 @@ async function bindPaidUpgrade(args: {
  * wallet_sendPreparedCalls - Submit signed calls for execution.
  */
 export async function handleSendPreparedCalls(
-    params: JsonRpcParams | SendPreparedCallsParams | undefined,
+    params: unknown,
     ctx: RpcContext,
 ): Promise<SendPreparedCallsResult> {
     const env = ctx.env as Env
@@ -571,7 +571,7 @@ export async function handleSendPreparedCalls(
  * Handle batch wallet_sendPreparedCalls optimization.
  */
 export async function handleBatchSendPreparedCalls(
-    requests: Array<{ id: string | number | null; params: JsonRpcParams | SendPreparedCallsParams | undefined }>,
+    requests: Array<{ id: string | number | null; params: unknown }>,
     ctx: RpcContext,
 ): Promise<
     Array<{ id: string | number | null; result?: SendPreparedCallsResult; error?: unknown }>

@@ -10,7 +10,7 @@ export function isErrnoNotFound(error: unknown): error is { code: 'ENOENT' } {
     )
 }
 
-function isErrnoCode(error: unknown, code: string): error is { code: string } {
+function isErrnoCode(error: unknown, code: string): boolean {
     return (
         typeof error === 'object' &&
         error !== null &&

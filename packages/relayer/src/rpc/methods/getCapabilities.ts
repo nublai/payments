@@ -1,6 +1,6 @@
 import type { Address } from 'viem'
 import { formatEther } from 'viem'
-import type { JsonRpcParams, RpcContext } from '../types'
+import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { GetCapabilitiesParams, GetCapabilitiesResult } from '../schema/getCapabilities'
 import { getChainConfig, getChainIds } from '../../config'
@@ -37,7 +37,7 @@ async function fetchSignerBalance(rpcUrl: string, address: string): Promise<stri
  * wallet_getCapabilities - Returns relay capabilities and configuration per chain.
  */
 export async function handleGetCapabilities(
-    params: JsonRpcParams | GetCapabilitiesParams | undefined,
+    params: unknown,
     ctx: RpcContext,
 ): Promise<GetCapabilitiesResult> {
     const env = ctx.env as Env

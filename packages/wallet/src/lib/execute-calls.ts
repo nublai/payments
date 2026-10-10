@@ -54,7 +54,7 @@ export const DEFINITIVE_PRE_BROADCAST_REFUSAL_CODES: ReadonlySet<number> = new S
     -32012,
 ])
 
-export function isDefinitivePreBroadcastRefusal(error: unknown): error is { code: number } {
+export function isDefinitivePreBroadcastRefusal(error: unknown): boolean {
     const code = jsonRpcCode(error)
 
     return code !== undefined && DEFINITIVE_PRE_BROADCAST_REFUSAL_CODES.has(code)

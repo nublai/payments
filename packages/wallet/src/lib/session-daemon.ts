@@ -130,7 +130,7 @@ export type RunningSessionDaemon = {
     untilStopped: Promise<void>
 }
 
-function isErrnoCode(error: unknown, code: string): error is { code: string } {
+function isErrnoCode(error: unknown, code: string): boolean {
     return isRecord(error) && 'code' in error && error.code === code
 }
 
