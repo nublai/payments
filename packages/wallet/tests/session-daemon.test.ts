@@ -341,6 +341,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         }
 
         const permitSignature = await account.signTypedData(permit)
+
         const encodedPermit = encodeTypedDataBigInt({
             ...correct,
             domain: permit.domain,
@@ -454,10 +455,10 @@ test('daemon drops oversized payload without newline', async () => {
     await daemon.stop()
 })
 
-async function sendSignOverSocket(
+async function sendSignOverSocket<T>(
     socketPath: string,
     sessionName: string,
-    encodedTypedData: unknown,
+    encodedTypedData: T,
 ): Promise<DaemonResponse> {
     const socket = net.createConnection(socketPath)
     let buffer = ''
