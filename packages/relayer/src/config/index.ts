@@ -33,7 +33,7 @@ export type ValidateEnvDeps = {
     hasDeployment?: typeof hasDeployment
 }
 
-export type ValidateEnvResult = { valid: boolean; missing: string[] }
+type ValidateEnvResult = { valid: boolean; missing: string[] }
 
 /**
  * Validate that all required environment variables are set
@@ -121,7 +121,7 @@ function isPaidFeeRecipient(value: string | undefined): boolean {
     return getAddress(text) !== zeroAddress
 }
 
-export type ValidatePoolConfigResult = { valid: boolean; errors: string[] }
+type ValidatePoolConfigResult = { valid: boolean; errors: string[] }
 
 /**
  * Validate pool-specific configuration

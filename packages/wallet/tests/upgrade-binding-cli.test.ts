@@ -667,7 +667,7 @@ class MockRelayer {
 
 function runCli(
     args: string[],
-    env: DevEnv | Record<string, string>,
+    env: Record<string, string>,
     timeoutMs = 90_000,
     phrase?: string,
 ): Promise<{ status: number; stdout: string; stderr: string }> {

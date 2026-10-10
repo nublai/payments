@@ -228,6 +228,8 @@ describe('2D Nonce Calculation', () => {
     })
 })
 
+type DriftDetection = { acquiredSeq: bigint; synced: boolean }
+
 /**
  * Simulates the drift detection logic from IntentNonceDO.acquireNonceSynced
  *
@@ -235,8 +237,6 @@ describe('2D Nonce Calculation', () => {
  * @param onChainSeq - On-chain seq value
  * @returns The seq to use and whether sync occurred
  */
-type DriftDetection = { acquiredSeq: bigint; synced: boolean }
-
 function simulateDriftDetection(
     localSeq: bigint,
     onChainSeq: bigint,

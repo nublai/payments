@@ -18,7 +18,7 @@ export const setDlogInfoLogger = (logger: DlogLogger): void => {
     customInfoLogger = logger
 }
 
-export type DlogLoggers = {
+type DlogLoggers = {
     error: DlogLogger
     warn: DlogLogger
     info: DlogLogger

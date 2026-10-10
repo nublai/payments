@@ -19,7 +19,7 @@ export const DEFAULT_ASSET_MAPPING = {
     weth: 'ethereum',
     usdc: 'usd-coin',
     usdt: 'tether',
-} as const satisfies AssetMapping
+} satisfies AssetMapping
 
 export const DEFAULT_RATE_TTL_MS = 300_000
 
@@ -35,4 +35,4 @@ export const DEFAULT_FALLBACK_USD_PRICES = {
     pol: '0.1',
     usdc: '1',
     usdt: '1',
-} as const satisfies Record<'pol' | 'usdc' | 'usdt', string>
+} satisfies Record<'pol' | 'usdc' | 'usdt', string>
