@@ -4,10 +4,60 @@
 
 import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest'
 import { handleGetCapabilities } from '../../src/rpc/methods/getCapabilities'
-import type { RpcContext } from '../../src/rpc/types'
+import type { JsonRpcRequest, RpcContext } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
 import { installDeployment } from '../deployment-fixture'
 import { signerPoolNamespace, testEnv } from '../helpers/env'
+import { jsonResponse, parseJson } from '../helpers/rpc'
+
+const RPC_URL = 'https://mainnet.base.org'
+
+function requestUrl(input: Parameters<typeof fetch>[0]): string {
+    if (input instanceof Request) return input.url
+
+    if (input instanceof URL) return input.href
+
+    return input
+}
+
+const unexpectedFetches: string[] = []
+
+function recordUnexpected(reason: string): never {
+    unexpectedFetches.push(reason)
+    throw new Error(reason)
+}
+
+const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+    const url = requestUrl(input)
+
+    if (url !== RPC_URL) {
+        recordUnexpected(`unexpected fetch URL: ${url}`)
+    }
+
+    const httpMethod = init?.method ?? (input instanceof Request ? input.method : 'GET')
+
+    if (httpMethod !== 'POST') {
+        recordUnexpected(`unexpected fetch HTTP method: ${httpMethod}`)
+    }
+
+    const body = init?.body ?? (input instanceof Request ? await input.text() : undefined)
+
+    if (!body) {
+        recordUnexpected('unexpected fetch: missing JSON-RPC body')
+    }
+
+    const rpc = parseJson<JsonRpcRequest>(String(body))
+
+    if (rpc.method !== 'eth_getBalance') {
+        recordUnexpected(`unexpected JSON-RPC method: ${rpc.method}`)
+    }
+
+    return jsonResponse({
+        jsonrpc: '2.0',
+        id: rpc.id ?? 1,
+        error: { code: -32602, message: 'Invalid params' },
+    })
+})
 
 // Installed into the prod/8453 deployments JSON below, and kept in env.
 const ADDRESSES_8453 = {
@@ -23,7 +73,7 @@ const ADDRESSES_8453 = {
 
 function createMockEnv(): Env {
     return testEnv({
-        RPC_URL: 'https://mainnet.base.org',
+        RPC_URL,
         CHAIN_IDS: '8453',
         RELAYER_COUNT: '3',
         MAX_PENDING_PER_SIGNER: '16',
@@ -83,9 +133,18 @@ let restoreDeployment: () => void
 
 beforeAll(() => {
     restoreDeployment = installDeployment('prod', 8453, ADDRESSES_8453)
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock)
 })
 
-afterAll(() => restoreDeployment())
+afterAll(() => {
+    try {
+        expect(fetchMock).toHaveBeenCalled()
+        expect(unexpectedFetches).toEqual([])
+    } finally {
+        vi.restoreAllMocks()
+        restoreDeployment()
+    }
+})
 
 describe('wallet_getCapabilities', () => {
     it('should return contracts and fees per chain (spec-compliant)', async () => {
