@@ -84,7 +84,7 @@ test('protocol rejects invalid request and response payloads', () => {
     ).toThrow('Unknown daemon response error code')
 })
 
-test('phrase-confirmed path still parses and decodes Permit typed data', () => {
+test('protocol parses and decodes non-Intent (Permit) typed data; the daemon decides whether to sign', () => {
     const parsed = parseDaemonRequest(
         JSON.stringify({
             id: 'permit-1',

@@ -187,7 +187,7 @@ export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson
 export function decodeTypedDataBigInt(value: ParsedTypedDataRecord): DaemonTypedData {
     reviveTypedDataInPlace(value)
 
-    // SAFETY: parseDaemonRequest only proves typedData is a record; this function revives `$bigint:` tags and does not check primaryType, domain, types, or message. Swap sessions go through reviewSwapSessionSignature and phrase-less through assessPhraseLessIntent before signTypedData; a non-swap session with phraseConfirmed signs as-is. viem 2.45.1 local signTypedData throws on an invalid verifyingContract, empty or unknown types, a bad address or uint in the message, and missing message fields; it still signs an empty domain, extra domain keys, a non-string name, a non-numeric chainId string, extra message fields (ignored), and a well-formed types table that is not the Intent schema.
+    // SAFETY: parseDaemonRequest only proves typedData is a record; this function revives `$bigint:` tags. The swap path reviews the payload. The phrase-less path allows only Orchestrator intents. The phrase-confirmed path refuses anything that is not primaryType 'Intent' with typesMatch, refuses a custom EIP712Domain, and checks domain.chainId (number or bigint, in the env's chains) and verifyingContract against that chain's Orchestrator before signTypedData.
     return value as DaemonTypedData
 }
 
