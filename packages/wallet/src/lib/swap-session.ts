@@ -253,11 +253,13 @@ export function canExecuteChangeCalls(input: {
     }))
 }
 
+type SwapSessionInstall = { calls: Call[]; entryPoints: RelayEntryPoint[]; spendTokens: Address[] }
+
 export function swapSessionInstallCalls(input: {
     account: Address
     keyHash: Hex
     chainId: number
-}): { calls: Call[]; entryPoints: RelayEntryPoint[]; spendTokens: Address[] } {
+}): SwapSessionInstall {
     const entryPoints = relayEntryPoints(input.chainId)
 
     if (entryPoints.length === 0) {

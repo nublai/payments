@@ -299,7 +299,9 @@ function functionNameFor(selector: string, contract: RelayContract | undefined):
     return contract?.selectors[selector] ?? FORBIDDEN_SELECTORS[selector] ?? selector
 }
 
-function decodeApprove(data: Hex): { spender: Address; amount: bigint } {
+type DecodedApprove = { spender: Address; amount: bigint }
+
+function decodeApprove(data: Hex): DecodedApprove {
     try {
         const decoded = decodeFunctionData({ abi: erc20Abi, data })
 
@@ -404,7 +406,9 @@ function decodeMulticall(data: Hex, user: Address, chainId: number): PartyCall {
     }
 }
 
-function decodeDepositNative(data: Hex, user: Address): { depositor: Address; id: Hex } {
+type DecodedDepositNative = { depositor: Address; id: Hex }
+
+function decodeDepositNative(data: Hex, user: Address): DecodedDepositNative {
     if (data.length !== 2 + 8 + 64 * 2) {
         throw new RelayQuoteRejected('relay.link quote depositNative calldata is incomplete.')
     }
@@ -423,12 +427,14 @@ function decodeDepositNative(data: Hex, user: Address): { depositor: Address; id
     }
 }
 
+type DecodedDepositErc20 = { depositor: Address; token: Address; amount: bigint; id: Hex }
+
 function decodeDepositErc20(
     data: Hex,
     user: Address,
     originCurrency: Address,
     inputIsNative: boolean,
-): { depositor: Address; token: Address; amount: bigint; id: Hex } {
+): DecodedDepositErc20 {
     if (data.length !== 2 + 8 + 64 * 4) {
         throw new RelayQuoteRejected('relay.link quote depositErc20 calldata is incomplete.')
     }
@@ -460,13 +466,18 @@ function decodeDepositErc20(
     return { depositor, token, amount, id }
 }
 
+type DecodedTransferAndMulticall = {
+    pulls: { token: Address; amount: bigint }[]
+    party: PartyCall
+}
+
 function decodeTransferAndMulticall(
     data: Hex,
     user: Address,
     originCurrency: Address,
     inputIsNative: boolean,
     chainId: number,
-): { pulls: { token: Address; amount: bigint }[]; party: PartyCall } {
+): DecodedTransferAndMulticall {
     try {
         const decoded = decodeFunctionData({ abi: transferAndMulticallAbi, data })
         const [tokens, amounts, calls, refundTo, nftRecipient] = decoded.args
@@ -906,14 +917,16 @@ function selectorPrefix(data: Hex): string {
     return data.length >= 10 ? data.slice(0, 10).toLowerCase() : '0x'
 }
 
+type IntentOrigin = {
+    inputIsNative: boolean
+    originCurrency: Address
+}
+
 /**
  * Origin for a session signature that has calls but no relay quote.
  * Approve and ERC-20 deposit name the input token. A native multicall does not.
  */
-function intentOrigin(calls: readonly { to: Address; data: Hex }[]): {
-    inputIsNative: boolean
-    originCurrency: Address
-} {
+function intentOrigin(calls: readonly { to: Address; data: Hex }[]): IntentOrigin {
     for (const call of calls) {
         if (selectorPrefix(call.data) === APPROVE_SELECTOR) {
             return { inputIsNative: false, originCurrency: getAddress(call.to) }
@@ -998,7 +1011,9 @@ export function reviewRelayIntentCalls(input: {
     )
 }
 
-function partySuffix(data: Hex, selector: string): { suffix: string; inners: string[] } {
+type PartySuffix = { suffix: string; inners: string[] }
+
+function partySuffix(data: Hex, selector: string): PartySuffix {
     try {
         if (selector === APPROVE_SELECTOR) return { suffix: '', inners: [] }
 

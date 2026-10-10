@@ -379,8 +379,7 @@ export function relayStandingTargets(chainId: number): Address[] {
     return relayAllowanceSpenders(chainId).map((target) => getAddress(target))
 }
 
-/** Readers that report no standing rights. Unit tests use this so they do not hit a chain. */
-export function noStandingRightsReads(): {
+type NoStandingRightsReads = {
     readPermit2Allowance: StandingRightsReaders['readPermit2Allowance']
     readErc721ApprovedForAll: StandingRightsReaders['readErc721ApprovedForAll']
     readErc721GetApproved: StandingRightsReaders['readErc721GetApproved']
@@ -388,7 +387,10 @@ export function noStandingRightsReads(): {
     readErc4626ShareBalance: StandingRightsReaders['readErc4626ShareBalance']
     readErc4626ShareAllowance: StandingRightsReaders['readErc4626ShareAllowance']
     readApprovedSignatureCheckers: StandingRightsReaders['readApprovedSignatureCheckers']
-} {
+}
+
+/** Readers that report no standing rights. Unit tests use this so they do not hit a chain. */
+export function noStandingRightsReads(): NoStandingRightsReads {
     return {
         readPermit2Allowance: async () => ({ amount: 0n, expiration: 0n, nonce: 0n }),
         readErc721ApprovedForAll: async () => false,

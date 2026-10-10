@@ -28,11 +28,17 @@ export function assertAccountUpgradeFee(maxFeePerGas: bigint, maxPriorityFeePerG
     }
 }
 
+type AccountUpgradeGas = {
+    gas: bigint
+    maxFeePerGas: bigint
+    maxPriorityFeePerGas: bigint
+}
+
 export function assertAccountUpgradeGas(input: {
     gas: bigint
     maxFeePerGas: bigint
     maxPriorityFeePerGas: bigint
-}): { gas: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint } {
+}): AccountUpgradeGas {
     assertAccountUpgradeFee(input.maxFeePerGas, input.maxPriorityFeePerGas)
 
     if (input.gas <= 0n || input.gas > ACCOUNT_UPGRADE_GAS_LIMIT) {

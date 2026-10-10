@@ -171,10 +171,12 @@ function readStdinLines(): string[] {
         .map((l) => l.replace(/\r$/, ''))
 }
 
+type LoginTokenAndPassword = { tokenHex?: string; password?: string }
+
 function readLoginTokenAndPassword(
     tokenStdin: boolean,
     passwordStdin: boolean,
-): { tokenHex?: string; password?: string } {
+): LoginTokenAndPassword {
     if (!tokenStdin) return {}
 
     if (!passwordStdin) return { tokenHex: readSingleValueFromStdin('token') }

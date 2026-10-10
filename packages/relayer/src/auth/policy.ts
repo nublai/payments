@@ -53,10 +53,12 @@ export function resolveAuthProtectedMethods(value: string | undefined): Set<stri
     return methods
 }
 
+type AuthRequirement = { requiresAuth: boolean; id: JsonRpcId }
+
 export function extractAuthRequirement(
     body: unknown,
     protectedMethods: Set<string>,
-): { requiresAuth: boolean; id: JsonRpcId } {
+): AuthRequirement {
     if (Array.isArray(body)) {
         const requiresAuth = body.some(
             (item) =>

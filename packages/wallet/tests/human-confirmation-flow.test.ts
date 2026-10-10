@@ -1190,7 +1190,9 @@ function packCall(target: string, selector: string): Hex {
     return parseHex(`0x${packed.toString(16).padStart(64, '0')}`)
 }
 
-function encodeChainView(keys: ScriptedKey[]): { getKeys: Hex; spend: Hex } {
+type ChainView = { getKeys: Hex; spend: Hex }
+
+function encodeChainView(keys: ScriptedKey[]): ChainView {
     return {
         getKeys: encodeFunctionResult({
             abi: accountAbi,
@@ -1259,7 +1261,20 @@ const wildcardRelayerPermissions = [
     { type: 'call', to: ANY_TARGET, selector: ANY_FUNCTION_SELECTOR },
 ]
 
-function relayerKeys(permissions: unknown[]): Record<string, unknown[]> {
+type RelayerListedKey = {
+    hash: Hex
+    expiry: string
+    type: string
+    role: string
+    publicKey: string
+    permissions: unknown[]
+}
+
+type RelayerKeyTable = {
+    '0x7a69': RelayerListedKey[]
+}
+
+function relayerKeys(permissions: unknown[]): RelayerKeyTable {
     return {
         '0x7a69': [
             {
@@ -1278,14 +1293,14 @@ type JsonRpcStubId = string | number | null
 
 type JsonRpcStubRequest = { id?: JsonRpcStubId; method?: string; params?: unknown }
 
-type RelayerKeyTable = ReturnType<typeof relayerKeys>
-
 type JsonRpcStubResponse = {
     jsonrpc: '2.0'
     id: JsonRpcStubId
     result?: string | RelayerKeyTable | null
     error?: { code: number; message: string }
 }
+
+type JsonRpcStubPayload = JsonRpcStubResponse | JsonRpcStubResponse[]
 
 function jsonRpcReply(
     body: string,
@@ -1306,7 +1321,7 @@ async function serveJson(
         const chunks: Buffer[] = []
         req.on('data', (chunk) => chunks.push(chunk))
         req.on('end', () => {
-            let payload: unknown
+            let payload: JsonRpcStubPayload
 
             try {
                 payload = jsonRpcReply(Buffer.concat(chunks).toString('utf8'), respond)

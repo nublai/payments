@@ -22,11 +22,19 @@ interface AttemptRecord {
     status: 'pending' | 'sent' | 'confirmed' | 'failed'
 }
 
+type AttemptIdempotency = { isNew: boolean; existingTxHash?: string; status?: string }
+
+type BundleFinished = { finished: boolean; status?: string }
+
+type BundleIdByTxId = { bundleId: string | null }
+
+type ConfirmRetry = { shouldRetry: boolean; nextAttempt: number }
+
 function checkAttemptIdempotency(
     existingAttempts: Map<string, AttemptRecord>,
     escrowId: string,
     bundleId: string,
-): { isNew: boolean; existingTxHash?: string; status?: string } {
+): AttemptIdempotency {
     const existing = existingAttempts.get(escrowId)
 
     if (!existing) {
@@ -273,7 +281,7 @@ describe('BundleStatusDO', () => {
             finishedBundles = new Map()
         })
 
-        function isBundleFinished(bundleId: string): { finished: boolean; status?: string } {
+        function isBundleFinished(bundleId: string): BundleFinished {
             const bundle = finishedBundles.get(bundleId)
 
             if (!bundle) {
@@ -336,7 +344,7 @@ describe('BundleStatusDO', () => {
             bundleTransactions.set(txId, bundleId)
         }
 
-        function getBundleIdByTxId(txId: string): { bundleId: string | null } {
+        function getBundleIdByTxId(txId: string): BundleIdByTxId {
             const bundleId = bundleTransactions.get(txId)
 
             return { bundleId: bundleId ?? null }
@@ -403,7 +411,7 @@ describe('BundleStatusDO', () => {
             attempt: number
         }
 
-        function shouldRetry(job: ConfirmJob): { shouldRetry: boolean; nextAttempt: number } {
+        function shouldRetry(job: ConfirmJob): ConfirmRetry {
             if (job.attempt >= MAX_CONFIRM_ATTEMPTS) {
                 return { shouldRetry: false, nextAttempt: job.attempt }
             }

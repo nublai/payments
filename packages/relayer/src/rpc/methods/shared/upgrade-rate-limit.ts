@@ -111,6 +111,8 @@ function slidingCount(
     return total
 }
 
+type RateLimitDecision = { allowed: boolean }
+
 /**
  * Sliding window. A hit in the last second of a fixed window still counts
  * during the first second of the next one, so the quota cannot be doubled
@@ -121,7 +123,7 @@ export function peekRateLimit(
     store: Map<string, number>,
     buckets: RateBucket[],
     nowSeconds: number,
-): { allowed: boolean } {
+): RateLimitDecision {
     for (const bucket of buckets) {
         if (slidingCount(store, bucket.key, nowSeconds, bucket.windowSeconds) >= bucket.limit) {
             return { allowed: false }
@@ -135,7 +137,7 @@ export function consumeRateLimit(
     store: Map<string, number>,
     buckets: RateBucket[],
     nowSeconds: number,
-): { allowed: boolean } {
+): RateLimitDecision {
     if (!peekRateLimit(store, buckets, nowSeconds).allowed) {
         return { allowed: false }
     }

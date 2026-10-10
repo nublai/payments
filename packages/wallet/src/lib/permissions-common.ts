@@ -283,11 +283,13 @@ export function resolveLocalNameByHash(
     return localKeys.find((entry) => normalizeHexLower(entry.hash) === normalized)
 }
 
+type SelectedKey = { key: OnChainPermissionKey; local?: LocalKeyMeta }
+
 export function resolveSelectedKey(args: {
     selector: KeySelector
     keys: OnChainPermissionKey[]
     localKeys: LocalKeyMeta[]
-}): { key: OnChainPermissionKey; local?: LocalKeyMeta } {
+}): SelectedKey {
     const selector = args.selector
     const keys = args.keys
 

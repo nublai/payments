@@ -204,14 +204,16 @@ function decodeWalletSessionToken(input: { tokenHex: string; env: EnvName }) {
     }
 }
 
-function resolveProfilePaths(
-    env: EnvName,
-    profile: string,
-): {
+type ProfilePaths = {
     profileDir: string
     rootPath: string
     sessionPath: string
-} {
+}
+
+function resolveProfilePaths(
+    env: EnvName,
+    profile: string,
+): ProfilePaths {
     const profileDir = dirname(getDefaultKeystorePath(env, profile))
 
     return {

@@ -63,13 +63,15 @@ function keyHash(key: AuthorizeKey): Hex {
 
 export type UpgradeCall = { to: Address; value: bigint; data: Hex }
 
+type UpgradeExecution = { calls: UpgradeCall[]; executionData: Hex }
+
 /**
  * Calls the wallet asked to authorize. Built locally from authorizeKeys.
  */
 export function buildUpgradeExecution(
     keys: readonly AuthorizeKey[],
     accountAddress: Address,
-): { calls: UpgradeCall[]; executionData: Hex } {
+): UpgradeExecution {
     if (keys.length === 0) return { calls: [], executionData: '0x' }
 
     const calls: UpgradeCall[] = []

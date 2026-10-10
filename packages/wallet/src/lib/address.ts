@@ -91,11 +91,13 @@ function resolveChain(value?: string): ChainName {
     }
 }
 
-function resolveToken(input: { token: string; chain: ChainName }): {
+type ResolvedToken = {
     symbol?: 'USDC'
     address: Address
     decimals: number | null
-} {
+}
+
+function resolveToken(input: { token: string; chain: ChainName }): ResolvedToken {
     if (input.token.toUpperCase() === 'USDC') {
         const usdc = getUsdcTokenConfig(input.chain)
 

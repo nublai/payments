@@ -33,10 +33,12 @@ export type ValidateEnvDeps = {
     hasDeployment?: typeof hasDeployment
 }
 
+type ValidateEnvResult = { valid: boolean; missing: string[] }
+
 /**
  * Validate that all required environment variables are set
  */
-export function validateEnv(env: Env, deps: ValidateEnvDeps = {}): { valid: boolean; missing: string[] } {
+export function validateEnv(env: Env, deps: ValidateEnvDeps = {}): ValidateEnvResult {
     const addressesOf = deps.getContractAddresses ?? getContractAddresses
     const deploymentOf = deps.hasDeployment ?? hasDeployment
     const missing: string[] = []
@@ -119,10 +121,12 @@ function isPaidFeeRecipient(value: string | undefined): boolean {
     return getAddress(text) !== zeroAddress
 }
 
+type ValidatePoolConfigResult = { valid: boolean; errors: string[] }
+
 /**
  * Validate pool-specific configuration
  */
-export function validatePoolConfig(env: Env): { valid: boolean; errors: string[] } {
+export function validatePoolConfig(env: Env): ValidatePoolConfigResult {
     const errors: string[] = []
 
     const signerCount = parseInt(env.RELAYER_COUNT ?? '1', 10)

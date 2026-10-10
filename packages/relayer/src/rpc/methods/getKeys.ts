@@ -50,11 +50,13 @@ const KEY_TYPE_MAP: Record<number, KeyType> = {
 // Helpers
 // =============================================================================
 
+type PackedCanExecute = { target: Address; selector: Hex }
+
 /**
  * Decode packed canExecute value (bytes32) into target and selector
  * Format: target (upper 20 bytes) | selector (lower 4 bytes)
  */
-function decodePackedCanExecute(packed: Hex): { target: Address; selector: Hex } {
+function decodePackedCanExecute(packed: Hex): PackedCanExecute {
     const value = BigInt(packed)
     const target = `0x${(value >> 96n).toString(16).padStart(40, '0')}` as Address
     const selector = `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex

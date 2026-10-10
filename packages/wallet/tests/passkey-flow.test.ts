@@ -73,7 +73,9 @@ function clientDataJSON(digest: Hex): Buffer {
     )
 }
 
-function parseDerSignature(der: Buffer): { r: bigint; s: bigint } {
+type DerSignature = { r: bigint; s: bigint }
+
+function parseDerSignature(der: Buffer): DerSignature {
     let i = 0
 
     if (der[i++] !== 0x30) throw new Error('bad DER signature')
@@ -95,7 +97,7 @@ function signWebAuthn(
     privateKey: KeyObject,
     authData: Buffer,
     clientData: Buffer,
-): { r: bigint; s: bigint } {
+): DerSignature {
     const clientHash = createHash('sha256').update(clientData).digest()
     const preimage = Buffer.concat([authData, clientHash])
     const signer = createSign('SHA256')
@@ -105,7 +107,9 @@ function signWebAuthn(
     return parseDerSignature(signer.sign(privateKey))
 }
 
-function generateP256(): { privateKey: KeyObject; publicKey: Hex } {
+type P256KeyPair = { privateKey: KeyObject; publicKey: Hex }
+
+function generateP256(): P256KeyPair {
     const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
     const jwk = publicKey.export({ format: 'jwk' })
 

@@ -43,9 +43,9 @@ function parseBearerToken(
     return { ok: true, token: match[1].trim() }
 }
 
-function classifyPrivyError(error: unknown): {
-    code: 'EXPIRED_TOKEN' | 'PRIVY_API_UNAVAILABLE' | 'INVALID_TOKEN'
-} {
+type PrivyErrorClass = { code: 'EXPIRED_TOKEN' | 'PRIVY_API_UNAVAILABLE' | 'INVALID_TOKEN' }
+
+function classifyPrivyError(error: unknown): PrivyErrorClass {
     const message = (error instanceof Error ? error.message : String(error)).toLowerCase()
 
     if (message.includes('expired') || message.includes('exp claim')) {

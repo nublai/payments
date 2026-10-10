@@ -14,10 +14,12 @@ export function getClientChain(client: RelayerPublicClient): Chain {
     return chain
 }
 
+type WalletFromPrivateKey = { account: PrivateKeyAccount; walletClient: WalletClient }
+
 export function createWalletFromPrivateKey(
     privateKey: `0x${string}`,
     chain: Chain,
-): { account: PrivateKeyAccount; walletClient: WalletClient } {
+): WalletFromPrivateKey {
     const account = privateKeyToAccount(privateKey)
 
     const walletClient = createWalletClient({

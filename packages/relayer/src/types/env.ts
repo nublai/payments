@@ -267,7 +267,7 @@ export function getGasConfig(env: Env): GasConfig {
     }
 }
 
-function parseJsonRecord(envValue: string | undefined, label: string): Record<string, string> {
+function parseJsonRecord(envValue: string | undefined, label: string) {
     if (!envValue) {
         return {}
     }

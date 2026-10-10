@@ -84,7 +84,7 @@ function orchestratorIntent(
 }
 
 function installAnvilDeployments(): () => void {
-    const values: Record<string, string> = {
+    const values = {
         ORCHESTRATOR_31337: ORCHESTRATOR,
         SIMPLE_FUNDER_31337: '0x0000000000000000000000000000000000000004',
         SIMULATOR_31337: '0x0000000000000000000000000000000000000005',
@@ -93,7 +93,7 @@ function installAnvilDeployments(): () => void {
         SIMPLE_SETTLER_31337: '0x5386d1026e1598177e03eA52cbF1a0994ADF5eaE',
         ESCROW_31337: ESCROW,
         MULTI_SIG_SIGNER_31337: '0x0000000000000000000000000000000000000008',
-    }
+    } as const
 
     const previous: Record<string, string | undefined> = {}
 

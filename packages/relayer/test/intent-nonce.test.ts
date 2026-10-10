@@ -228,6 +228,8 @@ describe('2D Nonce Calculation', () => {
     })
 })
 
+type DriftDetection = { acquiredSeq: bigint; synced: boolean }
+
 /**
  * Simulates the drift detection logic from IntentNonceDO.acquireNonceSynced
  *
@@ -238,7 +240,7 @@ describe('2D Nonce Calculation', () => {
 function simulateDriftDetection(
     localSeq: bigint,
     onChainSeq: bigint,
-): { acquiredSeq: bigint; synced: boolean } {
+): DriftDetection {
     // Monotonic allocation: only fast-forward when behind.
     if (localSeq < onChainSeq) {
         return { acquiredSeq: onChainSeq, synced: true }
@@ -255,7 +257,7 @@ function createSyncedAllocator(initialLocalSeq: bigint) {
     let localSeq = initialLocalSeq
 
     return {
-        acquire(onChainSeq: bigint): { acquiredSeq: bigint; synced: boolean } {
+        acquire(onChainSeq: bigint): DriftDetection {
             const { acquiredSeq, synced } = simulateDriftDetection(localSeq, onChainSeq)
             localSeq = acquiredSeq + 1n
 

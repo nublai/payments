@@ -19,7 +19,11 @@ type Field =
     | 'escrow'
     | 'multiSigSigner'
 
-const FORMER: Record<number, Record<Field, string>> = {
+type PublishedChainId = 8453 | 137
+
+type PublishedAddresses = Record<Field, string>
+
+const FORMER: Record<PublishedChainId, PublishedAddresses> = {
     8453: {
         account: '0x2eEBFfcFABEB8cE3AC016effFeC37dBBAccCff2a',
         accountProxy: '0x3Be52867f8Dca2911f81076B37921c334dE29551',
@@ -42,7 +46,7 @@ const FORMER: Record<number, Record<Field, string>> = {
     },
 }
 
-const STAGE: Record<number, Record<Field, string>> = {
+const STAGE: Record<PublishedChainId, PublishedAddresses> = {
     8453: {
         account: '0x4f58d66c5d55B4E6f0aA578Df8D9342f63473FF6',
         accountProxy: '0xeE06c19146427bDd5abb702579F3B0568b24Bf6F',
@@ -71,7 +75,7 @@ type DeploymentBook = Record<string, Record<string, { addresses: Record<string, 
 
 function installChains(
     book: DeploymentBook,
-    chains: Record<number, Record<Field, string>>,
+    chains: Record<PublishedChainId, PublishedAddresses>,
 ): () => void {
     const restores: Array<() => void> = []
 
