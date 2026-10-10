@@ -81,7 +81,7 @@ export function walletBindTypedData(fields: WalletBindFields) {
     }
 }
 
-export function parseWalletBindScheme(value: string | undefined): WalletBindScheme | undefined {
+export function parseWalletBindScheme(value: unknown): WalletBindScheme | undefined {
     if (value === undefined || value === 'eip712') return 'eip712'
 
     if (value === 'eip191') return 'eip191'

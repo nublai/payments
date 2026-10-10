@@ -89,9 +89,7 @@ function asHex(value: unknown, label: string): Hex {
     return value as Hex
 }
 
-export function typesMatch(
-    types: unknown,
-): types is { Intent: typeof INTENT_TYPES.Intent; Call: typeof INTENT_TYPES.Call } {
+export function typesMatch(types: unknown): boolean {
     if (!isRecord(types)) return false
 
     return (
