@@ -40,6 +40,20 @@ type Mode = UpgradeMode | SendMode
 
 type Recorded = { method: string; body: string }
 
+type JsonRpcRequestBody = { id?: number; method?: string; params?: unknown }
+
+type DevEnv = {
+    RELAYER_URL_DEV: string
+    ACCOUNT_PROXY_31337: string
+    ORCHESTRATOR_31337: string
+    ACCOUNT_31337: string
+    SIMPLE_FUNDER_31337: string
+    SIMULATOR_31337: string
+    SIMPLE_SETTLER_31337: string
+    ESCROW_31337: string
+    MULTI_SIG_SIGNER_31337: string
+}
+
 function pool() {
     return {
         signerCount: 1,
@@ -488,7 +502,7 @@ class MockRelayer {
             }
 
             const raw = Buffer.concat(chunks).toString('utf8')
-            let body: { id?: number; method?: string; params?: unknown }
+            let body: JsonRpcRequestBody
 
             try {
                 body = parseJson<typeof body>(raw || '{}')
@@ -653,7 +667,7 @@ class MockRelayer {
 
 function runCli(
     args: string[],
-    env: Record<string, string>,
+    env: DevEnv | Record<string, string>,
     timeoutMs = 90_000,
     phrase?: string,
 ): Promise<{ status: number; stdout: string; stderr: string }> {
@@ -780,7 +794,7 @@ function profileCopy(): string {
     return join(dir, 'account.json')
 }
 
-function devEnv(url: string): Record<string, string> {
+function devEnv(url: string): DevEnv {
     return {
         RELAYER_URL_DEV: url,
         ACCOUNT_PROXY_31337: LOCAL_PROXY,

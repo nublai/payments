@@ -147,11 +147,13 @@ function intent(
   };
 }
 
-function refusal(typedData: ReturnType<typeof intent>): {
+type SignatureRefusal = {
   name?: string;
   code?: string;
   message?: string;
-} {
+};
+
+function refusal(typedData: ReturnType<typeof intent>): SignatureRefusal {
   try {
     reviewSwapSessionSignature(typedData);
   } catch (error) {

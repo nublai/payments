@@ -5,12 +5,14 @@ interface NonceRow {
     expiresAtUnixSeconds: number
 }
 
+type ConsumeNonceResult = { accepted: boolean; expiresAtUnixSeconds: number }
+
 function consumeNonce(
     rows: Map<string, NonceRow>,
     replayKey: string,
     ttlSeconds: number,
     nowUnixSeconds: number,
-): { accepted: boolean; expiresAtUnixSeconds: number } {
+): ConsumeNonceResult {
     const normalizedTtlSeconds = Math.max(0, Math.floor(ttlSeconds))
     const expiresAtUnixSeconds = nowUnixSeconds + normalizedTtlSeconds
     const existing = rows.get(replayKey)

@@ -235,10 +235,12 @@ describe('2D Nonce Calculation', () => {
  * @param onChainSeq - On-chain seq value
  * @returns The seq to use and whether sync occurred
  */
+type DriftDetection = { acquiredSeq: bigint; synced: boolean }
+
 function simulateDriftDetection(
     localSeq: bigint,
     onChainSeq: bigint,
-): { acquiredSeq: bigint; synced: boolean } {
+): DriftDetection {
     // Monotonic allocation: only fast-forward when behind.
     if (localSeq < onChainSeq) {
         return { acquiredSeq: onChainSeq, synced: true }
@@ -255,7 +257,7 @@ function createSyncedAllocator(initialLocalSeq: bigint) {
     let localSeq = initialLocalSeq
 
     return {
-        acquire(onChainSeq: bigint): { acquiredSeq: bigint; synced: boolean } {
+        acquire(onChainSeq: bigint): DriftDetection {
             const { acquiredSeq, synced } = simulateDriftDetection(localSeq, onChainSeq)
             localSeq = acquiredSeq + 1n
 

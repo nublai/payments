@@ -116,7 +116,9 @@ const rateBodies: PoolRequestBody[] = []
 
 const rateStore = new Map<string, number>()
 
-function applyGas(body: PoolRequestBody): { allowed: boolean; gas?: number; failures?: number } {
+type GasDecision = { allowed: boolean; gas?: number; failures?: number }
+
+function applyGas(body: PoolRequestBody): GasDecision {
     gasLog.push(body)
     const amount = BigInt(typeof body.gas === 'string' ? body.gas : '0')
 
@@ -477,6 +479,8 @@ function successReceipt() {
     }
 }
 
+type RpcStubResult = Hex | ReturnType<typeof successReceipt>
+
 beforeEach(() => {
     captures = []
     rateBodies.length = 0
@@ -516,7 +520,7 @@ beforeEach(() => {
 
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
             rpcCalls.push(call)
-            let result: unknown = '0x'
+            let result: RpcStubResult = '0x'
 
             type RpcTx = { authorizationList?: readonly object[]; from?: string }
 

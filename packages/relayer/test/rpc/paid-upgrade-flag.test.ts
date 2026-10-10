@@ -345,6 +345,25 @@ function intentExecutedLog() {
         removed: false }
 }
 
+type RpcStubReceipt = {
+    transactionHash: string
+    transactionIndex: string
+    blockHash: string
+    blockNumber: string
+    from: string
+    to: string
+    cumulativeGasUsed: string
+    gasUsed: string
+    contractAddress: null
+    logs: ReturnType<typeof intentExecutedLog>[]
+    logsBloom: string
+    status: string
+    effectiveGasPrice: string
+    type: string
+}
+
+type RpcStubResult = Hex | RpcStubReceipt
+
 function resetSideEffects(): void {
     captures = []
     rateBodies.length = 0
@@ -375,7 +394,7 @@ beforeEach(() => {
 
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
             rpcMethods.push(call.method ?? '')
-            let result: unknown = '0x'
+            let result: RpcStubResult = '0x'
 
             type RpcTx = { authorizationList?: readonly object[] }
 
