@@ -136,7 +136,7 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): TypedDataJson {
     return value as string | number | boolean | null | undefined
 }
 
-/** The four Intent fields this file reads after `isRecord` at the parse site. */
+/** A record the parse site already proved with `isRecord`. */
 type ParsedTypedDataRecord = {
     primaryType?: unknown
     domain?: unknown
@@ -180,27 +180,14 @@ function reviveTypedDataInPlace(value: ParsedTypedDataRecord): void {
     }
 }
 
-function hasIntentTypedDataKeys(value: ParsedTypedDataRecord): boolean {
-    return (
-        value.primaryType === 'Intent' &&
-        isRecord(value.domain) &&
-        isRecord(value.types) &&
-        isRecord(value.message)
-    )
-}
-
 export function encodeTypedDataBigInt(typedData: DaemonTypedData): TypedDataJson {
     return mapTypedDataBigInt(typedData, false)
 }
 
 export function decodeTypedDataBigInt(value: ParsedTypedDataRecord): DaemonTypedData {
-    if (!hasIntentTypedDataKeys(value)) {
-        throw new Error('Invalid daemon typed data')
-    }
-
     reviveTypedDataInPlace(value)
 
-    // SAFETY: only primaryType 'Intent' and object domain/types/message are checked here. Swap sessions go through reviewSwapSessionSignature and phrase-less through assessPhraseLessIntent before signTypedData; a non-swap session with phraseConfirmed signs as-is. viem 2.45.1 local signTypedData throws on an invalid verifyingContract, empty or unknown types, a bad address or uint in the message, and missing message fields; it still signs an empty domain, extra domain keys, a non-string name, a non-numeric chainId string, extra message fields (ignored), and a well-formed types table that is not the Intent schema.
+    // SAFETY: parseDaemonRequest only proves typedData is a record; this function revives `$bigint:` tags and does not check primaryType, domain, types, or message. Swap sessions go through reviewSwapSessionSignature and phrase-less through assessPhraseLessIntent before signTypedData; a non-swap session with phraseConfirmed signs as-is. viem 2.45.1 local signTypedData throws on an invalid verifyingContract, empty or unknown types, a bad address or uint in the message, and missing message fields; it still signs an empty domain, extra domain keys, a non-string name, a non-numeric chainId string, extra message fields (ignored), and a well-formed types table that is not the Intent schema.
     return value as DaemonTypedData
 }
 

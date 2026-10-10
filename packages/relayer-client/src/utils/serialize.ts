@@ -6,25 +6,13 @@ import type { Address, Hex } from 'viem'
 import type { Intent, Call } from '../types'
 import type { PrepareCallsContext } from '../actions/prepareCalls'
 
-/** Values JSON.stringify can pass into a replacer, including symbol, bigint, and function (`object`). */
-type JsonReplacerValue =
-    | string
-    | number
-    | boolean
-    | bigint
-    | symbol
-    | object
-    | null
-    | undefined
-
 /**
  * JSON replacer that converts BigInt to string for serialization
  */
-export function bigIntReplacer(_key: string, value: unknown): JsonReplacerValue {
+export function bigIntReplacer(_key: string, value: {} | null | undefined): {} | null | undefined {
     if (typeof value === 'bigint') return value.toString()
 
-    // SAFETY: JSON.stringify calls the replacer with a JS value. JsonReplacerValue is that set (string | number | boolean | bigint | symbol | object | function | null | undefined). unknown is not assignable to the union without a typeof walk (no-runtime-typeof).
-    return value as JsonReplacerValue
+    return value
 }
 
 /**

@@ -165,7 +165,11 @@ async function defaultRequest(rpcUrl: string, method: string, params: unknown[])
         )
     }
 
-    const payload = (await response.json()) as { result?: unknown; error?: { code?: number; message?: string } }
+    // SAFETY: response.json() is JSON; a JSON-RPC result is that tree or undefined.
+    const payload = (await response.json()) as {
+        result?: RpcJson
+        error?: { code?: number; message?: string }
+    }
 
     if (payload.error) {
         const code = payload.error.code
@@ -178,8 +182,7 @@ async function defaultRequest(rpcUrl: string, method: string, params: unknown[])
         )
     }
 
-    // SAFETY: response.json() is JSON; a JSON-RPC result is that tree or undefined.
-    return payload.result as RpcJson
+    return payload.result
 }
 
 function dedupedWatches(watches: SimulatedWatch[]): SimulatedWatch[] {
