@@ -1,5 +1,4 @@
 import { getAddress, hashStruct, type Address, type Hex, type TypedData } from 'viem'
-import { isRecord } from './type-guards'
 
 /**
  * Deposit ids are the EIP-712 struct hash of Relay's v1 Order, which the
@@ -91,6 +90,10 @@ export class RelayOrderRejected extends Error {
         super(message)
         this.name = 'RelayOrderRejected'
     }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function requireEthereumChain(chainId: unknown, field: string): void {

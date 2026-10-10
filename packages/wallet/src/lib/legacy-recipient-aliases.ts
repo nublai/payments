@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { isRecord } from './type-guards'
 
 const LEGACY_RECIPIENT_ALIASES_VERSION = 1 as const
 
@@ -18,15 +17,15 @@ async function readLegacyRecipientAliasesContacts(): Promise<string[]> {
     const raw = await readFile(path, 'utf8')
     const parsed: unknown = JSON.parse(raw)
 
-    if (!isRecord(parsed)) {
-        throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
-    }
-
-    if (!('version' in parsed) || parsed.version !== LEGACY_RECIPIENT_ALIASES_VERSION) {
-        throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
-    }
-
-    if (!('contacts' in parsed) || !isRecord(parsed.contacts)) {
+    if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        !('version' in parsed) ||
+        parsed.version !== LEGACY_RECIPIENT_ALIASES_VERSION ||
+        !('contacts' in parsed) ||
+        typeof parsed.contacts !== 'object' ||
+        parsed.contacts === null
+    ) {
         throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
     }
 

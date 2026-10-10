@@ -427,7 +427,7 @@ export async function readRelayerSignerOrigin(input: {
     let table: { [chainId: string]: CapabilitiesChain | undefined } = {}
 
     if (result && typeof result === 'object') {
-        // SAFETY: wallet_getCapabilities is a JSON object keyed by hex chain id.
+        // SAFETY: result is a non-null object; chain rows are looked up by hex key and each signer address is checked below.
         table = result as { [chainId: string]: CapabilitiesChain | undefined }
     }
 

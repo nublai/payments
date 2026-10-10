@@ -190,7 +190,7 @@ const coingeckoProvider: PriceProvider = {
             throw new Error(`CoinGecko error: ${response.status} ${response.statusText}`)
         }
 
-        // SAFETY: CoinGecko simple-price JSON is { [coinId]: { usd?: number } }.
+        // SAFETY: CoinGecko simple-price JSON is { [coinId]: { usd?: number | string } }.
         return (await response.json()) as CoinGeckoSimplePrice
     },
 }
@@ -262,7 +262,7 @@ export async function updatePrices(
 
         for (const assetUid of assetUids) {
             const coinId = assetMapping[assetUid]
-            const entry = coinId === undefined ? undefined : response[coinId]
+            const entry = response[String(coinId)]
 
             const usdValue =
                 typeof entry === 'object' && entry !== null ? entry.usd : undefined

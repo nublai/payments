@@ -101,9 +101,12 @@ async function signToken(input: {
 
     if (input.clientId) claims.client_id = input.clientId
 
-    if (input.wallets !== undefined) claims.wallets = input.wallets
+    const payload =
+        input.wallets === undefined
+            ? claims
+            : { ...claims, [input.walletsClaim ?? 'wallets']: input.wallets }
 
-    const builder = new SignJWT(claims)
+    const builder = new SignJWT(payload)
         .setProtectedHeader({ alg: input.alg ?? 'RS256', kid: input.kid ?? KID, typ: 'JWT' })
         .setIssuer(input.issuer ?? ISSUER)
         .setSubject(input.subject ?? 'user_1')

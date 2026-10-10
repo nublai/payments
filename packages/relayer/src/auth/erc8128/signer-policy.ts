@@ -187,6 +187,10 @@ function asAddress(value: unknown): Address | undefined {
     return undefined
 }
 
+function isNonNullObject(value: unknown): value is object {
+    return typeof value === 'object' && value !== null
+}
+
 type RpcBindingParams = {
     from?: unknown
     chain_id?: unknown
@@ -198,22 +202,22 @@ type RpcBindingParams = {
 function accountsFromSend(params: RpcBindingParams | undefined): BoundAccount[] | null {
     const context = params?.context
 
-    if (!context || typeof context !== 'object' || !('quote' in context)) return null
+    if (!isNonNullObject(context) || !('quote' in context)) return null
+    const quote = context.quote
 
-    // SAFETY: context.quote is a JSON-RPC object field; only quotes is read after Array.isArray.
-    const quote = context.quote as { quotes?: unknown }
+    if (!isNonNullObject(quote) || !('quotes' in quote)) return null
 
     if (!Array.isArray(quote.quotes) || quote.quotes.length === 0) return null
 
     const accounts: BoundAccount[] = []
 
     for (const item of quote.quotes) {
-        if (!item || typeof item !== 'object') return null
+        if (!isNonNullObject(item)) return null
 
         const intent = 'intent' in item ? item.intent : undefined
 
-        // SAFETY: item.intent is a JSON-RPC object field; only eoa is parsed as an address.
-        const eoa = asAddress((intent as { eoa?: unknown } | undefined)?.eoa)
+        const eoa =
+            isNonNullObject(intent) && 'eoa' in intent ? asAddress(intent.eoa) : undefined
 
         // Ignore quote.authSigner. It is client-controlled until the HMAC, and even then
         // it is only a hint. Authorization uses the EOA or an on-chain key.
@@ -242,7 +246,7 @@ function accountsFromUpgrade(
 ): BoundAccount[] | null {
     const source = method === 'wallet_upgradeAccount' ? params?.context : params
 
-    if (!source || typeof source !== 'object') return null
+    if (!isNonNullObject(source)) return null
     const eoa = 'address' in source ? asAddress(source.address) : undefined
 
     if (!eoa) return null
@@ -264,7 +268,7 @@ export function bindingFromRpcBody(
     let sawBindable = false
 
     for (const item of items) {
-        if (!item || typeof item !== 'object') continue
+        if (!isNonNullObject(item)) continue
         const record = item as { method?: unknown; params?: unknown }
 
         if (typeof record.method !== 'string') continue

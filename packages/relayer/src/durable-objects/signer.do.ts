@@ -1447,15 +1447,15 @@ export class SignerDO extends DurableObject<Env> {
     ): SignedAuthorization[] | undefined {
         if (!value) return undefined
 
-        // SAFETY: this column is JSON from serializeAuthorizationList of SignedAuthorization[].
+        // SAFETY: this column is JSON from serializeAuthorizationList; JSON.parse yields string or number cells, not bigint.
         const parsed = JSON.parse(value) as Array<{
             address?: string
-            chainId?: string | number | bigint
-            nonce?: string | number | bigint
+            chainId?: string | number
+            nonce?: string | number
             r?: string
             s?: string
             yParity?: number
-            v?: string | number | bigint
+            v?: string | number
         }>
 
         return parsed.map((item) => {
