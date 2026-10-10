@@ -18,11 +18,13 @@ export const setDlogInfoLogger = (logger: DlogLogger): void => {
     customInfoLogger = logger
 }
 
-export function getDlogLoggers(): {
+export type DlogLoggers = {
     error: DlogLogger
     warn: DlogLogger
     info: DlogLogger
-} {
+}
+
+export function getDlogLoggers(): DlogLoggers {
     return {
         error: customErrorLogger,
         warn: customWarnLogger,

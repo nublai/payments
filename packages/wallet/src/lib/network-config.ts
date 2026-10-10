@@ -147,10 +147,12 @@ export function rpcUrlForChain(chain: ChainName): string {
     return getChainConfig(chain).rpcUrl
 }
 
+type UsdcTokenConfig = { symbol: UsdcSymbol; address: Address }
+
 export function getUsdcTokenConfig(
     chain: ChainName,
     options?: { legacy?: boolean },
-): { symbol: UsdcSymbol; address: Address } {
+): UsdcTokenConfig {
     const config = getChainConfig(chain)
 
     if (chain === 'polygon' && options?.legacy && config.legacyUsdcAddress) {

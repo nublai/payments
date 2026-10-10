@@ -50,7 +50,9 @@ export type SessionChainGuard = {
     checkerCount: number
 }
 
-function decodePackedCanExecute(packed: Hex): { target: Address; selector: Hex } {
+type PackedCanExecute = { target: Address; selector: Hex }
+
+function decodePackedCanExecute(packed: Hex): PackedCanExecute {
     const value = BigInt(packed)
     const target = getAddress(`0x${(value >> 96n).toString(16).padStart(40, '0')}`)
     const selector = `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex

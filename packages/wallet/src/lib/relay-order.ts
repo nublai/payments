@@ -293,7 +293,9 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
     }
 }
 
-export function orderPayees(order: unknown): { outputs: string[]; refunds: string[] } {
+type OrderPayees = { outputs: string[]; refunds: string[] }
+
+export function orderPayees(order: unknown): OrderPayees {
     if (!isRecord(order) || !isRecord(order.output) || !Array.isArray(order.inputs)) {
         return { outputs: [], refunds: [] }
     }

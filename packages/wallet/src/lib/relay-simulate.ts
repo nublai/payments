@@ -355,10 +355,12 @@ async function readBefore(
 
 type SimLog = { address?: string; topics?: string[]; data?: string }
 
+type SimulateResult = { words: bigint[]; logs: SimLog[] | undefined }
+
 function parseSimulateResult(
     result: RpcJson,
     userCallCount: number,
-): { words: bigint[]; logs: SimLog[] | undefined } {
+): SimulateResult {
     if (!Array.isArray(result) || !result[0] || typeof result[0] !== 'object') {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',

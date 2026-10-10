@@ -15,11 +15,13 @@ export function isLocalFeeChain(env: EnvName, chainId: number): boolean {
  * Local and dev stay at a zero ceiling. Every other chain uses the 5 USDC ceiling,
  * paid by the account. The value that gets signed is the quote plus margin.
  */
+type IntentPayment = { payer: Address; paymentToken: Address; paymentMaxAmount: bigint }
+
 export function resolveIntentPayment(
     env: EnvName,
     chainId: number,
     from: Address,
-): { payer: Address; paymentToken: Address; paymentMaxAmount: bigint } {
+): IntentPayment {
     if (isLocalFeeChain(env, chainId)) {
         return {
             payer: zeroAddress,

@@ -213,6 +213,11 @@ export function slotsFromPending(record: PendingQuoteLimitRecord): QuoteSpendSlo
     }))
 }
 
+type RestoredCallsForChain = {
+    calls: ReturnType<typeof quoteSpendRestoreCalls>
+    unexpected: string | undefined
+}
+
 /**
  * Calls that put the key back, given what the chain's minute slot is now.
  * A limit we never landed is left alone. A pre-existing minute limit is set
@@ -221,7 +226,7 @@ export function slotsFromPending(record: PendingQuoteLimitRecord): QuoteSpendSlo
 export function restoreCallsForChain(input: {
     record: PendingQuoteLimitRecord
     minuteLimits: ReadonlyMap<string, bigint | null>
-}): { calls: ReturnType<typeof quoteSpendRestoreCalls>; unexpected: string | undefined } {
+}): RestoredCallsForChain {
     const slots: { token: Address; previousLimit: bigint | null }[] = []
 
     for (const slot of slotsFromPending(input.record)) {
