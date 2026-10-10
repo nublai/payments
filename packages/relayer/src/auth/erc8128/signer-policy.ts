@@ -199,9 +199,9 @@ function accountsFromSend(params: RpcBindingParams | undefined): BoundAccount[] 
     const context = params?.context
 
     if (!context || typeof context !== 'object' || !('quote' in context)) return null
-    const quote = context.quote
 
-    if (!quote || typeof quote !== 'object' || !('quotes' in quote)) return null
+    // SAFETY: context.quote is a JSON-RPC object field; only quotes is read after Array.isArray.
+    const quote = context.quote as { quotes?: unknown }
 
     if (!Array.isArray(quote.quotes) || quote.quotes.length === 0) return null
 
@@ -209,11 +209,11 @@ function accountsFromSend(params: RpcBindingParams | undefined): BoundAccount[] 
 
     for (const item of quote.quotes) {
         if (!item || typeof item !== 'object') return null
+
         const intent = 'intent' in item ? item.intent : undefined
-        const eoa =
-            intent && typeof intent === 'object' && 'eoa' in intent
-                ? asAddress(intent.eoa)
-                : undefined
+
+        // SAFETY: item.intent is a JSON-RPC object field; only eoa is parsed as an address.
+        const eoa = asAddress((intent as { eoa?: unknown } | undefined)?.eoa)
 
         // Ignore quote.authSigner. It is client-controlled until the HMAC, and even then
         // it is only a hint. Authorization uses the EOA or an on-chain key.
