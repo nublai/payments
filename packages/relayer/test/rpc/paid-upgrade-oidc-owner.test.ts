@@ -108,7 +108,9 @@ type PoolRequestBody = {
     reservedAt?: number
 }
 
-function applyGas(body: PoolRequestBody): { allowed: boolean; gas?: number } {
+type GasDecision = { allowed: boolean; gas?: number }
+
+function applyGas(body: PoolRequestBody): GasDecision {
     gasLog.push(body)
     const amount = BigInt(typeof body.gas === 'string' ? body.gas : '0')
 
@@ -433,6 +435,25 @@ function intentExecutedLog() {
     }
 }
 
+type RpcStubReceipt = {
+    transactionHash: string
+    transactionIndex: string
+    blockHash: string
+    blockNumber: string
+    from: string
+    to: string
+    cumulativeGasUsed: string
+    gasUsed: string
+    contractAddress: null
+    logs: ReturnType<typeof intentExecutedLog>[]
+    logsBloom: string
+    status: string
+    effectiveGasPrice: string
+    type: string
+}
+
+type RpcStubResult = Hex | RpcStubReceipt
+
 beforeEach(() => {
     captures = []
     rateBodies.length = 0
@@ -450,7 +471,7 @@ beforeEach(() => {
         const batch = Array.isArray(raw) ? raw : [raw]
 
         const results = batch.map((call: { id?: number; method?: string; params?: unknown[] }) => {
-            let result: unknown = '0x'
+            let result: RpcStubResult = '0x'
 
             type RpcTx = { authorizationList?: readonly object[] }
 

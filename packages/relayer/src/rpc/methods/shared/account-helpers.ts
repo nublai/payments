@@ -184,13 +184,18 @@ export function spendPeriodFromNumber(value: number): SpendPeriod {
     return SPEND_PERIOD_NAMES[value] ?? 'day'
 }
 
+type KeyInitializationData = {
+    calls: Array<{ to: Address; value: bigint; data: Hex }>
+    executionData: Hex
+}
+
 /**
  * Build execution data for key initialization.
  */
 export function buildKeyInitializationData(
     keys: AuthorizeKey[],
     accountAddress: Address,
-): { calls: Array<{ to: Address; value: bigint; data: Hex }>; executionData: Hex } {
+): KeyInitializationData {
     if (keys.length === 0) {
         return { calls: [], executionData: '0x' }
     }
@@ -289,10 +294,12 @@ export function computeSignedCallDigest(
     })
 }
 
+type ParsedSignature = { r: Hex; s: Hex; yParity: number }
+
 /**
  * Parse a 65-byte signature into r, s, yParity.
  */
-export function parseSignature(signature: Hex): { r: Hex; s: Hex; yParity: number } {
+export function parseSignature(signature: Hex): ParsedSignature {
     const sig = signature.slice(2)
 
     if (sig.length !== 130) {

@@ -16,10 +16,12 @@ interface MiddlewareDeps {
     createNonceStore?: (env: Env) => NonceStore
 }
 
+type AuthRequirement = { requiresAuth: boolean; id: unknown | null }
+
 function extractAuthRequirement(
     body: unknown,
     protectedMethods: Set<string>,
-): { requiresAuth: boolean; id: unknown | null } {
+): AuthRequirement {
     if (Array.isArray(body)) {
         const requiresAuth = body.some(
             (item) =>

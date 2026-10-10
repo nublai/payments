@@ -107,6 +107,8 @@ export const ERROR_MESSAGES: Record<number, string> = {
 // RpcError Class
 // =============================================================================
 
+type RpcErrorJson = { code: number; message: string; data?: unknown }
+
 /**
  * Custom error class for JSON-RPC errors
  *
@@ -126,7 +128,7 @@ export class RpcError extends Error {
     /**
      * Convert to JSON-RPC error object
      */
-    toJSON(): { code: number; message: string; data?: unknown } {
+    toJSON(): RpcErrorJson {
         return {
             code: this.code,
             message: this.message,

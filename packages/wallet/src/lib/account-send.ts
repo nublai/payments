@@ -214,7 +214,9 @@ function assertSessionNetworkMatches(input: {
     }
 }
 
-function parseUsdcAmount(value: string): { normalized: string; baseUnits: bigint } {
+type ParsedUsdcAmount = { normalized: string; baseUnits: bigint }
+
+function parseUsdcAmount(value: string): ParsedUsdcAmount {
     const amount = value.trim()
 
     if (!/^\d+(\.\d+)?$/.test(amount)) {

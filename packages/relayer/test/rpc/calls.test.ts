@@ -706,12 +706,14 @@ describe('wallet_getCallsHistory', () => {
         vi.clearAllMocks()
     })
 
+    type HistoryCtx = { ctx: RpcContext; chainSpies: Map<number, ReturnType<typeof vi.fn>> }
+
     function createHistoryCtx(
         chainEntries: Record<
             number,
             Array<{ bundleId: string; chainId: number; createdAt: number }>
         >,
-    ): { ctx: RpcContext; chainSpies: Map<number, ReturnType<typeof vi.fn>> } {
+    ): HistoryCtx {
         const chainSpies = new Map<number, ReturnType<typeof vi.fn>>()
 
         const ctx = createMockCtx()

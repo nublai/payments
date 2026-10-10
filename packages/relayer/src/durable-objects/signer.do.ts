@@ -101,6 +101,22 @@ interface FeeParams {
     maxPriorityFeePerGas: bigint
 }
 
+type DerivedKey = { address: Hex; privateKey: Hex }
+
+type SignerClients = {
+    publicClient: PublicClient
+    walletClient: WalletClient
+    account: PrivateKeyAccount
+}
+
+type ReplacementConfig = {
+    bumpBps: number
+    triggerThresholdWei: bigint
+    maxAttempts: number
+    baseBackoffMs: number
+    maxFeeCapWei?: bigint
+}
+
 type SignerStateDebugRow = {
     id: string | number | null
     address: string | null
@@ -457,7 +473,7 @@ export class SignerDO extends DurableObject<Env> {
      * Derive key from mnemonic at given index
      * Key is derived on-demand and never persisted
      */
-    private deriveKey(index: number): { address: Hex; privateKey: Hex } {
+    private deriveKey(index: number): DerivedKey {
         const seed = mnemonicToSeedSync(this.env.RELAYER_MNEMONIC)
         const hdKey = HDKey.fromMasterSeed(seed)
         const path = `m/44'/60'/0'/0/${index}`
@@ -477,11 +493,7 @@ export class SignerDO extends DurableObject<Env> {
     /**
      * Initialize viem clients lazily
      */
-    private ensureClients(chainId: number): {
-        publicClient: PublicClient
-        walletClient: WalletClient
-        account: PrivateKeyAccount
-    } {
+    private ensureClients(chainId: number): SignerClients {
         if (this.publicClient && this.walletClient && this.account) {
             return {
                 publicClient: this.publicClient,
@@ -1480,13 +1492,7 @@ export class SignerDO extends DurableObject<Env> {
         }) as Promise<FeeParams>
     }
 
-    private parseReplacementConfig(): {
-        bumpBps: number
-        triggerThresholdWei: bigint
-        maxAttempts: number
-        baseBackoffMs: number
-        maxFeeCapWei?: bigint
-    } {
+    private parseReplacementConfig(): ReplacementConfig {
         return {
             bumpBps: parseInt(
                 this.env.REPLACEMENT_BUMP_BPS ?? String(DEFAULT_REPLACEMENT_BUMP_BPS),

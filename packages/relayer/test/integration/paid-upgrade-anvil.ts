@@ -100,6 +100,18 @@ const chain = {
     rpcUrls: { default: { http: [RPC_URL] } },
 } as const
 
+type AnvilGasState = { spent: bigint; held: bigint; failures: number }
+
+type BroadcastPlan = {
+    sweepOwner?: Address
+    beforeBroadcast?: () => Promise<void>
+    expectSuccess?: boolean
+}
+
+type SplitSignatureParts = { r: Hex; s: Hex; yParity: number }
+
+type AnvilGasDecision = { allowed: boolean; gas: number; failures: number }
+
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) throw new Error(message)
 }
@@ -172,17 +184,13 @@ async function main(): Promise<void> {
     const relayerWallet = createWalletClient({ account: relayer, chain, transport: http(RPC_URL) })
     const rateStore = new Map<string, number>()
 
-    const gasState: { spent: bigint; held: bigint; failures: number } = {
+    const gasState: AnvilGasState = {
         spent: 0n,
         held: 0n,
         failures: 0,
     }
 
-    const broadcastPlan: {
-        sweepOwner?: Address
-        beforeBroadcast?: () => Promise<void>
-        expectSuccess?: boolean
-    } = {}
+    const broadcastPlan: BroadcastPlan = {}
 
     const receipts: TransactionReceipt[] = []
 
@@ -975,7 +983,7 @@ function json<T>(body: T, ok = true): Response {
     return jsonStub(body, ok)
 }
 
-function splitSignature(signature: Hex): { r: Hex; s: Hex; yParity: number } {
+function splitSignature(signature: Hex): SplitSignatureParts {
     const raw = signature.slice(2)
     const v = Number.parseInt(raw.slice(128, 130), 16)
 
@@ -987,9 +995,9 @@ function splitSignature(signature: Hex): { r: Hex; s: Hex; yParity: number } {
 }
 
 function applyAnvilGas(
-    gasState: { spent: bigint; held: bigint; failures: number },
+    gasState: AnvilGasState,
     body: { action?: string; gas?: string; hold?: string; failure?: boolean },
-): { allowed: boolean; gas: number; failures: number } {
+): AnvilGasDecision {
     const budget = 2_000_000n
     const amount = BigInt(body.gas ?? '0')
 
@@ -1198,11 +1206,7 @@ async function broadcastPaidUpgrade(
     tx: ExecuteIntentTransaction,
     orchestrator: Address,
     broadcaster: ReturnType<typeof createWalletClient>,
-    plan: {
-        sweepOwner?: Address
-        beforeBroadcast?: () => Promise<void>
-        expectSuccess?: boolean
-    },
+    plan: BroadcastPlan,
     receipts: TransactionReceipt[],
 ): Promise<Hex> {
     const relayer = privateKeyToAccount(RELAYER_KEY)

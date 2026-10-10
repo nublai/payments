@@ -335,10 +335,12 @@ function assertSessionNetworkMatches(input: {
     }
 }
 
+type ParsedTokenAmount = { normalized: string; baseUnits: bigint }
+
 function parseTokenAmount(
     token: TokenSymbol,
     value: string,
-): { normalized: string; baseUnits: bigint } {
+): ParsedTokenAmount {
     const amount = value.trim()
 
     if (!/^\d+(\.\d+)?$/.test(amount)) {
