@@ -600,7 +600,9 @@ async function main(): Promise<void> {
         })
 
         const fundedBody: { error?: { message?: string } } = await funded.json()
-        assert(!fundedBody.error, `anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
+
+        if (fundedBody.error) throw new Error(`anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
+
         const griefBalance = await publicClient.getBalance({ address: griefOwner.address })
         assert(
             griefBalance >= 1_000_000_000_000_000_000n,
@@ -883,7 +885,8 @@ async function main(): Promise<void> {
         })
 
         const helperFundedBody: { error?: { message?: string } } = await helperFunded.json()
-        assert(!helperFundedBody.error, 'helper anvil_setBalance failed')
+
+        if (helperFundedBody.error) throw new Error('helper anvil_setBalance failed')
 
         const bombUsdcBefore = await publicClient.readContract({
             address: USDC,
@@ -1093,7 +1096,8 @@ async function fundAndApprove(
     })
 
     const fundedBody: { error?: { message?: string } } = await funded.json()
-    assert(!fundedBody.error, `anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
+
+    if (fundedBody.error) throw new Error(`anvil_setBalance failed: ${fundedBody.error?.message ?? 'unknown'}`)
 
     const mintHash = await wallet.writeContract({
         address: USDC,
