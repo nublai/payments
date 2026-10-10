@@ -172,7 +172,7 @@ async function parseRelayResponse(response: Response): Promise<RelayJson> {
     }
 }
 
-function getErrorMessage(payload: unknown, fallback: string): string {
+function getErrorMessage(payload: RelayJson, fallback: string): string {
     if (isRecord(payload) && typeof payload.message === 'string' && payload.message) {
         return payload.message
     }
@@ -353,7 +353,7 @@ function normalizeStep(value: unknown): RelayStep {
     }
 }
 
-function normalizeQuoteResponse(payload: unknown): RelayQuoteResponse {
+function normalizeQuoteResponse(payload: RelayJson): RelayQuoteResponse {
     if (!isRecord(payload) || !Array.isArray(payload.steps)) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid quote.')
     }
@@ -383,7 +383,7 @@ function normalizeProtocol(value: unknown): RelayQuoteResponse['protocol'] {
     }
 }
 
-function normalizeIntentStatus(payload: unknown): RelayIntentStatus {
+function normalizeIntentStatus(payload: RelayJson): RelayIntentStatus {
     if (!isRecord(payload) || typeof payload.status !== 'string') {
         throw new RelayLinkError(
             'INVALID_RESPONSE',

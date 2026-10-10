@@ -80,7 +80,7 @@ type RpcPayload = {
     }
 }
 
-function firstParam(params: RpcPayload | RpcPayload[] | undefined): RpcPayload {
+function firstParam(params: unknown): RpcPayload {
     const value = Array.isArray(params) ? params[0] : params
 
     if (value === undefined || value === null) return {}
@@ -488,7 +488,7 @@ class MockRelayer {
             }
 
             const raw = Buffer.concat(chunks).toString('utf8')
-            let body: { id?: number; method?: string; params?: RpcPayload | RpcPayload[] }
+            let body: { id?: number; method?: string; params?: unknown }
 
             try {
                 body = parseJson<typeof body>(raw || '{}')
@@ -538,10 +538,7 @@ class MockRelayer {
         })
     }
 
-    private async reply(
-        method: string,
-        params: RpcPayload | RpcPayload[] | undefined,
-    ): Promise<MockRelayerReply> {
+    private async reply(method: string, params: unknown): Promise<MockRelayerReply> {
         if (method === 'eth_chainId') return `0x${this.chainId.toString(16)}`
 
         if (method === 'eth_getCode') return '0x'
