@@ -10,6 +10,7 @@ import {
     type Hex,
 } from 'viem'
 import { wrapSignature } from '@nubl/relayer-client'
+import { isRecord } from './type-guards'
 
 /**
  * Simulate the quote as the relayer's EIP-7702 execution: Orchestrator
@@ -422,23 +423,19 @@ export async function readRelayerSignerOrigin(input: {
         )
     }
 
-    type CapabilitiesChain = { pool?: { signers?: unknown } }
-
-    let table: { [chainId: string]: CapabilitiesChain | undefined } = {}
-
-    if (result && typeof result === 'object') {
-        // SAFETY: result is a non-null object; chain rows are looked up by hex key and each signer address is checked below.
-        table = result as { [chainId: string]: CapabilitiesChain | undefined }
-    }
+    const table = new Map<string, unknown>(
+        result && typeof result === 'object' ? Object.entries(result) : [],
+    )
 
     const chain =
-        table[hexChain] ??
-        table[hexChain.toLowerCase()] ??
-        Object.entries(table).find(([key]) => Number.parseInt(key, 16) === input.chainId)?.[1]
+        table.get(hexChain) ??
+        table.get(hexChain.toLowerCase()) ??
+        [...table].find(([key]) => Number.parseInt(key, 16) === input.chainId)?.[1]
 
-    const pool = chain?.pool
+    const pool = isRecord(chain) ? chain.pool : undefined
+    const poolSigners = isRecord(pool) ? pool.signers : undefined
 
-    const signers = Array.isArray(pool?.signers) ? pool.signers : []
+    const signers: unknown[] = Array.isArray(poolSigners) ? poolSigners : []
 
     for (const signer of signers) {
         if (!signer || typeof signer !== 'object') continue

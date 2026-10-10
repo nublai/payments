@@ -1,4 +1,5 @@
 import { getAddress, hashStruct, type Address, type Hex, type TypedData } from 'viem'
+import { isRecord } from './type-guards'
 
 /**
  * Deposit ids are the EIP-712 struct hash of Relay's v1 Order, which the
@@ -92,10 +93,6 @@ export class RelayOrderRejected extends Error {
     }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function requireEthereumChain(chainId: unknown, field: string): void {
     if (typeof chainId !== 'string' || !ETHEREUM_VM_CHAINS.has(chainId)) {
         throw new RelayOrderRejected(
@@ -110,7 +107,15 @@ function requireBytes20(value: unknown, field: string): void {
     }
 }
 
-function assertOrder(order: Record<string, unknown>): void {
+function assertOrder(order: {
+    version?: unknown
+    solverChainId?: unknown
+    solver?: unknown
+    salt?: unknown
+    inputs?: unknown
+    output?: unknown
+    fees?: unknown
+}): void {
     if (order.version !== 'v1') {
         throw new RelayOrderRejected(
             'relay.link order version is not v1. Refusing to bind the deposit id.',

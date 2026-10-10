@@ -2250,7 +2250,7 @@ export class SignerDO extends DurableObject<Env> {
     }> {
         await this.ensureInitialized()
 
-        const stateRows = this.sql.exec('SELECT * FROM signer_state WHERE id = 1').toArray()
+        const stateRows = this.sql.exec<SignerStateDebugRow>('SELECT * FROM signer_state WHERE id = 1').toArray()
 
         const pendingCount =
             (this.sql
@@ -2263,15 +2263,8 @@ export class SignerDO extends DurableObject<Env> {
             .exec('SELECT * FROM pending_transactions ORDER BY sent_at DESC LIMIT 10')
             .toArray()
 
-        let state: SignerStateDebugRow | null = null
-
-        if (stateRows.length > 0) {
-            // SAFETY: SELECT * FROM signer_state matches the debug row shape.
-            state = stateRows[0] as SignerStateDebugRow
-        }
-
         return {
-            state,
+            state: stateRows.length > 0 ? stateRows[0] : null,
             pendingCount,
             recentTransactions,
         }

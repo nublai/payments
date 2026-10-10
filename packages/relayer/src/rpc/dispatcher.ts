@@ -182,8 +182,12 @@ function validateRequest(body: unknown): JsonRpcErrorObject | null {
         return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
     }
 
-    // SAFETY: body is a non-null object; only the JSON-RPC request keys are read.
-    const obj = body as { jsonrpc?: unknown; method?: unknown; id?: unknown; params?: unknown }
+    const obj = {
+        jsonrpc: 'jsonrpc' in body ? body.jsonrpc : undefined,
+        method: 'method' in body ? body.method : undefined,
+        id: 'id' in body ? body.id : undefined,
+        params: 'params' in body ? body.params : undefined,
+    }
 
     // Must have jsonrpc: "2.0"
     if (obj.jsonrpc !== '2.0') {
@@ -224,13 +228,12 @@ function validateRequest(body: unknown): JsonRpcErrorObject | null {
 function extractId(body: unknown): string | number | null {
     if (typeof body !== 'object' || body === null) return null
 
-    // SAFETY: body is a non-null object; only id is read.
-    const obj = body as { id?: unknown }
+    const id = 'id' in body ? body.id : undefined
 
-    if (obj.id === undefined) return null
+    if (id === undefined) return null
 
-    if (obj.id === null || typeof obj.id === 'string' || typeof obj.id === 'number') {
-        return obj.id
+    if (id === null || typeof id === 'string' || typeof id === 'number') {
+        return id
     }
 
     return null

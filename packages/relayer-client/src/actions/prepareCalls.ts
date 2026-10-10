@@ -3,7 +3,13 @@
  */
 
 import type { Address, Hex } from 'viem'
-import type { RelayerPublicClient, Call, EIP712Domain, INTENT_TYPES } from '../types'
+import type {
+    RelayerPublicClient,
+    Call,
+    EIP712Domain,
+    INTENT_TYPES,
+    IntentTypedDataMessage,
+} from '../types'
 import { createRelayerTransport } from '../transport'
 import type { RpcPrepareCallsContext, RpcPrepareCallsResult } from '../rpc-schema'
 
@@ -70,20 +76,7 @@ export interface PrepareCallsResponse {
         domain: EIP712Domain
         types: typeof INTENT_TYPES
         primaryType: 'Intent'
-        message: {
-            multichain: boolean
-            eoa: Address
-            calls: readonly { to: Address; value: bigint; data: Hex }[]
-            nonce: bigint
-            payer: Address
-            paymentToken: Address
-            paymentMaxAmount: bigint
-            combinedGas: bigint
-            encodedPreCalls: readonly Hex[]
-            encodedFundTransfers: readonly Hex[]
-            settler: Address
-            expiry: bigint
-        }
+        message: IntentTypedDataMessage
     }
 }
 

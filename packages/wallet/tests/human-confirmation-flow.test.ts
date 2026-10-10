@@ -98,9 +98,17 @@ function runCli(
     })
 }
 
+type McpToolArgument =
+    | string
+    | number
+    | boolean
+    | null
+    | McpToolArgument[]
+    | { [key: string]: McpToolArgument }
+
 function callMcpTool(
     name: string,
-    args: Record<string, unknown>,
+    args: { [key: string]: McpToolArgument },
     env: Record<string, string | undefined> = {},
 ): Promise<string> {
     return new Promise((resolvePromise, reject) => {

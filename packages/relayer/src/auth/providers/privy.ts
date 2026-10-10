@@ -74,7 +74,7 @@ function upgradeAccountAddress(method: string, params: unknown): Address | 'inva
 
     if (!first || typeof first !== 'object') return 'invalid'
     // SAFETY: first is a non-null object; only address / context.address are read.
-    const record = first as { address?: unknown; context?: { address?: unknown } }
+    const record = first as { address?: unknown; context?: unknown }
 
     const raw =
         method === 'wallet_upgradeAccount'

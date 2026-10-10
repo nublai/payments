@@ -190,8 +190,7 @@ const coingeckoProvider: PriceProvider = {
             throw new Error(`CoinGecko error: ${response.status} ${response.statusText}`)
         }
 
-        // SAFETY: CoinGecko simple-price JSON is { [coinId]: { usd?: number | string } }.
-        return (await response.json()) as CoinGeckoSimplePrice
+        return response.json<CoinGeckoSimplePrice>()
     },
 }
 
