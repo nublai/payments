@@ -53,6 +53,7 @@ test('protocol BigInt serialization is scoped to typedData only', () => {
 
     expect(parsed.params.sessionName).toBe('$bigint:42')
     expect(parsed.params.typedData.message.nonce).toBe(42n)
+    expect(parsed.params.typedData.domain.chainId).toBe(8453)
     expect(parsed.params.typedData.domain.name).toBe('$bigint:not-a-number')
 })
 

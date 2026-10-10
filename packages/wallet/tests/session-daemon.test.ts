@@ -314,6 +314,25 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
             expect(signed.result).toBe(direct)
         }
 
+        const encodedBigintChain = encodeTypedDataBigInt(correct)
+
+        if (!isRecord(encodedBigintChain) || !isRecord(encodedBigintChain.domain)) {
+            throw new Error('typed data encoding failed')
+        }
+
+        encodedBigintChain.domain.chainId = '$bigint:8453'
+
+        const signedBigintChain = await sendSignOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            JSON.stringify(encodedBigintChain),
+        )
+
+        const bigintDirect = await account.signTypedData(correct)
+
+        expect(signedBigintChain.error).toBeUndefined()
+        expect(signedBigintChain.result).toEqual({ signature: bigintDirect })
+
         const permit = {
             domain: {
                 name: 'USD Coin',
@@ -342,35 +361,21 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
 
         const permitSignature = await account.signTypedData(permit)
 
-        const encodedPermit = encodeTypedDataBigInt({
-            ...correct,
-            domain: permit.domain,
-            message: {
-                ...correct.message,
-                nonce: permit.message.nonce,
-                paymentMaxAmount: permit.message.value,
-                expiry: permit.message.deadline,
-            },
-        })
-
-        if (!isRecord(encodedPermit) || !isRecord(encodedPermit.message)) {
-            throw new Error('typed data encoding failed')
-        }
-
-        encodedPermit.types = permit.types
-        encodedPermit.primaryType = permit.primaryType
-        encodedPermit.message = {
-            owner: permit.message.owner,
-            spender: permit.message.spender,
-            value: encodedPermit.message.paymentMaxAmount,
-            nonce: encodedPermit.message.nonce,
-            deadline: encodedPermit.message.expiry,
-        }
-
         const refusedPermit = await sendSignOverSocket(
             process.env.TW_AGENT_SOCK!,
             'default',
-            encodedPermit,
+            JSON.stringify({
+                domain: permit.domain,
+                types: permit.types,
+                primaryType: permit.primaryType,
+                message: {
+                    owner: permit.message.owner,
+                    spender: permit.message.spender,
+                    value: `$bigint:${permit.message.value.toString()}`,
+                    nonce: `$bigint:${permit.message.nonce.toString()}`,
+                    deadline: `$bigint:${permit.message.deadline.toString()}`,
+                },
+            }),
         )
 
         expect(refusedPermit.error).toBeDefined()
@@ -392,7 +397,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         const refusedStringChain = await sendSignOverSocket(
             process.env.TW_AGENT_SOCK!,
             'default',
-            encodedStringChain,
+            JSON.stringify(encodedStringChain),
         )
 
         expect(refusedStringChain.error).toBeDefined()
@@ -417,7 +422,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         const refusedCustomDomain = await sendSignOverSocket(
             process.env.TW_AGENT_SOCK!,
             'default',
-            encodedCustomDomain,
+            JSON.stringify(encodedCustomDomain),
         )
 
         expect(refusedCustomDomain.error).toBeDefined()
@@ -455,10 +460,10 @@ test('daemon drops oversized payload without newline', async () => {
     await daemon.stop()
 })
 
-async function sendSignOverSocket<T>(
+async function sendSignOverSocket(
     socketPath: string,
     sessionName: string,
-    encodedTypedData: T,
+    typedDataJson: string,
 ): Promise<DaemonResponse> {
     const socket = net.createConnection(socketPath)
     let buffer = ''
@@ -468,11 +473,7 @@ async function sendSignOverSocket<T>(
         socket.once('error', reject)
     })
 
-    const line = `${JSON.stringify({
-        id: 'sign',
-        method: 'sign',
-        params: { sessionName, typedData: encodedTypedData },
-    })}\n`
+    const line = `{"id":"sign","method":"sign","params":{"sessionName":${JSON.stringify(sessionName)},"typedData":${typedDataJson}}}\n`
 
     const response = await new Promise<DaemonResponse>((resolve, reject) => {
         socket.on('data', (chunk: string) => {
