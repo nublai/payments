@@ -112,9 +112,13 @@ function mapTypedDataBigInt(value: unknown, revive: boolean): unknown {
     }
 
     if (isRecord(value)) {
-        return Object.fromEntries(
-            Object.entries(value).map(([key, entry]) => [key, mapTypedDataBigInt(entry, revive)]),
-        )
+        const mapped: Record<string, unknown> = {}
+
+        for (const [key, entry] of Object.entries(value)) {
+            mapped[key] = mapTypedDataBigInt(entry, revive)
+        }
+
+        return mapped
     }
 
     return value

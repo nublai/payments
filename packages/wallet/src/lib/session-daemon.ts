@@ -131,7 +131,7 @@ export type RunningSessionDaemon = {
 }
 
 function isErrnoCode(error: unknown, code: string): boolean {
-    return isRecord(error) && error.code === code
+    return isRecord(error) && 'code' in error && error.code === code
 }
 
 async function unlinkIfExists(path: string): Promise<void> {

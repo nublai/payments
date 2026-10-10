@@ -1,5 +1,5 @@
 import { getAddress, hashStruct, type Address, type Hex, type TypedData } from 'viem'
-import { isRecord, type Json } from './type-guards'
+import { isRecord } from './type-guards'
 
 /**
  * Deposit ids are the EIP-712 struct hash of Relay's v1 Order, which the
@@ -107,7 +107,7 @@ function requireBytes20(value: unknown, field: string): void {
     }
 }
 
-function assertOrder(order: { [key: string]: Json }): void {
+function assertOrder(order: Record<string, unknown>): void {
     if (order.version !== 'v1') {
         throw new RelayOrderRejected(
             'relay.link order version is not v1. Refusing to bind the deposit id.',

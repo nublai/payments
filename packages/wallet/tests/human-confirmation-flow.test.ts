@@ -17,7 +17,6 @@ import {
     type DaemonResponse,
     type DaemonTypedData,
 } from '../src/lib/session-daemon-protocol'
-import type { Json } from '../src/lib/type-guards'
 import {
     createRootKeystore,
     createSessionKeystore,
@@ -101,7 +100,7 @@ function runCli(
 
 function callMcpTool(
     name: string,
-    args: { [key: string]: Json },
+    args: Record<string, unknown>,
     env: Record<string, string | undefined> = {},
 ): Promise<string> {
     return new Promise((resolvePromise, reject) => {

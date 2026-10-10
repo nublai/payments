@@ -10,7 +10,6 @@ import {
     type DaemonRequest,
     type DaemonTypedData,
 } from './session-daemon-protocol'
-import type { Json } from './type-guards'
 
 const CONNECT_TIMEOUT_MS = 1_500
 
@@ -415,6 +414,6 @@ export class SessionDaemonClient {
     }
 }
 
-function isRecord(value: unknown): value is { [key: string]: Json } {
+function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
