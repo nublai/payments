@@ -66,10 +66,10 @@ export type RelayQuoteResponse = {
         v2?: {
             orderId?: string
             orderData?: {
-                version?: string
-                solverChainId?: string
-                solver?: string
-                salt?: string
+                version?: unknown
+                solverChainId?: unknown
+                solver?: unknown
+                salt?: unknown
                 inputs?: unknown
                 output?: unknown
                 fees?: unknown

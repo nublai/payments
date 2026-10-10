@@ -187,53 +187,47 @@ function asAddress(value: unknown): Address | undefined {
     return undefined
 }
 
-type SendBindingParams = {
-    context?: {
-        quote?: {
-            quotes?: unknown
-        }
-    }
-}
-
-type PrepareBindingParams = {
+type RpcBindingParams = {
     from?: unknown
     chain_id?: unknown
-}
-
-type UpgradeBindingParams = {
     address?: unknown
     chainId?: unknown
-    context?: {
-        address?: unknown
-        chainId?: unknown
-    }
+    context?: unknown
 }
 
-function accountsFromSend(params: SendBindingParams | undefined): BoundAccount[] | null {
+function accountsFromSend(params: RpcBindingParams | undefined): BoundAccount[] | null {
     const context = params?.context
 
-    if (!context || typeof context !== 'object') return null
+    if (!context || typeof context !== 'object' || !('quote' in context)) return null
     const quote = context.quote
 
-    if (!quote || !Array.isArray(quote.quotes) || quote.quotes.length === 0) return null
+    if (!quote || typeof quote !== 'object' || !('quotes' in quote)) return null
+
+    if (!Array.isArray(quote.quotes) || quote.quotes.length === 0) return null
 
     const accounts: BoundAccount[] = []
 
     for (const item of quote.quotes) {
         if (!item || typeof item !== 'object') return null
-        const record = item as { chainId?: unknown; intent?: { eoa?: unknown } }
-        const eoa = asAddress(record.intent?.eoa)
+        const intent = 'intent' in item ? item.intent : undefined
+        const eoa =
+            intent && typeof intent === 'object' && 'eoa' in intent
+                ? asAddress(intent.eoa)
+                : undefined
 
         // Ignore quote.authSigner. It is client-controlled until the HMAC, and even then
         // it is only a hint. Authorization uses the EOA or an on-chain key.
         if (!eoa) return null
-        accounts.push({ eoa, chainId: parseChainId(record.chainId) })
+        accounts.push({
+            eoa,
+            chainId: 'chainId' in item ? parseChainId(item.chainId) : undefined,
+        })
     }
 
     return accounts
 }
 
-function accountsFromPrepare(params: PrepareBindingParams | undefined): BoundAccount[] | null {
+function accountsFromPrepare(params: RpcBindingParams | undefined): BoundAccount[] | null {
     const eoa = asAddress(params?.from)
 
     // Ignore session_key. Decoding it only echoes an address the client chose.
@@ -244,17 +238,16 @@ function accountsFromPrepare(params: PrepareBindingParams | undefined): BoundAcc
 
 function accountsFromUpgrade(
     method: string,
-    params: UpgradeBindingParams | undefined,
+    params: RpcBindingParams | undefined,
 ): BoundAccount[] | null {
     const source = method === 'wallet_upgradeAccount' ? params?.context : params
 
     if (!source || typeof source !== 'object') return null
-    const record = source as { address?: unknown; chainId?: unknown }
-    const eoa = asAddress(record.address)
+    const eoa = 'address' in source ? asAddress(source.address) : undefined
 
     if (!eoa) return null
 
-    return [{ eoa, chainId: parseChainId(record.chainId) }]
+    return [{ eoa, chainId: 'chainId' in source ? parseChainId(source.chainId) : undefined }]
 }
 
 /**
@@ -283,9 +276,7 @@ export function bindingFromRpcBody(
         if (!BOUND_METHODS.has(record.method)) continue
         sawBindable = true
 
-        const params = unwrapParams<SendBindingParams & PrepareBindingParams & UpgradeBindingParams>(
-            record.params,
-        )
+        const params = unwrapParams<RpcBindingParams>(record.params)
 
         const extracted =
             record.method === 'wallet_prepareCalls'

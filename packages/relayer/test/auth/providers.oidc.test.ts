@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { exportJWK, exportSPKI, generateKeyPair, SignJWT, type JWK, type JWTPayload } from 'jose'
+import { exportJWK, exportSPKI, generateKeyPair, SignJWT, type JWK } from 'jose'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { getAddress } from 'viem'
 
@@ -92,11 +92,16 @@ async function signToken(input: {
     walletsClaim?: string
     secret?: Uint8Array
 }): Promise<string> {
-    const claims: JWTPayload = {}
+    type SignTokenClaims = {
+        client_id?: string
+        wallets?: unknown
+    }
+
+    const claims: SignTokenClaims = {}
 
     if (input.clientId) claims.client_id = input.clientId
 
-    if (input.wallets !== undefined) claims[input.walletsClaim ?? 'wallets'] = input.wallets
+    if (input.wallets !== undefined) claims.wallets = input.wallets
 
     const builder = new SignJWT(claims)
         .setProtectedHeader({ alg: input.alg ?? 'RS256', kid: input.kid ?? KID, typ: 'JWT' })

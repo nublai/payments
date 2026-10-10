@@ -17,17 +17,34 @@ async function readLegacyRecipientAliasesContacts(): Promise<Record<string, stri
     const raw = await readFile(path, 'utf8')
     const parsed: unknown = JSON.parse(raw)
 
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
+    }
+
+    if (!('version' in parsed) || parsed.version !== LEGACY_RECIPIENT_ALIASES_VERSION) {
+        throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
+    }
+
     if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        (parsed as { version?: unknown }).version !== LEGACY_RECIPIENT_ALIASES_VERSION ||
-        typeof (parsed as { contacts?: unknown }).contacts !== 'object' ||
-        (parsed as { contacts?: unknown }).contacts === null
+        !('contacts' in parsed) ||
+        typeof parsed.contacts !== 'object' ||
+        parsed.contacts === null ||
+        Array.isArray(parsed.contacts)
     ) {
         throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
     }
 
-    return (parsed as { contacts: Record<string, string> }).contacts
+    const contacts: Record<string, string> = {}
+
+    for (const [key, value] of Object.entries(parsed.contacts)) {
+        if (typeof value !== 'string') {
+            throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
+        }
+
+        contacts[key] = value
+    }
+
+    return contacts
 }
 
 export async function hasLegacyRecipientAlias(input: string): Promise<boolean> {

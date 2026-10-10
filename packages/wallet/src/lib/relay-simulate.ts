@@ -422,21 +422,21 @@ export async function readRelayerSignerOrigin(input: {
         )
     }
 
-    const table =
-        result && typeof result === 'object'
-            ? // SAFETY: wallet_getCapabilities is a JSON object keyed by hex chain id.
-              (result as {
-                  [chainId: string]: { pool?: { signers?: unknown } } | undefined
-              })
-            : {}
+    type CapabilitiesChain = { pool?: { signers?: unknown } }
+
+    let table: { [chainId: string]: CapabilitiesChain | undefined } = {}
+
+    if (result && typeof result === 'object') {
+        // SAFETY: wallet_getCapabilities is a JSON object keyed by hex chain id.
+        table = result as { [chainId: string]: CapabilitiesChain | undefined }
+    }
 
     const chain =
         table[hexChain] ??
         table[hexChain.toLowerCase()] ??
         Object.entries(table).find(([key]) => Number.parseInt(key, 16) === input.chainId)?.[1]
 
-    const pool =
-        chain && typeof chain === 'object' ? (chain as { pool?: { signers?: unknown } }).pool : undefined
+    const pool = chain?.pool
 
     const signers = Array.isArray(pool?.signers) ? pool.signers : []
 

@@ -36,33 +36,40 @@ export async function readAgentChannelRegistry(
         const raw = await readFile(path, 'utf8')
         const parsed = JSON.parse(raw) as unknown
 
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            throw new Error(`Unsupported agent channel registry format at ${path}`)
+        }
+
+        if (!('version' in parsed) || parsed.version !== AGENT_CHANNEL_REGISTRY_VERSION) {
+            throw new Error(`Unsupported agent channel registry format at ${path}`)
+        }
+
         if (
-            typeof parsed !== 'object' ||
-            parsed === null ||
-            !('version' in parsed) ||
-            (parsed as { version?: unknown }).version !== AGENT_CHANNEL_REGISTRY_VERSION ||
             !('channels' in parsed) ||
-            typeof (parsed as { channels?: unknown }).channels !== 'object' ||
-            (parsed as { channels?: unknown }).channels === null
+            typeof parsed.channels !== 'object' ||
+            parsed.channels === null ||
+            Array.isArray(parsed.channels)
         ) {
             throw new Error(`Unsupported agent channel registry format at ${path}`)
         }
 
-        const channels = (parsed as { channels: Record<string, string> }).channels
+        const channels: Record<string, string> = {}
 
-        for (const [key, value] of Object.entries(channels)) {
-            if (typeof key !== 'string' || typeof value !== 'string') {
+        for (const [key, value] of Object.entries(parsed.channels)) {
+            if (typeof value !== 'string') {
                 throw new Error(`Invalid agent channel registry entry at ${path}`)
             }
+
+            channels[key] = value
         }
 
-        return parsed as AgentChannelRegistryFile
+        return { version: AGENT_CHANNEL_REGISTRY_VERSION, channels }
     } catch (error) {
         if (
             typeof error === 'object' &&
             error !== null &&
             'code' in error &&
-            (error as { code?: unknown }).code === 'ENOENT'
+            error.code === 'ENOENT'
         ) {
             return defaultRegistry()
         }
