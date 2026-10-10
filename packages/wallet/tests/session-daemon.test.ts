@@ -9,10 +9,13 @@ import { INTENT_TYPES } from '@nubl/relayer-client'
 import { runSessionDaemon } from '../src/lib/session-daemon'
 import { SessionDaemonClient } from '../src/lib/session-daemon-client'
 import {
+    decodeTypedDataBigInt,
+    encodeTypedDataBigInt,
     parseDaemonResponse,
     type DaemonResponse,
     type DaemonTypedData,
 } from '../src/lib/session-daemon-protocol'
+import { isRecord } from '../src/lib/type-guards'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 import { emptyHex } from './helpers/hex'
 
@@ -265,6 +268,20 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
 
         const correct = orchestratorIntent(account.address, '0x')
 
+        const numberRoundTrip = decodeTypedDataBigInt(
+            JSON.parse(JSON.stringify(encodeTypedDataBigInt(correct))),
+        )
+
+        const bigintRoundTrip = decodeTypedDataBigInt({
+            domain: { chainId: '$bigint:8453' },
+        })
+
+        expect(numberRoundTrip.domain.chainId).toBe(8453)
+        expect(numberRoundTrip.domain.chainId).not.toBe('8453')
+        expect(JSON.stringify(encodeTypedDataBigInt(numberRoundTrip))).toContain('"chainId":8453')
+        expect(JSON.stringify(encodeTypedDataBigInt(bigintRoundTrip))).toContain('"$bigint:8453"')
+        expect(Object.hasOwn(INTENT_TYPES, 'EIP712Domain')).toBe(false)
+
         const wrongChain = {
             ...correct,
             domain: {
@@ -348,6 +365,36 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
             expect(refusedPermit.error.code).toBe('INVALID_REQUEST')
             expect(refusedPermit.error.message).toMatch(/Intent/)
         }
+
+        const refusedStringChain = await signMutatedIntentOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            correct,
+            '8453',
+            false,
+        )
+
+        expect(refusedStringChain.error).toBeDefined()
+        expect(JSON.stringify(refusedStringChain)).not.toContain('"signature"')
+
+        if (refusedStringChain.error) {
+            expect(refusedStringChain.error.code).toBe('INVALID_REQUEST')
+        }
+
+        const refusedCustomDomain = await signMutatedIntentOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            correct,
+            undefined,
+            true,
+        )
+
+        expect(refusedCustomDomain.error).toBeDefined()
+        expect(JSON.stringify(refusedCustomDomain)).not.toContain('"signature"')
+
+        if (refusedCustomDomain.error) {
+            expect(refusedCustomDomain.error.code).toBe('INVALID_REQUEST')
+        }
     } finally {
         await daemon.stop()
     }
@@ -427,6 +474,67 @@ async function signPermitOverSocket(
                 },
             },
         },
+    })}\n`
+
+    const response = await new Promise<DaemonResponse>((resolve, reject) => {
+        socket.on('data', (chunk: string) => {
+            buffer += chunk
+            const newlineIdx = buffer.indexOf('\n')
+
+            if (newlineIdx === -1) {
+                return
+            }
+
+            try {
+                resolve(parseDaemonResponse(buffer.slice(0, newlineIdx)))
+            } catch (error) {
+                reject(error)
+            }
+        })
+        socket.write(line)
+    })
+
+    socket.destroy()
+
+    return response
+}
+
+async function signMutatedIntentOverSocket(
+    socketPath: string,
+    sessionName: string,
+    typedData: DaemonTypedData,
+    chainId: string | undefined,
+    includeEip712Domain: boolean,
+): Promise<DaemonResponse> {
+    const encoded = encodeTypedDataBigInt(typedData)
+
+    if (!isRecord(encoded) || !isRecord(encoded.domain) || !isRecord(encoded.types)) {
+        throw new Error('typed data encoding failed')
+    }
+
+    if (chainId !== undefined) {
+        encoded.domain.chainId = chainId
+    }
+
+    if (includeEip712Domain) {
+        encoded.types.EIP712Domain = [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+        ]
+    }
+
+    const socket = net.createConnection(socketPath)
+    let buffer = ''
+
+    await new Promise<void>((resolve, reject) => {
+        socket.once('connect', () => resolve())
+        socket.once('error', reject)
+    })
+
+    const line = `${JSON.stringify({
+        id: 'mutated',
+        method: 'sign',
+        params: { sessionName, typedData: encoded },
     })}\n`
 
     const response = await new Promise<DaemonResponse>((resolve, reject) => {
