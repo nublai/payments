@@ -78,7 +78,7 @@ export async function getKeys(
 ): Promise<GetKeysResponse> {
     const transport = createRelayerTransport(client)
 
-    const rpcParams: Record<string, unknown> = {
+    const rpcParams: RpcGetKeysParams = {
         address: params.address,
     }
 

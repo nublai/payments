@@ -339,7 +339,12 @@ function settlerAddresses(chainId: number): Set<string> {
     return settlers
 }
 
-function assertSingleChainSwap(message: Record<string, unknown>): void {
+function assertSingleChainSwap(message: {
+    settler?: unknown
+    multichain?: unknown
+    encodedFundTransfers?: unknown
+    encodedPreCalls?: unknown
+}): void {
     const settler =
         message.settler === undefined ? zeroAddress : asAddress(message.settler, 'settler')
 

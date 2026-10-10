@@ -12,6 +12,14 @@ import type { FeeEstimate } from '../services/fees'
 import type { IntentNonceProvider, RelayerService } from '../services/relayer'
 import type { Env, FeeConfig, GasConfig, RelayerConfig } from '../types/env'
 
+type RpcJson =
+    | null
+    | boolean
+    | number
+    | string
+    | RpcJson[]
+    | { [key: string]: RpcJson }
+
 /**
  * JSON-RPC 2.0 Request object
  */
@@ -22,8 +30,8 @@ export interface JsonRpcRequest {
     id: string | number | null
     /** Method name to invoke */
     method: string
-    /** Optional parameters - either array (positional) or object (named) */
-    params?: unknown[] | Record<string, unknown>
+    /** Optional parameters - either array (positional) or object (named JSON) */
+    params?: unknown[] | { [key: string]: RpcJson }
 }
 
 /**

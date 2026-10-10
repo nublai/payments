@@ -129,7 +129,9 @@ async function handleBatch(
 
     for (const req of requests) {
         if (typeof req !== 'object' || req === null) continue
-        const obj = req as Record<string, unknown>
+
+        // SAFETY: req is a non-null object; only id/method/params are read, matching JSON-RPC request keys.
+        const obj = req as { id?: unknown; method?: unknown; params?: unknown }
 
         parsedRequests.push({
             id: obj.id as string | number | null,
@@ -180,7 +182,8 @@ function validateRequest(body: unknown): JsonRpcErrorObject | null {
         return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
     }
 
-    const obj = body as Record<string, unknown>
+    // SAFETY: body is a non-null object; only the JSON-RPC request keys are read.
+    const obj = body as { jsonrpc?: unknown; method?: unknown; id?: unknown; params?: unknown }
 
     // Must have jsonrpc: "2.0"
     if (obj.jsonrpc !== '2.0') {
@@ -220,7 +223,9 @@ function validateRequest(body: unknown): JsonRpcErrorObject | null {
  */
 function extractId(body: unknown): string | number | null {
     if (typeof body !== 'object' || body === null) return null
-    const obj = body as Record<string, unknown>
+
+    // SAFETY: body is a non-null object; only id is read.
+    const obj = body as { id?: unknown }
 
     if (obj.id === undefined) return null
 

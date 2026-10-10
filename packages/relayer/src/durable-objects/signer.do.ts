@@ -1434,8 +1434,17 @@ export class SignerDO extends DurableObject<Env> {
         value: string | undefined,
     ): SignedAuthorization[] | undefined {
         if (!value) return undefined
+
         // SAFETY: this column is JSON from serializeAuthorizationList of SignedAuthorization[].
-        const parsed = JSON.parse(value) as Array<Record<string, unknown>>
+        const parsed = JSON.parse(value) as Array<{
+            address?: string
+            chainId?: string | number | bigint
+            nonce?: string | number | bigint
+            r?: string
+            s?: string
+            yParity?: number
+            v?: string | number | bigint
+        }>
 
         return parsed.map((item) => {
             const chainId = item.chainId
@@ -2223,7 +2232,17 @@ export class SignerDO extends DurableObject<Env> {
      * Get full status for debugging
      */
     async getStatus(): Promise<{
-        state: Record<string, unknown> | null
+        state: {
+            id: string | number | null
+            address: string | null
+            chain_id: string | number | null
+            derivation_index: string | number | null
+            nonce: string | number | null
+            paused: string | number | null
+            initialized: string | number | null
+            balance_wei: string | null
+            last_balance_check: string | number | null
+        } | null
         pendingCount: number
         recentTransactions: unknown[]
     }> {
@@ -2243,7 +2262,21 @@ export class SignerDO extends DurableObject<Env> {
             .toArray()
 
         return {
-            state: stateRows.length > 0 ? (stateRows[0] as Record<string, unknown>) : null,
+            state:
+                stateRows.length > 0
+                    ? // SAFETY: SELECT * FROM signer_state matches the debug row shape.
+                      (stateRows[0] as {
+                          id: string | number | null
+                          address: string | null
+                          chain_id: string | number | null
+                          derivation_index: string | number | null
+                          nonce: string | number | null
+                          paused: string | number | null
+                          initialized: string | number | null
+                          balance_wei: string | null
+                          last_balance_check: string | number | null
+                      })
+                    : null,
             pendingCount,
             recentTransactions,
         }

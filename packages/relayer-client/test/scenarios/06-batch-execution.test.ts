@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest'
 import { createWalletClient, http, parseEther } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
-import { createJsonRpcTransport, waitForBundle } from '../../src'
+import { createJsonRpcTransport, waitForBundle, type PrepareCallsContext } from '../../src'
 import { ANVIL_RPC_URL, RELAYER_URL, TEST_CONTRACTS, testChain } from '../setup'
 import { setBalance } from '../helpers/anvil'
 import { createRelayerTestAuthSigner, createRelayerTestClient } from '../helpers/client'
@@ -39,7 +39,7 @@ describe('Batch Execution', () => {
      */
     async function submitBatch(
         intents: Array<{
-            context: Record<string, unknown>
+            context: PrepareCallsContext
             signature: string
         }>,
     ): Promise<{ success: boolean; bundleIds: string[] }> {

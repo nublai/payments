@@ -7,6 +7,15 @@ type ReserveResult = { allowed?: boolean; reservedAt?: number }
 
 type GasBooks = { gas: number; held: number }
 
+type PaidUpgradeRateLimitTestBody = {
+    action: string
+    gas?: string
+    hold?: string
+    failure?: boolean
+    txHash?: string
+    found?: boolean
+}
+
 describe('SignerPoolDO upgrade rate limit', () => {
     it('allows five upgrades for one account and rejects the next', async () => {
         const poolName = 'pool-8453-c1-rate'
@@ -118,7 +127,7 @@ describe('SignerPoolDO upgrade rate limit', () => {
         const id = env.SIGNER_POOL.idFromName(poolName)
         const stub = env.SIGNER_POOL.get(id)
 
-        const post = (body: Record<string, unknown>) =>
+        const post = (body: PaidUpgradeRateLimitTestBody) =>
             stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -152,7 +161,7 @@ describe('SignerPoolDO upgrade rate limit', () => {
         const stub = env.SIGNER_POOL.get(id)
         const budget = 2_000_000
 
-        const post = (body: Record<string, unknown>) =>
+        const post = (body: PaidUpgradeRateLimitTestBody) =>
             stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -195,7 +204,7 @@ describe('SignerPoolDO upgrade rate limit', () => {
         const stub = env.SIGNER_POOL.get(id)
         const txHash = `0x${'11'.repeat(32)}`
 
-        const post = (body: Record<string, unknown>) =>
+        const post = (body: PaidUpgradeRateLimitTestBody) =>
             stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -262,7 +271,7 @@ describe('SignerPoolDO upgrade rate limit', () => {
         const original = `0x${'ab'.repeat(32)}`
         const replacement = `0x${'cd'.repeat(32)}`
 
-        const post = (body: Record<string, unknown>) =>
+        const post = (body: PaidUpgradeRateLimitTestBody) =>
             stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -322,7 +331,7 @@ describe('SignerPoolDO upgrade rate limit', () => {
         const original = `0x${'ef'.repeat(32)}`
         const replacement = `0x${'12'.repeat(32)}`
 
-        const post = (body: Record<string, unknown>) =>
+        const post = (body: PaidUpgradeRateLimitTestBody) =>
             stub.fetch(`http://do/upgrade-rate-limit?poolName=${poolName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

@@ -169,27 +169,25 @@ export async function prepareCalls(
 
     const result = await transport.request<RpcPrepareCallsResult>('wallet_prepareCalls', rpcParams)
 
-    // Convert string values to bigint for viem compatibility
-    const rawMessage = result.typedData.message as Record<string, unknown>
-    const rawCalls = rawMessage.calls as Array<{ to: Address; value: string; data: Hex }>
+    const rawMessage = result.typedData.message
 
     const message: PrepareCallsResponse['typedData']['message'] = {
-        multichain: rawMessage.multichain as boolean,
-        eoa: rawMessage.eoa as Address,
-        calls: rawCalls.map((c) => ({
+        multichain: rawMessage.multichain,
+        eoa: rawMessage.eoa,
+        calls: rawMessage.calls.map((c) => ({
             to: c.to,
             value: BigInt(c.value),
             data: c.data,
         })),
-        nonce: BigInt(rawMessage.nonce as string),
-        payer: rawMessage.payer as Address,
-        paymentToken: rawMessage.paymentToken as Address,
-        paymentMaxAmount: BigInt(rawMessage.paymentMaxAmount as string),
-        combinedGas: BigInt(rawMessage.combinedGas as string),
-        encodedPreCalls: rawMessage.encodedPreCalls as Hex[],
-        encodedFundTransfers: rawMessage.encodedFundTransfers as Hex[],
-        settler: rawMessage.settler as Address,
-        expiry: BigInt(rawMessage.expiry as string),
+        nonce: BigInt(rawMessage.nonce),
+        payer: rawMessage.payer,
+        paymentToken: rawMessage.paymentToken,
+        paymentMaxAmount: BigInt(rawMessage.paymentMaxAmount),
+        combinedGas: BigInt(rawMessage.combinedGas),
+        encodedPreCalls: rawMessage.encodedPreCalls,
+        encodedFundTransfers: rawMessage.encodedFundTransfers,
+        settler: rawMessage.settler,
+        expiry: BigInt(rawMessage.expiry),
     }
 
     return {

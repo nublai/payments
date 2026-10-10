@@ -136,7 +136,12 @@ export interface PrepareUpgradeResult {
         domain: TypedDataDomain
         types: Record<string, ReadonlyArray<{ name: string; type: string }>>
         primaryType: string
-        message: Record<string, unknown>
+        message: {
+            multichain: boolean
+            eoa: Address
+            calls: Array<{ to: Address; value: string; data: Hex }>
+            nonce: string
+        }
     }
     /** Capabilities with processed keys */
     capabilities: UpgradeAccountCapabilities

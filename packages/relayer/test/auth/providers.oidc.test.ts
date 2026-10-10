@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { exportJWK, exportSPKI, generateKeyPair, SignJWT, type JWK } from 'jose'
+import { exportJWK, exportSPKI, generateKeyPair, SignJWT, type JWK, type JWTPayload } from 'jose'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { getAddress } from 'viem'
 
@@ -92,7 +92,7 @@ async function signToken(input: {
     walletsClaim?: string
     secret?: Uint8Array
 }): Promise<string> {
-    const claims: Record<string, unknown> = {}
+    const claims: JWTPayload = {}
 
     if (input.clientId) claims.client_id = input.clientId
 
@@ -140,7 +140,14 @@ async function withJwks<T>(
     }
 }
 
-function noneToken(payload: Record<string, unknown>): string {
+function noneToken(payload: {
+    iss: string
+    sub: string
+    aud: string
+    exp: number
+    nbf: number
+    iat: number
+}): string {
     const encode = (value: string) => {
         const bytes = new TextEncoder().encode(value)
         let binary = ''

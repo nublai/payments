@@ -187,11 +187,33 @@ function asAddress(value: unknown): Address | undefined {
     return undefined
 }
 
-function accountsFromSend(params: Record<string, unknown> | undefined): BoundAccount[] | null {
+type SendBindingParams = {
+    context?: {
+        quote?: {
+            quotes?: unknown
+        }
+    }
+}
+
+type PrepareBindingParams = {
+    from?: unknown
+    chain_id?: unknown
+}
+
+type UpgradeBindingParams = {
+    address?: unknown
+    chainId?: unknown
+    context?: {
+        address?: unknown
+        chainId?: unknown
+    }
+}
+
+function accountsFromSend(params: SendBindingParams | undefined): BoundAccount[] | null {
     const context = params?.context
 
     if (!context || typeof context !== 'object') return null
-    const quote = (context as { quote?: { quotes?: unknown } }).quote
+    const quote = context.quote
 
     if (!quote || !Array.isArray(quote.quotes) || quote.quotes.length === 0) return null
 
@@ -211,7 +233,7 @@ function accountsFromSend(params: Record<string, unknown> | undefined): BoundAcc
     return accounts
 }
 
-function accountsFromPrepare(params: Record<string, unknown> | undefined): BoundAccount[] | null {
+function accountsFromPrepare(params: PrepareBindingParams | undefined): BoundAccount[] | null {
     const eoa = asAddress(params?.from)
 
     // Ignore session_key. Decoding it only echoes an address the client chose.
@@ -222,7 +244,7 @@ function accountsFromPrepare(params: Record<string, unknown> | undefined): Bound
 
 function accountsFromUpgrade(
     method: string,
-    params: Record<string, unknown> | undefined,
+    params: UpgradeBindingParams | undefined,
 ): BoundAccount[] | null {
     const source = method === 'wallet_upgradeAccount' ? params?.context : params
 
@@ -260,7 +282,10 @@ export function bindingFromRpcBody(
 
         if (!BOUND_METHODS.has(record.method)) continue
         sawBindable = true
-        const params = unwrapParams<Record<string, unknown>>(record.params)
+
+        const params = unwrapParams<SendBindingParams & PrepareBindingParams & UpgradeBindingParams>(
+            record.params,
+        )
 
         const extracted =
             record.method === 'wallet_prepareCalls'

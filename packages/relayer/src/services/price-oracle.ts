@@ -24,12 +24,17 @@ export interface PriceRegistry {
     lastFetch: number
 }
 
+type CoinGeckoUsdQuote = {
+    usd?: number | string
+}
+
+type CoinGeckoSimplePrice = {
+    [coinId: string]: CoinGeckoUsdQuote | undefined
+}
+
 export interface PriceProvider {
     id: string
-    fetchUsdPrices(
-        coinIds: string[],
-        config: ResolvedPriceOracleConfig,
-    ): Promise<Record<string, unknown>>
+    fetchUsdPrices(coinIds: string[], config: ResolvedPriceOracleConfig): Promise<CoinGeckoSimplePrice>
 }
 
 interface ResolvedPriceOracleConfig {
@@ -185,7 +190,8 @@ const coingeckoProvider: PriceProvider = {
             throw new Error(`CoinGecko error: ${response.status} ${response.statusText}`)
         }
 
-        return (await response.json()) as Record<string, unknown>
+        // SAFETY: CoinGecko simple-price JSON is { [coinId]: { usd?: number } }.
+        return (await response.json()) as CoinGeckoSimplePrice
     },
 }
 
@@ -256,12 +262,10 @@ export async function updatePrices(
 
         for (const assetUid of assetUids) {
             const coinId = assetMapping[assetUid]
-            const entry = (response as Record<string, unknown>)[coinId]
+            const entry = coinId === undefined ? undefined : response[coinId]
 
             const usdValue =
-                typeof entry === 'object' && entry !== null
-                    ? (entry as Record<string, unknown>).usd
-                    : undefined
+                typeof entry === 'object' && entry !== null ? entry.usd : undefined
 
             const price = normalizeUsdPrice(usdValue)
 

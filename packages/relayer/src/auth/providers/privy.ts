@@ -73,7 +73,8 @@ function upgradeAccountAddress(method: string, params: unknown): Address | 'inva
     const first = Array.isArray(params) ? params[0] : params
 
     if (!first || typeof first !== 'object') return 'invalid'
-    const record = first as Record<string, unknown>
+    // SAFETY: first is a non-null object; only address / context.address are read.
+    const record = first as { address?: unknown; context?: { address?: unknown } }
 
     const raw =
         method === 'wallet_upgradeAccount'

@@ -48,7 +48,7 @@ export async function readAgentChannelRegistry(
             throw new Error(`Unsupported agent channel registry format at ${path}`)
         }
 
-        const channels = (parsed as { channels: Record<string, unknown> }).channels
+        const channels = (parsed as { channels: Record<string, string> }).channels
 
         for (const [key, value] of Object.entries(channels)) {
             if (typeof key !== 'string' || typeof value !== 'string') {

@@ -82,18 +82,19 @@ export function deserializeContext(serialized: string): PrepareCallsContext {
         throw new Error('Invalid PrepareCallsContext: expected { quote: { quotes: [...] } }')
     }
 
-    const obj = parsed as Record<string, unknown>
+    const quote = parsed.quote
 
     if (
-        obj.quote === null ||
-        obj.quote === undefined ||
-        typeof obj.quote !== 'object' ||
-        !('quotes' in obj.quote) ||
-        !Array.isArray((obj.quote as Record<string, unknown>).quotes)
+        quote === null ||
+        quote === undefined ||
+        typeof quote !== 'object' ||
+        !('quotes' in quote) ||
+        !Array.isArray(quote.quotes)
     ) {
         throw new Error('Invalid PrepareCallsContext: expected { quote: { quotes: [...] } }')
     }
 
+    // SAFETY: quote.quotes is an array; PrepareCallsContext requires SignedQuotes and the caller only needs that shape to pass the context back to sendPreparedCalls.
     return parsed as PrepareCallsContext
 }
 

@@ -55,14 +55,30 @@ const MIN_DRAFT_TTL_MS = 60 * 1000
 
 const MAX_DRAFT_TTL_MS = 60 * 60 * 1000
 
-function toNonceRow(row: Record<string, unknown>): NonceRow {
+type SqlCell = string | number | bigint | ArrayBuffer | null
+
+type NonceSqlRow = {
+    seq_key: SqlCell
+    seq: SqlCell
+}
+
+type PendingDraftSqlRow = {
+    seq_key: SqlCell
+    draft_id: SqlCell
+    nonce: SqlCell
+    draft_key: SqlCell
+    created_at_ms: SqlCell
+    expires_at_ms: SqlCell
+}
+
+function toNonceRow(row: NonceSqlRow): NonceRow {
     return {
         seq_key: String(row.seq_key),
         seq: String(row.seq),
     }
 }
 
-function toPendingDraftRow(row: Record<string, unknown>): PendingDraftRow {
+function toPendingDraftRow(row: PendingDraftSqlRow): PendingDraftRow {
     return {
         seq_key: String(row.seq_key),
         draft_id: String(row.draft_id),
@@ -76,7 +92,10 @@ function toPendingDraftRow(row: Record<string, unknown>): PendingDraftRow {
 function getSeqFromRows(rows: unknown[]): bigint {
     if (rows.length === 0) return 0n
 
-    return BigInt(String((rows[0] as Record<string, unknown>).seq))
+    // SAFETY: the SELECT is `seq`; DO SQLite returns a cell we stringify into bigint.
+    const first = rows[0] as { seq: SqlCell }
+
+    return BigInt(String(first.seq))
 }
 
 function coerceDraftTtlMs(value: unknown): number {
@@ -196,7 +215,8 @@ export class IntentNonceDO extends DurableObject<Env> {
                     const nonces: Record<string, string> = {}
 
                     for (const row of rows) {
-                        const typed = toNonceRow(row as Record<string, unknown>)
+                        // SAFETY: SELECT seq_key, seq; cells are SqlCell values.
+                        const typed = toNonceRow(row as NonceSqlRow)
                         nonces[typed.seq_key] = typed.seq
                     }
 
@@ -218,7 +238,8 @@ export class IntentNonceDO extends DurableObject<Env> {
                     > = {}
 
                     for (const row of draftsRows) {
-                        const typed = toPendingDraftRow(row as Record<string, unknown>)
+                        // SAFETY: SELECT matches PendingDraftSqlRow columns.
+                        const typed = toPendingDraftRow(row as PendingDraftSqlRow)
                         drafts[typed.seq_key] = {
                             draftId: typed.draft_id,
                             nonce: typed.nonce,
@@ -551,7 +572,8 @@ export class IntentNonceDO extends DurableObject<Env> {
             return null
         }
 
-        return toPendingDraftRow(rows[0] as Record<string, unknown>)
+        // SAFETY: SELECT matches PendingDraftSqlRow columns.
+        return toPendingDraftRow(rows[0] as PendingDraftSqlRow)
     }
 
     private deleteExpiredDraftForSeqKey(seqKey: string, nowMs: number): void {

@@ -422,7 +422,13 @@ export async function readRelayerSignerOrigin(input: {
         )
     }
 
-    const table = result && typeof result === 'object' ? (result as Record<string, unknown>) : {}
+    const table =
+        result && typeof result === 'object'
+            ? // SAFETY: wallet_getCapabilities is a JSON object keyed by hex chain id.
+              (result as {
+                  [chainId: string]: { pool?: { signers?: unknown } } | undefined
+              })
+            : {}
 
     const chain =
         table[hexChain] ??

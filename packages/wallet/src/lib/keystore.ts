@@ -7,6 +7,7 @@ import argon2 from 'argon2'
 import lockfile from 'proper-lockfile'
 import { privateKeyToAccount } from 'viem/accounts'
 import { type Hex } from 'viem'
+import type { Json } from './type-guards'
 
 const ARGON2_MEMORY_COST = 19_456
 
@@ -420,7 +421,7 @@ export function isLoginKeystore(keystore: AnySessionKeystore): keystore is Login
     return keystore.kind === 'login'
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is { [key: string]: Json } {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
