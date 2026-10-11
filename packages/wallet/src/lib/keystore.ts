@@ -177,10 +177,7 @@ const namedChannelSchema = z
     })
     .passthrough()
 
-const namedChannelsSchema = z.union([
-    z.record(z.string(), namedChannelSchema),
-    z.array(namedChannelSchema),
-])
+const namedChannelsContainerSchema = z.union([z.object({}).passthrough(), z.array(z.unknown())])
 
 const sessionCheckpointSchema = z.enum(SESSION_CHECKPOINTS)
 
@@ -277,7 +274,7 @@ const agentSessionKeystoreSchema = z
                 encryptionDevice: encryptedSecretSchema,
             })
             .passthrough(),
-        namedChannels: namedChannelsSchema.optional(),
+        namedChannels: namedChannelsContainerSchema.optional(),
     })
     .passthrough()
 
@@ -707,9 +704,28 @@ export async function readSessionKeystoreFile(path: string): Promise<AnySessionK
     // SAFETY: schema accepted parsed; extra enumerable keys stay on the original object.
     const sessionKeystore = parsed as AnySessionKeystore
 
+    if (sessionKeystore.kind === 'agent') {
+        assertOwnNamedChannels(sessionKeystore.namedChannels, path)
+    }
+
     assertValidSessionName(sessionKeystore.name)
 
     return sessionKeystore
+}
+
+function assertOwnNamedChannels(value: unknown, path: string): void {
+    if (value === undefined) return
+
+    if (!namedChannelsContainerSchema.safeParse(value).success) {
+        throw new Error(`Unsupported session keystore format at ${path}`)
+    }
+
+    // SAFETY: schema accepted an object; walk the original so an own __proto__ key is included.
+    for (const entry of Object.values(value as object)) {
+        if (!namedChannelSchema.safeParse(entry).success) {
+            throw new Error(`Unsupported session keystore format at ${path}`)
+        }
+    }
 }
 
 type WriteJsonAtomicOptions = {

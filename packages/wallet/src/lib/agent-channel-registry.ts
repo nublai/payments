@@ -7,11 +7,11 @@ const AGENT_CHANNEL_REGISTRY_VERSION = 1 as const
 const agentChannelRegistryFileSchema = z
     .object({
         version: z.literal(AGENT_CHANNEL_REGISTRY_VERSION),
-        channels: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())]),
+        channels: z.union([z.object({}).passthrough(), z.array(z.unknown())]),
     })
     .passthrough()
 
-const agentChannelValuesSchema = z.union([z.record(z.string(), z.string()), z.array(z.string())])
+const agentChannelValuesSchema = z.array(z.string())
 
 export type AgentChannelRegistryFile = {
     version: typeof AGENT_CHANNEL_REGISTRY_VERSION
@@ -51,7 +51,11 @@ export async function readAgentChannelRegistry(
             throw new Error(`Unsupported agent channel registry format at ${path}`)
         }
 
-        if (!agentChannelValuesSchema.safeParse(file.data.channels).success) {
+        // SAFETY: schema accepted channels as an object; values come from the original parse
+        // so an own __proto__ key is included.
+        const channels = (parsed as { channels: object }).channels
+
+        if (!agentChannelValuesSchema.safeParse(Object.values(channels)).success) {
             throw new Error(`Invalid agent channel registry entry at ${path}`)
         }
 

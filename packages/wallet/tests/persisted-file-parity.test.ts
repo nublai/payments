@@ -117,6 +117,36 @@ test('readSessionKeystoreFile keeps extra fields and rejects the same invalid fi
         expect(Object.hasOwn(protoLoaded, '__proto__')).toBe(true)
         expect(JSON.parse(JSON.stringify(protoLoaded)).admin).toBeUndefined()
 
+        const agent = {
+            ...session,
+            kind: 'agent',
+            secrets: {
+                ...session.secrets,
+                encryptionDevice: session.secrets.sessionPrivateKey,
+            },
+        }
+        const protoChPath = join(dir, 'proto-ch.json')
+        await writeFile(
+            protoChPath,
+            `${JSON.stringify(agent).replace(/}$/, ',"namedChannels":{"__proto__":5}}')}\n`,
+        )
+        await expect(readSessionKeystoreFile(protoChPath)).rejects.toThrow(
+            `Unsupported session keystore format at ${protoChPath}`,
+        )
+
+        const protoChOkPath = join(dir, 'proto-ch-ok.json')
+        await writeFile(
+            protoChOkPath,
+            `${JSON.stringify(agent).replace(/}$/, ',"namedChannels":{"__proto__":{"streamId":"s","secretHash":"h"}}}')}\n`,
+        )
+        const protoChOk = await readSessionKeystoreFile(protoChOkPath)
+
+        if (protoChOk.kind !== 'agent' || protoChOk.namedChannels === undefined) {
+            throw new Error('expected agent namedChannels')
+        }
+
+        expect(Object.hasOwn(protoChOk.namedChannels, '__proto__')).toBe(true)
+
         const corrupt = join(dir, 'corrupt.json')
         await writeFile(corrupt, '{"version":2,')
         await expect(readSessionKeystoreFile(corrupt)).rejects.toBeInstanceOf(SyntaxError)
@@ -196,6 +226,11 @@ test('readAgentChannelRegistry keeps extras, accepts string arrays, and maps ENO
             `Invalid agent channel registry entry at ${path}`,
         )
 
+        await writeFile(path, '{"version":1,"channels":{"__proto__":5}}\n')
+        await expect(readAgentChannelRegistry(keystorePath)).rejects.toThrow(
+            `Invalid agent channel registry entry at ${path}`,
+        )
+
         await writeFile(path, 'null\n')
         await expect(readAgentChannelRegistry(keystorePath)).rejects.toThrow(
             `Unsupported agent channel registry format at ${path}`,
@@ -239,6 +274,10 @@ test('hasLegacyRecipientAlias matches main on valid, malformed, and extra-field 
 
         await writeFile(contactsPath, `${JSON.stringify({ version: 1, contacts: ['Vitalik'] })}\n`)
         await expect(hasLegacyRecipientAlias('0')).resolves.toBe(true)
+
+        await writeFile(contactsPath, '{"version":1,"contacts":{"__proto__":{},"alice":1}}\n')
+        await expect(hasLegacyRecipientAlias('__proto__')).resolves.toBe(true)
+        await expect(hasLegacyRecipientAlias('alice')).resolves.toBe(true)
     } finally {
         if (previous === null) {
             await rm(contactsPath, { force: true })
@@ -284,6 +323,62 @@ test('readPendingQuoteLimit keeps extras and matches main error messages', async
         )
 
         await writeFile(path, 'null\n')
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
+
+        await writeFile(
+            path,
+            `${JSON.stringify({ ...validPendingQuote(), callGrants: [null] })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
+
+        const expiry = {
+            previous: '1',
+            installed: '2',
+            keyType: 0,
+            isSuperAdmin: false,
+            publicKey: KEY_HASH,
+        }
+        await writeFile(
+            path,
+            `${JSON.stringify({ ...validPendingQuote(), keyExpiry: { ...expiry, publicKey: 'zz', permissions: {} } })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Pending quote limit at ${path} has an invalid key expiry.`,
+        )
+
+        await writeFile(
+            path,
+            `${JSON.stringify({ ...validPendingQuote(), keyExpiry: { ...expiry, publicKey: 'zz', limits: {} } })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Pending quote limit at ${path} has an invalid key expiry.`,
+        )
+
+        await writeFile(
+            path,
+            `${JSON.stringify({
+                ...validPendingQuote(),
+                keyExpiry: {
+                    ...expiry,
+                    permissions: [{ target: 'x', selector: '0xa9059cbb' }],
+                    limits: {},
+                },
+            })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Pending quote limit at ${path} has an invalid key permission.`,
+        )
+
+        await writeFile(
+            path,
+            `${JSON.stringify({ ...validPendingQuote(), keyExpiry: { ...expiry, permissions: [null] } })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
+
+        await writeFile(
+            path,
+            `${JSON.stringify({ ...validPendingQuote(), keyExpiry: { ...expiry, limits: [null] } })}\n`,
+        )
         await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
 
         await writeFile(path, '{"version":1,')
@@ -364,5 +459,49 @@ test('readRotationIntent matches main errors for invalid marker files', async ()
             code: 'ROTATION_MARKER_MISMATCH',
             message: 'Rotation marker is missing its permission flags.',
         })
+
+        await writeFile(
+            markerPath,
+            `${JSON.stringify({ ...validRotationMarker(), account: '0xzz', oldKeyHash: 'x' })}\n`,
+        )
+        await expect(readRotationIntent(rootPath, 'sessions')).rejects.toMatchObject({
+            code: 'ROTATION_MARKER_MISMATCH',
+            message: 'Rotation marker account is not a valid address.',
+        })
+
+        await writeFile(
+            markerPath,
+            `${JSON.stringify({ ...validRotationMarker(), account: '0xzz', permissions: 5 })}\n`,
+        )
+        await expect(readRotationIntent(rootPath, 'sessions')).rejects.toMatchObject({
+            code: 'ROTATION_MARKER_MISMATCH',
+            message: 'Rotation marker account is not a valid address.',
+        })
+
+        await writeFile(
+            markerPath,
+            `${JSON.stringify({
+                ...validRotationMarker(),
+                mac: 'a'.repeat(64),
+                macKdf: {
+                    memoryCost: 1,
+                    timeCost: 1,
+                    parallelism: 1,
+                    hashLength: 32,
+                    salt: 'c2FsdHNhbHRzYWx0',
+                    evil: 1,
+                    type: 0,
+                },
+            })}\n`,
+        )
+        const withMacKdf = await readRotationIntent(rootPath, 'sessions')
+        expect(withMacKdf?.macKdf).toEqual({
+            memoryCost: 1,
+            timeCost: 1,
+            parallelism: 1,
+            hashLength: 32,
+            salt: 'c2FsdHNhbHRzYWx0',
+        })
+        expect(JSON.parse(JSON.stringify(withMacKdf?.macKdf)).evil).toBeUndefined()
     })
 })

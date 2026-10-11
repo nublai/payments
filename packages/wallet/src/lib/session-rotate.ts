@@ -315,15 +315,23 @@ const SPEND_PERIODS = ['minute', 'hour', 'day', 'week', 'month', 'year', 'foreve
 
 const markerMacSchema = z.string().regex(/^[0-9a-f]{64}$/)
 
-const markerMacKdfSchema = z
-    .object({
-        memoryCost: z.number(),
-        timeCost: z.number(),
-        parallelism: z.number(),
-        hashLength: z.number(),
-        salt: z.string().min(1),
-    })
-    .passthrough()
+const markerMacKdfSchema = z.object({
+    memoryCost: z.number(),
+    timeCost: z.number(),
+    parallelism: z.number(),
+    hashLength: z.number(),
+    salt: z.string().min(1),
+})
+
+function copiedMacKdf(params: KdfParams): KdfParams {
+    return {
+        memoryCost: params.memoryCost,
+        timeCost: params.timeCost,
+        parallelism: params.parallelism,
+        hashLength: params.hashLength,
+        salt: params.salt,
+    }
+}
 
 const rotationPermissionsSchema = z.union([
     z.object({ kind: z.literal('narrow') }).passthrough(),
@@ -366,10 +374,14 @@ const rotationIntentRequiredSchema = z.object({
     fullAccess: z.boolean(),
 })
 
-const rotationIntentBindingsSchema = z.object({
-    account: z.string().optional(),
-    oldKeyHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
-    permissions: rotationPermissionsSchema.optional(),
+const rotationAccountSchema = z.object({ account: z.string() })
+
+const rotationOldKeyHashSchema = z.object({
+    oldKeyHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+})
+
+const rotationPermissionsBindingSchema = z.object({
+    permissions: rotationPermissionsSchema,
 })
 
 const submittedBundleIdSchema = z.object({
@@ -410,45 +422,6 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
         }
     }
 
-    const bindings = rotationIntentBindingsSchema.safeParse(file.data)
-
-    if (!bindings.success) {
-        switch (bindings.error.issues[0]?.path[0]) {
-            case 'account':
-                throw new SessionRotateError(
-                    'ROTATION_MARKER_MISMATCH',
-                    'Rotation marker account is not a valid address.',
-                )
-            case 'oldKeyHash':
-                throw new SessionRotateError(
-                    'ROTATION_MARKER_MISMATCH',
-                    'Rotation marker old key hash must be 0x followed by 64 hex characters.',
-                )
-            default:
-                throw new SessionRotateError(
-                    'ROTATION_MARKER_MISMATCH',
-                    'Rotation marker is missing its permissions.',
-                )
-        }
-    }
-
-    if (bindings.data.account !== undefined && !isAddress(bindings.data.account)) {
-        throw new SessionRotateError(
-            'ROTATION_MARKER_MISMATCH',
-            'Rotation marker account is not a valid address.',
-        )
-    }
-
-    if (
-        bindings.data.permissions?.kind === 'custom' &&
-        !isAddress(bindings.data.permissions.target)
-    ) {
-        throw new SessionRotateError(
-            'ROTATION_MARKER_MISMATCH',
-            'Rotation marker is missing its permissions.',
-        )
-    }
-
     const bound: Omit<RotationIntentBase, 'fileName'> = {
         oldSessionName: file.data.oldSessionName,
         newSessionName: file.data.newSessionName,
@@ -460,33 +433,66 @@ function parseRotationIntentPayload(value: unknown): RotationIntentPayload {
         fullAccess: required.data.fullAccess,
     }
 
-    if (bindings.data.account !== undefined) {
-        bound.account = getAddress(bindings.data.account)
+    if (file.data.account !== undefined) {
+        const account = rotationAccountSchema.safeParse(file.data)
+
+        if (!account.success || !isAddress(account.data.account)) {
+            throw new SessionRotateError(
+                'ROTATION_MARKER_MISMATCH',
+                'Rotation marker account is not a valid address.',
+            )
+        }
+
+        bound.account = getAddress(account.data.account)
     }
 
-    if (bindings.data.oldKeyHash !== undefined) {
-        // SAFETY: oldKeyHash matched 0x + 64 hex characters in the bindings schema.
-        bound.oldKeyHash = bindings.data.oldKeyHash as Hex
+    if (file.data.oldKeyHash !== undefined) {
+        const oldKeyHash = rotationOldKeyHashSchema.safeParse(file.data)
+
+        if (!oldKeyHash.success) {
+            throw new SessionRotateError(
+                'ROTATION_MARKER_MISMATCH',
+                'Rotation marker old key hash must be 0x followed by 64 hex characters.',
+            )
+        }
+
+        // SAFETY: oldKeyHash matched 0x + 64 hex characters in the old-key-hash schema.
+        bound.oldKeyHash = oldKeyHash.data.oldKeyHash as Hex
     }
 
-    if (bindings.data.permissions?.kind === 'narrow') {
-        bound.permissions = { kind: 'narrow' }
-    } else if (bindings.data.permissions?.kind === 'fullAccess') {
-        bound.permissions = { kind: 'fullAccess' }
-    } else if (bindings.data.permissions?.kind === 'custom') {
-        bound.permissions = {
-            kind: 'custom',
-            target: getAddress(bindings.data.permissions.target),
-            // SAFETY: each selector matched 0x + 8 hex characters in the permissions schema.
-            selectors: bindings.data.permissions.selectors as Hex[],
-            spendLimit: bindings.data.permissions.spendLimit,
-            spendPeriod: bindings.data.permissions.spendPeriod,
+    if (file.data.permissions !== undefined) {
+        const permissions = rotationPermissionsBindingSchema.safeParse(file.data)
+
+        if (
+            !permissions.success ||
+            (permissions.data.permissions.kind === 'custom' &&
+                !isAddress(permissions.data.permissions.target))
+        ) {
+            throw new SessionRotateError(
+                'ROTATION_MARKER_MISMATCH',
+                'Rotation marker is missing its permissions.',
+            )
+        }
+
+        if (permissions.data.permissions.kind === 'narrow') {
+            bound.permissions = { kind: 'narrow' }
+        } else if (permissions.data.permissions.kind === 'fullAccess') {
+            bound.permissions = { kind: 'fullAccess' }
+        } else {
+            bound.permissions = {
+                kind: 'custom',
+                target: getAddress(permissions.data.permissions.target),
+                // SAFETY: each selector matched 0x + 8 hex characters in the permissions schema.
+                selectors: permissions.data.permissions.selectors as Hex[],
+                spendLimit: permissions.data.permissions.spendLimit,
+                spendPeriod: permissions.data.permissions.spendPeriod,
+            }
         }
     }
 
     if (file.data.mac) bound.mac = file.data.mac
 
-    if (file.data.macKdf) bound.macKdf = file.data.macKdf
+    if (file.data.macKdf) bound.macKdf = copiedMacKdf(file.data.macKdf)
 
     if (file.data.status === 'pending') {
         return { ...bound, status: 'pending' }
@@ -786,7 +792,7 @@ function markRotationIntentSubmitted(
 
     if (intent.permissions) payload.permissions = intent.permissions
 
-    if (intent.macKdf) payload.macKdf = intent.macKdf
+    if (intent.macKdf) payload.macKdf = copiedMacKdf(intent.macKdf)
 
     const submitted: SubmittedRotationIntentPayload = {
         ...payload,

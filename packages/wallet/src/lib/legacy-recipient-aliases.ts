@@ -8,7 +8,7 @@ const LEGACY_RECIPIENT_ALIASES_VERSION = 1 as const
 const legacyRecipientAliasesFileSchema = z
     .object({
         version: z.literal(LEGACY_RECIPIENT_ALIASES_VERSION),
-        contacts: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())]),
+        contacts: z.union([z.object({}).passthrough(), z.array(z.unknown())]),
     })
     .passthrough()
 
@@ -30,7 +30,9 @@ async function readLegacyRecipientAliasesContacts(): Promise<string[]> {
         throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
     }
 
-    return Object.keys(file.data.contacts)
+    // SAFETY: schema accepted contacts as an object; keys come from the original parse
+    // so an own __proto__ key is kept.
+    return Object.keys((parsed as { contacts: object }).contacts)
 }
 
 export async function hasLegacyRecipientAlias(input: string): Promise<boolean> {

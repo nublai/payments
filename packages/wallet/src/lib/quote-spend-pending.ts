@@ -25,17 +25,24 @@ const pendingLimitSchema = z
     })
     .passthrough()
 
-const pendingKeyExpirySchema = z
+const pendingKeyExpiryCoreSchema = z
     .object({
         previous: z.string().regex(/^\d+$/),
         installed: z.string().regex(/^\d+$/),
         keyType: z.number(),
         isSuperAdmin: z.boolean(),
         publicKey: z.string(),
-        permissions: z.array(pendingGrantSchema).optional(),
-        limits: z.array(pendingLimitSchema).optional(),
     })
     .passthrough()
+
+const pendingKeyExpiryExtrasSchema = z
+    .object({
+        permissions: z.unknown().optional(),
+        limits: z.unknown().optional(),
+    })
+    .passthrough()
+
+const pendingQuoteVersionSchema = z.object({ version: z.unknown() }).passthrough()
 
 const pendingQuoteLimitFileSchema = z
     .object({
@@ -111,9 +118,17 @@ export async function readPendingQuoteLimit(
         throw error
     }
 
-    const parsed = JSON.parse(text)
+    const parsed: unknown = JSON.parse(text)
+    const versionEnvelope = pendingQuoteVersionSchema.safeParse(parsed)
 
-    if (parsed.version !== PENDING_QUOTE_LIMIT_VERSION) {
+    if (!versionEnvelope.success) {
+        // SAFETY: schema rejected parsed; read .version like main so null throws TypeError.
+        const version = (parsed as { version?: unknown }).version
+
+        if (version !== PENDING_QUOTE_LIMIT_VERSION) {
+            throw new Error(`Unsupported pending quote limit at ${path}.`)
+        }
+    } else if (versionEnvelope.data.version !== PENDING_QUOTE_LIMIT_VERSION) {
         throw new Error(`Unsupported pending quote limit at ${path}.`)
     }
 
@@ -124,18 +139,22 @@ export async function readPendingQuoteLimit(
     }
 
     if (file.data.callGrants !== undefined) {
-        const grants = z.array(pendingGrantSchema).safeParse(file.data.callGrants)
+        const grants = z.array(z.unknown()).safeParse(file.data.callGrants)
 
         if (!grants.success) {
-            throw new Error(
-                Array.isArray(file.data.callGrants)
-                    ? `Pending quote limit at ${path} has an invalid call grant.`
-                    : `Pending quote limit at ${path} has invalid call grants.`,
-            )
+            throw new Error(`Pending quote limit at ${path} has invalid call grants.`)
         }
 
         for (const grant of grants.data) {
-            if (!isAddress(grant.target) || !isHex(grant.selector) || grant.selector.length !== 10) {
+            const row = pendingGrantSchema.safeParse(grant)
+
+            if (!row.success) {
+                // SAFETY: schema rejected grant; read .target like main so null throws TypeError.
+                void (grant as { target?: unknown }).target
+                throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
+            }
+
+            if (!isAddress(row.data.target) || !isHex(row.data.selector) || row.data.selector.length !== 10) {
                 throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
             }
         }
@@ -143,59 +162,65 @@ export async function readPendingQuoteLimit(
 
     if (file.data.keyExpiry !== undefined) {
         const expiry = file.data.keyExpiry
-        const decoded = pendingKeyExpirySchema.safeParse(expiry)
+        const core = pendingKeyExpiryCoreSchema.safeParse(expiry)
 
-        if (!decoded.success) {
-            if (expiry === null) {
-                throw new TypeError(`null is not an object (evaluating 'expiry.previous')`)
-            }
-
-            const peek = z
-                .object({
-                    permissions: z.unknown().optional(),
-                    limits: z.unknown().optional(),
-                })
-                .passthrough()
-                .safeParse(expiry)
-
-            const field = decoded.error.issues[0]?.path[0]
-
-            if (field === 'permissions') {
-                throw new Error(
-                    Array.isArray(peek.success ? peek.data.permissions : undefined)
-                        ? `Pending quote limit at ${path} has an invalid key permission.`
-                        : `Pending quote limit at ${path} has invalid key permissions.`,
-                )
-            }
-
-            if (field === 'limits') {
-                throw new Error(
-                    Array.isArray(peek.success ? peek.data.limits : undefined)
-                        ? `Pending quote limit at ${path} has an invalid key limit.`
-                        : `Pending quote limit at ${path} has invalid key limits.`,
-                )
-            }
-
+        if (!core.success) {
+            // SAFETY: schema rejected expiry; read .previous like main so null throws TypeError.
+            void (expiry as { previous?: unknown }).previous
             throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
         }
 
-        if (!isHex(decoded.data.publicKey)) {
+        if (!isHex(core.data.publicKey)) {
             throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
         }
 
-        for (const permission of decoded.data.permissions ?? []) {
-            if (
-                !isAddress(permission.target) ||
-                !isHex(permission.selector) ||
-                permission.selector.length !== 10
-            ) {
-                throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
+        const extras = pendingKeyExpiryExtrasSchema.safeParse(expiry)
+
+        if (extras.success && extras.data.permissions !== undefined) {
+            const permissions = z.array(z.unknown()).safeParse(extras.data.permissions)
+
+            if (!permissions.success) {
+                throw new Error(`Pending quote limit at ${path} has invalid key permissions.`)
+            }
+
+            for (const permission of permissions.data) {
+                const row = pendingGrantSchema.safeParse(permission)
+
+                if (!row.success) {
+                    // SAFETY: schema rejected permission; read .target like main so null throws TypeError.
+                    void (permission as { target?: unknown }).target
+                    throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
+                }
+
+                if (
+                    !isAddress(row.data.target) ||
+                    !isHex(row.data.selector) ||
+                    row.data.selector.length !== 10
+                ) {
+                    throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
+                }
             }
         }
 
-        for (const limit of decoded.data.limits ?? []) {
-            if (!isAddress(limit.token)) {
-                throw new Error(`Pending quote limit at ${path} has an invalid key limit.`)
+        if (extras.success && extras.data.limits !== undefined) {
+            const limits = z.array(z.unknown()).safeParse(extras.data.limits)
+
+            if (!limits.success) {
+                throw new Error(`Pending quote limit at ${path} has invalid key limits.`)
+            }
+
+            for (const limit of limits.data) {
+                const row = pendingLimitSchema.safeParse(limit)
+
+                if (!row.success) {
+                    // SAFETY: schema rejected limit; read .token like main so null throws TypeError.
+                    void (limit as { token?: unknown }).token
+                    throw new Error(`Pending quote limit at ${path} has an invalid key limit.`)
+                }
+
+                if (!isAddress(row.data.token)) {
+                    throw new Error(`Pending quote limit at ${path} has an invalid key limit.`)
+                }
             }
         }
     }
