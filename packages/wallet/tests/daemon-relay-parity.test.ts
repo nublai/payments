@@ -10,6 +10,22 @@ import {
 } from '../src/lib/session-daemon-policy'
 import { parseDaemonRequest, parseDaemonResponse } from '../src/lib/session-daemon-protocol'
 
+type FetchImpl = (input: Parameters<typeof fetch>[0], init?: RequestInit) => Promise<Response>
+
+function withPreconnect(fn: FetchImpl): typeof fetch {
+    return Object.assign(fn, { preconnect: fetch.preconnect })
+}
+
+function jsonFetch(body: string, status = 200): typeof fetch {
+    return withPreconnect(
+        async () =>
+            new Response(body, {
+                status,
+                headers: { 'content-type': 'application/json' },
+            }),
+    )
+}
+
 const USER = '0x1111111111111111111111111111111111111111'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
@@ -89,7 +105,9 @@ test('parseDaemonRequest locks sign, loadKey, and session-name methods', () => {
 
     if (sign.method === 'sign') {
         expect(sign.params.sessionName).toBe('pay')
-        expect(sign.params.typedData.message.n).toBe(1n)
+        expect(sign.params.typedData.primaryType).toBe('Intent')
+        expect(sign.params.typedData.domain.chainId).toBe(8453)
+        expect(() => JSON.stringify(sign.params.typedData.message)).toThrow(/BigInt/)
         expect(Object.hasOwn(sign.params.typedData, 'domain')).toBe(true)
     }
 
@@ -265,7 +283,11 @@ test('parseDaemonResponse locks extras, proto, and error order', () => {
         '{"id":"b","error":{"code":"SESSION_NOT_FOUND","message":"missing"}}',
     )
 
-    expect('error' in err && err.error.code).toBe('SESSION_NOT_FOUND')
+    if (!('error' in err) || err.error === undefined) {
+        throw new Error('expected daemon error response')
+    }
+
+    expect(err.error.code).toBe('SESSION_NOT_FOUND')
     expect(() => parseDaemonResponse('{"id":"a","error":{"code":"NOT_REAL","message":"x"}}')).toThrow(
         'Unknown daemon response error code: NOT_REAL',
     )
@@ -516,11 +538,7 @@ test('getQuote and getIntentStatus decode extras, proto, and API errors at the H
     }
 
     const ok = await getQuote(request, {
-        fetch: async () =>
-            new Response(JSON.stringify(quoteOk), {
-                status: 200,
-                headers: { 'content-type': 'application/json' },
-            }),
+        fetch: jsonFetch(JSON.stringify(quoteOk)),
         env: 'prod',
     })
 
@@ -528,104 +546,60 @@ test('getQuote and getIntentStatus decode extras, proto, and API errors at the H
     expect(ok.details?.currencyOut?.minimumAmount).toBe('1')
 
     const extras = await getQuote(request, {
-        fetch: async () =>
-            new Response(
-                JSON.stringify({
-                    ...quoteOk,
-                    details: { currencyIn: { amount: '1', extra: true }, extraTop: 1 },
-                }),
-                { status: 200, headers: { 'content-type': 'application/json' } },
-            ),
+        fetch: jsonFetch(
+            JSON.stringify({
+                ...quoteOk,
+                details: { currencyIn: { amount: '1', extra: true }, extraTop: 1 },
+            }),
+        ),
         env: 'prod',
     })
 
     expect(JSON.parse(JSON.stringify(extras.details)).extraTop).toBe(1)
     expect(JSON.parse(JSON.stringify(extras.details?.currencyIn)).extra).toBe(true)
 
+    await expect(getQuote(request, { fetch: jsonFetch('null'), env: 'prod' })).rejects.toThrow()
+    await expect(getQuote(request, { fetch: jsonFetch('[]'), env: 'prod' })).rejects.toThrow()
+    await expect(getQuote(request, { fetch: jsonFetch('{}'), env: 'prod' })).rejects.toThrow()
     await expect(
-        getQuote(request, {
-            fetch: async () =>
-                new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }),
-            env: 'prod',
-        }),
-    ).rejects.toThrow()
-    await expect(
-        getQuote(request, {
-            fetch: async () =>
-                new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } }),
-            env: 'prod',
-        }),
-    ).rejects.toThrow()
-    await expect(
-        getQuote(request, {
-            fetch: async () =>
-                new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
-            env: 'prod',
-        }),
-    ).rejects.toThrow()
-    await expect(
-        getQuote(request, {
-            fetch: async () =>
-                new Response(JSON.stringify({ message: 'nope' }), {
-                    status: 400,
-                    headers: { 'content-type': 'application/json' },
-                }),
-            env: 'prod',
-        }),
+        getQuote(request, { fetch: jsonFetch(JSON.stringify({ message: 'nope' }), 400), env: 'prod' }),
     ).rejects.toThrow('nope')
     await expect(
         getQuote(request, {
-            fetch: async () =>
-                new Response(
-                    JSON.stringify({
-                        steps: [
-                            {
-                                items: [
-                                    {
-                                        status: 'incomplete',
-                                        data: {
-                                            to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
-                                            data: '0x',
-                                            value: '0',
-                                            chainId: Number('1e400'),
-                                        },
+            fetch: jsonFetch(
+                JSON.stringify({
+                    steps: [
+                        {
+                            items: [
+                                {
+                                    status: 'incomplete',
+                                    data: {
+                                        to: '0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f',
+                                        data: '0x',
+                                        value: '0',
+                                        chainId: Number('1e400'),
                                     },
-                                ],
-                            },
-                        ],
-                    }),
-                    { status: 200, headers: { 'content-type': 'application/json' } },
-                ),
+                                },
+                            ],
+                        },
+                    ],
+                }),
+            ),
             env: 'prod',
         }),
     ).rejects.toThrow()
 
     const status = await getIntentStatus('q1', {
-        fetch: async () =>
-            new Response(JSON.stringify({ status: 'success', requestId: 'q1' }), {
-                status: 200,
-                headers: { 'content-type': 'application/json' },
-            }),
+        fetch: jsonFetch(JSON.stringify({ status: 'success', requestId: 'q1' })),
         env: 'prod',
     })
 
     expect(status.status).toBe('success')
     await expect(
-        getIntentStatus('q1', {
-            fetch: async () =>
-                new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }),
-            env: 'prod',
-        }),
+        getIntentStatus('q1', { fetch: jsonFetch('null'), env: 'prod' }),
     ).rejects.toThrow()
     await expect(
-        getIntentStatus('q1', {
-            fetch: async () =>
-                new Response(JSON.stringify({ status: 1 }), {
-                    status: 200,
-                    headers: { 'content-type': 'application/json' },
-                }),
-            env: 'prod',
-        }),
+        getIntentStatus('q1', { fetch: jsonFetch(JSON.stringify({ status: 1 })), env: 'prod' }),
     ).rejects.toThrow()
 })
 
