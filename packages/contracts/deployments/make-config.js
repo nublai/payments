@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { z } from 'zod'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -55,7 +56,7 @@ function getDeploymentsByContext() {
 }
 
 function addressMustBeString(value, label) {
-  if (value === undefined || value === null || Array.isArray(value) || value !== `${value}`) {
+  if (!z.string().safeParse(value).success) {
     const got =
       value === undefined ? 'undefined' : value === null ? 'null' : Array.isArray(value) ? 'array' : 'non-string'
 
@@ -132,14 +133,14 @@ function writeEnvFiles(context, contextData) {
 
 // Sort object keys recursively to ensure deterministic JSON output
 function sortObjectKeys(obj) {
+  if (z.string().safeParse(obj).success) {
+    return obj
+  }
+
   if (obj === undefined || obj === null || Array.isArray(obj)) {
     const got = obj === undefined ? 'undefined' : obj === null ? 'null' : 'array'
 
     throw new Error(`make-config: address values must be strings (got ${got})`)
-  }
-
-  if (obj === `${obj}`) {
-    return obj
   }
 
   if (Object.getPrototypeOf(obj) !== Object.prototype) {
