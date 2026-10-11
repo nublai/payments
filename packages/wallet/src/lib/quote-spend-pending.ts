@@ -147,16 +147,22 @@ export async function readPendingQuoteLimit(
 
         if (!decoded.success) {
             if (expiry === null) {
-                // SAFETY: main evaluated expiry.previous here; that throws on null.
-                const expiryObject = expiry as { previous: unknown }
-                void expiryObject.previous
+                throw new TypeError(`null is not an object (evaluating 'expiry.previous')`)
             }
+
+            const peek = z
+                .object({
+                    permissions: z.unknown().optional(),
+                    limits: z.unknown().optional(),
+                })
+                .passthrough()
+                .safeParse(expiry)
 
             const field = decoded.error.issues[0]?.path[0]
 
             if (field === 'permissions') {
                 throw new Error(
-                    Array.isArray((expiry as { permissions?: unknown }).permissions)
+                    Array.isArray(peek.success ? peek.data.permissions : undefined)
                         ? `Pending quote limit at ${path} has an invalid key permission.`
                         : `Pending quote limit at ${path} has invalid key permissions.`,
                 )
@@ -164,7 +170,7 @@ export async function readPendingQuoteLimit(
 
             if (field === 'limits') {
                 throw new Error(
-                    Array.isArray((expiry as { limits?: unknown }).limits)
+                    Array.isArray(peek.success ? peek.data.limits : undefined)
                         ? `Pending quote limit at ${path} has an invalid key limit.`
                         : `Pending quote limit at ${path} has invalid key limits.`,
                 )
