@@ -437,7 +437,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
     }
 })
 
-test('a phrase-confirmed session refuses Intent-shaped types with a non-Intent primaryType', async () => {
+test('a phrase-confirmed session refuses a Call-shaped payload with primaryType Call', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-primary-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
@@ -463,6 +463,7 @@ test('a phrase-confirmed session refuses Intent-shaped types with a non-Intent p
         }
 
         encoded.primaryType = 'Call'
+        encoded.message = { to: ROUTER, value: '$bigint:0', data: '0x' }
 
         const refused = await sendSignOverSocket(
             process.env.TW_AGENT_SOCK!,
