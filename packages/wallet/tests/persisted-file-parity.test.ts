@@ -324,13 +324,17 @@ test('readPendingQuoteLimit keeps extras and matches main error messages', async
         )
 
         await writeFile(path, 'null\n')
-        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Unsupported pending quote limit at ${path}.`,
+        )
 
         await writeFile(
             path,
             `${JSON.stringify({ ...validPendingQuote(), callGrants: [null] })}\n`,
         )
-        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Pending quote limit at ${path} has an invalid call grant.`,
+        )
 
         const expiry = {
             previous: '1',
@@ -375,13 +379,25 @@ test('readPendingQuoteLimit keeps extras and matches main error messages', async
             path,
             `${JSON.stringify({ ...validPendingQuote(), keyExpiry: { ...expiry, permissions: [null] } })}\n`,
         )
-        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Pending quote limit at ${path} has an invalid key permission.`,
+        )
 
         await writeFile(
             path,
             `${JSON.stringify({ ...validPendingQuote(), keyExpiry: { ...expiry, limits: [null] } })}\n`,
         )
-        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(TypeError)
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Pending quote limit at ${path} has an invalid key limit.`,
+        )
+
+        await writeFile(
+            path,
+            `${JSON.stringify({ ...validPendingQuote(), keyExpiry: null })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toThrow(
+            `Pending quote limit at ${path} has an invalid key expiry.`,
+        )
 
         await writeFile(path, '{"version":1,')
         await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(SyntaxError)

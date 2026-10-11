@@ -121,14 +121,7 @@ export async function readPendingQuoteLimit(
     const parsed: unknown = JSON.parse(text)
     const versionEnvelope = pendingQuoteVersionSchema.safeParse(parsed)
 
-    if (!versionEnvelope.success) {
-        // SAFETY: schema rejected parsed; read .version like main so null throws TypeError.
-        const version = (parsed as { version?: unknown }).version
-
-        if (version !== PENDING_QUOTE_LIMIT_VERSION) {
-            throw new Error(`Unsupported pending quote limit at ${path}.`)
-        }
-    } else if (versionEnvelope.data.version !== PENDING_QUOTE_LIMIT_VERSION) {
+    if (!versionEnvelope.success || versionEnvelope.data.version !== PENDING_QUOTE_LIMIT_VERSION) {
         throw new Error(`Unsupported pending quote limit at ${path}.`)
     }
 
@@ -149,8 +142,6 @@ export async function readPendingQuoteLimit(
             const row = pendingGrantSchema.safeParse(grant)
 
             if (!row.success) {
-                // SAFETY: schema rejected grant; read .target like main so null throws TypeError.
-                void (grant as { target?: unknown }).target
                 throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
             }
 
@@ -165,8 +156,6 @@ export async function readPendingQuoteLimit(
         const core = pendingKeyExpiryCoreSchema.safeParse(expiry)
 
         if (!core.success) {
-            // SAFETY: schema rejected expiry; read .previous like main so null throws TypeError.
-            void (expiry as { previous?: unknown }).previous
             throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
         }
 
@@ -187,8 +176,6 @@ export async function readPendingQuoteLimit(
                 const row = pendingGrantSchema.safeParse(permission)
 
                 if (!row.success) {
-                    // SAFETY: schema rejected permission; read .target like main so null throws TypeError.
-                    void (permission as { target?: unknown }).target
                     throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
                 }
 
@@ -213,8 +200,6 @@ export async function readPendingQuoteLimit(
                 const row = pendingLimitSchema.safeParse(limit)
 
                 if (!row.success) {
-                    // SAFETY: schema rejected limit; read .token like main so null throws TypeError.
-                    void (limit as { token?: unknown }).token
                     throw new Error(`Pending quote limit at ${path} has an invalid key limit.`)
                 }
 
