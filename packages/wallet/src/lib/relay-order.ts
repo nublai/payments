@@ -1,17 +1,18 @@
 import { z } from 'incur'
 import { getAddress, hashStruct, type Address, type Hex, type TypedData } from 'viem'
+import { isRecord } from './type-guards'
 
-const jsonObjectSchema = z.object({}).passthrough()
-
-const stringFieldSchema = z.string()
-
-const bytes20Schema = z.string().regex(/^0x[0-9a-fA-F]{40}$/)
-
-const uintAmountSchema = z.union([
-    z.bigint(),
-    z.number(),
-    z.string().regex(/^[0-9]+$/),
-])
+const orderSchema = z
+    .object({
+        version: z.unknown().optional(),
+        solverChainId: z.unknown().optional(),
+        solver: z.unknown().optional(),
+        salt: z.unknown().optional(),
+        inputs: z.unknown().optional(),
+        output: z.unknown().optional(),
+        fees: z.unknown().optional(),
+    })
+    .passthrough()
 
 /**
  * Deposit ids are the EIP-712 struct hash of Relay's v1 Order, which the
@@ -106,9 +107,7 @@ export class RelayOrderRejected extends Error {
 }
 
 function requireEthereumChain(chainId: unknown, field: string): void {
-    const parsed = stringFieldSchema.safeParse(chainId)
-
-    if (!parsed.success || !ETHEREUM_VM_CHAINS.has(parsed.data)) {
+    if (typeof chainId !== 'string' || !ETHEREUM_VM_CHAINS.has(chainId)) {
         throw new RelayOrderRejected(
             `relay.link order ${field} is on ${String(chainId)}, which is not a chain this wallet can bind.`,
         )
@@ -116,7 +115,7 @@ function requireEthereumChain(chainId: unknown, field: string): void {
 }
 
 function requireBytes20(value: unknown, field: string): void {
-    if (!bytes20Schema.safeParse(value).success) {
+    if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
         throw new RelayOrderRejected(`relay.link order ${field} is not a 20-byte address.`)
     }
 }
@@ -144,64 +143,41 @@ function assertOrder(order: {
     }
 
     for (const input of order.inputs) {
-        if (!jsonObjectSchema.safeParse(input).success) {
+        if (!isRecord(input) || !isRecord(input.payment) || !Array.isArray(input.refunds)) {
             throw new RelayOrderRejected('relay.link order input is malformed.')
         }
 
-        // SAFETY: input schema accepted this as an object.
-        const inputFields = input as { payment?: unknown; refunds?: unknown }
+        requireEthereumChain(input.payment.chainId, 'input.chainId')
+        requireBytes20(input.payment.currency, 'input.currency')
 
-        if (!jsonObjectSchema.safeParse(inputFields.payment).success || !Array.isArray(inputFields.refunds)) {
-            throw new RelayOrderRejected('relay.link order input is malformed.')
-        }
-
-        // SAFETY: payment schema accepted this as an object.
-        const payment = inputFields.payment as { chainId?: unknown; currency?: unknown }
-
-        requireEthereumChain(payment.chainId, 'input.chainId')
-        requireBytes20(payment.currency, 'input.currency')
-
-        for (const refund of inputFields.refunds) {
-            if (!jsonObjectSchema.safeParse(refund).success) {
+        for (const refund of input.refunds) {
+            if (!isRecord(refund)) {
                 throw new RelayOrderRejected('relay.link order refund is malformed.')
             }
 
-            // SAFETY: refund schema accepted this as an object.
-            const refundFields = refund as { chainId?: unknown; recipient?: unknown; currency?: unknown }
-
-            requireEthereumChain(refundFields.chainId, 'refund.chainId')
-            requireBytes20(refundFields.recipient, 'refund.recipient')
-            requireBytes20(refundFields.currency, 'refund.currency')
+            requireEthereumChain(refund.chainId, 'refund.chainId')
+            requireBytes20(refund.recipient, 'refund.recipient')
+            requireBytes20(refund.currency, 'refund.currency')
         }
     }
 
-    if (!jsonObjectSchema.safeParse(order.output).success) {
+    if (!isRecord(order.output) || !Array.isArray(order.output.payments)) {
         throw new RelayOrderRejected('relay.link order is missing output payments.')
     }
 
-    // SAFETY: output schema accepted this as an object.
-    const output = order.output as { payments?: unknown; chainId?: unknown; calls?: unknown }
+    requireEthereumChain(order.output.chainId, 'output.chainId')
 
-    if (!Array.isArray(output.payments)) {
-        throw new RelayOrderRejected('relay.link order is missing output payments.')
-    }
-
-    requireEthereumChain(output.chainId, 'output.chainId')
-
-    if (!Array.isArray(output.calls)) {
+    if (!Array.isArray(order.output.calls)) {
         throw new RelayOrderRejected('relay.link order is missing output calls.')
     }
 
-    for (const payment of output.payments) {
-        if (!jsonObjectSchema.safeParse(payment).success) {
+    for (const payment of order.output.payments) {
+        if (!isRecord(payment)) {
             throw new RelayOrderRejected('relay.link order output payment is malformed.')
         }
 
-        // SAFETY: payment schema accepted this as an object.
-        const paymentFields = payment as { recipient?: unknown; currency?: unknown }
-
-        requireBytes20(paymentFields.recipient, 'output.recipient')
-        requireBytes20(paymentFields.currency, 'output.currency')
+        requireBytes20(payment.recipient, 'output.recipient')
+        requireBytes20(payment.currency, 'output.currency')
     }
 
     if (!Array.isArray(order.fees)) {
@@ -209,56 +185,32 @@ function assertOrder(order: {
     }
 
     for (const fee of order.fees) {
-        if (!jsonObjectSchema.safeParse(fee).success) {
+        if (!isRecord(fee)) {
             throw new RelayOrderRejected('relay.link order fee is malformed.')
         }
 
-        // SAFETY: fee schema accepted this as an object.
-        const feeFields = fee as {
-            recipientChainId?: unknown
-            currencyChainId?: unknown
-            recipient?: unknown
-            currency?: unknown
-        }
-
-        requireEthereumChain(feeFields.recipientChainId, 'fee.recipientChainId')
-        requireEthereumChain(feeFields.currencyChainId, 'fee.currencyChainId')
-        requireBytes20(feeFields.recipient, 'fee.recipient')
-        requireBytes20(feeFields.currency, 'fee.currency')
+        requireEthereumChain(fee.recipientChainId, 'fee.recipientChainId')
+        requireEthereumChain(fee.currencyChainId, 'fee.currencyChainId')
+        requireBytes20(fee.recipient, 'fee.recipient')
+        requireBytes20(fee.currency, 'fee.currency')
     }
 }
 
 /** `hashStruct` of the order. This is the deposit id, not the EIP-712 digest. */
 export function hashRelayOrder(order: unknown): Hex {
-    if (!jsonObjectSchema.safeParse(order).success) {
+    const parsed = orderSchema.safeParse(order)
+
+    if (!parsed.success) {
         throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
     }
 
-    // SAFETY: order schema accepted this as an object; hashStruct reads the original value.
-    assertOrder(order as {
-        version?: unknown
-        solverChainId?: unknown
-        solver?: unknown
-        salt?: unknown
-        inputs?: unknown
-        output?: unknown
-        fees?: unknown
-    })
+    assertOrder(parsed.data)
 
     try {
         return hashStruct({
             types: ORDER_EIP712_TYPES,
             primaryType: 'Order',
-            // SAFETY: assertOrder accepted the original parse object.
-            data: order as {
-                version?: unknown
-                solverChainId?: unknown
-                solver?: unknown
-                salt?: unknown
-                inputs?: unknown
-                output?: unknown
-                fees?: unknown
-            },
+            data: parsed.data,
         })
     } catch {
         throw new RelayOrderRejected('relay.link order could not be hashed. Refusing to sign.')
@@ -266,46 +218,21 @@ export function hashRelayOrder(order: unknown): Hex {
 }
 
 function asUint(value: unknown, field: string): bigint {
-    const parsed = uintAmountSchema.safeParse(value)
+    if (typeof value === 'bigint' && value >= 0n) return value
 
-    if (!parsed.success) {
-        throw new RelayOrderRejected(`relay.link order ${field} is not an amount.`)
-    }
+    if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return BigInt(value)
 
-    try {
-        if (Number.isFinite(parsed.data)) {
-            const asNumber = Number(parsed.data)
-
-            if (!Number.isInteger(asNumber) || asNumber < 0) {
-                throw new RelayOrderRejected(`relay.link order ${field} is not an amount.`)
-            }
-
-            return BigInt(asNumber)
-        }
-    } catch (error) {
-        if (error instanceof RelayOrderRejected) throw error
-
-        const amount = BigInt(String(parsed.data))
-
-        if (amount >= 0n) return amount
-        throw new RelayOrderRejected(`relay.link order ${field} is not an amount.`)
-    }
-
-    const amount = BigInt(String(parsed.data))
-
-    if (amount >= 0n) return amount
+    if (typeof value === 'string' && /^[0-9]+$/.test(value)) return BigInt(value)
     throw new RelayOrderRejected(`relay.link order ${field} is not an amount.`)
 }
 
 function addressOf(value: unknown, field: string): Address {
-    const parsed = stringFieldSchema.safeParse(value)
-
-    if (!parsed.success) {
+    if (typeof value !== 'string') {
         throw new RelayOrderRejected(`relay.link order ${field} is not an address.`)
     }
 
     try {
-        return getAddress(parsed.data)
+        return getAddress(value)
     } catch {
         throw new RelayOrderRejected(`relay.link order ${field} is not an address.`)
     }
@@ -323,20 +250,14 @@ function isUserOrRecipient(address: Address, user: Address, recipient: Address):
  * The known Relay filler may be the solver. It may not be a fee recipient.
  */
 export function assertOrderRecipients(order: unknown, user: Address, recipient: Address): void {
-    if (!jsonObjectSchema.safeParse(order).success) {
+    const parsed = orderSchema.safeParse(order)
+
+    if (!parsed.success || !isRecord(parsed.data.output)) {
         throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
     }
 
-    // SAFETY: order schema accepted this as an object.
-    const orderFields = order as { solver?: unknown; output?: unknown; fees?: unknown }
-
-    if (!jsonObjectSchema.safeParse(orderFields.output).success) {
-        throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
-    }
-
-    // SAFETY: output schema accepted this as an object.
-    const output = orderFields.output as { calls?: unknown; payments?: unknown }
-
+    const orderFields = parsed.data
+    const output = parsed.data.output
     const solver = addressOf(orderFields.solver, 'solver')
 
     if (
@@ -361,14 +282,11 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
     }
 
     for (const payment of output.payments) {
-        if (!jsonObjectSchema.safeParse(payment).success) {
+        if (!isRecord(payment)) {
             throw new RelayOrderRejected('relay.link order output payment is malformed.')
         }
 
-        // SAFETY: payment schema accepted this as an object.
-        const paymentFields = payment as { minimumAmount?: unknown }
-
-        if (asUint(paymentFields.minimumAmount, 'output.minimumAmount') === 0n) {
+        if (asUint(payment.minimumAmount, 'output.minimumAmount') === 0n) {
             throw new RelayOrderRejected(
                 'relay.link order output minimum is 0. Refusing to sign.',
             )
@@ -380,14 +298,11 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
     }
 
     for (const fee of orderFields.fees) {
-        if (!jsonObjectSchema.safeParse(fee).success) {
+        if (!isRecord(fee)) {
             throw new RelayOrderRejected('relay.link order fee is malformed.')
         }
 
-        // SAFETY: fee schema accepted this as an object.
-        const feeFields = fee as { recipient?: unknown }
-
-        const payee = addressOf(feeFields.recipient, 'fee.recipient')
+        const payee = addressOf(fee.recipient, 'fee.recipient')
 
         if (!isUserOrRecipient(payee, user, recipient)) {
             throw new RelayOrderRejected(
@@ -400,51 +315,26 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
 type OrderPayees = { outputs: string[]; refunds: string[] }
 
 export function orderPayees(order: unknown): OrderPayees {
-    if (!jsonObjectSchema.safeParse(order).success) {
+    const parsed = orderSchema.safeParse(order)
+
+    if (!parsed.success || !isRecord(parsed.data.output) || !Array.isArray(parsed.data.inputs)) {
         return { outputs: [], refunds: [] }
     }
 
-    // SAFETY: order schema accepted this as an object.
-    const orderFields = order as { output?: unknown; inputs?: unknown }
-
-    if (!jsonObjectSchema.safeParse(orderFields.output).success || !Array.isArray(orderFields.inputs)) {
-        return { outputs: [], refunds: [] }
-    }
-
-    // SAFETY: output schema accepted this as an object.
-    const output = orderFields.output as { payments?: unknown }
-
+    const output = parsed.data.output
+    const inputs = parsed.data.inputs
     const outputs = Array.isArray(output.payments)
         ? output.payments
-              .map((payment) => {
-                  if (!jsonObjectSchema.safeParse(payment).success) return undefined
-                  // SAFETY: payment schema accepted this as an object.
-                  const recipient = (payment as { recipient?: unknown }).recipient
-                  const parsed = stringFieldSchema.safeParse(recipient)
-
-                  return parsed.success ? parsed.data : undefined
-              })
-              .filter((value): value is string => value !== undefined)
+              .map((payment) => (isRecord(payment) ? payment.recipient : undefined))
+              .filter((value): value is string => typeof value === 'string')
         : []
 
-    const refunds = orderFields.inputs.flatMap((input) => {
-        if (!jsonObjectSchema.safeParse(input).success) return []
+    const refunds = inputs.flatMap((input) => {
+        if (!isRecord(input) || !Array.isArray(input.refunds)) return []
 
-        // SAFETY: input schema accepted this as an object.
-        const inputFields = input as { refunds?: unknown }
-
-        if (!Array.isArray(inputFields.refunds)) return []
-
-        return inputFields.refunds
-            .map((refund) => {
-                if (!jsonObjectSchema.safeParse(refund).success) return undefined
-                // SAFETY: refund schema accepted this as an object.
-                const recipient = (refund as { recipient?: unknown }).recipient
-                const parsed = stringFieldSchema.safeParse(recipient)
-
-                return parsed.success ? parsed.data : undefined
-            })
-            .filter((value): value is string => value !== undefined)
+        return input.refunds
+            .map((refund) => (isRecord(refund) ? refund.recipient : undefined))
+            .filter((value): value is string => typeof value === 'string')
     })
 
     return { outputs, refunds }

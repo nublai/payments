@@ -2,10 +2,7 @@ import type { Call } from '@nubl/relayer-client'
 import { z } from 'incur'
 import { getAddress, type Address, type Hex } from 'viem'
 import { type EnvName } from './network-config'
-
-const jsonObjectSchema = z.object({}).passthrough()
-
-const stringFieldSchema = z.string()
+import { isRecord } from './type-guards'
 
 const errorMessageSchema = z
     .object({
@@ -15,7 +12,7 @@ const errorMessageSchema = z
 
 const stepItemFieldsSchema = z
     .object({
-        status: z.unknown(),
+        status: z.unknown().optional(),
         data: z.unknown().optional(),
         check: z.unknown().optional(),
     })
@@ -59,7 +56,12 @@ const quoteFieldsSchema = z
 
 const protocolV2Schema = z
     .object({
-        v2: jsonObjectSchema,
+        v2: z
+            .object({
+                orderId: z.unknown().optional(),
+                orderData: z.unknown().optional(),
+            })
+            .passthrough(),
     })
     .passthrough()
 
@@ -351,10 +353,8 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     }
 
     const dataParsed = stepItemDataSchema.safeParse(item.data.data)
-    // SAFETY: when data is not an object, main used {}. Same fallback.
     const data = dataParsed.success ? dataParsed.data : {}
-    const checkParsed = jsonObjectSchema.safeParse(item.data.check)
-    const check = checkParsed.success ? item.data.check : undefined
+    const check = isRecord(item.data.check) ? item.data.check : undefined
     const calldata = String(data.data ?? '0x')
 
     if (!isHexData(calldata)) {
@@ -382,9 +382,9 @@ function normalizeStepItem(value: unknown): RelayStepItem {
         )
     }
 
-    const toField = stringFieldSchema.safeParse(data.to)
+    const toField = data.to
 
-    if (!toField.success || toField.data.length === 0) {
+    if (typeof toField !== 'string' || toField.length === 0) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
             'relay.link returned an invalid to address in a step item.',
@@ -394,7 +394,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     let to: Address
 
     try {
-        to = getAddress(toField.data)
+        to = getAddress(toField)
     } catch (error) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
@@ -426,15 +426,11 @@ function normalizeStep(value: unknown): RelayStep {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid step.')
     }
 
-    const action = stringFieldSchema.safeParse(step.data.action)
-    const kind = stringFieldSchema.safeParse(step.data.kind)
-    const requestId = stringFieldSchema.safeParse(step.data.requestId)
-
     return {
         id: String(step.data.id ?? ''),
-        action: action.success ? action.data : undefined,
-        kind: kind.success ? kind.data : 'transaction',
-        requestId: requestId.success ? requestId.data : undefined,
+        action: typeof step.data.action === 'string' ? step.data.action : undefined,
+        kind: typeof step.data.kind === 'string' ? step.data.kind : 'transaction',
+        requestId: typeof step.data.requestId === 'string' ? step.data.requestId : undefined,
         items: step.data.items.map(normalizeStepItem),
     }
 }
@@ -446,23 +442,16 @@ function normalizeQuoteResponse(payload: RelayJson): RelayQuoteResponse {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid quote.')
     }
 
-    const requestId = stringFieldSchema.safeParse(quote.data.requestId)
-
-    // SAFETY: fees stay on the original parse so extra enumerable fields remain.
-    const fees = jsonObjectSchema.safeParse(quote.data.fees).success
-        ? (quote.data.fees as Record<string, RelayCurrencyAmount | undefined>)
-        : undefined
-
-    // SAFETY: details stay on the original parse so extra enumerable fields remain.
-    const details = jsonObjectSchema.safeParse(quote.data.details).success
-        ? (quote.data.details as RelayQuoteResponse['details'])
-        : undefined
-
     return {
-        requestId: requestId.success ? requestId.data : undefined,
+        requestId: typeof quote.data.requestId === 'string' ? quote.data.requestId : undefined,
         steps: quote.data.steps.map(normalizeStep),
-        fees,
-        details,
+        // SAFETY: quote schema accepted fees/details as unknown; extras stay on the original objects.
+        fees: isRecord(quote.data.fees)
+            ? (quote.data.fees as Record<string, RelayCurrencyAmount | undefined>)
+            : undefined,
+        details: isRecord(quote.data.details)
+            ? (quote.data.details as RelayQuoteResponse['details'])
+            : undefined,
         protocol: normalizeProtocol(quote.data.protocol),
     }
 }
@@ -473,14 +462,12 @@ function normalizeProtocol(value: unknown): RelayQuoteResponse['protocol'] {
     if (!protocol.success) return undefined
 
     const v2 = protocol.data.v2
-    const orderId = stringFieldSchema.safeParse(v2.orderId)
-    const orderData = jsonObjectSchema.safeParse(v2.orderData)
 
     return {
         v2: {
-            orderId: orderId.success ? orderId.data : undefined,
-            // SAFETY: schema accepted orderData as an object; extras stay on the original parse.
-            orderData: orderData.success
+            orderId: typeof v2.orderId === 'string' ? v2.orderId : undefined,
+            // SAFETY: orderData stays on the original v2 object when it is a record.
+            orderData: isRecord(v2.orderData)
                 ? (v2.orderData as {
                       version?: unknown
                       solverChainId?: unknown
@@ -505,11 +492,9 @@ function normalizeIntentStatus(payload: RelayJson): RelayIntentStatus {
         )
     }
 
-    const requestId = stringFieldSchema.safeParse(status.data.requestId)
-
     return {
         status: status.data.status,
-        requestId: requestId.success ? requestId.data : undefined,
+        requestId: typeof status.data.requestId === 'string' ? status.data.requestId : undefined,
         txHashes: Array.isArray(status.data.txHashes) ? (status.data.txHashes as Hex[]) : undefined,
         inTxHashes: Array.isArray(status.data.inTxHashes)
             ? (status.data.inTxHashes as Hex[])

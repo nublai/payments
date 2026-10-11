@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import { readFile, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import net from 'node:net'
-import { z } from 'incur'
 import { getAddress, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { isRecord } from './type-guards'
@@ -29,19 +28,6 @@ import {
 } from './session-daemon-policy'
 import { chainsForEnv, getChainConfig, type EnvName } from './network-config'
 import { resolveOrchestratorAddress } from './orchestrator-address'
-
-const jsonObjectSchema = z.object({}).passthrough()
-
-const spendBucketSchema = z
-    .object({
-        periodStart: z.number(),
-        spent: z.string(),
-    })
-    .passthrough()
-
-const requestIdSchema = z.object({ id: z.string() }).passthrough()
-
-const chainIdSchema = z.union([z.number(), z.bigint()])
 
 const REQUEST_MAX_BYTES = 256 * 1024
 
@@ -75,21 +61,15 @@ async function loadSpendLedger(path: string): Promise<Map<string, SpendBucket>> 
     try {
         const raw = JSON.parse(await readFile(path, 'utf8')) as unknown
 
-        if (!jsonObjectSchema.safeParse(raw).success) return map
+        if (!isRecord(raw)) return map
 
-        // SAFETY: schema accepted raw as an object; walk the original parse so an own
-        // __proto__ key is included.
-        const rows = raw as object
-
-        for (const [key, value] of Object.entries(rows)) {
-            const bucket = spendBucketSchema.safeParse(value)
-
-            if (!bucket.success) {
+        for (const [key, value] of Object.entries(raw)) {
+            if (!isRecord(value) || typeof value.periodStart !== 'number' || typeof value.spent !== 'string') {
                 continue
             }
 
             try {
-                map.set(key, { periodStart: bucket.data.periodStart, spent: BigInt(bucket.data.spent) })
+                map.set(key, { periodStart: value.periodStart, spent: BigInt(value.spent) })
             } catch {
                 continue
             }
@@ -198,7 +178,9 @@ function phraseConfirmedDomainMatches(
         return false
     }
 
-    if (!chainIdSchema.safeParse(domain.chainId).success) {
+    const chainIdType = typeof domain.chainId
+
+    if (chainIdType !== 'number' && chainIdType !== 'bigint') {
         return false
     }
 
@@ -364,10 +346,9 @@ export async function runSessionDaemon(options?: {
 
                     try {
                         const pre = JSON.parse(line) as unknown
-                        const peeked = requestIdSchema.safeParse(pre)
 
-                        if (peeked.success) {
-                            requestId = peeked.data.id
+                        if (isRecord(pre) && typeof pre.id === 'string') {
+                            requestId = pre.id
                         }
                     } catch {
                         /* use random requestId */

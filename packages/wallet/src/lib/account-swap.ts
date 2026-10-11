@@ -119,21 +119,9 @@ import {
     type Permit2Allowance,
     type StandingRightsRegistry,
 } from './standing-rights'
-import { z } from 'incur'
+import { isRecord } from './type-guards'
 import { resolveSessionSigner, SessionSignerDaemonError, SessionSignerExpiredError } from './signer'
 import type { ResolvedSessionSigner } from './signer'
-
-const simulationCauseSchema = z
-    .object({
-        cause: z.string(),
-    })
-    .passthrough()
-
-const authCodeSchema = z
-    .object({
-        auth_code: z.string(),
-    })
-    .passthrough()
 
 const QUOTE_STALE_MS = 30_000
 
@@ -640,13 +628,17 @@ function validateQuoteForExecution(
 }
 
 function extractSimulationCause(value: unknown): string | undefined {
-    const parsed = simulationCauseSchema.safeParse(value)
-
-    if (!parsed.success) {
+    if (!isRecord(value)) {
         return undefined
     }
 
-    const trimmed = parsed.data.cause.trim()
+    const cause = value.cause
+
+    if (typeof cause !== 'string') {
+        return undefined
+    }
+
+    const trimmed = cause.trim()
 
     if (trimmed.length === 0 || trimmed === 'Simulation failed') {
         return undefined
@@ -656,13 +648,13 @@ function extractSimulationCause(value: unknown): string | undefined {
 }
 
 function extractAuthCode(value: unknown): string | undefined {
-    const parsed = authCodeSchema.safeParse(value)
-
-    if (!parsed.success || parsed.data.auth_code.length === 0) {
+    if (!isRecord(value)) {
         return undefined
     }
 
-    return parsed.data.auth_code
+    const authCode = value.auth_code
+
+    return typeof authCode === 'string' && authCode.length > 0 ? authCode : undefined
 }
 
 function assertEthSpendPermission(input: {

@@ -12,14 +12,6 @@ import {
     type DaemonTypedData,
 } from './session-daemon-protocol'
 
-const ctorPathSchema = z.string()
-
-const ctorOptionsSchema = z
-    .object({
-        onRequestFailure: z.any().optional(),
-    })
-    .passthrough()
-
 const pingResultSchema = z
     .object({
         ok: z.literal(true),
@@ -110,16 +102,12 @@ export class SessionDaemonClient {
         socketPathOrOptions?: string | SessionDaemonClientOptions,
         legacyOptions?: SessionDaemonClientOptions,
     ) {
-        const pathArg = ctorPathSchema.safeParse(socketPathOrOptions)
-
-        if (pathArg.success) {
-            this.socketPath = pathArg.data
+        if (typeof socketPathOrOptions === 'string') {
+            this.socketPath = socketPathOrOptions
             this.onRequestFailure = legacyOptions?.onRequestFailure
-        } else if (ctorOptionsSchema.safeParse(socketPathOrOptions).success) {
+        } else if (socketPathOrOptions && typeof socketPathOrOptions === 'object') {
             this.socketPath = resolveSessionDaemonPaths().socketPath
-            // SAFETY: options schema accepted this as an object with an optional callback.
-            this.onRequestFailure = (socketPathOrOptions as SessionDaemonClientOptions)
-                .onRequestFailure
+            this.onRequestFailure = socketPathOrOptions.onRequestFailure
         } else {
             this.socketPath = resolveSessionDaemonPaths().socketPath
             this.onRequestFailure = undefined
@@ -145,7 +133,8 @@ export class SessionDaemonClient {
             return null
         }
 
-        return { ok: true, result: ping.data }
+        // SAFETY: ping schema accepted this result; return the original so extras and key order stay.
+        return { ok: true, result: response.result as { ok: true; startedAt: number } }
     }
 
     async list(): Promise<
@@ -172,8 +161,6 @@ export class SessionDaemonClient {
             return null
         }
 
-        const keys: Array<{ name: string; kind?: string; address: Address; expiresAt: number }> = []
-
         for (const entry of list.data.keys) {
             const key = listKeySchema.safeParse(entry)
 
@@ -182,21 +169,19 @@ export class SessionDaemonClient {
 
                 return null
             }
+        }
 
-            keys.push({
-                name: key.data.name,
-                address: key.data.address as Address,
-                expiresAt: key.data.expiresAt,
-                // SAFETY: list key schema accepted this entry as an object; kind was not type-checked.
-                kind: (entry as { kind?: string }).kind,
-            })
+        // SAFETY: schemas accepted this result; keep the original keys array so extras and key order stay.
+        const original = response.result as {
+            startedAt: number
+            keys: Array<{ name: string; kind?: string; address: Address; expiresAt: number }>
         }
 
         return {
             ok: true,
             result: {
-                startedAt: list.data.startedAt,
-                keys,
+                startedAt: original.startedAt,
+                keys: original.keys,
             },
         }
     }
@@ -223,6 +208,7 @@ export class SessionDaemonClient {
             return null
         }
 
+        // SAFETY: signature schema accepted this string.
         return { ok: true, result: signed.data.signature as Hex }
     }
 
@@ -245,6 +231,7 @@ export class SessionDaemonClient {
             return null
         }
 
+        // SAFETY: signature schema accepted this string.
         return { ok: true, result: signed.data.signature as Hex }
     }
 
@@ -291,6 +278,7 @@ export class SessionDaemonClient {
             ok: true,
             result: {
                 name: loaded.data.name,
+                // SAFETY: loadKey schema accepted address as a string.
                 address: loaded.data.address as Address,
                 expiresAt: loaded.data.expiresAt,
             },
@@ -328,7 +316,9 @@ export class SessionDaemonClient {
             ok: true,
             result: {
                 name: secrets.data.name,
+                // SAFETY: secrets schema accepted privateKey as a string.
                 privateKey: secrets.data.privateKey as Hex,
+                // SAFETY: secrets schema accepted address as a string.
                 address: secrets.data.address as Address,
                 expiresAt: secrets.data.expiresAt,
                 encryptionDevice: secrets.data.encryptionDevice as Hex | undefined,
