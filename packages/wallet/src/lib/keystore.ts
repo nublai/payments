@@ -7,7 +7,7 @@ import argon2 from 'argon2'
 import lockfile from 'proper-lockfile'
 import { privateKeyToAccount } from 'viem/accounts'
 import { type Hex } from 'viem'
-import { isRecord } from './type-guards'
+import { z } from 'zod'
 
 const ARGON2_MEMORY_COST = 19_456
 
@@ -61,18 +61,9 @@ const SESSION_NAME_REGEX = /^[A-Za-z0-9_-]+$/
 
 type SessionCheckpoint = 'initialized' | 'authorized' | 'pending_rotation' | 'complete'
 
-const SESSION_CHECKPOINTS: ReadonlySet<SessionCheckpoint> = new Set([
-    'initialized',
-    'authorized',
-    'pending_rotation',
-    'complete',
-])
+const SESSION_CHECKPOINTS = ['initialized', 'authorized', 'pending_rotation', 'complete'] as const
 
-const ROOT_CHECKPOINTS: ReadonlySet<NonNullable<RelayerRootKeystoreV2['checkpoint']>> = new Set([
-    'initialized',
-    'delegated',
-    'complete',
-])
+const ROOT_CHECKPOINTS = ['initialized', 'delegated', 'complete'] as const
 
 export type RelayerRootKeystoreV2 = {
     version: 2
@@ -144,6 +135,157 @@ export type AnySessionKeystore =
     | RelayerSessionKeystoreV2
     | LoginSessionKeystoreV2
     | AgentSessionKeystoreV2
+
+const encryptedSecretSchema = z
+    .object({
+        nonce: z.string(),
+        ciphertext: z.string(),
+        tag: z.string(),
+    })
+    .passthrough()
+
+const kdfParamsSchema = z
+    .object({
+        memoryCost: z.number(),
+        timeCost: z.number(),
+        parallelism: z.number(),
+        hashLength: z.number(),
+        salt: z.string(),
+    })
+    .passthrough()
+
+const kdfConfigSchema = z
+    .object({
+        name: z.literal('argon2id'),
+        params: kdfParamsSchema,
+    })
+    .passthrough()
+
+const networkConfigSchema = z
+    .object({
+        env: z.string(),
+        relayerUrl: z.string(),
+        rpcUrl: z.string(),
+        chainId: z.number(),
+    })
+    .passthrough()
+
+const namedChannelSchema = z
+    .object({
+        streamId: z.string(),
+        secretHash: z.string(),
+    })
+    .passthrough()
+
+const namedChannelsSchema = z.union([
+    z.record(z.string(), namedChannelSchema),
+    z.array(namedChannelSchema),
+])
+
+const sessionCheckpointSchema = z.enum(SESSION_CHECKPOINTS)
+
+const rootKeystoreSchema = z
+    .object({
+        version: z.literal(2),
+        createdAt: z.string(),
+        checkpoint: z.enum(ROOT_CHECKPOINTS).optional(),
+        network: networkConfigSchema,
+        addresses: z
+            .object({
+                root: z.string(),
+                delegated: z.string().optional(),
+            })
+            .passthrough(),
+        sessionRef: z
+            .object({
+                active: z.string().regex(SESSION_NAME_REGEX),
+                dir: z.string().regex(SESSION_NAME_REGEX),
+            })
+            .passthrough(),
+        kdf: kdfConfigSchema,
+        crypto: z
+            .object({
+                algorithm: z.literal('aes-256-gcm'),
+            })
+            .passthrough(),
+        secrets: z
+            .object({
+                rootPrivateKey: encryptedSecretSchema,
+            })
+            .passthrough(),
+    })
+    .passthrough()
+
+const sessionKeystoreBaseFields = {
+    version: z.literal(2),
+    name: z.string(),
+    checkpoint: sessionCheckpointSchema,
+    network: networkConfigSchema,
+    kdf: kdfConfigSchema,
+    crypto: z
+        .object({
+            algorithm: z.literal('aes-256-gcm'),
+        })
+        .passthrough(),
+    addresses: z
+        .object({
+            session: z.string(),
+            delegated: z.string(),
+        })
+        .passthrough(),
+}
+
+const relayerSessionKeystoreSchema = z
+    .object({
+        ...sessionKeystoreBaseFields,
+        kind: z.undefined().optional(),
+        secrets: z
+            .object({
+                sessionPrivateKey: encryptedSecretSchema,
+            })
+            .passthrough(),
+    })
+    .passthrough()
+
+const loginSessionKeystoreSchema = z
+    .object({
+        ...sessionKeystoreBaseFields,
+        kind: z.literal('login'),
+        delegateAuth: z
+            .object({
+                sig: z.string(),
+                expiryEpochMs: z.number(),
+            })
+            .passthrough()
+            .optional(),
+        secrets: z
+            .object({
+                sessionPrivateKey: encryptedSecretSchema,
+                bearerToken: encryptedSecretSchema.optional(),
+            })
+            .passthrough(),
+    })
+    .passthrough()
+
+const agentSessionKeystoreSchema = z
+    .object({
+        ...sessionKeystoreBaseFields,
+        kind: z.literal('agent'),
+        secrets: z
+            .object({
+                sessionPrivateKey: encryptedSecretSchema,
+                encryptionDevice: encryptedSecretSchema,
+            })
+            .passthrough(),
+        namedChannels: namedChannelsSchema.optional(),
+    })
+    .passthrough()
+
+const sessionKeystoreSchema = z.union([
+    agentSessionKeystoreSchema,
+    loginSessionKeystoreSchema,
+    relayerSessionKeystoreSchema,
+])
 
 export type KeystoreBundle = {
     rootPath: string
@@ -406,172 +548,15 @@ export async function decryptSessionKeystore(
 }
 
 export function isAgentKeystore(keystore: AnySessionKeystore): keystore is AgentSessionKeystoreV2 {
-    if (typeof keystore !== 'object' || keystore === null) {
-        return false
-    }
-
-    return keystore.kind === 'agent'
+    return Object(keystore) === keystore && keystore.kind === 'agent'
 }
 
 export function isLoginKeystore(keystore: AnySessionKeystore): keystore is LoginSessionKeystoreV2 {
-    if (typeof keystore !== 'object' || keystore === null) {
-        return false
-    }
-
-    return keystore.kind === 'login'
-}
-
-function isEncryptedSecret(value: unknown): value is EncryptedSecret {
-    return (
-        isRecord(value) &&
-        typeof value.nonce === 'string' &&
-        typeof value.ciphertext === 'string' &&
-        typeof value.tag === 'string'
-    )
-}
-
-function isKdfParams(value: unknown): value is KdfParams {
-    return (
-        isRecord(value) &&
-        typeof value.memoryCost === 'number' &&
-        typeof value.timeCost === 'number' &&
-        typeof value.parallelism === 'number' &&
-        typeof value.hashLength === 'number' &&
-        typeof value.salt === 'string'
-    )
-}
-
-function isKdfConfig(value: unknown): value is KdfConfig {
-    return isRecord(value) && value.name === 'argon2id' && isKdfParams(value.params)
-}
-
-function isNetworkConfig(value: unknown): value is NetworkConfig {
-    return (
-        isRecord(value) &&
-        typeof value.env === 'string' &&
-        typeof value.relayerUrl === 'string' &&
-        typeof value.rpcUrl === 'string' &&
-        typeof value.chainId === 'number'
-    )
-}
-
-function isSessionCheckpoint(value: unknown): value is SessionCheckpoint {
-    return typeof value === 'string' && SESSION_CHECKPOINTS.has(value as SessionCheckpoint)
-}
-
-function validateAgentKeystore(
-    keystore: Partial<AgentSessionKeystoreV2>,
-    path: string,
-): asserts keystore is AgentSessionKeystoreV2 {
-    const encryptionDevice = keystore.secrets?.encryptionDevice
-
-    if (
-        typeof encryptionDevice?.nonce !== 'string' ||
-        typeof encryptionDevice.ciphertext !== 'string' ||
-        typeof encryptionDevice.tag !== 'string'
-    ) {
-        throw new Error(`Unsupported session keystore format at ${path}`)
-    }
-
-    if (keystore.namedChannels !== undefined) {
-        if (typeof keystore.namedChannels !== 'object' || keystore.namedChannels === null) {
-            throw new Error(`Unsupported session keystore format at ${path}`)
-        }
-
-        for (const [key, value] of Object.entries(keystore.namedChannels)) {
-            if (typeof key !== 'string' || typeof value !== 'object' || value === null) {
-                throw new Error(`Unsupported session keystore format at ${path}`)
-            }
-
-            const record = value as { streamId?: unknown; secretHash?: unknown }
-
-            if (typeof record.streamId !== 'string' || typeof record.secretHash !== 'string') {
-                throw new Error(`Unsupported session keystore format at ${path}`)
-            }
-        }
-    }
-}
-
-function validateLoginKeystore(
-    keystore: Partial<LoginSessionKeystoreV2>,
-    path: string,
-): asserts keystore is LoginSessionKeystoreV2 {
-    if (keystore.delegateAuth !== undefined) {
-        if (
-            typeof keystore.delegateAuth !== 'object' ||
-            keystore.delegateAuth === null ||
-            typeof keystore.delegateAuth.sig !== 'string' ||
-            typeof keystore.delegateAuth.expiryEpochMs !== 'number'
-        ) {
-            throw new Error(`Unsupported session keystore format at ${path}`)
-        }
-    }
-
-    if (keystore.secrets?.bearerToken !== undefined) {
-        const bearerToken = keystore.secrets.bearerToken
-
-        if (
-            typeof bearerToken?.nonce !== 'string' ||
-            typeof bearerToken.ciphertext !== 'string' ||
-            typeof bearerToken.tag !== 'string'
-        ) {
-            throw new Error(`Unsupported session keystore format at ${path}`)
-        }
-    }
+    return Object(keystore) === keystore && keystore.kind === 'login'
 }
 
 export function isRootKeystoreV2(keystore: unknown): keystore is RelayerRootKeystoreV2 {
-    if (!isRecord(keystore) || keystore.version !== 2) {
-        return false
-    }
-
-    if (typeof keystore.createdAt !== 'string') {
-        return false
-    }
-
-    if (
-        keystore.checkpoint !== undefined &&
-        !ROOT_CHECKPOINTS.has(
-            keystore.checkpoint as NonNullable<RelayerRootKeystoreV2['checkpoint']>,
-        )
-    ) {
-        return false
-    }
-
-    if (!isNetworkConfig(keystore.network)) {
-        return false
-    }
-
-    if (
-        !isRecord(keystore.addresses) ||
-        typeof keystore.addresses.root !== 'string' ||
-        (keystore.addresses.delegated !== undefined &&
-            typeof keystore.addresses.delegated !== 'string')
-    ) {
-        return false
-    }
-
-    if (
-        !isRecord(keystore.sessionRef) ||
-        typeof keystore.sessionRef.active !== 'string' ||
-        typeof keystore.sessionRef.dir !== 'string' ||
-        !SESSION_NAME_REGEX.test(keystore.sessionRef.active) ||
-        !SESSION_NAME_REGEX.test(keystore.sessionRef.dir)
-    ) {
-        return false
-    }
-
-    if (
-        !isRecord(keystore.crypto) ||
-        keystore.crypto.algorithm !== 'aes-256-gcm' ||
-        !isKdfConfig(keystore.kdf) ||
-        !isRecord(keystore.secrets) ||
-        !isEncryptedSecret(keystore.secrets.rootPrivateKey)
-    ) {
-        return false
-    }
-
-    return true
+    return rootKeystoreSchema.safeParse(keystore).success
 }
 
 export function resolveSessionKeystorePath(
@@ -715,33 +700,12 @@ export async function readSessionKeystoreFile(path: string): Promise<AnySessionK
     const content = await readFile(path, 'utf8')
     const parsed = JSON.parse(content) as unknown
 
-    if (
-        !isRecord(parsed) ||
-        parsed.version !== 2 ||
-        typeof parsed.name !== 'string' ||
-        !isSessionCheckpoint(parsed.checkpoint) ||
-        !isNetworkConfig(parsed.network) ||
-        !isKdfConfig(parsed.kdf) ||
-        !isRecord(parsed.crypto) ||
-        parsed.crypto.algorithm !== 'aes-256-gcm' ||
-        !isRecord(parsed.addresses) ||
-        typeof parsed.addresses.session !== 'string' ||
-        typeof parsed.addresses.delegated !== 'string' ||
-        !isRecord(parsed.secrets) ||
-        !isEncryptedSecret(parsed.secrets.sessionPrivateKey)
-    ) {
+    if (!sessionKeystoreSchema.safeParse(parsed).success) {
         throw new Error(`Unsupported session keystore format at ${path}`)
     }
 
+    // SAFETY: schema accepted parsed; extra enumerable keys stay on the original object.
     const sessionKeystore = parsed as AnySessionKeystore
-
-    if (sessionKeystore.kind === 'agent') {
-        validateAgentKeystore(sessionKeystore, path)
-    } else if (sessionKeystore.kind === 'login') {
-        validateLoginKeystore(sessionKeystore, path)
-    } else if ('kind' in sessionKeystore && sessionKeystore.kind !== undefined) {
-        throw new Error(`Unsupported session keystore format at ${path}`)
-    }
 
     assertValidSessionName(sessionKeystore.name)
 

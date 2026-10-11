@@ -1,5 +1,6 @@
 import { access, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { getAddress, isAddress, isHex, type Address, type Hex } from 'viem'
+import { z } from 'zod'
 import type { EnvName } from './network-config'
 import {
     quoteSpendRestoreCalls,
@@ -8,6 +9,43 @@ import {
 import type { SwapCallGrant } from './swap-session'
 
 export const PENDING_QUOTE_LIMIT_VERSION = 1
+
+const pendingQuoteLimitFileSchema = z
+    .object({
+        version: z.unknown(),
+        account: z.unknown(),
+        slots: z.unknown(),
+        callGrants: z.unknown().optional(),
+        keyExpiry: z.unknown().optional(),
+    })
+    .passthrough()
+
+const pendingKeyExpirySchema = z
+    .object({
+        previous: z.unknown(),
+        installed: z.unknown(),
+        keyType: z.unknown(),
+        isSuperAdmin: z.unknown(),
+        publicKey: z.unknown(),
+        permissions: z.unknown().optional(),
+        limits: z.unknown().optional(),
+    })
+    .passthrough()
+
+const pendingGrantSchema = z
+    .object({
+        target: z.unknown(),
+        selector: z.unknown(),
+    })
+    .passthrough()
+
+const pendingLimitSchema = z
+    .object({
+        token: z.unknown(),
+        period: z.unknown(),
+        limit: z.unknown(),
+    })
+    .passthrough()
 
 export type PendingQuoteLimitRecord = {
     version: typeof PENDING_QUOTE_LIMIT_VERSION
@@ -73,10 +111,14 @@ export async function readPendingQuoteLimit(
         throw error
     }
 
-    const parsed = JSON.parse(text) as PendingQuoteLimitRecord
+    const parsed = JSON.parse(text)
 
     if (parsed.version !== PENDING_QUOTE_LIMIT_VERSION) {
         throw new Error(`Unsupported pending quote limit at ${path}.`)
+    }
+
+    if (!pendingQuoteLimitFileSchema.safeParse(parsed).success) {
+        throw new Error(`Pending quote limit at ${path} is incomplete.`)
     }
 
     if (!isAddress(parsed.account) || !Array.isArray(parsed.slots)) {
@@ -88,21 +130,26 @@ export async function readPendingQuoteLimit(
     }
 
     for (const grant of parsed.callGrants ?? []) {
-        if (!isAddress(grant.target) || !isHex(grant.selector) || grant.selector.length !== 10) {
+        const grantParse = pendingGrantSchema.safeParse(grant)
+        const target = grantParse.success ? grantParse.data.target : grant.target
+        const selector = grantParse.success ? grantParse.data.selector : grant.selector
+
+        if (!isAddress(target) || !isHex(selector) || selector.length !== 10) {
             throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
         }
     }
 
     if (parsed.keyExpiry !== undefined) {
-        const expiry = parsed.keyExpiry
+        const expiryParse = pendingKeyExpirySchema.safeParse(parsed.keyExpiry)
+        const expiry = expiryParse.success ? expiryParse.data : parsed.keyExpiry
 
         if (
-            typeof expiry.previous !== 'string' ||
-            typeof expiry.installed !== 'string' ||
+            !z.string().safeParse(expiry.previous).success ||
+            !z.string().safeParse(expiry.installed).success ||
             !/^\d+$/.test(expiry.previous) ||
             !/^\d+$/.test(expiry.installed) ||
-            typeof expiry.keyType !== 'number' ||
-            typeof expiry.isSuperAdmin !== 'boolean' ||
+            !z.number().safeParse(expiry.keyType).success ||
+            !z.boolean().safeParse(expiry.isSuperAdmin).success ||
             !isHex(expiry.publicKey)
         ) {
             throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
@@ -113,10 +160,14 @@ export async function readPendingQuoteLimit(
         }
 
         for (const permission of expiry.permissions ?? []) {
+            const permissionParse = pendingGrantSchema.safeParse(permission)
+            const target = permissionParse.success ? permissionParse.data.target : permission.target
+            const selector = permissionParse.success ? permissionParse.data.selector : permission.selector
+
             if (
-                !isAddress(permission.target) ||
-                !isHex(permission.selector) ||
-                permission.selector.length !== 10
+                !isAddress(target) ||
+                !isHex(selector) ||
+                selector.length !== 10
             ) {
                 throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
             }
@@ -127,19 +178,23 @@ export async function readPendingQuoteLimit(
         }
 
         for (const limit of expiry.limits ?? []) {
+            const limitParse = pendingLimitSchema.safeParse(limit)
+            const row = limitParse.success ? limitParse.data : limit
+
             if (
-                !isAddress(limit.token) ||
-                typeof limit.period !== 'number' ||
-                !Number.isInteger(limit.period) ||
-                typeof limit.limit !== 'string' ||
-                !/^\d+$/.test(limit.limit)
+                !isAddress(row.token) ||
+                !z.number().safeParse(row.period).success ||
+                !Number.isInteger(row.period) ||
+                !z.string().safeParse(row.limit).success ||
+                !/^\d+$/.test(row.limit)
             ) {
                 throw new Error(`Pending quote limit at ${path} has an invalid key limit.`)
             }
         }
     }
 
-    return parsed
+    // SAFETY: the file passed the same field checks as main; extra keys stay on parsed.
+    return parsed as PendingQuoteLimitRecord
 }
 
 export async function writePendingQuoteLimit(
