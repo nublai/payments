@@ -1,7 +1,62 @@
 import type { PrepareCallsResponse } from '@nubl/relayer-client'
+import { z } from 'incur'
 import type { Address, Hex } from 'viem'
 import type { EnvName } from './network-config'
 import { isRecord } from './type-guards'
+
+const jsonObjectSchema = z.object({}).passthrough()
+
+const daemonIdSchema = z.object({ id: z.string() }).passthrough()
+
+const daemonMethodSchema = z.object({ method: z.string() }).passthrough()
+
+const daemonParamsSchema = z.object({ params: jsonObjectSchema }).passthrough()
+
+const signParamsSchema = z
+    .object({
+        sessionName: z.string(),
+    })
+    .passthrough()
+
+const signTypedDataSchema = z
+    .object({
+        typedData: jsonObjectSchema,
+    })
+    .passthrough()
+
+const signMessageParamsSchema = z
+    .object({
+        sessionName: z.string(),
+        message: z.string(),
+    })
+    .passthrough()
+
+const loadKeyParamsSchema = z
+    .object({
+        name: z.string(),
+        privateKey: z.string(),
+        address: z.string(),
+        durationSeconds: z.number(),
+        kind: z.string().optional(),
+        encryptionDevice: z.string().optional(),
+        phraseConfirmed: z.boolean().optional(),
+        swapSession: z.boolean().optional(),
+        env: z.enum(['dev', 'stage', 'prod']).optional(),
+    })
+    .passthrough()
+
+const sessionNameParamsSchema = z
+    .object({
+        sessionName: z.string(),
+    })
+    .passthrough()
+
+const daemonErrorFieldsSchema = z
+    .object({
+        code: z.string(),
+        message: z.string(),
+    })
+    .passthrough()
 
 export const DAEMON_ERROR_CODES = {
     SESSION_NOT_FOUND: 'SESSION_NOT_FOUND',
@@ -210,171 +265,180 @@ export function serializeDaemonRequest(request: DaemonRequest): string {
 }
 
 export function parseDaemonRequest(raw: string): DaemonRequest {
-    const parsed = JSON.parse(raw) as unknown
+    const parsed: unknown = JSON.parse(raw)
 
-    if (!isRecord(parsed) || typeof parsed.method !== 'string') {
+    if (!jsonObjectSchema.safeParse(parsed).success || !daemonMethodSchema.safeParse(parsed).success) {
         throw new Error('Invalid daemon request payload')
     }
 
-    if (typeof parsed.id !== 'string') {
+    const withId = daemonIdSchema.safeParse(parsed)
+
+    if (!withId.success) {
         throw new Error('Invalid daemon request id')
     }
 
-    if (!isKnownDaemonMethod(parsed.method)) {
-        throw new Error(`Unknown daemon method: ${String(parsed.method)}`)
+    // SAFETY: method and id schemas accepted parsed as an object with those strings.
+    const envelope = parsed as { method: string; id: string; params?: unknown }
+    const method = envelope.method
+    const id = envelope.id
+
+    if (!isKnownDaemonMethod(method)) {
+        throw new Error(`Unknown daemon method: ${String(method)}`)
     }
 
-    if (!isRecord(parsed.params)) {
+    if (!daemonParamsSchema.safeParse(parsed).success) {
         throw new Error('Invalid daemon request params')
     }
 
-    switch (parsed.method) {
+    const params = envelope.params
+
+    switch (method) {
         case 'ping':
         case 'list':
             return {
-                id: parsed.id,
-                method: parsed.method,
+                id,
+                method,
                 params: {},
             }
         case 'sign': {
-            if (typeof parsed.params.sessionName !== 'string') {
+            if (!signParamsSchema.safeParse(params).success) {
                 throw new Error('Invalid sign params.sessionName')
             }
 
-            if (!isRecord(parsed.params.typedData)) {
+            if (!signTypedDataSchema.safeParse(params).success) {
                 throw new Error('Invalid sign params.typedData')
             }
 
+            // SAFETY: sign schemas accepted sessionName as a string and typedData as an object.
+            // Revive walks the original parse so an own __proto__ key is included.
+            const signParams = params as { sessionName: string; typedData: ParsedTypedDataRecord }
+
             return {
-                id: parsed.id,
+                id,
                 method: 'sign',
                 params: {
-                    sessionName: parsed.params.sessionName,
-                    typedData: decodeTypedDataBigInt(parsed.params.typedData),
+                    sessionName: signParams.sessionName,
+                    typedData: decodeTypedDataBigInt(signParams.typedData),
                 },
             }
         }
 
         case 'signMessage': {
-            if (
-                typeof parsed.params.sessionName !== 'string' ||
-                typeof parsed.params.message !== 'string'
-            ) {
+            const signMessage = signMessageParamsSchema.safeParse(params)
+
+            if (!signMessage.success) {
                 throw new Error('Invalid signMessage params')
             }
 
             return {
-                id: parsed.id,
+                id,
                 method: 'signMessage',
                 params: {
-                    sessionName: parsed.params.sessionName,
-                    message: parsed.params.message as Hex,
+                    sessionName: signMessage.data.sessionName,
+                    message: signMessage.data.message as Hex,
                 },
             }
         }
 
         case 'loadKey': {
-            if (
-                typeof parsed.params.name !== 'string' ||
-                typeof parsed.params.privateKey !== 'string' ||
-                typeof parsed.params.address !== 'string' ||
-                typeof parsed.params.durationSeconds !== 'number' ||
-                (parsed.params.kind !== undefined && typeof parsed.params.kind !== 'string') ||
-                (parsed.params.encryptionDevice !== undefined &&
-                    typeof parsed.params.encryptionDevice !== 'string') ||
-                (parsed.params.phraseConfirmed !== undefined &&
-                    typeof parsed.params.phraseConfirmed !== 'boolean') ||
-                (parsed.params.swapSession !== undefined &&
-                    typeof parsed.params.swapSession !== 'boolean') ||
-                (parsed.params.env !== undefined &&
-                    parsed.params.env !== 'dev' &&
-                    parsed.params.env !== 'stage' &&
-                    parsed.params.env !== 'prod')
-            ) {
+            const loadKey = loadKeyParamsSchema.safeParse(params)
+
+            if (!loadKey.success) {
                 throw new Error('Invalid loadKey params')
             }
 
             return {
-                id: parsed.id,
+                id,
                 method: 'loadKey',
                 params: {
-                    name: parsed.params.name,
-                    privateKey: parsed.params.privateKey as Hex,
-                    address: parsed.params.address as Address,
-                    durationSeconds: parsed.params.durationSeconds,
-                    kind: parsed.params.kind,
-                    encryptionDevice: parsed.params.encryptionDevice as Hex | undefined,
-                    phraseConfirmed: parsed.params.phraseConfirmed,
-                    swapSession: parsed.params.swapSession,
-                    env: parsed.params.env,
+                    name: loadKey.data.name,
+                    privateKey: loadKey.data.privateKey as Hex,
+                    address: loadKey.data.address as Address,
+                    durationSeconds: loadKey.data.durationSeconds,
+                    kind: loadKey.data.kind,
+                    encryptionDevice: loadKey.data.encryptionDevice as Hex | undefined,
+                    phraseConfirmed: loadKey.data.phraseConfirmed,
+                    swapSession: loadKey.data.swapSession,
+                    env: loadKey.data.env,
                 },
             }
         }
 
         case 'getSessionSecrets': {
-            if (typeof parsed.params.sessionName !== 'string') {
+            const getSecrets = sessionNameParamsSchema.safeParse(params)
+
+            if (!getSecrets.success) {
                 throw new Error('Invalid getSessionSecrets params.sessionName')
             }
 
             return {
-                id: parsed.id,
+                id,
                 method: 'getSessionSecrets',
                 params: {
-                    sessionName: parsed.params.sessionName,
+                    sessionName: getSecrets.data.sessionName,
                 },
             }
         }
 
         case 'remove': {
-            if (typeof parsed.params.sessionName !== 'string') {
+            const remove = sessionNameParamsSchema.safeParse(params)
+
+            if (!remove.success) {
                 throw new Error('Invalid remove params.sessionName')
             }
 
             return {
-                id: parsed.id,
+                id,
                 method: 'remove',
                 params: {
-                    sessionName: parsed.params.sessionName,
+                    sessionName: remove.data.sessionName,
                 },
             }
         }
 
         default: {
-            const _: never = parsed.method
-            throw new Error(`Unhandled daemon method: ${String(parsed.method)}`)
+            const _: never = method
+            throw new Error(`Unhandled daemon method: ${String(method)}`)
         }
     }
 }
 
 export function parseDaemonResponse(raw: string): DaemonResponse {
-    const parsed = JSON.parse(raw) as unknown
+    const parsed: unknown = JSON.parse(raw)
 
-    if (!isRecord(parsed)) {
+    if (!jsonObjectSchema.safeParse(parsed).success) {
         throw new Error('Invalid daemon response payload')
     }
 
-    if (typeof parsed.id !== 'string') {
+    const withId = daemonIdSchema.safeParse(parsed)
+
+    if (!withId.success) {
         throw new Error('Invalid daemon response id')
     }
 
-    if ('error' in parsed) {
-        if (!isRecord(parsed.error)) {
+    // SAFETY: id schema accepted parsed as an object with a string id.
+    const envelope = parsed as { id: string; error?: unknown; result?: unknown }
+
+    if ('error' in envelope) {
+        if (!jsonObjectSchema.safeParse(envelope.error).success) {
             throw new Error('Invalid daemon response error')
         }
 
-        const code = parsed.error.code
-        const message = parsed.error.message
+        const errorFields = daemonErrorFieldsSchema.safeParse(envelope.error)
 
-        if (typeof code !== 'string' || typeof message !== 'string') {
+        if (!errorFields.success) {
             throw new Error('Invalid daemon response error payload')
         }
+
+        const code = errorFields.data.code
+        const message = errorFields.data.message
 
         if (!Object.values(DAEMON_ERROR_CODES).includes(code as DaemonErrorCode)) {
             throw new Error(`Unknown daemon response error code: ${code}`)
         }
 
         return {
-            id: parsed.id,
+            id: envelope.id,
             error: {
                 code: code as DaemonErrorCode,
                 message,
@@ -383,8 +447,8 @@ export function parseDaemonResponse(raw: string): DaemonResponse {
     }
 
     return {
-        id: parsed.id,
-        result: parsed.result,
+        id: envelope.id,
+        result: envelope.result,
     }
 }
 

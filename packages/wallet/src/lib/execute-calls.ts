@@ -21,8 +21,22 @@ import {
     resolveIntentPayment,
     type FeeCapDisclosure,
 } from './intent-payment'
+import { z } from 'incur'
 import type { EnvName } from './network-config'
 import { resolveOrchestratorAddress } from './orchestrator-address'
+
+const jsonRpcErrorSchema = z
+    .object({
+        code: z.number().optional(),
+        data: z.unknown().optional(),
+    })
+    .passthrough()
+
+const bundleIdDataSchema = z
+    .object({
+        bundleId: z.string(),
+    })
+    .passthrough()
 
 /**
  * JSON-RPC codes wallet_sendPreparedCalls raises only before the signer broadcasts.
@@ -61,20 +75,25 @@ export function isDefinitivePreBroadcastRefusal(error: unknown): boolean {
 }
 
 function jsonRpcCode(error: unknown): number | undefined {
-    if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
-    const code = (error as { code?: unknown }).code
+    const parsed = jsonRpcErrorSchema.safeParse(error)
 
-    return typeof code === 'number' && Number.isInteger(code) ? code : undefined
+    if (!parsed.success || parsed.data.code === undefined || !Number.isInteger(parsed.data.code)) {
+        return undefined
+    }
+
+    return parsed.data.code
 }
 
 function bundleIdFromSendError(error: unknown): string | undefined {
-    if (typeof error !== 'object' || error === null) return undefined
-    const data = (error as { data?: unknown }).data
+    const parsed = jsonRpcErrorSchema.safeParse(error)
 
-    if (typeof data !== 'object' || data === null || !('bundleId' in data)) return undefined
-    const id = (data as { bundleId?: unknown }).bundleId
+    if (!parsed.success) return undefined
 
-    return typeof id === 'string' && id.length > 0 ? id : undefined
+    const data = bundleIdDataSchema.safeParse(parsed.data.data)
+
+    if (!data.success || data.data.bundleId.length === 0) return undefined
+
+    return data.data.bundleId
 }
 
 function markPossiblySubmitted(error: unknown): Error {

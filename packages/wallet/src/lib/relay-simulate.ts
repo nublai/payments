@@ -10,7 +10,37 @@ import {
     type Hex,
 } from 'viem'
 import { wrapSignature } from '@nubl/relayer-client'
-import { isRecord } from './type-guards'
+import { z } from 'incur'
+
+const jsonObjectSchema = z.object({}).passthrough()
+
+const hexWordSchema = z.string().regex(/^0x[0-9a-fA-F]*$/)
+
+const rpcPayloadSchema = z
+    .object({
+        result: z.unknown().optional(),
+        error: z
+            .object({
+                code: z.number().optional(),
+                message: z.string().optional(),
+            })
+            .passthrough()
+            .optional(),
+    })
+    .passthrough()
+
+const simulateBlockSchema = z
+    .object({
+        calls: z.array(z.unknown()),
+    })
+    .passthrough()
+
+const signerRowSchema = z
+    .object({
+        address: z.string(),
+        paused: z.unknown().optional(),
+    })
+    .passthrough()
 
 /**
  * Simulate the quote as the relayer's EIP-7702 execution: Orchestrator
@@ -125,13 +155,15 @@ function getEthBalanceData(user: Address): Hex {
 }
 
 function decodeWord(data: RpcJson | undefined): bigint {
-    if (typeof data !== 'string' || !/^0x[0-9a-fA-F]*$/.test(data)) {
+    const parsed = hexWordSchema.safeParse(data)
+
+    if (!parsed.success) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
 
-    const body = data.slice(2)
+    const body = parsed.data.slice(2)
 
     if (body.length === 0) return 0n
 
@@ -141,7 +173,7 @@ function decodeWord(data: RpcJson | undefined): bigint {
         )
     }
 
-    return BigInt(data)
+    return BigInt(parsed.data)
 }
 
 async function defaultRequest(rpcUrl: string, method: string, params: unknown[]): Promise<RpcJson> {
@@ -166,15 +198,17 @@ async function defaultRequest(rpcUrl: string, method: string, params: unknown[])
         )
     }
 
-    // SAFETY: response.json() is JSON; a JSON-RPC result is that tree or undefined.
-    const payload = (await response.json()) as {
-        result?: RpcJson
-        error?: { code?: number; message?: string }
+    const decoded = rpcPayloadSchema.safeParse(await response.json())
+
+    if (!decoded.success) {
+        throw new RelaySimulationRejected(
+            'relay.link quote could not be simulated. Refusing to sign.',
+        )
     }
 
-    if (payload.error) {
-        const code = payload.error.code
-        const message = payload.error.message ?? 'rpc error'
+    if (decoded.data.error) {
+        const code = decoded.data.error.code
+        const message = decoded.data.error.message ?? 'rpc error'
         const wrapped = new Error(`${code ?? ''} ${message}`)
 
         if (code === -32601) throw wrapped
@@ -183,7 +217,8 @@ async function defaultRequest(rpcUrl: string, method: string, params: unknown[])
         )
     }
 
-    return payload.result
+    // SAFETY: schema accepted the JSON-RPC envelope; result is the JSON tree or undefined.
+    return decoded.data.result as RpcJson
 }
 
 function dedupedWatches(watches: SimulatedWatch[]): SimulatedWatch[] {
@@ -361,13 +396,14 @@ function parseSimulateResult(
     result: RpcJson,
     userCallCount: number,
 ): SimulateResult {
-    if (!Array.isArray(result) || !result[0] || typeof result[0] !== 'object') {
+    if (!Array.isArray(result) || !simulateBlockSchema.safeParse(result[0]).success) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
     }
 
-    const calls = (result[0] as { calls?: unknown }).calls
+    // SAFETY: simulate block schema accepted result[0] as an object with a calls array.
+    const calls = (result[0] as { calls: unknown[] }).calls
 
     if (!Array.isArray(calls) || calls.length < userCallCount) {
         throw new RelaySimulationRejected(
@@ -439,8 +475,10 @@ export async function readRelayerSignerOrigin(input: {
         )
     }
 
+    const resultObject = jsonObjectSchema.safeParse(result)
+
     const table = new Map<string, unknown>(
-        result && typeof result === 'object' ? Object.entries(result) : [],
+        resultObject.success ? Object.entries(resultObject.data) : [],
     )
 
     const chain =
@@ -448,19 +486,22 @@ export async function readRelayerSignerOrigin(input: {
         table.get(hexChain.toLowerCase()) ??
         [...table].find(([key]) => Number.parseInt(key, 16) === input.chainId)?.[1]
 
-    const pool = isRecord(chain) ? chain.pool : undefined
-    const poolSigners = isRecord(pool) ? pool.signers : undefined
+    const chainObject = jsonObjectSchema.safeParse(chain)
+    const pool = chainObject.success ? chainObject.data.pool : undefined
+    const poolObject = jsonObjectSchema.safeParse(pool)
+    const poolSigners = poolObject.success ? poolObject.data.signers : undefined
 
     const signers: unknown[] = Array.isArray(poolSigners) ? poolSigners : []
 
     for (const signer of signers) {
-        if (!signer || typeof signer !== 'object') continue
-        const row = signer as { address?: unknown; paused?: unknown }
+        const row = signerRowSchema.safeParse(signer)
 
-        if (row.paused === true) continue
+        if (!row.success) continue
 
-        if (typeof row.address === 'string' && isAddress(row.address)) {
-            return getAddress(row.address)
+        if (row.data.paused === true) continue
+
+        if (isAddress(row.data.address)) {
+            return getAddress(row.data.address)
         }
     }
 

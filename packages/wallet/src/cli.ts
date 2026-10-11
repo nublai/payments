@@ -345,7 +345,7 @@ async function readPublicAccountAddresses(keystorePath: string): Promise<string[
         const bundle = await readKeystoreBundle(keystorePath)
 
         return [bundle.root.addresses.delegated, bundle.root.addresses.root].filter(
-            (value): value is string => typeof value === 'string' && value.length > 0,
+            (value): value is string => value !== undefined && value.length > 0,
         )
     } catch {
         return []
@@ -495,8 +495,9 @@ function readVersionSync(): string {
     try {
         const pkgPath = new URL('../package.json', import.meta.url)
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+        const version = z.object({ version: z.string() }).passthrough().safeParse(pkg)
 
-        return typeof pkg?.version === 'string' ? pkg.version : '0.0.0'
+        return version.success ? version.data.version : '0.0.0'
     } catch (error) {
         process.stderr.write(
             `Failed to read version from package.json: ${error instanceof Error ? error.message : String(error)}\n`,

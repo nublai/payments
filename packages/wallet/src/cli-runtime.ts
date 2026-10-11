@@ -1,4 +1,7 @@
+import { z } from 'incur'
 import { setDlogErrorLogger, setDlogInfoLogger, setDlogWarnLogger } from './lib/dlog'
+
+const processExitCodeSchema = z.number()
 
 export async function withSdkLogsSuppressedIfSilent<T>(action: () => Promise<T>): Promise<T> {
     if (process.env.DEBUG?.trim()) {
@@ -20,9 +23,9 @@ export async function withSdkLogsSuppressedIfSilent<T>(action: () => Promise<T>)
 }
 
 export function updateCliProcessExitCode(nextCode: number): void {
-    const currentCode = process.exitCode
+    const currentCode = processExitCodeSchema.safeParse(process.exitCode)
 
-    if (typeof currentCode === 'number' && currentCode !== 0 && nextCode === 0) {
+    if (currentCode.success && currentCode.data !== 0 && nextCode === 0) {
         return
     }
 
@@ -30,9 +33,9 @@ export function updateCliProcessExitCode(nextCode: number): void {
 }
 
 export function resolveCliProcessExitCode(fallbackCode: number): number {
-    const code = process.exitCode
+    const code = processExitCodeSchema.safeParse(process.exitCode)
 
-    return typeof code === 'number' ? code : fallbackCode
+    return code.success ? code.data : fallbackCode
 }
 
 declare global {

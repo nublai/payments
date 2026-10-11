@@ -7,11 +7,16 @@ import {
     type Address,
     type Hex,
 } from 'viem'
+import { z } from 'incur'
 import { assertOrderRecipients, hashRelayOrder, orderPayees, RelayOrderRejected } from './relay-order'
 import { QuotePaymentRejected, reviewQuotePayment } from './intent-payment'
 import { WETH_BY_CHAIN } from './quote-spend'
 import { getUsdcAddressByChainId } from './network-config'
 import type { RelayCurrencyAmount, RelayQuoteResponse } from './relay-link'
+
+const quoteAmountSchema = z.string().regex(/^[0-9]+$/)
+
+const quoteDecimalsSchema = z.number().int().min(0).max(36)
 
 /**
  * Swap and bridge may only sign calls to these relay.link contracts, and only
@@ -270,8 +275,10 @@ function isAllowlistedSpender(chainId: number, spender: Address): boolean {
 function quotedInputCap(requested: bigint, quote: RelayQuoteResponse): bigint {
     const raw = quote.details?.currencyIn?.amount
 
-    if (typeof raw === 'string' && /^[0-9]+$/.test(raw)) {
-        const quoted = BigInt(raw)
+    const amount = quoteAmountSchema.safeParse(raw)
+
+    if (amount.success) {
+        const quoted = BigInt(amount.data)
 
         if (quoted < requested) return quoted
     }
@@ -633,11 +640,14 @@ function assertQuotedMinimum(quote: RelayQuoteResponse, slippageBps: number): vo
     const minimum = out?.minimumAmount
     const shown = out?.amount
 
-    if (typeof minimum !== 'string' || !/^[0-9]+$/.test(minimum) || BigInt(minimum) === 0n) {
+    const minimumAmount = quoteAmountSchema.safeParse(minimum)
+    const shownAmount = quoteAmountSchema.safeParse(shown)
+
+    if (!minimumAmount.success || BigInt(minimumAmount.data) === 0n) {
         throw new RelayQuoteRejected('relay.link quote minimum output is 0. Refusing to sign.')
     }
 
-    if (typeof shown !== 'string' || !/^[0-9]+$/.test(shown)) {
+    if (!shownAmount.success) {
         throw new RelayQuoteRejected('relay.link quote is missing the output amount. Refusing to sign.')
     }
 
@@ -645,9 +655,9 @@ function assertQuotedMinimum(quote: RelayQuoteResponse, slippageBps: number): vo
         throw new RelayQuoteRejected('relay.link quote slippage is not a usable basis-point value.')
     }
 
-    const floor = (BigInt(shown) * BigInt(10_000 - slippageBps)) / 10_000n
+    const floor = (BigInt(shownAmount.data) * BigInt(10_000 - slippageBps)) / 10_000n
 
-    if (BigInt(minimum) < floor) {
+    if (BigInt(minimumAmount.data) < floor) {
         throw new RelayQuoteRejected(
             `relay.link quote minimum ${minimum} is below ${floor}, the shown output minus ${slippageBps} bps of slippage.`,
         )
@@ -658,17 +668,19 @@ function assertQuotedMinimum(quote: RelayQuoteResponse, slippageBps: number): vo
 export function formatQuotedBuy(amount?: RelayCurrencyAmount): string {
     const raw = amount?.minimumAmount
 
-    if (typeof raw !== 'string' || !/^[0-9]+$/.test(raw) || BigInt(raw) === 0n) {
+    const minimum = quoteAmountSchema.safeParse(raw)
+
+    if (!minimum.success || BigInt(minimum.data) === 0n) {
         return 'minimum unavailable'
     }
 
-    const decimals = amount?.currency?.decimals
+    const decimals = quoteDecimalsSchema.safeParse(amount?.currency?.decimals)
 
-    if (typeof decimals === 'number' && Number.isInteger(decimals) && decimals >= 0 && decimals <= 36) {
-        return `minimum ${formatUnits(BigInt(raw), decimals)}`
+    if (decimals.success) {
+        return `minimum ${formatUnits(BigInt(minimum.data), decimals.data)}`
     }
 
-    return `minimum ${raw}`
+    return `minimum ${minimum.data}`
 }
 
 /**
@@ -708,11 +720,13 @@ export function relayAllowanceSpenders(chainId: number): Address[] {
 export function quotedOutputMinimum(quote: RelayQuoteResponse): bigint {
     const raw = quote.details?.currencyOut?.minimumAmount
 
-    if (typeof raw !== 'string' || !/^[0-9]+$/.test(raw) || BigInt(raw) === 0n) {
+    const minimum = quoteAmountSchema.safeParse(raw)
+
+    if (!minimum.success || BigInt(minimum.data) === 0n) {
         throw new RelayQuoteRejected('relay.link quote minimum output is 0. Refusing to sign.')
     }
 
-    return BigInt(raw)
+    return BigInt(minimum.data)
 }
 
 export function quoteExecutionFingerprint(quote: RelayQuoteResponse): string {
