@@ -54,6 +54,15 @@ function getDeploymentsByContext() {
   return byContext
 }
 
+function addressMustBeString(value, label) {
+  if (value === undefined || value === null || Array.isArray(value) || value !== `${value}`) {
+    const got =
+      value === undefined ? 'undefined' : value === null ? 'null' : Array.isArray(value) ? 'array' : 'non-string'
+
+    throw new Error(`make-config: ${label} must be a string address (got ${got})`)
+  }
+}
+
 // Convert camelCase to UPPER_SNAKE_CASE
 function keyToEnvKey(key) {
   return key
@@ -81,23 +90,11 @@ function convertToEnv(contextData, context) {
 
     for (const key of Object.keys(addresses).sort()) {
       const value = addresses[key]
+      addressMustBeString(value, `${context}/${chainId} "${key}"`)
 
-      if (
-        value !== null &&
-        !Array.isArray(value) &&
-        Object.getPrototypeOf(value) === Object.prototype
-      ) {
-        // Handle nested utils object
-        for (const nestedKey of Object.keys(value).sort()) {
-          const baseKey = `${keyToEnvKey(key)}_${keyToEnvKey(nestedKey)}`
-          const envKey = shouldSuffixByChain ? `${baseKey}_${chainId}` : baseKey
-          envContent += `${envKey}=${value[nestedKey]}\n`
-        }
-      } else {
-        const baseKey = keyToEnvKey(key)
-        const envKey = shouldSuffixByChain ? `${baseKey}_${chainId}` : baseKey
-        envContent += `${envKey}=${value}\n`
-      }
+      const baseKey = keyToEnvKey(key)
+      const envKey = shouldSuffixByChain ? `${baseKey}_${chainId}` : baseKey
+      envContent += `${envKey}=${value}\n`
     }
   }
 
@@ -135,12 +132,18 @@ function writeEnvFiles(context, contextData) {
 
 // Sort object keys recursively to ensure deterministic JSON output
 function sortObjectKeys(obj) {
-  if (
-    obj === null ||
-    Array.isArray(obj) ||
-    Object.getPrototypeOf(obj) !== Object.prototype
-  ) {
+  if (obj === undefined || obj === null || Array.isArray(obj)) {
+    const got = obj === undefined ? 'undefined' : obj === null ? 'null' : 'array'
+
+    throw new Error(`make-config: address values must be strings (got ${got})`)
+  }
+
+  if (obj === `${obj}`) {
     return obj
+  }
+
+  if (Object.getPrototypeOf(obj) !== Object.prototype) {
+    throw new Error('make-config: address values must be strings (got non-string)')
   }
 
   const sorted = {}
