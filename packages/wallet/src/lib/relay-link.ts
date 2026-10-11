@@ -4,26 +4,11 @@ import { getAddress, type Address, type Hex } from 'viem'
 import { type EnvName } from './network-config'
 import { isRecord } from './type-guards'
 
+const optionalString = z.string().optional().catch(undefined)
+
 const errorMessageSchema = z
     .object({
         message: z.string(),
-    })
-    .passthrough()
-
-const stepItemFieldsSchema = z
-    .object({
-        status: z.unknown().optional(),
-        data: z.unknown().optional(),
-        check: z.unknown().optional(),
-    })
-    .passthrough()
-
-const stepItemDataSchema = z
-    .object({
-        to: z.unknown().optional(),
-        data: z.unknown().optional(),
-        value: z.unknown().optional(),
-        chainId: z.unknown().optional(),
     })
     .passthrough()
 
@@ -38,16 +23,16 @@ const stepFieldsSchema = z
     .object({
         items: z.array(z.unknown()),
         id: z.unknown().optional(),
-        action: z.unknown().optional(),
-        kind: z.unknown().optional(),
-        requestId: z.unknown().optional(),
+        action: optionalString,
+        kind: optionalString,
+        requestId: optionalString,
     })
     .passthrough()
 
 const quoteFieldsSchema = z
     .object({
         steps: z.array(z.unknown()),
-        requestId: z.unknown().optional(),
+        requestId: optionalString,
         fees: z.unknown().optional(),
         details: z.unknown().optional(),
         protocol: z.unknown().optional(),
@@ -58,7 +43,7 @@ const protocolV2Schema = z
     .object({
         v2: z
             .object({
-                orderId: z.unknown().optional(),
+                orderId: optionalString,
                 orderData: z.unknown().optional(),
             })
             .passthrough(),
@@ -68,9 +53,9 @@ const protocolV2Schema = z
 const intentStatusSchema = z
     .object({
         status: z.string(),
-        requestId: z.unknown().optional(),
-        txHashes: z.unknown().optional(),
-        inTxHashes: z.unknown().optional(),
+        requestId: optionalString,
+        txHashes: z.array(z.unknown()).optional().catch(undefined),
+        inTxHashes: z.array(z.unknown()).optional().catch(undefined),
         details: z.unknown().optional(),
     })
     .passthrough()
@@ -346,15 +331,12 @@ function normalizeStepItemStatus(value: unknown): RelayStepItem['status'] {
 }
 
 function normalizeStepItem(value: unknown): RelayStepItem {
-    const item = stepItemFieldsSchema.safeParse(value)
-
-    if (!item.success) {
+    if (!isRecord(value)) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid step item.')
     }
 
-    const dataParsed = stepItemDataSchema.safeParse(item.data.data)
-    const data = dataParsed.success ? dataParsed.data : {}
-    const check = isRecord(item.data.check) ? item.data.check : undefined
+    const data = isRecord(value.data) ? value.data : {}
+    const check = isRecord(value.check) ? value.check : undefined
     const calldata = String(data.data ?? '0x')
 
     if (!isHexData(calldata)) {
@@ -382,9 +364,8 @@ function normalizeStepItem(value: unknown): RelayStepItem {
         )
     }
 
-    const toField = data.to
-
-    if (typeof toField !== 'string' || toField.length === 0) {
+    // Leftover: z.string() on `to` would fail the item/data object and change this message.
+    if (typeof data.to !== 'string' || data.to.length === 0) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
             'relay.link returned an invalid to address in a step item.',
@@ -394,7 +375,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     let to: Address
 
     try {
-        to = getAddress(toField)
+        to = getAddress(data.to)
     } catch (error) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
@@ -406,7 +387,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     const checkFields = stepCheckSchema.safeParse(check)
 
     return {
-        status: normalizeStepItemStatus(item.data.status),
+        status: normalizeStepItemStatus(value.status),
         data: {
             to,
             data: calldata,
@@ -428,9 +409,9 @@ function normalizeStep(value: unknown): RelayStep {
 
     return {
         id: String(step.data.id ?? ''),
-        action: typeof step.data.action === 'string' ? step.data.action : undefined,
-        kind: typeof step.data.kind === 'string' ? step.data.kind : 'transaction',
-        requestId: typeof step.data.requestId === 'string' ? step.data.requestId : undefined,
+        action: step.data.action,
+        kind: step.data.kind ?? 'transaction',
+        requestId: step.data.requestId,
         items: step.data.items.map(normalizeStepItem),
     }
 }
@@ -443,7 +424,7 @@ function normalizeQuoteResponse(payload: RelayJson): RelayQuoteResponse {
     }
 
     return {
-        requestId: typeof quote.data.requestId === 'string' ? quote.data.requestId : undefined,
+        requestId: quote.data.requestId,
         steps: quote.data.steps.map(normalizeStep),
         // SAFETY: quote schema accepted fees/details as unknown; extras stay on the original objects.
         fees: isRecord(quote.data.fees)
@@ -465,7 +446,7 @@ function normalizeProtocol(value: unknown): RelayQuoteResponse['protocol'] {
 
     return {
         v2: {
-            orderId: typeof v2.orderId === 'string' ? v2.orderId : undefined,
+            orderId: v2.orderId,
             // SAFETY: orderData stays on the original v2 object when it is a record.
             orderData: isRecord(v2.orderData)
                 ? (v2.orderData as {
@@ -494,11 +475,11 @@ function normalizeIntentStatus(payload: RelayJson): RelayIntentStatus {
 
     return {
         status: status.data.status,
-        requestId: typeof status.data.requestId === 'string' ? status.data.requestId : undefined,
-        txHashes: Array.isArray(status.data.txHashes) ? (status.data.txHashes as Hex[]) : undefined,
-        inTxHashes: Array.isArray(status.data.inTxHashes)
-            ? (status.data.inTxHashes as Hex[])
-            : undefined,
+        requestId: status.data.requestId,
+        // SAFETY: intent status schema accepted an array of JSON values.
+        txHashes: status.data.txHashes as Hex[] | undefined,
+        // SAFETY: intent status schema accepted an array of JSON values.
+        inTxHashes: status.data.inTxHashes as Hex[] | undefined,
         details: status.data.details,
     }
 }

@@ -390,13 +390,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
 }
 
 function isDaemonErrorCode(code: string): code is DaemonErrorCode {
-    return (
-        code === DAEMON_ERROR_CODES.SESSION_NOT_FOUND ||
-        code === DAEMON_ERROR_CODES.SESSION_EXPIRED ||
-        code === DAEMON_ERROR_CODES.INVALID_REQUEST ||
-        code === DAEMON_ERROR_CODES.INTERNAL_ERROR ||
-        code === DAEMON_ERROR_CODES.INVALID_RESPONSE
-    )
+    return Object.values(DAEMON_ERROR_CODES).some((value) => value === code)
 }
 
 export function parseDaemonResponse(raw: string): DaemonResponse {

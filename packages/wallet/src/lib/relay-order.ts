@@ -1,18 +1,5 @@
-import { z } from 'incur'
 import { getAddress, hashStruct, type Address, type Hex, type TypedData } from 'viem'
 import { isRecord } from './type-guards'
-
-const orderSchema = z
-    .object({
-        version: z.unknown().optional(),
-        solverChainId: z.unknown().optional(),
-        solver: z.unknown().optional(),
-        salt: z.unknown().optional(),
-        inputs: z.unknown().optional(),
-        output: z.unknown().optional(),
-        fees: z.unknown().optional(),
-    })
-    .passthrough()
 
 /**
  * Deposit ids are the EIP-712 struct hash of Relay's v1 Order, which the
@@ -198,19 +185,17 @@ function assertOrder(order: {
 
 /** `hashStruct` of the order. This is the deposit id, not the EIP-712 digest. */
 export function hashRelayOrder(order: unknown): Hex {
-    const parsed = orderSchema.safeParse(order)
-
-    if (!parsed.success) {
+    if (!isRecord(order)) {
         throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
     }
 
-    assertOrder(parsed.data)
+    assertOrder(order)
 
     try {
         return hashStruct({
             types: ORDER_EIP712_TYPES,
             primaryType: 'Order',
-            data: parsed.data,
+            data: order,
         })
     } catch {
         throw new RelayOrderRejected('relay.link order could not be hashed. Refusing to sign.')
@@ -250,15 +235,11 @@ function isUserOrRecipient(address: Address, user: Address, recipient: Address):
  * The known Relay filler may be the solver. It may not be a fee recipient.
  */
 export function assertOrderRecipients(order: unknown, user: Address, recipient: Address): void {
-    const parsed = orderSchema.safeParse(order)
-
-    if (!parsed.success || !isRecord(parsed.data.output)) {
+    if (!isRecord(order) || !isRecord(order.output)) {
         throw new RelayOrderRejected('relay.link quote is missing protocol.v2.orderData.')
     }
 
-    const orderFields = parsed.data
-    const output = parsed.data.output
-    const solver = addressOf(orderFields.solver, 'solver')
+    const solver = addressOf(order.solver, 'solver')
 
     if (
         !isUserOrRecipient(solver, user, recipient) &&
@@ -269,7 +250,7 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
         )
     }
 
-    const calls = output.calls
+    const calls = order.output.calls
 
     if (!Array.isArray(calls) || calls.length > 0) {
         throw new RelayOrderRejected(
@@ -277,11 +258,11 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
         )
     }
 
-    if (!Array.isArray(output.payments)) {
+    if (!Array.isArray(order.output.payments)) {
         throw new RelayOrderRejected('relay.link order is missing output payments.')
     }
 
-    for (const payment of output.payments) {
+    for (const payment of order.output.payments) {
         if (!isRecord(payment)) {
             throw new RelayOrderRejected('relay.link order output payment is malformed.')
         }
@@ -293,11 +274,11 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
         }
     }
 
-    if (!Array.isArray(orderFields.fees)) {
+    if (!Array.isArray(order.fees)) {
         throw new RelayOrderRejected('relay.link order is missing fees.')
     }
 
-    for (const fee of orderFields.fees) {
+    for (const fee of order.fees) {
         if (!isRecord(fee)) {
             throw new RelayOrderRejected('relay.link order fee is malformed.')
         }
@@ -315,22 +296,17 @@ export function assertOrderRecipients(order: unknown, user: Address, recipient: 
 type OrderPayees = { outputs: string[]; refunds: string[] }
 
 export function orderPayees(order: unknown): OrderPayees {
-    const parsed = orderSchema.safeParse(order)
-
-    if (!parsed.success || !isRecord(parsed.data.output) || !Array.isArray(parsed.data.inputs)) {
+    if (!isRecord(order) || !isRecord(order.output) || !Array.isArray(order.inputs)) {
         return { outputs: [], refunds: [] }
     }
 
-    const output = parsed.data.output
-    const inputs = parsed.data.inputs
-
-    const outputs = Array.isArray(output.payments)
-        ? output.payments
+    const outputs = Array.isArray(order.output.payments)
+        ? order.output.payments
               .map((payment) => (isRecord(payment) ? payment.recipient : undefined))
               .filter((value): value is string => typeof value === 'string')
         : []
 
-    const refunds = inputs.flatMap((input) => {
+    const refunds = order.inputs.flatMap((input) => {
         if (!isRecord(input) || !Array.isArray(input.refunds)) return []
 
         return input.refunds
