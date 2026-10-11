@@ -7,7 +7,7 @@ import argon2 from 'argon2'
 import lockfile from 'proper-lockfile'
 import { privateKeyToAccount } from 'viem/accounts'
 import { type Hex } from 'viem'
-import { z } from 'zod'
+import { z } from 'incur'
 
 const ARGON2_MEMORY_COST = 19_456
 
@@ -548,11 +548,11 @@ export async function decryptSessionKeystore(
 }
 
 export function isAgentKeystore(keystore: AnySessionKeystore): keystore is AgentSessionKeystoreV2 {
-    return Object(keystore) === keystore && keystore.kind === 'agent'
+    return keystore?.kind === 'agent'
 }
 
 export function isLoginKeystore(keystore: AnySessionKeystore): keystore is LoginSessionKeystoreV2 {
-    return Object(keystore) === keystore && keystore.kind === 'login'
+    return keystore?.kind === 'login'
 }
 
 export function isRootKeystoreV2(keystore: unknown): keystore is RelayerRootKeystoreV2 {

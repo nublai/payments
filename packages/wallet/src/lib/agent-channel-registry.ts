@@ -1,17 +1,17 @@
 import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { z } from 'zod'
+import { z } from 'incur'
 
 const AGENT_CHANNEL_REGISTRY_VERSION = 1 as const
 
 const agentChannelRegistryFileSchema = z
     .object({
-        version: z.unknown(),
-        channels: z.unknown(),
+        version: z.literal(AGENT_CHANNEL_REGISTRY_VERSION),
+        channels: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())]),
     })
     .passthrough()
 
-const channelsSchema = z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())])
+const agentChannelValuesSchema = z.union([z.record(z.string(), z.string()), z.array(z.string())])
 
 export type AgentChannelRegistryFile = {
     version: typeof AGENT_CHANNEL_REGISTRY_VERSION
@@ -46,20 +46,13 @@ export async function readAgentChannelRegistry(
         const raw = await readFile(path, 'utf8')
         const parsed = JSON.parse(raw) as unknown
         const file = agentChannelRegistryFileSchema.safeParse(parsed)
-        const channels = file.success ? channelsSchema.safeParse(file.data.channels) : undefined
 
-        if (
-            !file.success ||
-            file.data.version !== AGENT_CHANNEL_REGISTRY_VERSION ||
-            !channels?.success
-        ) {
+        if (!file.success) {
             throw new Error(`Unsupported agent channel registry format at ${path}`)
         }
 
-        for (const value of Object.values(channels.data)) {
-            if (!z.string().safeParse(value).success) {
-                throw new Error(`Invalid agent channel registry entry at ${path}`)
-            }
+        if (!agentChannelValuesSchema.safeParse(file.data.channels).success) {
+            throw new Error(`Invalid agent channel registry entry at ${path}`)
         }
 
         // SAFETY: version and channels were checked; extra enumerable fields stay on parsed.

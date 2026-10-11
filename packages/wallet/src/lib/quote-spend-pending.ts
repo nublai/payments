@@ -1,6 +1,6 @@
 import { access, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { getAddress, isAddress, isHex, type Address, type Hex } from 'viem'
-import { z } from 'zod'
+import { z } from 'incur'
 import type { EnvName } from './network-config'
 import {
     quoteSpendRestoreCalls,
@@ -10,40 +10,40 @@ import type { SwapCallGrant } from './swap-session'
 
 export const PENDING_QUOTE_LIMIT_VERSION = 1
 
-const pendingQuoteLimitFileSchema = z
-    .object({
-        version: z.unknown(),
-        account: z.unknown(),
-        slots: z.unknown(),
-        callGrants: z.unknown().optional(),
-        keyExpiry: z.unknown().optional(),
-    })
-    .passthrough()
-
-const pendingKeyExpirySchema = z
-    .object({
-        previous: z.unknown(),
-        installed: z.unknown(),
-        keyType: z.unknown(),
-        isSuperAdmin: z.unknown(),
-        publicKey: z.unknown(),
-        permissions: z.unknown().optional(),
-        limits: z.unknown().optional(),
-    })
-    .passthrough()
-
 const pendingGrantSchema = z
     .object({
-        target: z.unknown(),
-        selector: z.unknown(),
+        target: z.string(),
+        selector: z.string(),
     })
     .passthrough()
 
 const pendingLimitSchema = z
     .object({
-        token: z.unknown(),
-        period: z.unknown(),
-        limit: z.unknown(),
+        token: z.string(),
+        period: z.number().int(),
+        limit: z.string().regex(/^\d+$/),
+    })
+    .passthrough()
+
+const pendingKeyExpirySchema = z
+    .object({
+        previous: z.string().regex(/^\d+$/),
+        installed: z.string().regex(/^\d+$/),
+        keyType: z.number(),
+        isSuperAdmin: z.boolean(),
+        publicKey: z.string(),
+        permissions: z.array(pendingGrantSchema).optional(),
+        limits: z.array(pendingLimitSchema).optional(),
+    })
+    .passthrough()
+
+const pendingQuoteLimitFileSchema = z
+    .object({
+        version: z.literal(PENDING_QUOTE_LIMIT_VERSION),
+        account: z.string(),
+        slots: z.array(z.unknown()),
+        callGrants: z.unknown().optional(),
+        keyExpiry: z.unknown().optional(),
     })
     .passthrough()
 
@@ -117,77 +117,78 @@ export async function readPendingQuoteLimit(
         throw new Error(`Unsupported pending quote limit at ${path}.`)
     }
 
-    if (!pendingQuoteLimitFileSchema.safeParse(parsed).success) {
+    const file = pendingQuoteLimitFileSchema.safeParse(parsed)
+
+    if (!file.success || !isAddress(file.data.account)) {
         throw new Error(`Pending quote limit at ${path} is incomplete.`)
     }
 
-    if (!isAddress(parsed.account) || !Array.isArray(parsed.slots)) {
-        throw new Error(`Pending quote limit at ${path} is incomplete.`)
-    }
+    if (file.data.callGrants !== undefined) {
+        const grants = z.array(pendingGrantSchema).safeParse(file.data.callGrants)
 
-    if (parsed.callGrants !== undefined && !Array.isArray(parsed.callGrants)) {
-        throw new Error(`Pending quote limit at ${path} has invalid call grants.`)
-    }
+        if (!grants.success) {
+            throw new Error(
+                Array.isArray(file.data.callGrants)
+                    ? `Pending quote limit at ${path} has an invalid call grant.`
+                    : `Pending quote limit at ${path} has invalid call grants.`,
+            )
+        }
 
-    for (const grant of parsed.callGrants ?? []) {
-        const grantParse = pendingGrantSchema.safeParse(grant)
-        const target = grantParse.success ? grantParse.data.target : grant.target
-        const selector = grantParse.success ? grantParse.data.selector : grant.selector
-
-        if (!isAddress(target) || !isHex(selector) || selector.length !== 10) {
-            throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
+        for (const grant of grants.data) {
+            if (!isAddress(grant.target) || !isHex(grant.selector) || grant.selector.length !== 10) {
+                throw new Error(`Pending quote limit at ${path} has an invalid call grant.`)
+            }
         }
     }
 
-    if (parsed.keyExpiry !== undefined) {
-        const expiryParse = pendingKeyExpirySchema.safeParse(parsed.keyExpiry)
-        const expiry = expiryParse.success ? expiryParse.data : parsed.keyExpiry
+    if (file.data.keyExpiry !== undefined) {
+        const expiry = file.data.keyExpiry
+        const decoded = pendingKeyExpirySchema.safeParse(expiry)
 
-        if (
-            !z.string().safeParse(expiry.previous).success ||
-            !z.string().safeParse(expiry.installed).success ||
-            !/^\d+$/.test(expiry.previous) ||
-            !/^\d+$/.test(expiry.installed) ||
-            !z.number().safeParse(expiry.keyType).success ||
-            !z.boolean().safeParse(expiry.isSuperAdmin).success ||
-            !isHex(expiry.publicKey)
-        ) {
+        if (!decoded.success) {
+            if (expiry === null) {
+                // SAFETY: main evaluated expiry.previous here; that throws on null.
+                const expiryObject = expiry as { previous: unknown }
+                void expiryObject.previous
+            }
+
+            const field = decoded.error.issues[0]?.path[0]
+
+            if (field === 'permissions') {
+                throw new Error(
+                    Array.isArray((expiry as { permissions?: unknown }).permissions)
+                        ? `Pending quote limit at ${path} has an invalid key permission.`
+                        : `Pending quote limit at ${path} has invalid key permissions.`,
+                )
+            }
+
+            if (field === 'limits') {
+                throw new Error(
+                    Array.isArray((expiry as { limits?: unknown }).limits)
+                        ? `Pending quote limit at ${path} has an invalid key limit.`
+                        : `Pending quote limit at ${path} has invalid key limits.`,
+                )
+            }
+
             throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
         }
 
-        if (expiry.permissions !== undefined && !Array.isArray(expiry.permissions)) {
-            throw new Error(`Pending quote limit at ${path} has invalid key permissions.`)
+        if (!isHex(decoded.data.publicKey)) {
+            throw new Error(`Pending quote limit at ${path} has an invalid key expiry.`)
         }
 
-        for (const permission of expiry.permissions ?? []) {
-            const permissionParse = pendingGrantSchema.safeParse(permission)
-            const target = permissionParse.success ? permissionParse.data.target : permission.target
-            const selector = permissionParse.success ? permissionParse.data.selector : permission.selector
-
+        for (const permission of decoded.data.permissions ?? []) {
             if (
-                !isAddress(target) ||
-                !isHex(selector) ||
-                selector.length !== 10
+                !isAddress(permission.target) ||
+                !isHex(permission.selector) ||
+                permission.selector.length !== 10
             ) {
                 throw new Error(`Pending quote limit at ${path} has an invalid key permission.`)
             }
         }
 
-        if (expiry.limits !== undefined && !Array.isArray(expiry.limits)) {
-            throw new Error(`Pending quote limit at ${path} has invalid key limits.`)
-        }
-
-        for (const limit of expiry.limits ?? []) {
-            const limitParse = pendingLimitSchema.safeParse(limit)
-            const row = limitParse.success ? limitParse.data : limit
-
-            if (
-                !isAddress(row.token) ||
-                !z.number().safeParse(row.period).success ||
-                !Number.isInteger(row.period) ||
-                !z.string().safeParse(row.limit).success ||
-                !/^\d+$/.test(row.limit)
-            ) {
+        for (const limit of decoded.data.limits ?? []) {
+            if (!isAddress(limit.token)) {
                 throw new Error(`Pending quote limit at ${path} has an invalid key limit.`)
             }
         }

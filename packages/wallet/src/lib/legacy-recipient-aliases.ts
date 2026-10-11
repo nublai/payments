@@ -1,18 +1,16 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { z } from 'zod'
+import { z } from 'incur'
 
 const LEGACY_RECIPIENT_ALIASES_VERSION = 1 as const
 
 const legacyRecipientAliasesFileSchema = z
     .object({
-        version: z.unknown(),
-        contacts: z.unknown(),
+        version: z.literal(LEGACY_RECIPIENT_ALIASES_VERSION),
+        contacts: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())]),
     })
     .passthrough()
-
-const contactsSchema = z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())])
 
 function normalizeLegacyAlias(alias: string): string {
     return alias.trim().toLowerCase()
@@ -27,18 +25,12 @@ async function readLegacyRecipientAliasesContacts(): Promise<string[]> {
     const raw = await readFile(path, 'utf8')
     const parsed: unknown = JSON.parse(raw)
     const file = legacyRecipientAliasesFileSchema.safeParse(parsed)
-    const contacts = file.success ? contactsSchema.safeParse(file.data.contacts) : undefined
 
-    if (
-        !file.success ||
-        file.data.version !== LEGACY_RECIPIENT_ALIASES_VERSION ||
-        !contacts?.success
-    ) {
+    if (!file.success) {
         throw new Error(`Unsupported legacy recipient aliases file at ${path}.`)
     }
 
-    // SAFETY: contacts was accepted as a JSON object; keys come from the original parse.
-    return Object.keys((parsed as { contacts: object }).contacts)
+    return Object.keys(file.data.contacts)
 }
 
 export async function hasLegacyRecipientAlias(input: string): Promise<boolean> {
