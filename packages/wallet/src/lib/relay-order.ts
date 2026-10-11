@@ -323,6 +323,7 @@ export function orderPayees(order: unknown): OrderPayees {
 
     const output = parsed.data.output
     const inputs = parsed.data.inputs
+
     const outputs = Array.isArray(output.payments)
         ? output.payments
               .map((payment) => (isRecord(payment) ? payment.recipient : undefined))
