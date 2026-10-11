@@ -321,6 +321,7 @@ export class SessionDaemonClient {
                 // SAFETY: secrets schema accepted address as a string.
                 address: secrets.data.address as Address,
                 expiresAt: secrets.data.expiresAt,
+                // SAFETY: secrets schema accepted encryptionDevice as a string when present.
                 encryptionDevice: secrets.data.encryptionDevice as Hex | undefined,
             },
         }
