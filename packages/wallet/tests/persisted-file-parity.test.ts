@@ -87,9 +87,7 @@ test('readSessionKeystoreFile keeps extra fields and rejects the same invalid fi
         expect(raw.extra).toBe('kept')
 
         const missingName = join(dir, 'missing-name.json')
-        const withoutName = { ...session }
-        delete withoutName.name
-        await writeFile(missingName, `${JSON.stringify(withoutName)}\n`)
+        await writeFile(missingName, `${JSON.stringify({ ...session, name: undefined })}\n`)
         await expect(readSessionKeystoreFile(missingName)).rejects.toThrow(
             `Unsupported session keystore format at ${missingName}`,
         )
