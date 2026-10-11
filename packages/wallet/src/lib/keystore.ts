@@ -704,28 +704,17 @@ export async function readSessionKeystoreFile(path: string): Promise<AnySessionK
     // SAFETY: schema accepted parsed; extra enumerable keys stay on the original object.
     const sessionKeystore = parsed as AnySessionKeystore
 
-    if (sessionKeystore.kind === 'agent') {
-        assertOwnNamedChannels(sessionKeystore.namedChannels, path)
+    if (sessionKeystore.kind === 'agent' && sessionKeystore.namedChannels !== undefined) {
+        for (const entry of Object.values(sessionKeystore.namedChannels)) {
+            if (!namedChannelSchema.safeParse(entry).success) {
+                throw new Error(`Unsupported session keystore format at ${path}`)
+            }
+        }
     }
 
     assertValidSessionName(sessionKeystore.name)
 
     return sessionKeystore
-}
-
-function assertOwnNamedChannels(value: unknown, path: string): void {
-    if (value === undefined) return
-
-    if (!namedChannelsContainerSchema.safeParse(value).success) {
-        throw new Error(`Unsupported session keystore format at ${path}`)
-    }
-
-    // SAFETY: schema accepted an object; walk the original so an own __proto__ key is included.
-    for (const entry of Object.values(value as object)) {
-        if (!namedChannelSchema.safeParse(entry).success) {
-            throw new Error(`Unsupported session keystore format at ${path}`)
-        }
-    }
 }
 
 type WriteJsonAtomicOptions = {

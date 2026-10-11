@@ -125,6 +125,7 @@ test('readSessionKeystoreFile keeps extra fields and rejects the same invalid fi
                 encryptionDevice: session.secrets.sessionPrivateKey,
             },
         }
+
         const protoChPath = join(dir, 'proto-ch.json')
         await writeFile(
             protoChPath,
@@ -338,6 +339,7 @@ test('readPendingQuoteLimit keeps extras and matches main error messages', async
             isSuperAdmin: false,
             publicKey: KEY_HASH,
         }
+
         await writeFile(
             path,
             `${JSON.stringify({ ...validPendingQuote(), keyExpiry: { ...expiry, publicKey: 'zz', permissions: {} } })}\n`,
