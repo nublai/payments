@@ -128,7 +128,7 @@ async function withJwks<T>(
     const previous = globalThis.fetch
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const href =
-            typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+            input instanceof Request ? input.url : input instanceof URL ? input.href : input
 
         if (href === url) {
             if (options?.fail) throw new TypeError('fetch failed')
@@ -253,7 +253,7 @@ describe('oidc identity provider', () => {
         const previous = globalThis.fetch
         globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
             const href =
-                typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+                input instanceof Request ? input.url : input instanceof URL ? input.href : input
 
             if (href === url) {
                 fetches += 1

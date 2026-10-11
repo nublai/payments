@@ -3,6 +3,7 @@
  */
 
 import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest'
+import { z } from 'zod'
 import { handleGetCapabilities } from '../../src/rpc/methods/getCapabilities'
 import type { JsonRpcRequest, RpcContext } from '../../src/rpc/types'
 import type { Env } from '../../src/types/env'
@@ -196,7 +197,7 @@ describe('wallet_getCapabilities', () => {
         const chainCaps = result['0x2105']
 
         expect(chainCaps.fees.quoteConfig).toHaveProperty('ttlSeconds')
-        expect(typeof chainCaps.fees.quoteConfig.ttlSeconds).toBe('number')
+        expect(z.number().safeParse(chainCaps.fees.quoteConfig.ttlSeconds).success).toBe(true)
     })
 
     it('should include signer addresses and balances in pool info', async () => {

@@ -5,6 +5,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { Hono } from 'hono'
 import { privateKeyToAccount } from 'viem/accounts'
 import { hashAuthorization } from 'viem/utils'
@@ -73,9 +74,7 @@ describe('post-send signer errors', () => {
 
         function jsonAfterSend(data: Parameters<typeof Response.json>[0], init?: ResponseInit): Response {
             if (
-                data !== null &&
-                typeof data === 'object' &&
-                'txHash' in data &&
+                z.object({ txHash: z.unknown() }).safeParse(data).success &&
                 (init?.status === undefined || init.status < 400)
             ) {
                 throw new Error('post-send bookkeeping failed')
@@ -263,7 +262,8 @@ function createUpgradeEnv(
     signerBody: { error?: string; broadcastAttempted?: boolean },
 ): Env {
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-        const bodyText = typeof init?.body === 'string' ? init.body : ''
+        const bodyParsed = z.string().safeParse(init?.body)
+        const bodyText = bodyParsed.success ? bodyParsed.data : ''
         let parsed: RateBody = {}
 
         if (bodyText) {
@@ -278,19 +278,22 @@ function createUpgradeEnv(
             return jsonStub(signerBody, false)
         }
 
+        const chainId = z.number().safeParse(parsed.chainId)
+
         const buckets = upgradeRateBuckets({
             kind: parsed.kind === 'prepare' ? 'prepare' : 'upgrade',
-            chainId: typeof parsed.chainId === 'number' ? parsed.chainId : CHAIN_ID,
+            chainId: chainId.success ? chainId.data : CHAIN_ID,
             account: parsed.account ?? 'unknown',
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity })
 
         if (parsed.action === 'release') {
             onRelease()
+            const reservedAt = z.number().safeParse(parsed.reservedAt)
             releaseRateLimit(
                 store,
                 buckets,
-                typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW,
+                reservedAt.success ? reservedAt.data : NOW,
             )
 
             return jsonStub({ allowed: true })

@@ -4,6 +4,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { Hono } from 'hono'
 import { mnemonicToAccount } from 'viem/accounts'
 import type { Address, Hex } from 'viem'
@@ -95,7 +96,8 @@ function providerForRequest(): AuthProvider {
 
 function createEnv(capture: unknown[], store: Map<string, number>): Env {
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-        const bodyText = typeof init?.body === 'string' ? init.body : ''
+        const bodyParsed = z.string().safeParse(init?.body)
+        const bodyText = bodyParsed.success ? bodyParsed.data : ''
         let parsed: RateBody = {}
 
         if (bodyText) {
@@ -112,19 +114,22 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
             return jsonStub({ error: 'execution reverted' }, false)
         }
 
+        const chainId = z.number().safeParse(parsed.chainId)
+
         const buckets = upgradeRateBuckets({
             kind: parsed.kind === 'prepare' ? 'prepare' : 'upgrade',
-            chainId: typeof parsed.chainId === 'number' ? parsed.chainId : CHAIN_ID,
+            chainId: chainId.success ? chainId.data : CHAIN_ID,
             account: parsed.account ?? 'unknown',
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity,
         })
 
         if (parsed.action === 'release') {
+            const reservedAt = z.number().safeParse(parsed.reservedAt)
             releaseRateLimit(
                 store,
                 buckets,
-                typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW,
+                reservedAt.success ? reservedAt.data : NOW,
             )
 
             return jsonStub({ allowed: true })

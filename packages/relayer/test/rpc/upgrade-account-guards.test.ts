@@ -8,6 +8,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { Hono } from 'hono'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { encodeAbiParameters, type Address, type Hex } from 'viem'
@@ -68,7 +69,8 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
     const now = 1_700_000_100
 
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-        const bodyText = typeof init?.body === 'string' ? init.body : ''
+        const bodyParsed = z.string().safeParse(init?.body)
+        const bodyText = bodyParsed.success ? bodyParsed.data : ''
         let parsed: { type?: string } & RateBody = {}
 
         if (bodyText) {
@@ -85,19 +87,22 @@ function createEnv(capture: unknown[], store: Map<string, number>): Env {
             return jsonStub({ error: 'execution reverted', broadcastAttempted: false }, false)
         }
 
+        const chainId = z.number().safeParse(parsed.chainId)
+
         const buckets = upgradeRateBuckets({
             kind: parsed.kind === 'prepare' ? 'prepare' : 'upgrade',
-            chainId: typeof parsed.chainId === 'number' ? parsed.chainId : CHAIN_ID,
+            chainId: chainId.success ? chainId.data : CHAIN_ID,
             account: parsed.account ?? 'unknown',
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity,
         })
 
         if (parsed.action === 'release') {
+            const reservedAt = z.number().safeParse(parsed.reservedAt)
             releaseRateLimit(
                 store,
                 buckets,
-                typeof parsed.reservedAt === 'number' ? parsed.reservedAt : now,
+                reservedAt.success ? reservedAt.data : now,
             )
 
             return jsonStub({ allowed: true })
@@ -219,7 +224,8 @@ afterAll(() => restoreDeployment())
 describe('C1 upgrade broadcast guards', () => {
     beforeEach(() => {
         vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
-            const body = typeof init?.body === 'string' ? init.body : ''
+            const bodyParsed = z.string().safeParse(init?.body)
+            const body = bodyParsed.success ? bodyParsed.data : ''
             const result = body.includes('eth_getTransactionCount') ? '0x0' : '0x'
 
             return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), {

@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
+import { z } from 'zod'
 
 /**
  * Check if intent has expired or will expire within buffer
@@ -12,7 +13,12 @@ export function isIntentExpired(
     expiryTimestamp: bigint | string,
     bufferSeconds: number = 30,
 ): boolean {
-    const expiry = typeof expiryTimestamp === 'string' ? BigInt(expiryTimestamp) : expiryTimestamp
+    const asBigint = z.bigint().safeParse(expiryTimestamp)
+
+    const expiry = asBigint.success
+        ? asBigint.data
+        : BigInt(z.string().parse(expiryTimestamp))
+
     const currentTime = BigInt(Math.floor(Date.now() / 1000))
     const buffer = BigInt(bufferSeconds)
 

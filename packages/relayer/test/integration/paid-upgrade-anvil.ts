@@ -10,6 +10,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
+import { z } from 'zod'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -232,11 +233,11 @@ async function main(): Promise<void> {
                 get: () => ({
                     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
                         const url =
-                            typeof input === 'string'
-                                ? input
-                                : input instanceof Request
-                                  ? input.url
-                                  : String(input)
+                            input instanceof Request
+                                ? input.url
+                                : input instanceof URL
+                                  ? input.href
+                                  : input
 
                         const body = parseJson<{
                             action?: string
@@ -260,11 +261,12 @@ async function main(): Promise<void> {
                             }
 
                             const now = Math.floor(Date.now() / 1000)
+                            const ip = z.string().safeParse(body.ip)
 
                             const buckets = paidUpgradeRateBuckets({
                                 chainId: body.chainId ?? CHAIN_ID,
                                 account: body.account ?? 'unknown',
-                                ip: typeof body.ip === 'string' ? body.ip : 'unknown',
+                                ip: ip.success ? ip.data : 'unknown',
                                 includeGlobal: body.action === 'reserve' || body.action === 'release',
                             })
 
@@ -535,7 +537,7 @@ async function main(): Promise<void> {
             ctx,
         )
 
-        assert(typeof sent.id === 'string' && sent.id.length > 0, 'missing bundle id')
+        assert(z.string().safeParse(sent.id).success && sent.id.length > 0, 'missing bundle id')
 
         const code = await publicClient.getCode({ address: owner.address })
         assert(
@@ -757,7 +759,7 @@ async function main(): Promise<void> {
         )
 
         broadcastPlan.sweepOwner = undefined
-        assert(typeof griefSent.id === 'string', 'grief send did not return a bundle id')
+        assert(z.string().safeParse(griefSent.id).success, 'grief send did not return a bundle id')
         const griefReceipt = receipts[receipts.length - 1]
         assert(griefReceipt, 'missing PaymentError receipt')
         assert(griefReceipt.status === 'success', 'PaymentError receipt did not succeed')
@@ -949,7 +951,7 @@ async function main(): Promise<void> {
 
         broadcastPlan.beforeBroadcast = undefined
         broadcastPlan.expectSuccess = undefined
-        assert(typeof bombSent.id === 'string', 'bomb race did not return a bundle id')
+        assert(z.string().safeParse(bombSent.id).success, 'bomb race did not return a bundle id')
         const bombUpgrade = receipts[receipts.length - 1]
         assert(bombUpgrade, 'missing bomb-race receipt')
         assert(

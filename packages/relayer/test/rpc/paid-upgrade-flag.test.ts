@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { encodeAbiParameters, encodeEventTopics, zeroAddress, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
@@ -53,6 +54,14 @@ const paidUpgradeFee = {
 
 const CHAIN_ID = 8453
 
+function requestUrl(input: RequestInfo | URL): string {
+    if (input instanceof Request) return input.url
+
+    if (input instanceof URL) return input.href
+
+    return input
+}
+
 const SECRET = 'paid-upgrade-flag-secret'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
@@ -94,11 +103,13 @@ type PoolRequestBody = {
 }
 
 function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+    const url = requestUrl(input)
     const body = init?.body ? parseJson<PoolRequestBody>(String(init.body)) : {}
 
     if (url.includes('upgrade-rate-limit')) {
-        if (typeof body.action === 'string' && body.action.endsWith('-gas')) {
+        const action = z.string().safeParse(body.action)
+
+        if (action.success && action.data.endsWith('-gas')) {
             gasLog.push(body)
 
             return Promise.resolve(jsonStub({ allowed: true, gas: 0 }))
@@ -386,7 +397,7 @@ beforeEach(() => {
     mockPrepareIntent.mockReset()
     mockPrepareIntent.mockImplementation(async () => preparedIntent())
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+        const url = requestUrl(input)
 
         if (!url.includes('rpc.test')) throw new Error(`unexpected fetch ${url}`)
         const raw = init?.body ? JSON.parse(String(init.body)) : {}

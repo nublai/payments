@@ -82,7 +82,11 @@ function convertToEnv(contextData, context) {
     for (const key of Object.keys(addresses).sort()) {
       const value = addresses[key]
 
-      if (typeof value === 'object') {
+      if (
+        value !== null &&
+        !Array.isArray(value) &&
+        Object.getPrototypeOf(value) === Object.prototype
+      ) {
         // Handle nested utils object
         for (const nestedKey of Object.keys(value).sort()) {
           const baseKey = `${keyToEnvKey(key)}_${keyToEnvKey(nestedKey)}`
@@ -131,7 +135,11 @@ function writeEnvFiles(context, contextData) {
 
 // Sort object keys recursively to ensure deterministic JSON output
 function sortObjectKeys(obj) {
-  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+  if (
+    obj === null ||
+    Array.isArray(obj) ||
+    Object.getPrototypeOf(obj) !== Object.prototype
+  ) {
     return obj
   }
 

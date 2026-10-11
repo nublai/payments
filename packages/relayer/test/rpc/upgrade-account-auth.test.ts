@@ -9,6 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { Hono } from 'hono'
 import { type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -58,7 +59,8 @@ function createEnv(
     options: { upgradeAllowed?: boolean } = {},
 ): Env {
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-        const bodyText = typeof init?.body === 'string' ? init.body : ''
+        const bodyParsed = z.string().safeParse(init?.body)
+        const bodyText = bodyParsed.success ? bodyParsed.data : ''
         let parsed: { type?: string } | null = null
 
         if (bodyText) {
@@ -124,7 +126,8 @@ function providerFor(userId: string): AuthProvider {
 
 function stubPendingNonce() {
     vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
-        const body = typeof init?.body === 'string' ? init.body : ''
+        const bodyParsed = z.string().safeParse(init?.body)
+        const body = bodyParsed.success ? bodyParsed.data : ''
         const result = body.includes('eth_getTransactionCount') ? '0x0' : '0x'
 
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), {
