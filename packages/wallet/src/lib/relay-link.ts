@@ -447,18 +447,7 @@ function normalizeProtocol(value: unknown): RelayQuoteResponse['protocol'] {
     return {
         v2: {
             orderId: v2.orderId,
-            // SAFETY: orderData stays on the original v2 object when it is a record.
-            orderData: isRecord(v2.orderData)
-                ? (v2.orderData as {
-                      version?: unknown
-                      solverChainId?: unknown
-                      solver?: unknown
-                      salt?: unknown
-                      inputs?: unknown
-                      output?: unknown
-                      fees?: unknown
-                  })
-                : undefined,
+            orderData: isRecord(v2.orderData) ? v2.orderData : undefined,
         },
     }
 }

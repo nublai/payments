@@ -4,13 +4,6 @@ import type { Address, Hex } from 'viem'
 import type { EnvName } from './network-config'
 import { isRecord } from './type-guards'
 
-const signParamsSchema = z
-    .object({
-        sessionName: z.string(),
-        typedData: z.object({}).passthrough(),
-    })
-    .passthrough()
-
 const signMessageParamsSchema = z
     .object({
         sessionName: z.string(),
@@ -282,15 +275,14 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 params: {},
             }
         case 'sign': {
-            const sign = signParamsSchema.safeParse(params)
+            const sign = sessionNameParamsSchema.safeParse(params)
 
             if (!sign.success) {
-                const field = sign.error.issues[0]?.path[0]
-                throw new Error(
-                    field === 'typedData'
-                        ? 'Invalid sign params.typedData'
-                        : 'Invalid sign params.sessionName',
-                )
+                throw new Error('Invalid sign params.sessionName')
+            }
+
+            if (!isRecord(params.typedData)) {
+                throw new Error('Invalid sign params.typedData')
             }
 
             return {
@@ -298,9 +290,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 method: 'sign',
                 params: {
                     sessionName: sign.data.sessionName,
-                    // SAFETY: schema accepted typedData as an object; revive walks the
-                    // original parse so an own __proto__ key is included.
-                    typedData: decodeTypedDataBigInt(params.typedData as ParsedTypedDataRecord),
+                    typedData: decodeTypedDataBigInt(params.typedData),
                 },
             }
         }

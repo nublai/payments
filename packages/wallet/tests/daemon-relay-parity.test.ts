@@ -365,6 +365,9 @@ test('phrase-less and swap reviewers refuse malformed envelopes', () => {
     expect(() =>
         assessPhraseLessIntent({ typedData: { ...baseIntent(), primaryType: 'Permit' }, env: 'dev' }),
     ).toThrow('Phrase-less sessions can only sign Orchestrator intents')
+    expect(() => reviewSwapSessionSignature({ ...baseIntent(), primaryType: 'Permit' })).toThrow(
+        'Swap session refused typed data that is not an Orchestrator intent',
+    )
     expect(() =>
         assessPhraseLessIntent({ typedData: { ...baseIntent(), types: null }, env: 'dev' }),
     ).toThrow('Phrase-less sessions can only sign Orchestrator intents')
