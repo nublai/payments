@@ -7,6 +7,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const artifactsDir = path.join(__dirname, 'envs') // Raw build envs from Solidity scripts
 
+function addressMustBeString(value, label) {
+  if (!z.string().safeParse(value).success) {
+    const got =
+      value === undefined ? 'undefined' : value === null ? 'null' : Array.isArray(value) ? 'array' : 'non-string'
+
+    throw new Error(`make-config: ${label} must be a string address (got ${got})`)
+  }
+}
+
 // Walk envs/{context}/{chainId}/*.json and build structure per context
 function getDeploymentsByContext() {
   const byContext = {}
@@ -43,6 +52,7 @@ function getDeploymentsByContext() {
       for (const file of contractFiles) {
         const contractName = path.basename(file, '.json')
         const contractData = JSON.parse(fs.readFileSync(path.join(chainDir, file), 'utf8'))
+        addressMustBeString(contractData.address, `${context}/${chainId} "${contractName}"`)
         addresses[contractName] = contractData.address
       }
 
@@ -53,15 +63,6 @@ function getDeploymentsByContext() {
   }
 
   return byContext
-}
-
-function addressMustBeString(value, label) {
-  if (!z.string().safeParse(value).success) {
-    const got =
-      value === undefined ? 'undefined' : value === null ? 'null' : Array.isArray(value) ? 'array' : 'non-string'
-
-    throw new Error(`make-config: ${label} must be a string address (got ${got})`)
-  }
 }
 
 // Convert camelCase to UPPER_SNAKE_CASE
