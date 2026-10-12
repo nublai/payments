@@ -1,4 +1,4 @@
-import { decodeAbiParameters, isAddress, isHex, type Address } from 'viem'
+import { decodeAbiParameters, isAddress, type Address, type Hex } from 'viem'
 
 /**
  * `session_key` on prepareCalls is `encodeAbiParameters([{ type: 'address' }], [sessionAddress])`.
@@ -8,9 +8,8 @@ export function sessionAddressFromEncodedKey(sessionKey: string | undefined): Ad
     if (!sessionKey || sessionKey === '0x') return undefined
 
     try {
-        if (!isHex(sessionKey)) return undefined
-
-        const [decoded] = decodeAbiParameters([{ type: 'address' }], sessionKey)
+        // SAFETY: sessionKey is an unchecked string; decodeAbiParameters throws on non-hex, and the catch below returns undefined.
+        const [decoded] = decodeAbiParameters([{ type: 'address' }], sessionKey as Hex)
 
         if (typeof decoded === 'string' && isAddress(decoded)) {
             return decoded

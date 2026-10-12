@@ -241,7 +241,7 @@ export function createIntentNonceProvider(
             })
 
             if (response.status === 409) {
-                // SAFETY: IntentNonceDO /acquire_or_get_draft 409 JSON has error and conflictDraftId.
+                // SAFETY: IntentNonceDO /acquire_or_get_draft 409 JSON is trusted and not validated; expected { error, conflictDraftId }.
                 const body = (await response.json()) as {
                     error: string
                     conflictDraftId: string
@@ -255,12 +255,12 @@ export function createIntentNonceProvider(
             }
 
             if (!response.ok) {
-                // SAFETY: IntentNonceDO /acquire_or_get_draft non-OK JSON has error.
+                // SAFETY: IntentNonceDO /acquire_or_get_draft non-OK JSON is trusted and not validated; expected { error }.
                 const error = (await response.json()) as { error: string }
                 throw new Error(`Failed to acquire intent draft: ${error.error}`)
             }
 
-            // SAFETY: IntentNonceDO /acquire_or_get_draft success JSON has nonce, draftId, createdAtMs, expiresAtMs, fromCache.
+            // SAFETY: IntentNonceDO /acquire_or_get_draft success JSON is trusted and not validated; expected { nonce, draftId, createdAtMs, expiresAtMs, fromCache }.
             const data = (await response.json()) as {
                 nonce: string
                 draftId: string
@@ -289,12 +289,12 @@ export function createIntentNonceProvider(
             })
 
             if (!response.ok) {
-                // SAFETY: IntentNonceDO /mark_submitted non-OK JSON has error.
+                // SAFETY: IntentNonceDO /mark_submitted non-OK JSON is trusted and not validated; expected { error }.
                 const error = (await response.json()) as { error: string }
                 throw new Error(`Failed to mark intent draft submitted: ${error.error}`)
             }
 
-            // SAFETY: IntentNonceDO /mark_submitted success JSON has ok and status.
+            // SAFETY: IntentNonceDO /mark_submitted success JSON is trusted and not validated; expected { ok, status }.
             const data = (await response.json()) as {
                 ok: boolean
                 status: 'cleared' | 'not_found' | 'mismatch'
@@ -415,7 +415,7 @@ function extractRevertData(error: unknown): Hex | null {
         let current: unknown = error
 
         while (current) {
-            // SAFETY: current is the next Error.cause; only data and cause are read.
+            // SAFETY: current is the error or an unchecked cause value; only data and cause are read, then isHex-checked.
             const curr = current as { data?: unknown; cause?: unknown }
 
             if (isHex(curr.data)) {

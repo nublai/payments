@@ -367,7 +367,7 @@ async function logBundleGasTelemetry(
         )
 
         if (!bundleLookupResponse.ok) return
-        // SAFETY: BundleStatusDO /get_bundle_id_by_tx JSON is { bundleId: string | null }.
+        // SAFETY: BundleStatusDO /get_bundle_id_by_tx JSON is trusted and not validated; expected { bundleId: string | null }.
         const bundleLookup = (await bundleLookupResponse.json()) as { bundleId: string | null }
 
         if (!bundleLookup.bundleId) return
@@ -378,7 +378,7 @@ async function logBundleGasTelemetry(
 
         if (!telemetryResponse.ok) return
 
-        // SAFETY: BundleStatusDO /get_bundle_telemetry JSON is BundleGasTelemetry or null; only simulationGas, combinedGas, txGas, and paymentEnabled are read.
+        // SAFETY: BundleStatusDO /get_bundle_telemetry JSON is trusted and not validated; expected BundleGasTelemetry or null (simulationGas, combinedGas, txGas, paymentEnabled).
         const telemetry = (await telemetryResponse.json()) as {
             simulationGas?: string
             combinedGas?: string
