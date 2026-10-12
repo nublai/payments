@@ -601,6 +601,7 @@ account.command('balance', {
             env: options.env,
             name: options.profile,
             keystorePath: options.keystorePath,
+            // SAFETY: unchecked here; executeAccountBalance.normalizeChain calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             legacy: options.legacy,
         })
@@ -627,6 +628,7 @@ account.command('nonce', {
     async run({ options }) {
         return executeAccountNonce({
             env: options.env,
+            // SAFETY: unchecked here; executeAccountNonce.normalizeChain calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -725,6 +727,7 @@ account.command('status', {
     async run({ options, error }) {
         const result = await executeAccountStatus({
             env: options.env,
+            // SAFETY: unchecked here; executeAccountStatus.normalizeChain calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             legacy: options.legacy,
             name: options.profile,
@@ -856,6 +859,7 @@ account.command('delegate', {
         const password = await resolveAccountDelegatePassword(
             {
                 env: options.env,
+                // SAFETY: unchecked here; resolveAccountDelegatePassword does not read chains. executeAccountDelegate indexes chainConfig and does not call normalizeChainName.
                 chains: options.chain.split(',').map((c) => c.trim()) as ChainName[],
                 passwordStdin: options.passwordStdin ?? false,
                 json: false,
@@ -874,6 +878,7 @@ account.command('delegate', {
 
         return executeAccountDelegate({
             env: options.env,
+            // SAFETY: unchecked here; executeAccountDelegate calls resolveNetworkConfig which indexes chainConfig and does not call normalizeChainName.
             chains: options.chain.split(',').map((c) => c.trim()) as ChainName[],
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -926,6 +931,7 @@ tw.command('send', {
             env: options.env,
             amount: args.amount,
             recipient: args.recipient,
+            // SAFETY: unchecked here; executeAccountSend.normalizeChain calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             legacy: options.legacy,
             name: options.profile,
@@ -939,6 +945,7 @@ tw.command('send', {
                         env: options.env,
                         amount: args.amount,
                         recipient: args.recipient,
+                        // SAFETY: unchecked here; resolveAccountSendPassword does not read chain.
                         chain: options.chain as ChainName,
                         legacy: options.legacy ?? false,
                         keystorePath: options.keystorePath,
@@ -1401,10 +1408,15 @@ account.command('passkey', {
         try {
             return await executeAccountPasskey({
                 rpcUrl: options.rpcUrl,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 privateKey: options.privateKey as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 publicKey: options.publicKey as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 digest: options.digest as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 authenticatorData: options.authenticatorData as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 clientDataJson: options.clientDataJson as `0x${string}`,
                 r: BigInt(options.r),
                 s: BigInt(options.s),
@@ -1582,6 +1594,7 @@ session.command('create', {
         try {
             return await executeSessionCreate({
                 env: options.env,
+                // SAFETY: unchecked here; executeSessionCreate.normalizeChain calls selectDefaultChain.
                 chain: options.chain as ChainName | undefined,
                 name: options.profile,
                 keystorePath: options.keystorePath,
@@ -1589,7 +1602,9 @@ session.command('create', {
                 activate: options.activate,
                 resume: options.resume,
                 fullAccess: options.fullAccess,
+                // SAFETY: unchecked here; executeSessionCreate passes target to buildPermissionDefaults without parseTargetAddress.
                 target: options.target as `0x${string}` | undefined,
+                // SAFETY: unchecked here; executeSessionCreate passes selector to buildPermissionDefaults without parseSelector.
                 selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
                 spendLimit: resolveSpendLimitInput({
                     spendLimit: options.spendLimit,
@@ -1734,6 +1749,7 @@ session.command('list', {
     async run({ options }) {
         return executeSessionList({
             env: options.env,
+            // SAFETY: unchecked here; executeSessionList calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -1917,13 +1933,16 @@ session.command('rotate', {
 
         return executeSessionRotate({
             env: options.env,
+            // SAFETY: unchecked here; executeSessionRotate calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             name: options.profile,
             keystorePath: options.keystorePath,
             newName: options.newName,
             resume: options.resume,
             fullAccess: options.fullAccess,
+            // SAFETY: unchecked here; executeSessionRotate passes target to buildPermissionDefaults without parseTargetAddress.
             target: options.target as `0x${string}` | undefined,
+            // SAFETY: unchecked here; executeSessionRotate passes selector to buildPermissionDefaults without parseSelector.
             selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
             spendLimit: resolveSpendLimitInput({
                 spendLimit: options.spendLimit,
@@ -2001,6 +2020,7 @@ session.command('revoke', {
 
         return executeSessionRevoke({
             env: options.env,
+            // SAFETY: unchecked here; executeSessionRevoke calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -2207,6 +2227,7 @@ permissions.command('list', {
     async run({ options }) {
         return executePermissionsList({
             env: options.env,
+            // SAFETY: unchecked here; executePermissionsList calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -2261,11 +2282,13 @@ permissions.command('show', {
     async run({ args, options }) {
         return executePermissionsShow({
             env: options.env,
+            // SAFETY: unchecked here; executePermissionsShow calls selectDefaultChain.
             chain: options.chain as ChainName | undefined,
             name: options.profile,
             keystorePath: options.keystorePath,
             keyRef: args.keyRef,
             keyName: options.keyName,
+            // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
             keyHash: options.keyHash as `0x${string}` | undefined,
         })
     },
@@ -2366,15 +2389,20 @@ permissions.command('grant', {
         try {
             return await executePermissionsGrant({
                 env: options.env,
+                // SAFETY: unchecked here; executePermissionsGrant calls selectDefaultChain.
                 chain: options.chain as ChainName | undefined,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 keyRef: args.keyRef,
                 keyName: options.keyName,
+                // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
                 keyHash: options.keyHash as `0x${string}` | undefined,
                 grantType: options.type,
+                // SAFETY: unchecked here; executePermissionsGrant passes target to encodeFunctionData without parseAddressOrAny.
                 target: options.target as `0x${string}` | undefined,
+                // SAFETY: unchecked here; executePermissionsGrant passes selector to encodeFunctionData without parseSelectorOrAny.
                 selector: options.selector as `0x${string}` | undefined,
+                // SAFETY: unchecked here; executePermissionsGrant passes token to encodeFunctionData without parseAddressOrAny.
                 token: options.token as `0x${string}` | undefined,
                 spendLimit: resolveSpendLimitInput({
                     spendLimit: options.spendLimit,
@@ -2481,6 +2509,7 @@ permissions.command('revoke', {
                 selector: {
                     positional: args.keyRef,
                     keyName: options.keyName,
+                    // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
                     keyHash: options.keyHash as `0x${string}` | undefined,
                 },
                 keys: getChainKeys(keysResponse, network.chainId),
@@ -2532,11 +2561,13 @@ permissions.command('revoke', {
         try {
             return await executePermissionsRevoke({
                 env: options.env,
+                // SAFETY: unchecked here; executePermissionsRevoke calls selectDefaultChain.
                 chain: options.chain as ChainName | undefined,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 keyRef: args.keyRef,
                 keyName: options.keyName,
+                // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
                 keyHash: options.keyHash as `0x${string}` | undefined,
                 rule: options.rule,
                 all: options.all,
@@ -2625,6 +2656,7 @@ escrow.command('create', {
                 oracle: options.oracle,
                 deadline: options.deadline,
                 salt: options.salt,
+                // SAFETY: unchecked here; executeEscrowCreate uses resolveEscrowChainNetworkContracts, which calls selectDefaultChain.
                 chain: options.chain as ChainName | undefined,
                 name: options.profile,
                 keystorePath: options.keystorePath,
@@ -2634,6 +2666,7 @@ escrow.command('create', {
                     resolveAccountSendPassword(
                         {
                             env: options.env,
+                            // SAFETY: unchecked here; resolveAccountSendPassword does not read chain.
                             chain: options.chain as ChainName,
                             keystorePath: options.keystorePath,
                             name: options.profile,
@@ -2691,6 +2724,7 @@ escrow.command('status', {
             return await executeEscrowStatus({
                 env: options.env,
                 escrowId: args.escrowId,
+                // SAFETY: unchecked here; executeEscrowStatus uses resolveEscrowChainNetworkContracts, which calls selectDefaultChain.
                 chain: options.chain as ChainName | undefined,
             })
         } catch (err) {
@@ -2788,6 +2822,7 @@ escrow.command('settle', {
                 oracle: options.oracle,
                 oraclePrivateKey: oracleKey,
                 signature: options.signature,
+                // SAFETY: unchecked here; executeEscrowSettle uses resolveEscrowChainNetworkContracts, which calls selectDefaultChain.
                 chain: options.chain as ChainName | undefined,
                 name: options.profile,
                 keystorePath: options.keystorePath,
@@ -2797,6 +2832,7 @@ escrow.command('settle', {
                     resolveAccountSendPassword(
                         {
                             env: options.env,
+                            // SAFETY: unchecked here; resolveAccountSendPassword does not read chain.
                             chain: options.chain as ChainName,
                             keystorePath: options.keystorePath,
                             name: options.profile,
@@ -2865,6 +2901,7 @@ escrow.command('refund', {
             return await executeEscrowRefund({
                 env: options.env,
                 escrowId: args.escrowId,
+                // SAFETY: unchecked here; executeEscrowRefund uses resolveEscrowChainNetworkContracts, which calls selectDefaultChain.
                 chain: options.chain as ChainName | undefined,
                 name: options.profile,
                 keystorePath: options.keystorePath,
@@ -2874,6 +2911,7 @@ escrow.command('refund', {
                     resolveAccountSendPassword(
                         {
                             env: options.env,
+                            // SAFETY: unchecked here; resolveAccountSendPassword does not read chain.
                             chain: options.chain as ChainName,
                             keystorePath: options.keystorePath,
                             name: options.profile,
@@ -2948,6 +2986,7 @@ tw.command('address', {
             env: options.env,
             name: options.profile,
             keystorePath: options.keystorePath,
+            // SAFETY: unchecked here; executeAddress.resolveChain calls normalizeChainName.
             chain: options.chain as ChainName | undefined,
             token: options.token,
             amount: options.amount,

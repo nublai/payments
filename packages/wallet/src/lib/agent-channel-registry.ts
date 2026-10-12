@@ -44,7 +44,7 @@ export async function readAgentChannelRegistry(
 
     try {
         const raw = await readFile(path, 'utf8')
-        const parsed = JSON.parse(raw) as unknown
+        const parsed: unknown = JSON.parse(raw)
         const file = agentChannelRegistryFileSchema.safeParse(parsed)
 
         if (!file.success) {

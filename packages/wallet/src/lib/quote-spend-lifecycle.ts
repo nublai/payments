@@ -586,7 +586,7 @@ function decodePackedCanExecute(packed: Hex): QuoteKeyPermission {
 
     return {
         target: getAddress(`0x${(value >> 96n).toString(16).padStart(40, '0')}`),
-        selector: `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex,
+        selector: `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}`,
     }
 }
 
@@ -799,6 +799,6 @@ function isEnoent(error: unknown): error is { code: 'ENOENT' } {
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
+        error.code === 'ENOENT'
     )
 }

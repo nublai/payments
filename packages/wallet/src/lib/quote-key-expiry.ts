@@ -283,7 +283,7 @@ function expectedMinuteSlots(
 function normalizePermission(permission: QuoteKeyPermission): QuoteKeyPermission {
     return {
         target: getAddress(permission.target),
-        selector: permission.selector.toLowerCase() as Hex,
+        selector: `0x${permission.selector.slice(2).toLowerCase()}`,
     }
 }
 

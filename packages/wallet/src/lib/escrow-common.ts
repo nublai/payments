@@ -103,7 +103,7 @@ function parseBytes32Hex(value: string, label: string): Hex {
         )
     }
 
-    return value as Hex
+    return value
 }
 
 /**

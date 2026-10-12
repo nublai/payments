@@ -86,7 +86,7 @@ function asHex(value: unknown, label: string): Hex {
         fail(`Phrase-less session refused an Orchestrator intent with an unreadable ${label}`)
     }
 
-    return value as Hex
+    return `0x${value.slice(2)}`
 }
 
 export function typesMatch(types: unknown): boolean {

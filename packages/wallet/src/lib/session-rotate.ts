@@ -808,7 +808,8 @@ function isPossiblySubmittedRotation(error: unknown): error is { rotationPossibl
     return (
         typeof error === 'object' &&
         error !== null &&
-        (error as { rotationPossiblySubmitted?: unknown }).rotationPossiblySubmitted === true
+        'rotationPossiblySubmitted' in error &&
+        error.rotationPossiblySubmitted === true
     )
 }
 
@@ -1005,7 +1006,7 @@ function isBundleWaitTimeout(error: unknown): boolean {
 
 function bundleWaitTimeoutId(error: unknown): string | undefined {
     if (typeof error === 'object' && error !== null && 'bundleId' in error) {
-        const id = (error as { bundleId?: unknown }).bundleId
+        const id = error.bundleId
 
         if (typeof id === 'string' && id.length > 0) return id
     }
@@ -1102,7 +1103,7 @@ function isEnoent(error: unknown): error is { code: 'ENOENT' } {
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
+        error.code === 'ENOENT'
     )
 }
 
@@ -1936,6 +1937,7 @@ export async function executeSessionRotate(
                             data: encodeFunctionData({
                                 abi: accountAbi,
                                 functionName: 'setCanExecute' as const,
+                                // SAFETY: permission.to/selector come from getKeys; encodeFunctionData wants Address and Hex.
                                 args: [newKeyHash, permission.to, permission.selector, true] as [
                                     Hex,
                                     Address,
@@ -1974,6 +1976,7 @@ export async function executeSessionRotate(
                         data: encodeFunctionData({
                             abi: accountAbi,
                             functionName: 'setCanExecute' as const,
+                            // SAFETY: permissionDefaults.target/selector are Address/Hex from buildPermissionDefaults; encodeFunctionData wants that tuple.
                             args: [newKeyHash, permissionDefaults.target, selector, true] as [
                                 Hex,
                                 Address,
@@ -2154,6 +2157,7 @@ export async function executeSessionRotate(
             !finalStatus.success ||
             ![200, 201].includes(finalStatus.statusCode ?? 0)
         ) {
+            // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
             const intentError = finalStatus?.receipt?.intentError as Hex | undefined
             throw new SessionRotateError(
                 'ROTATION_FAILED',

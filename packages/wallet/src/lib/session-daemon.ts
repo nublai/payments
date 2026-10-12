@@ -59,7 +59,7 @@ async function loadSpendLedger(path: string): Promise<Map<string, SpendBucket>> 
     const map = new Map<string, SpendBucket>()
 
     try {
-        const raw = JSON.parse(await readFile(path, 'utf8')) as unknown
+        const raw: unknown = JSON.parse(await readFile(path, 'utf8'))
 
         if (!isRecord(raw)) return map
 
@@ -245,7 +245,7 @@ function assertPrivateKeyHex(value: string): Hex {
         throw new Error('privateKey must be a 32-byte hex string')
     }
 
-    return value as Hex
+    return `0x${value.slice(2)}`
 }
 
 function assertHexBytes(value: string): Hex {
@@ -253,7 +253,7 @@ function assertHexBytes(value: string): Hex {
         throw new Error('message must be a hex string')
     }
 
-    return value as Hex
+    return `0x${value.slice(2)}`
 }
 
 function getNowMs(): number {
@@ -345,7 +345,7 @@ export async function runSessionDaemon(options?: {
                     let requestId: string = randomUUID()
 
                     try {
-                        const pre = JSON.parse(line) as unknown
+                        const pre: unknown = JSON.parse(line)
 
                         if (isRecord(pre) && typeof pre.id === 'string') {
                             requestId = pre.id
@@ -560,7 +560,7 @@ export async function runSessionDaemon(options?: {
                                     return
                                 }
 
-                                const privateKey = `0x${entry.privateKey.toString('hex')}` as Hex
+                                const privateKey: Hex = `0x${entry.privateKey.toString('hex')}`
                                 const account = privateKeyToAccount(privateKey)
 
                                 if (entry.swapSession) {
@@ -718,7 +718,7 @@ export async function runSessionDaemon(options?: {
                                     return
                                 }
 
-                                const privateKey = `0x${entry.privateKey.toString('hex')}` as Hex
+                                const privateKey: Hex = `0x${entry.privateKey.toString('hex')}`
                                 const account = privateKeyToAccount(privateKey)
                                 const messageHex = assertHexBytes(request.params.message)
 

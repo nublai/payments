@@ -55,7 +55,7 @@ async function safeUnlink(path: string, deps: SessionStopDeps): Promise<string |
             typeof error === 'object' &&
             error !== null &&
             'code' in error &&
-            (error as { code?: unknown }).code === 'ENOENT'
+            error.code === 'ENOENT'
         ) {
             return undefined
         }

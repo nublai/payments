@@ -472,6 +472,7 @@ export async function executeSessionRevoke(
         const statusCode = finalStatus.statusCode ?? 0
 
         if (!finalStatus.success || ![200, 201].includes(statusCode)) {
+            // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
             const intentError = finalStatus.receipt?.intentError as Hex | undefined
             throw new SessionRevokeError(
                 'SESSION_REVOKE_FAILED',

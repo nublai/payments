@@ -36,7 +36,7 @@ const SIM_GAS = 12_000_000n
 
 const COMBINED_GAS = 5_000_000n
 
-const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11' as Address
+const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 const BALANCE_OF = '0x70a08231'
 
@@ -105,7 +105,7 @@ function padAddress(address: Address): string {
 }
 
 function balanceOfData(token: Address, user: Address): Hex {
-    return `${BALANCE_OF}${padAddress(user)}` as Hex
+    return `${BALANCE_OF}${padAddress(user)}`
 }
 
 function getEthBalanceData(user: Address): Hex {
@@ -367,7 +367,15 @@ function parseSimulateResult(
         )
     }
 
-    const calls = (result[0] as { calls?: unknown }).calls
+    const block = result[0]
+
+    if (!isRecord(block)) {
+        throw new RelaySimulationRejected(
+            'relay.link quote could not be simulated. Refusing to sign.',
+        )
+    }
+
+    const calls = block.calls
 
     if (!Array.isArray(calls) || calls.length < userCallCount) {
         throw new RelaySimulationRejected(
@@ -376,6 +384,7 @@ function parseSimulateResult(
     }
 
     for (const call of calls) {
+        // SAFETY: eth_simulateV1 call row is unchecked JSON; only status and error are read.
         const row = call as { status?: string | number; error?: unknown }
         const status = row?.status
         const ok = status === '0x1' || status === '0x01' || status === '1' || status === 1
@@ -387,11 +396,14 @@ function parseSimulateResult(
         }
     }
 
+    // SAFETY: eth_simulateV1 first call is unchecked JSON; only logs is read.
     const first = calls[0] as { logs?: unknown }
+    // SAFETY: each log is unchecked JSON; outputLogSum only reads address/topics/data as strings.
     const logs = Array.isArray(first.logs) ? (first.logs as SimLog[]) : undefined
 
     return {
         words: calls.slice(userCallCount).map((call) => {
+            // SAFETY: eth_simulateV1 returnData is unchecked JSON; decodeWord accepts string | undefined.
             const row = call as { returnData?: string }
 
             return decodeWord(row.returnData)
@@ -454,13 +466,12 @@ export async function readRelayerSignerOrigin(input: {
     const signers: unknown[] = Array.isArray(poolSigners) ? poolSigners : []
 
     for (const signer of signers) {
-        if (!signer || typeof signer !== 'object') continue
-        const row = signer as { address?: unknown; paused?: unknown }
+        if (!isRecord(signer)) continue
 
-        if (row.paused === true) continue
+        if (signer.paused === true) continue
 
-        if (typeof row.address === 'string' && isAddress(row.address)) {
-            return getAddress(row.address)
+        if (typeof signer.address === 'string' && isAddress(signer.address)) {
+            return getAddress(signer.address)
         }
     }
 
@@ -541,7 +552,7 @@ const callTuple = {
 } as const
 
 function delegationCode(target: Address): Hex {
-    return `0xef0100${target.slice(2).toLowerCase()}` as Hex
+    return `0xef0100${target.slice(2).toLowerCase()}`
 }
 
 function encodeOrchestratorCall(input: SimulateRelayQuoteInput): Hex {
@@ -554,7 +565,7 @@ function encodeOrchestratorCall(input: SimulateRelayQuoteInput): Hex {
     ])
 
     // 65-byte placeholder. simulateExecute forces validity and still reads keyHash.
-    const inner = `0x${'11'.repeat(64)}1b` as Hex
+    const inner: Hex = `0x${'11'.repeat(64)}1b`
     const signature = wrapSignature(inner, input.execution.keyHash, false)
 
     const encodedIntent = encodeAbiParameters([intentTuple], [

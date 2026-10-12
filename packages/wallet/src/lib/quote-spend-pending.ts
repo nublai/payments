@@ -336,6 +336,6 @@ function isEnoent(error: unknown): error is { code: 'ENOENT' } {
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
+        error.code === 'ENOENT'
     )
 }

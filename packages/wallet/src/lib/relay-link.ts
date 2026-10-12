@@ -430,6 +430,7 @@ function normalizeQuoteResponse(payload: RelayJson): RelayQuoteResponse {
         fees: isRecord(quote.data.fees)
             ? (quote.data.fees as Record<string, RelayCurrencyAmount | undefined>)
             : undefined,
+        // SAFETY: quote schema accepted details as unknown; extras stay on the original object.
         details: isRecord(quote.data.details)
             ? (quote.data.details as RelayQuoteResponse['details'])
             : undefined,

@@ -23,6 +23,10 @@ type ResolverDeps = {
     }) => Promise<Address | null>
 }
 
+function isDotEth(value: string): value is `${string}.eth` {
+    return value.endsWith('.eth')
+}
+
 function getDefaultDeps(): ResolverDeps {
     return {
         resolveEnsAddress: async ({ recipient }) => {
@@ -55,14 +59,14 @@ export async function resolveAddressOrEnsInput(
 
     const maybeEns = normalized.toLowerCase()
 
-    if (!maybeEns.endsWith('.eth')) {
+    if (!isDotEth(maybeEns)) {
         throw new RecipientResolutionError(
             'INVALID_RECIPIENT',
             'Recipient must be a valid address or .eth ENS name.',
         )
     }
 
-    const resolved = await deps.resolveEnsAddress({ recipient: maybeEns as `${string}.eth`, chain })
+    const resolved = await deps.resolveEnsAddress({ recipient: maybeEns, chain })
 
     if (!resolved) {
         throw new RecipientResolutionError(
@@ -73,6 +77,6 @@ export async function resolveAddressOrEnsInput(
 
     return {
         address: getAddress(resolved),
-        ens: maybeEns as `${string}.eth`,
+        ens: maybeEns,
     }
 }

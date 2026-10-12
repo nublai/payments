@@ -112,7 +112,7 @@ function parseHexToBytes(value: string): Uint8Array {
 }
 
 function bytesToHex(bytes: Uint8Array): Hex {
-    return `0x${Buffer.from(bytes).toString('hex')}` as Hex
+    return `0x${Buffer.from(bytes).toString('hex')}`
 }
 
 function toSafeNumber(value: bigint, field: string): number {

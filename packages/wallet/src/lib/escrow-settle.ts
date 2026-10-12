@@ -111,7 +111,7 @@ export async function executeEscrowSettle(
                 )
             }
 
-            settlementSignature = options.signature as Hex
+            settlementSignature = options.signature
         } else if (options.oraclePrivateKey) {
             if (
                 !isHex(options.oraclePrivateKey) ||
@@ -123,7 +123,7 @@ export async function executeEscrowSettle(
                 )
             }
 
-            const derivedOracle = privateKeyToAccount(options.oraclePrivateKey as Hex).address
+            const derivedOracle = privateKeyToAccount(options.oraclePrivateKey).address
 
             if (derivedOracle !== oracle) {
                 throw new EscrowError(
@@ -137,7 +137,7 @@ export async function executeEscrowSettle(
                 oracleAddress: oracle,
                 chainId: network.chainId,
                 simpleSettlerAddress: contracts.simpleSettlerAddress,
-                oraclePrivateKey: options.oraclePrivateKey as Hex,
+                oraclePrivateKey: options.oraclePrivateKey,
             })
         } else {
             throw new EscrowError(

@@ -73,13 +73,13 @@ const chainConfig: Record<ChainName, CliChainConfig> = {
     },
 }
 
-const chainNameByChainId: Partial<Record<number, ChainName>> = Object.values(chainConfig).reduce(
+const chainNameByChainId = Object.values(chainConfig).reduce<Partial<Record<number, ChainName>>>(
     (acc, config) => {
         acc[config.chainId] = config.chain
 
         return acc
     },
-    {} as Partial<Record<number, ChainName>>,
+    {},
 )
 
 export function getChainNameByChainId(chainId: number): ChainName | undefined {

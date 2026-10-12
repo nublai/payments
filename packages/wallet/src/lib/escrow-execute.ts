@@ -251,7 +251,8 @@ export async function executeEscrowCallsWithFallback(params: {
 
     const nonce = await readAccountNonce(client, sender)
 
-    const sessionPublicKey = encodeSecp256k1Key(sessionKeystore.addresses.session as Address)
+        // SAFETY: session keystore schema accepted addresses.session as a string; encodeSecp256k1Key wants Address.
+        const sessionPublicKey = encodeSecp256k1Key(sessionKeystore.addresses.session as Address)
     const sessionKeyHash = computeKeyHash('secp256k1', sessionPublicKey)
 
     const relayerClient = createCliRelayerClient(signedNetwork)
@@ -390,6 +391,7 @@ export async function executeEscrowCallsWithFallback(params: {
     const statusCode = finalStatus.statusCode
 
     if (statusCode !== undefined && ![200, 201].includes(statusCode)) {
+        // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
         const intentError = finalStatus.receipt?.intentError as Hex | undefined
         const intentErrorName = intentError ? decodeIntentError(intentError) : undefined
         throw new EscrowError(

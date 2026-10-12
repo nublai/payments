@@ -426,6 +426,7 @@ export class SessionDaemonClient {
                         return
                     }
 
+                    // SAFETY: T is the caller's result type for this daemon method; the socket parser does not validate result as T.
                     done({ ok: true, result: response.result as T })
                 } catch (error) {
                     this.logRequestFailure(request.method, 'Response parse failure', {

@@ -114,6 +114,7 @@ export async function executeAccountBalance(
         const balance = await deps.readUsdcBalance({
             chain,
             legacy: options.legacy,
+            // SAFETY: executeAccountAddress returns the keystore address as a string; this path does not re-check 0x/20-byte form.
             account: addressResult.address as `0x${string}`,
         })
 

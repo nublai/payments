@@ -109,7 +109,7 @@ export function parseSelectorOrAny(value: string): Hex {
         throw new PermissionsError('RULE_PARSE_FAILED', `Invalid selector: ${value}`)
     }
 
-    return normalized as Hex
+    return `0x${normalized.slice(2)}`
 }
 
 export function parseAddressOrAny(value: string): Address {
@@ -155,7 +155,7 @@ export function parseKeyHash(value: string): Hex {
         throw new PermissionsError('INVALID_KEY_SELECTOR', `Invalid key hash: ${value}`)
     }
 
-    return normalized as Hex
+    return `0x${normalized.slice(2)}`
 }
 
 export function isKeyHashRef(value: string): boolean {
@@ -163,11 +163,11 @@ export function isKeyHashRef(value: string): boolean {
 }
 
 export function normalizeAddressLower(value: Address): Address {
-    return value.toLowerCase() as Address
+    return `0x${value.slice(2).toLowerCase()}`
 }
 
 export function normalizeHexLower(value: Hex): Hex {
-    return value.toLowerCase() as Hex
+    return `0x${value.slice(2).toLowerCase()}`
 }
 
 export function callRuleId(target: Address, selector: Hex): string {

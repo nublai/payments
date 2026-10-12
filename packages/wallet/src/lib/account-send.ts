@@ -437,7 +437,12 @@ export async function executeAccountSend(
                 expectedEnv: options.env,
                 expectedChainId: network.chainId,
             })
-            effectiveNetwork = sessionKeystore.network as CliNetworkConfig
+            effectiveNetwork = {
+                env: options.env,
+                relayerUrl: sessionKeystore.network.relayerUrl,
+                rpcUrl: sessionKeystore.network.rpcUrl,
+                chainId: sessionKeystore.network.chainId,
+            }
             sender = getAddress(sessionKeystore.addresses.delegated)
         } else if (selectedSessionName) {
             let bundle: Awaited<ReturnType<typeof deps.readKeystoreBundle>>
@@ -524,7 +529,12 @@ export async function executeAccountSend(
                         expectedChainId: network.chainId,
                     })
                     sender = getAddress(sessionKeystore.addresses.delegated)
-                    effectiveNetwork = sessionKeystore.network as CliNetworkConfig
+                    effectiveNetwork = {
+                        env: options.env,
+                        relayerUrl: sessionKeystore.network.relayerUrl,
+                        rpcUrl: sessionKeystore.network.rpcUrl,
+                        chainId: sessionKeystore.network.chainId,
+                    }
                 } catch (fallbackError) {
                     if (isMissingFileError(fallbackError)) {
                         throw error
@@ -568,6 +578,7 @@ export async function executeAccountSend(
             account: sender,
         })
 
+        // SAFETY: session keystore schema accepted addresses.session as a string; encodeSecp256k1Key wants Address.
         const sessionPublicKey = encodeSecp256k1Key(sessionKeystore.addresses.session as Address)
         const sessionKeyHash = computeKeyHash('secp256k1', sessionPublicKey)
 
@@ -668,6 +679,7 @@ export async function executeAccountSend(
         }
 
         const statusCode = finalStatus.statusCode ?? 0
+        // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
         const intentError = finalStatus.receipt?.intentError as Hex | undefined
         const intentErrorName = intentError ? decodeIntentError(intentError) : undefined
 

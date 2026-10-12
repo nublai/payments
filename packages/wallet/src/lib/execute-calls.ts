@@ -62,17 +62,17 @@ export function isDefinitivePreBroadcastRefusal(error: unknown): boolean {
 
 function jsonRpcCode(error: unknown): number | undefined {
     if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
-    const code = (error as { code?: unknown }).code
+    const code = error.code
 
     return typeof code === 'number' && Number.isInteger(code) ? code : undefined
 }
 
 function bundleIdFromSendError(error: unknown): string | undefined {
-    if (typeof error !== 'object' || error === null) return undefined
-    const data = (error as { data?: unknown }).data
+    if (typeof error !== 'object' || error === null || !('data' in error)) return undefined
+    const data = error.data
 
     if (typeof data !== 'object' || data === null || !('bundleId' in data)) return undefined
-    const id = (data as { bundleId?: unknown }).bundleId
+    const id = data.bundleId
 
     return typeof id === 'string' && id.length > 0 ? id : undefined
 }
@@ -80,7 +80,7 @@ function bundleIdFromSendError(error: unknown): string | undefined {
 function markPossiblySubmitted(error: unknown): Error {
     const bundleId = bundleIdFromSendError(error)
     const tagged = error instanceof Error ? error : new Error(String(error))
-    const marked = tagged as Error & { rotationPossiblySubmitted?: boolean; bundleId?: string }
+    const marked: Error & { rotationPossiblySubmitted?: boolean; bundleId?: string } = tagged
     marked.rotationPossiblySubmitted = true
 
     if (bundleId) marked.bundleId = bundleId
@@ -280,12 +280,13 @@ export async function executeSignedCalls(
 
     const tagBundle = (error: unknown): Error => {
         if (error instanceof Error) {
-            ;(error as Error & { bundleId?: string }).bundleId = submission.id
+            const tagged: Error & { bundleId?: string } = error
+            tagged.bundleId = submission.id
 
-            return error
+            return tagged
         }
 
-        const wrapped = new Error(String(error)) as Error & { bundleId?: string }
+        const wrapped: Error & { bundleId?: string } = new Error(String(error))
         wrapped.bundleId = submission.id
 
         return wrapped

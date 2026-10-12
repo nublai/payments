@@ -161,10 +161,10 @@ export function isExactRelaySession(
     return relay.every((entry) => have.has(pairKey(entry.target, entry.selector)))
 }
 
-function selectorOf(data: string | undefined): string | undefined {
+function selectorOf(data: string | undefined): Hex | undefined {
     if (!data?.startsWith('0x') || data.length < 10) return undefined
 
-    return data.slice(0, 10).toLowerCase()
+    return `0x${data.slice(2, 10).toLowerCase()}`
 }
 
 /**
@@ -216,8 +216,10 @@ export function planSwapSessionUse(input: {
 
             if (selector !== APPROVE_SELECTOR && selector !== TRANSFER_SELECTOR) continue
 
+            if (selector === undefined) continue
+
             if (wanted.some((grant) => grant.selector.toLowerCase() === selector)) continue
-            wanted.push({ target: inputToken, selector: selector as Hex })
+            wanted.push({ target: inputToken, selector })
         }
     }
 
