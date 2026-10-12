@@ -158,6 +158,7 @@ export class IntentNonceDO extends DurableObject<Env> {
             switch (url.pathname) {
                 case '/acquire': {
                     // Acquire the next nonce for a sequence key
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
 
@@ -175,6 +176,7 @@ export class IntentNonceDO extends DurableObject<Env> {
 
                 case '/peek': {
                     // Get current nonce without incrementing
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
 
@@ -192,6 +194,7 @@ export class IntentNonceDO extends DurableObject<Env> {
 
                 case '/sync': {
                     // Sync with on-chain state
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey, confirmedSeq } = (await request.json()) as {
                         seqKey: string
                         confirmedSeq: string
@@ -256,6 +259,7 @@ export class IntentNonceDO extends DurableObject<Env> {
 
                 case '/reset': {
                     // Reset a specific sequence key
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
 
@@ -274,6 +278,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                 case '/acquire_synced': {
                     // Acquire nonce with drift detection and correction
                     // If local is ahead of chain, sync first to prevent InvalidNonce errors
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey, onChainSeq } = (await request.json()) as {
                         seqKey: string
                         onChainSeq: string
@@ -308,6 +313,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                 }
 
                 case '/acquire_or_get_draft': {
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey, onChainSeq, draftKey, draftTtlMs } = (await request.json()) as {
                         seqKey: string
                         onChainSeq: string
@@ -360,6 +366,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                 }
 
                 case '/mark_submitted': {
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey, draftId } = (await request.json()) as {
                         seqKey: string
                         draftId: string
@@ -384,6 +391,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                 }
 
                 case '/cancel_draft': {
+                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
                     const { seqKey, draftId } = (await request.json()) as {
                         seqKey: string
                         draftId?: string
@@ -452,7 +460,7 @@ export class IntentNonceDO extends DurableObject<Env> {
 
         // Atomic: insert if not exists, then increment and return previous value
         // Using transactionSync for atomicity
-        const result = this.ctx.storage.transactionSync(() => {
+        const seq = this.ctx.storage.transactionSync((): bigint => {
             // Get current value (or 0 if not exists)
             const rows = this.sql.exec('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
             const currentSeq = getSeqFromRows(rows)
@@ -469,8 +477,6 @@ export class IntentNonceDO extends DurableObject<Env> {
 
             return currentSeq
         })
-
-        const seq = result as bigint
 
         return (seqKey << 64n) | seq
     }
@@ -532,7 +538,7 @@ export class IntentNonceDO extends DurableObject<Env> {
     ): AcquiredNonce {
         const key = seqKey.toString()
 
-        const result = this.ctx.storage.transactionSync(() => {
+        const { seq, synced } = this.ctx.storage.transactionSync(() => {
             const rows = this.sql.exec('SELECT seq FROM nonces WHERE seq_key = ?', key).toArray()
             let currentSeq = getSeqFromRows(rows)
             let synced = false
@@ -556,8 +562,6 @@ export class IntentNonceDO extends DurableObject<Env> {
 
             return { seq: currentSeq, synced }
         })
-
-        const { seq, synced } = result as { seq: bigint; synced: boolean }
 
         return { nonce: (seqKey << 64n) | seq, synced }
     }
@@ -683,7 +687,7 @@ export class IntentNonceDO extends DurableObject<Env> {
     private markSubmitted(seqKey: bigint, draftId: string): DraftMutationStatus {
         const key = seqKey.toString()
 
-        const status = this.ctx.storage.transactionSync(() => {
+        return this.ctx.storage.transactionSync((): DraftMutationStatus => {
             const nowMs = Date.now()
             this.deleteExpiredDraftForSeqKey(key, nowMs)
 
@@ -701,14 +705,12 @@ export class IntentNonceDO extends DurableObject<Env> {
 
             return 'cleared'
         })
-
-        return status as DraftMutationStatus
     }
 
     private cancelDraft(seqKey: bigint, draftId?: string): DraftMutationStatus {
         const key = seqKey.toString()
 
-        const status = this.ctx.storage.transactionSync(() => {
+        return this.ctx.storage.transactionSync((): DraftMutationStatus => {
             const nowMs = Date.now()
             this.deleteExpiredDraftForSeqKey(key, nowMs)
 
@@ -726,7 +728,5 @@ export class IntentNonceDO extends DurableObject<Env> {
 
             return 'cleared'
         })
-
-        return status as DraftMutationStatus
     }
 }

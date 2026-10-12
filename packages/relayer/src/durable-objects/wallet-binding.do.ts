@@ -216,14 +216,16 @@ export class WalletBindingDO extends DurableObject<Env> {
                 return { ok: false as const, reason: 'rate_limited' as const }
             }
 
-            const nonce = this.sql
+            const rows = this.sql
                 .exec(
                     `SELECT issuer, subject, address, chain_id, expires_at, used
            FROM bind_nonces WHERE nonce = ?`,
                     input.nonce,
                 )
                 .toArray()
-                .at(0) as NonceRow | undefined
+
+            // SAFETY: bind_nonces.issuer/subject/address/chain_id/expires_at/used; issueNonce writes those columns.
+            const nonce = rows.at(0) as NonceRow | undefined
 
             if (!nonce) return { ok: false as const, reason: 'nonce_unknown' as const }
 

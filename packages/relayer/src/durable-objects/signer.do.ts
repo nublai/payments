@@ -187,6 +187,7 @@ export function buildRawFallbackBroadcastRequest(input: {
         ...input.txParams,
         nonce: input.nonce,
         account: input.account,
+        // SAFETY: viem signTransaction reads chain.id; this object only supplies the id already used for the client.
         chain: { id: input.chainId } as Chain,
         gas: input.gas,
         maxFeePerGas: input.feeParams.maxFeePerGas,
@@ -247,6 +248,7 @@ export class SignerDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
 
+                    // SAFETY: request.json() from SignerPoolDO /send; this handler does not parse the JSON shape.
                     const tx = (await request.json()) as RelayTransaction
                     const result = await this.sendTransaction(tx)
 
@@ -258,6 +260,7 @@ export class SignerDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
 
+                    // SAFETY: request.json() from the monitor queue consumer in index.ts; this handler does not parse the JSON shape.
                     const { txId, status, txHash } = (await request.json()) as {
                         txId: string
                         status: 'confirmed' | 'failed'
@@ -351,6 +354,7 @@ export class SignerDO extends DurableObject<Env> {
             .exec('SELECT version FROM schema_version WHERE id = 1')
             .toArray()
 
+        // SAFETY: schema_version.version is INTEGER written by migrateSchema itself.
         const currentVersion = (versionRows[0]?.version as number) ?? 0
 
         // Migration 1: Initial schema
@@ -514,6 +518,7 @@ export class SignerDO extends DurableObject<Env> {
             throw new SignerDOError('Signer not initialized', 'NOT_INITIALIZED')
         }
 
+        // SAFETY: signer_state.derivation_index is INTEGER written by ensureInitialized from the DO name.
         const derivationIndex = stateRows[0].derivation_index as number
         const { privateKey } = this.deriveKey(derivationIndex)
 
@@ -565,7 +570,9 @@ export class SignerDO extends DurableObject<Env> {
             throw new SignerDOError('Signer not initialized', 'NOT_INITIALIZED')
         }
 
+        // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
         const address = stateRows[0].address as string
+        // SAFETY: signer_state.chain_id is INTEGER written by ensureInitialized from the DO name.
         const chainId = stateRows[0].chain_id as number
         const chainPendingNonce = await this.fetchOnChainNonce(address, chainId)
 
@@ -579,6 +586,7 @@ export class SignerDO extends DurableObject<Env> {
                     return { error: 'Signer not initialized' }
                 }
 
+                // SAFETY: signer_state.nonce is INTEGER written by ensureInitialized and the increment/sync paths.
                 const localNonce = freshRows[0].nonce as number
                 const nextNonce = Math.max(localNonce, chainPendingNonce)
 
@@ -616,11 +624,13 @@ export class SignerDO extends DurableObject<Env> {
             throw new SignerDOError('Signer not initialized', 'NOT_INITIALIZED')
         }
 
+        // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
         const address = stateRows[0].address as string
+        // SAFETY: signer_state.chain_id is INTEGER written by ensureInitialized from the DO name.
         const chainId = stateRows[0].chain_id as number
         const onChainNonce = await this.fetchOnChainNonce(address, chainId)
 
-        const syncedNonce = this.ctx.storage.transactionSync(() => {
+        const syncedNonce = this.ctx.storage.transactionSync((): number => {
             const txId = txIdToDelete
 
             if (txId !== undefined) {
@@ -633,13 +643,14 @@ export class SignerDO extends DurableObject<Env> {
                 )
                 .toArray()
 
+            // SAFETY: MAX(pending_transactions.nonce) as max_nonce; nonce is INTEGER written by performSend.
             const pendingMax = pendingMaxRows[0]?.max_nonce as number | null | undefined
             const nextNonce = Math.max(onChainNonce, (pendingMax ?? -1) + 1)
 
             this.sql.exec('UPDATE signer_state SET nonce = ? WHERE id = 1', nextNonce)
 
             return nextNonce
-        }) as number
+        })
 
         console.log(
             `[SignerDO] Synced nonce from chain: ${syncedNonce} for ${address} (chain pending: ${onChainNonce})`,
@@ -665,6 +676,7 @@ export class SignerDO extends DurableObject<Env> {
             }),
         })
 
+        // SAFETY: eth_getTransactionCount JSON-RPC body; this method does not parse the payload beyond result/error.
         const data = (await response.json()) as { result: string; error?: unknown }
 
         if (data.error) {
@@ -710,6 +722,7 @@ export class SignerDO extends DurableObject<Env> {
             }),
         })
 
+        // SAFETY: eth_getBalance JSON-RPC body; this method does not parse the payload beyond result/error.
         const data = (await response.json()) as { result: string; error?: unknown }
 
         if (data.error) {
@@ -747,6 +760,7 @@ export class SignerDO extends DurableObject<Env> {
             }),
         })
 
+        // SAFETY: eth_getTransactionReceipt JSON-RPC body; this method does not parse the payload beyond result.
         const data = (await response.json()) as {
             result: {
                 status: string
@@ -786,12 +800,16 @@ export class SignerDO extends DurableObject<Env> {
         }
 
         const row = rows[0]
+        // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
         const txHash = row.tx_hash as string
+        // SAFETY: pending_transactions.sent_at is INTEGER; performSend writes Date.now().
         const sentAt = row.sent_at as number
+        // SAFETY: pending_transactions.status is TEXT; performSend writes 'pending' and later paths update it.
         let status = row.status as string
 
         // Get chain ID from signer state
         const stateRows = this.sql.exec('SELECT chain_id FROM signer_state WHERE id = 1').toArray()
+        // SAFETY: signer_state.chain_id is INTEGER written by ensureInitialized from the DO name.
         const chainId = (stateRows[0]?.chain_id as number) ?? 0
 
         // Always check receipt to see if transaction has been confirmed (even if status is still pending)
@@ -815,6 +833,7 @@ export class SignerDO extends DurableObject<Env> {
                 // Return full receipt details
                 return {
                     txId,
+                    // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
                     txHash: txHash as Hex,
                     chainId,
                     status: status === 'confirmed' ? 'confirmed' : 'failed',
@@ -837,6 +856,7 @@ export class SignerDO extends DurableObject<Env> {
         // No receipt found - return persisted terminal status when available.
         return {
             txId,
+            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
             txHash: txHash as Hex,
             chainId,
             status: fallbackStatus,
@@ -886,6 +906,7 @@ export class SignerDO extends DurableObject<Env> {
         try {
             ;[gasEstimate, gasPrice] = await Promise.all([
                 publicClient.estimateGas({
+                    // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
                     account: address as Address,
                     to: contracts.simpleFunder,
                     data: pullGasData,
@@ -912,6 +933,7 @@ export class SignerDO extends DurableObject<Env> {
                 functionName: 'pullGas',
                 args: [refillAmount],
                 account,
+                // SAFETY: viem writeContract reads chain.id; this object only supplies the id already used for the client.
                 chain: { id: chainId } as Chain,
             })
 
@@ -947,12 +969,16 @@ export class SignerDO extends DurableObject<Env> {
 
         const state = rows[0]
         const now = Date.now()
+        // SAFETY: signer_state.last_balance_check is INTEGER written by getCapacity/handleMaintenance as Date.now().
         const lastCheck = (state.last_balance_check as number) ?? 0
+        // SAFETY: signer_state.balance_wei is TEXT written by getCapacity/handleMaintenance as a decimal string.
         let balanceWei = BigInt((state.balance_wei as string) ?? '0')
 
         // Refresh balance if stale
         if (now - lastCheck > BALANCE_CHECK_INTERVAL_MS) {
+            // SAFETY: signer_state.chain_id is INTEGER written by ensureInitialized from the DO name.
             const chainId = state.chain_id as number
+            // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
             balanceWei = await this.fetchBalance(state.address as string, chainId)
             this.sql.exec(
                 `
@@ -968,6 +994,7 @@ export class SignerDO extends DurableObject<Env> {
         const minBalance = this.parseBalance(this.env.MIN_SIGNER_BALANCE, 10000000000000000n) // 0.01 ETH default
         const isPaused = !!state.paused || balanceWei < minBalance
 
+        // SAFETY: COUNT(*) as c over pending_transactions; SQLite returns an INTEGER cell.
         const pendingCount =
             (this.sql
                 .exec(
@@ -985,6 +1012,7 @@ export class SignerDO extends DurableObject<Env> {
         return {
             capacity,
             pending: pendingCount,
+            // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
             address: state.address as Hex,
             balance: balanceWei.toString(),
             paused: isPaused,
@@ -1025,7 +1053,9 @@ export class SignerDO extends DurableObject<Env> {
             | { error: string; code?: SignerErrorCode }
 
         try {
-            result = this.ctx.storage.transactionSync(() => {
+            result = this.ctx.storage.transactionSync(():
+                | { nonce: number; address: string; chainId: number }
+                | { error: string; code?: SignerErrorCode } => {
                 // Check if paused
                 const stateRows = this.sql
                     .exec('SELECT paused FROM signer_state WHERE id = 1')
@@ -1034,15 +1064,15 @@ export class SignerDO extends DurableObject<Env> {
                 if (stateRows.length === 0) {
                     return {
                         error: 'Signer not initialized',
-                        code: 'NOT_INITIALIZED' as SignerErrorCode,
+                        code: 'NOT_INITIALIZED',
                     }
                 }
 
                 if (stateRows[0].paused) {
-                    return { error: 'Signer is paused', code: 'PAUSED' as SignerErrorCode }
+                    return { error: 'Signer is paused', code: 'PAUSED' }
                 }
 
-                // Check capacity
+                // SAFETY: COUNT(*) as c over pending_transactions; SQLite returns an INTEGER cell.
                 const pending =
                     (this.sql
                         .exec(
@@ -1053,7 +1083,7 @@ export class SignerDO extends DurableObject<Env> {
                 if (pending >= maxPending) {
                     return {
                         error: 'Signer at capacity',
-                        code: 'CAPACITY_EXCEEDED' as SignerErrorCode,
+                        code: 'CAPACITY_EXCEEDED',
                     }
                 }
 
@@ -1067,12 +1097,15 @@ export class SignerDO extends DurableObject<Env> {
                 if (updatedRows.length === 0) {
                     return {
                         error: 'Signer state not found',
-                        code: 'NOT_INITIALIZED' as SignerErrorCode,
+                        code: 'NOT_INITIALIZED',
                     }
                 }
 
+                // SAFETY: RETURNING nonce - 1 as acquired_nonce; signer_state.nonce is INTEGER.
                 const acquiredNonce = updatedRows[0].acquired_nonce as number
+                // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
                 const address = updatedRows[0].address as string
+                // SAFETY: signer_state.chain_id is INTEGER written by ensureInitialized from the DO name.
                 const chainId = updatedRows[0].chain_id as number
 
                 // Insert pending transaction (tx_hash will be updated after broadcast)
@@ -1087,9 +1120,7 @@ export class SignerDO extends DurableObject<Env> {
                 )
 
                 return { nonce: acquiredNonce, address, chainId }
-            }) as
-                | { nonce: number; address: string; chainId: number }
-                | { error: string; code?: SignerErrorCode }
+            })
         } catch (error) {
             const message = getErrorMessage(error)
 
@@ -1101,18 +1132,17 @@ export class SignerDO extends DurableObject<Env> {
         }
 
         if ('error' in result) {
-            const errorResult = result as { error: string; code?: SignerErrorCode }
-            throw new SignerDOError(errorResult.error, errorResult.code ?? 'BROADCAST_FAILED')
+            throw new SignerDOError(result.error, result.code ?? 'BROADCAST_FAILED')
         }
 
-        // Type assertion after error check - result is now the success case
-        const successResult = result as { nonce: number; address: string; chainId: number }
+        const successResult = result
 
         const { txParams, initialFeeParams } = await withCleanupOnError(
             async () => {
                 const preparedTxParams = await this.buildTxParams(
                     tx,
                     successResult.chainId,
+                    // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
                     successResult.address as Address,
                 )
 
@@ -1156,13 +1186,14 @@ export class SignerDO extends DurableObject<Env> {
                 const syncedNonce = await this.syncNonceFromChainAtomic(tx.id)
 
                 // Re-acquire nonce and retry (only once)
-                const retryNonce = this.ctx.storage.transactionSync(() => {
+                const retryNonce = this.ctx.storage.transactionSync((): number => {
                     const updatedRows = this.sql
                         .exec(
                             'UPDATE signer_state SET nonce = nonce + 1 WHERE id = 1 RETURNING nonce - 1 as acquired_nonce',
                         )
                         .toArray()
 
+                    // SAFETY: RETURNING nonce - 1 as acquired_nonce; signer_state.nonce is INTEGER.
                     const acquiredNonce = updatedRows[0].acquired_nonce as number
 
                     // Re-insert pending transaction with new nonce
@@ -1175,7 +1206,7 @@ export class SignerDO extends DurableObject<Env> {
                     )
 
                     return acquiredNonce
-                }) as number
+                })
 
                 console.log(
                     `[SignerDO] Retrying with synced nonce: ${retryNonce} (synced base: ${syncedNonce})`,
@@ -1239,6 +1270,7 @@ export class SignerDO extends DurableObject<Env> {
         return {
             txHash,
             nonce: usedNonce,
+            // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
             signer: successResult.address as Hex,
             signerName,
         }
@@ -1273,6 +1305,7 @@ export class SignerDO extends DurableObject<Env> {
             )
         }
 
+        // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
         let txHash = initialRow.tx_hash as string
 
         if (!txHash) {
@@ -1300,11 +1333,15 @@ export class SignerDO extends DurableObject<Env> {
             .toArray()[0]
 
         const recoveredRow = finalRow ?? initialRow
+        // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
         const recoveredTxHash = (recoveredRow.tx_hash as string) || txHash
 
         return {
+            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
             txHash: recoveredTxHash as Hex,
+            // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
             nonce: recoveredRow.nonce as number,
+            // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
             signer: recoveredRow.address as Hex,
             signerName,
         }
@@ -1318,6 +1355,7 @@ export class SignerDO extends DurableObject<Env> {
                 .exec('SELECT tx_hash FROM pending_transactions WHERE id = ?', txId)
                 .toArray()[0]
 
+            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
             const txHash = (row?.tx_hash as string | undefined) ?? ''
 
             if (txHash) {
@@ -1363,9 +1401,13 @@ export class SignerDO extends DurableObject<Env> {
             .toArray()[0]
 
         return {
+            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
             txHash: (row.tx_hash as string) ?? '',
+            // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
             nonce: row.nonce as number,
+            // SAFETY: pending_transactions.status is TEXT; performSend writes 'pending' and later paths update it.
             status: row.status as string,
+            // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
             address: (state?.address as string) ?? '',
             paidUpgrade: true,
         }
@@ -1459,7 +1501,7 @@ export class SignerDO extends DurableObject<Env> {
     ): SignedAuthorization[] | undefined {
         if (!value) return undefined
 
-        // SAFETY: this column is JSON from serializeAuthorizationList; JSON.parse yields string or number cells, not bigint.
+        // SAFETY: pending_transactions.tx_authorization_list is TEXT from serializeAuthorizationList; JSON.parse is not schema-checked.
         const parsed = JSON.parse(value) as Array<{
             address?: string
             chainId?: string | number
@@ -1483,13 +1525,18 @@ export class SignerDO extends DurableObject<Env> {
         })
     }
 
-    private getRecommendedFeeParams(chainId: number): Promise<FeeParams> {
+    private async getRecommendedFeeParams(chainId: number): Promise<FeeParams> {
         const { publicClient } = this.ensureClients(chainId)
 
-        return publicClient.estimateFeesPerGas({
+        const fees = await publicClient.estimateFeesPerGas({
             type: 'eip1559',
             chain: publicClient.chain,
-        }) as Promise<FeeParams>
+        })
+
+        return {
+            maxFeePerGas: fees.maxFeePerGas,
+            maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+        }
     }
 
     private parseReplacementConfig(): ReplacementConfig {
@@ -1525,9 +1572,9 @@ export class SignerDO extends DurableObject<Env> {
                 if (tx.preCall && tx.preCall.executionData !== '0x') {
                     const signedCall = {
                         eoa: tx.preCall.eoa,
-                        executionData: tx.preCall.executionData as Hex,
+                        executionData: tx.preCall.executionData,
                         nonce: BigInt(tx.preCall.nonce),
-                        signature: tx.preCall.signature as Hex,
+                        signature: tx.preCall.signature,
                     }
 
                     return {
@@ -1542,9 +1589,11 @@ export class SignerDO extends DurableObject<Env> {
                     }
                 }
 
+                const emptyCalldata: Hex = '0x'
+
                 return {
                     to: tx.accountAddress,
-                    data: '0x' as Hex,
+                    data: emptyCalldata,
                     value: 0n,
                     authorizationList: [tx.authorization],
                 }
@@ -1773,6 +1822,7 @@ export class SignerDO extends DurableObject<Env> {
             ...txParams,
             nonce,
             account,
+            // SAFETY: viem sendTransaction reads chain.id; this object only supplies the id already used for the client.
             chain: { id: chainId } as Chain,
             maxFeePerGas: feeParams.maxFeePerGas,
             maxPriorityFeePerGas: feeParams.maxPriorityFeePerGas,
@@ -1843,6 +1893,7 @@ export class SignerDO extends DurableObject<Env> {
                 .toArray()
 
             if (rows.length === 0) return
+            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
             const activeTxHash = (rows[0].tx_hash as string) ?? ''
 
             if (!shouldApplyFinalization({ activeTxHash, eventTxHash: txHash, status })) {
@@ -1889,7 +1940,9 @@ export class SignerDO extends DurableObject<Env> {
         return withRecoveryOnError(
             async () => {
                 const claimed = claimedRows[0]
+                // SAFETY: pending_transactions.replacement_attempts is INTEGER written by tryReplaceStaleTransaction.
                 const attempts = (claimed.replacement_attempts as number | undefined) ?? 0
+                // SAFETY: pending_transactions.last_replacement_at is INTEGER written by tryReplaceStaleTransaction as Date.now().
                 const lastReplacementAtMs = (claimed.last_replacement_at as number | undefined) ?? 0
 
                 if (attempts >= config.maxAttempts) {
@@ -1921,16 +1974,24 @@ export class SignerDO extends DurableObject<Env> {
                 }
 
                 const currentMaxFee = this.parseOptionalBigInt(
+                    // SAFETY: pending_transactions.max_fee_per_gas is TEXT; performSend writes fee bigint.toString().
                     claimed.max_fee_per_gas as string | undefined,
                 )
 
                 const currentMaxPriority = this.parseOptionalBigInt(
+                    // SAFETY: pending_transactions.max_priority_fee_per_gas is TEXT; performSend writes fee bigint.toString().
                     claimed.max_priority_fee_per_gas as string | undefined,
                 )
 
+                // SAFETY: pending_transactions.tx_to is TEXT; performSend writes PreparedBroadcastTransaction.to.
                 const txTo = (claimed.tx_to as string | undefined) ?? ''
+                // SAFETY: pending_transactions.tx_data is TEXT; performSend writes PreparedBroadcastTransaction.data.
                 const txData = (claimed.tx_data as string | undefined) ?? ''
-                const txValue = this.parseOptionalBigInt(claimed.tx_value as string | undefined)
+
+                const txValue = this.parseOptionalBigInt(
+                    // SAFETY: pending_transactions.tx_value is TEXT; performSend writes value bigint.toString().
+                    claimed.tx_value as string | undefined,
+                )
 
                 if (
                     !currentMaxFee ||
@@ -2006,10 +2067,13 @@ export class SignerDO extends DurableObject<Env> {
                 const paidUpgrade = Number(claimed.paid_upgrade) === 1
 
                 const txParams: PreparedBroadcastTransaction = {
+                    // SAFETY: pending_transactions.tx_to is TEXT; performSend writes PreparedBroadcastTransaction.to (a viem Address).
                     to: txTo as Address,
+                    // SAFETY: pending_transactions.tx_data is TEXT; performSend writes PreparedBroadcastTransaction.data (viem Hex).
                     data: txData as Hex,
                     value: txValue,
                     authorizationList: this.deserializeAuthorizationList(
+                        // SAFETY: pending_transactions.tx_authorization_list is TEXT from serializeAuthorizationList.
                         claimed.tx_authorization_list as string | undefined,
                     ),
                 }
@@ -2019,7 +2083,9 @@ export class SignerDO extends DurableObject<Env> {
                 }
 
                 try {
+                    // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
                     const nonce = claimed.nonce as number
+                    // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
                     const priorHash = (claimed.tx_hash as string | undefined) ?? ''
 
                     const replacementHash = await this.signAndBroadcastPrepared(
@@ -2055,6 +2121,7 @@ export class SignerDO extends DurableObject<Env> {
                     if (paidUpgrade && priorHash) {
                         await this.trackPaidUpgradeReplacement({
                             chainId,
+                            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
                             priorHash: priorHash as Hex,
                             txHash: replacementHash,
                             nonce,
@@ -2105,8 +2172,11 @@ export class SignerDO extends DurableObject<Env> {
             throw new SignerDOError('Signer not initialized', 'NOT_INITIALIZED')
         }
 
+        // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
         const address = stateRows[0].address as string
+        // SAFETY: signer_state.derivation_index is INTEGER written by ensureInitialized from the DO name.
         const index = stateRows[0].derivation_index as number
+        // SAFETY: signer_state.chain_id is INTEGER written by ensureInitialized from the DO name.
         const chainId = stateRows[0].chain_id as number
 
         // Clean up stale pending transactions
@@ -2127,6 +2197,7 @@ export class SignerDO extends DurableObject<Env> {
         let stuck = 0
 
         for (const tx of stale) {
+            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
             const receipt = await this.getTransactionReceipt(tx.tx_hash as string, chainId)
 
             if (receipt) {
@@ -2152,6 +2223,7 @@ export class SignerDO extends DurableObject<Env> {
                 }
 
                 const replacementResult = await this.tryReplaceStaleTransaction(
+                    // SAFETY: pending_transactions.id is TEXT written by performSend from RelayTransaction.id.
                     tx.id as string,
                     chainId,
                     signerName,
@@ -2180,7 +2252,9 @@ export class SignerDO extends DurableObject<Env> {
 
             for (const tx of orphaned) {
                 const queued = await this.enqueueMonitorJob(
+                    // SAFETY: pending_transactions.id is TEXT written by performSend from RelayTransaction.id.
                     tx.id as string,
+                    // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
                     tx.tx_hash as Hex,
                     signerName,
                     chainId,
@@ -2231,6 +2305,7 @@ export class SignerDO extends DurableObject<Env> {
 
         return {
             index,
+            // SAFETY: signer_state.address is TEXT written by ensureInitialized from deriveKey (viem account.address).
             address: address as Hex,
             staleTransactions: stale.length,
             confirmedTransactions: confirmed,
@@ -2258,6 +2333,7 @@ export class SignerDO extends DurableObject<Env> {
 
         const stateRows = this.sql.exec('SELECT * FROM signer_state WHERE id = 1').toArray()
 
+        // SAFETY: COUNT(*) as c over pending_transactions; SQLite returns an INTEGER cell.
         const pendingCount =
             (this.sql
                 .exec(
