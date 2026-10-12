@@ -1,7 +1,64 @@
 import type { Call } from '@nubl/relayer-client'
+import { z } from 'incur'
 import { getAddress, type Address, type Hex } from 'viem'
 import { type EnvName } from './network-config'
 import { isRecord } from './type-guards'
+
+const optionalString = z.string().optional().catch(undefined)
+
+const errorMessageSchema = z
+    .object({
+        message: z.string(),
+    })
+    .passthrough()
+
+const stepCheckSchema = z
+    .object({
+        endpoint: z.string(),
+        method: z.string(),
+    })
+    .passthrough()
+
+const stepFieldsSchema = z
+    .object({
+        items: z.array(z.unknown()),
+        id: z.unknown().optional(),
+        action: optionalString,
+        kind: optionalString,
+        requestId: optionalString,
+    })
+    .passthrough()
+
+const quoteFieldsSchema = z
+    .object({
+        steps: z.array(z.unknown()),
+        requestId: optionalString,
+        fees: z.unknown().optional(),
+        details: z.unknown().optional(),
+        protocol: z.unknown().optional(),
+    })
+    .passthrough()
+
+const protocolV2Schema = z
+    .object({
+        v2: z
+            .object({
+                orderId: optionalString,
+                orderData: z.unknown().optional(),
+            })
+            .passthrough(),
+    })
+    .passthrough()
+
+const intentStatusSchema = z
+    .object({
+        status: z.string(),
+        requestId: optionalString,
+        txHashes: z.array(z.unknown()).optional().catch(undefined),
+        inTxHashes: z.array(z.unknown()).optional().catch(undefined),
+        details: z.unknown().optional(),
+    })
+    .passthrough()
 
 export type RelayQuoteRequest = {
     user: Address
@@ -173,8 +230,10 @@ async function parseRelayResponse(response: Response): Promise<RelayJson> {
 }
 
 function getErrorMessage(payload: RelayJson, fallback: string): string {
-    if (isRecord(payload) && typeof payload.message === 'string' && payload.message) {
-        return payload.message
+    const parsed = errorMessageSchema.safeParse(payload)
+
+    if (parsed.success && parsed.data.message) {
+        return parsed.data.message
     }
 
     return fallback
@@ -305,6 +364,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
         )
     }
 
+    // Leftover: z.string() on `to` would fail the item/data object and change this message.
     if (typeof data.to !== 'string' || data.to.length === 0) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
@@ -324,6 +384,8 @@ function normalizeStepItem(value: unknown): RelayStepItem {
         )
     }
 
+    const checkFields = stepCheckSchema.safeParse(check)
+
     return {
         status: normalizeStepItemStatus(value.status),
         data: {
@@ -332,59 +394,68 @@ function normalizeStepItem(value: unknown): RelayStepItem {
             value: valueString,
             chainId,
         },
-        check:
-            check && typeof check.endpoint === 'string' && typeof check.method === 'string'
-                ? { endpoint: check.endpoint, method: check.method }
-                : undefined,
+        check: checkFields.success
+            ? { endpoint: checkFields.data.endpoint, method: checkFields.data.method }
+            : undefined,
     }
 }
 
 function normalizeStep(value: unknown): RelayStep {
-    if (!isRecord(value) || !Array.isArray(value.items)) {
+    const step = stepFieldsSchema.safeParse(value)
+
+    if (!step.success) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid step.')
     }
 
     return {
-        id: String(value.id ?? ''),
-        action: typeof value.action === 'string' ? value.action : undefined,
-        kind: typeof value.kind === 'string' ? value.kind : 'transaction',
-        requestId: typeof value.requestId === 'string' ? value.requestId : undefined,
-        items: value.items.map(normalizeStepItem),
+        id: String(step.data.id ?? ''),
+        action: step.data.action,
+        kind: step.data.kind ?? 'transaction',
+        requestId: step.data.requestId,
+        items: step.data.items.map(normalizeStepItem),
     }
 }
 
 function normalizeQuoteResponse(payload: RelayJson): RelayQuoteResponse {
-    if (!isRecord(payload) || !Array.isArray(payload.steps)) {
+    const quote = quoteFieldsSchema.safeParse(payload)
+
+    if (!quote.success) {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid quote.')
     }
 
     return {
-        requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
-        steps: payload.steps.map(normalizeStep),
-        fees: isRecord(payload.fees)
-            ? (payload.fees as Record<string, RelayCurrencyAmount | undefined>)
+        requestId: quote.data.requestId,
+        steps: quote.data.steps.map(normalizeStep),
+        // SAFETY: quote schema accepted fees/details as unknown; extras stay on the original objects.
+        fees: isRecord(quote.data.fees)
+            ? (quote.data.fees as Record<string, RelayCurrencyAmount | undefined>)
             : undefined,
-        details: isRecord(payload.details)
-            ? (payload.details as RelayQuoteResponse['details'])
+        details: isRecord(quote.data.details)
+            ? (quote.data.details as RelayQuoteResponse['details'])
             : undefined,
-        protocol: normalizeProtocol(payload.protocol),
+        protocol: normalizeProtocol(quote.data.protocol),
     }
 }
 
 function normalizeProtocol(value: unknown): RelayQuoteResponse['protocol'] {
-    if (!isRecord(value) || !isRecord(value.v2)) return undefined
-    const orderData = value.v2.orderData
+    const protocol = protocolV2Schema.safeParse(value)
+
+    if (!protocol.success) return undefined
+
+    const v2 = protocol.data.v2
 
     return {
         v2: {
-            orderId: typeof value.v2.orderId === 'string' ? value.v2.orderId : undefined,
-            orderData: isRecord(orderData) ? orderData : undefined,
+            orderId: v2.orderId,
+            orderData: isRecord(v2.orderData) ? v2.orderData : undefined,
         },
     }
 }
 
 function normalizeIntentStatus(payload: RelayJson): RelayIntentStatus {
-    if (!isRecord(payload) || typeof payload.status !== 'string') {
+    const status = intentStatusSchema.safeParse(payload)
+
+    if (!status.success) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
             'relay.link returned an invalid intent status response.',
@@ -392,11 +463,13 @@ function normalizeIntentStatus(payload: RelayJson): RelayIntentStatus {
     }
 
     return {
-        status: payload.status,
-        requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
-        txHashes: Array.isArray(payload.txHashes) ? (payload.txHashes as Hex[]) : undefined,
-        inTxHashes: Array.isArray(payload.inTxHashes) ? (payload.inTxHashes as Hex[]) : undefined,
-        details: payload.details,
+        status: status.data.status,
+        requestId: status.data.requestId,
+        // SAFETY: intent status schema accepted an array of JSON values.
+        txHashes: status.data.txHashes as Hex[] | undefined,
+        // SAFETY: intent status schema accepted an array of JSON values.
+        inTxHashes: status.data.inTxHashes as Hex[] | undefined,
+        details: status.data.details,
     }
 }
 

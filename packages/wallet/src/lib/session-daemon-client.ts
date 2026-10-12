@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import net from 'node:net'
+import { z } from 'incur'
 import type { Address, Hex } from 'viem'
 import { resolveSessionDaemonPaths } from './session-daemon-paths'
 import {
@@ -10,7 +11,58 @@ import {
     type DaemonRequest,
     type DaemonTypedData,
 } from './session-daemon-protocol'
-import { isRecord } from './type-guards'
+
+const pingResultSchema = z
+    .object({
+        ok: z.literal(true),
+        startedAt: z.number(),
+    })
+    .passthrough()
+
+const listResultSchema = z
+    .object({
+        startedAt: z.number(),
+        keys: z.array(z.unknown()),
+    })
+    .passthrough()
+
+const listKeySchema = z
+    .object({
+        name: z.string(),
+        address: z.string(),
+        expiresAt: z.number(),
+    })
+    .passthrough()
+
+const signatureResultSchema = z
+    .object({
+        signature: z.string(),
+    })
+    .passthrough()
+
+const loadKeyResultSchema = z
+    .object({
+        name: z.string(),
+        address: z.string(),
+        expiresAt: z.number(),
+    })
+    .passthrough()
+
+const secretsResultSchema = z
+    .object({
+        name: z.string(),
+        privateKey: z.string(),
+        address: z.string(),
+        expiresAt: z.number(),
+        encryptionDevice: z.string().optional(),
+    })
+    .passthrough()
+
+const removeResultSchema = z
+    .object({
+        ok: z.literal(true),
+    })
+    .passthrough()
 
 const CONNECT_TIMEOUT_MS = 1_500
 
@@ -73,16 +125,15 @@ export class SessionDaemonClient {
             return response
         }
 
-        if (
-            !isRecord(response.result) ||
-            response.result.ok !== true ||
-            typeof response.result.startedAt !== 'number'
-        ) {
+        const ping = pingResultSchema.safeParse(response.result)
+
+        if (!ping.success) {
             this.logRequestFailure('ping', 'Invalid result payload', response.result)
 
             return null
         }
 
+        // SAFETY: ping schema accepted this result; return the original so extras and key order stay.
         return { ok: true, result: response.result as { ok: true; startedAt: number } }
     }
 
@@ -102,39 +153,35 @@ export class SessionDaemonClient {
             return response
         }
 
-        if (
-            !isRecord(response.result) ||
-            typeof response.result.startedAt !== 'number' ||
-            !Array.isArray(response.result.keys)
-        ) {
+        const list = listResultSchema.safeParse(response.result)
+
+        if (!list.success) {
             this.logRequestFailure('list', 'Invalid result payload', response.result)
 
             return null
         }
 
-        for (const entry of response.result.keys) {
-            if (
-                !isRecord(entry) ||
-                typeof entry.name !== 'string' ||
-                typeof entry.address !== 'string' ||
-                typeof entry.expiresAt !== 'number'
-            ) {
+        for (const entry of list.data.keys) {
+            const key = listKeySchema.safeParse(entry)
+
+            if (!key.success) {
                 this.logRequestFailure('list', 'Invalid key payload', entry)
 
                 return null
             }
         }
 
+        // SAFETY: schemas accepted this result; keep the original keys array so extras and key order stay.
+        const original = response.result as {
+            startedAt: number
+            keys: Array<{ name: string; kind?: string; address: Address; expiresAt: number }>
+        }
+
         return {
             ok: true,
             result: {
-                startedAt: response.result.startedAt,
-                keys: response.result.keys as Array<{
-                    name: string
-                    kind?: string
-                    address: Address
-                    expiresAt: number
-                }>,
+                startedAt: original.startedAt,
+                keys: original.keys,
             },
         }
     }
@@ -153,13 +200,16 @@ export class SessionDaemonClient {
             return response
         }
 
-        if (!isRecord(response.result) || typeof response.result.signature !== 'string') {
+        const signed = signatureResultSchema.safeParse(response.result)
+
+        if (!signed.success) {
             this.logRequestFailure('sign', 'Invalid result payload', response.result)
 
             return null
         }
 
-        return { ok: true, result: response.result.signature as Hex }
+        // SAFETY: signature schema accepted this string.
+        return { ok: true, result: signed.data.signature as Hex }
     }
 
     async signMessage(sessionName: string, message: Hex): Promise<SessionDaemonRpcResponse<Hex>> {
@@ -173,13 +223,16 @@ export class SessionDaemonClient {
             return response
         }
 
-        if (!isRecord(response.result) || typeof response.result.signature !== 'string') {
+        const signed = signatureResultSchema.safeParse(response.result)
+
+        if (!signed.success) {
             this.logRequestFailure('signMessage', 'Invalid result payload', response.result)
 
             return null
         }
 
-        return { ok: true, result: response.result.signature as Hex }
+        // SAFETY: signature schema accepted this string.
+        return { ok: true, result: signed.data.signature as Hex }
     }
 
     async loadKey(input: {
@@ -213,12 +266,9 @@ export class SessionDaemonClient {
             return response
         }
 
-        if (
-            !isRecord(response.result) ||
-            typeof response.result.name !== 'string' ||
-            typeof response.result.address !== 'string' ||
-            typeof response.result.expiresAt !== 'number'
-        ) {
+        const loaded = loadKeyResultSchema.safeParse(response.result)
+
+        if (!loaded.success) {
             this.logRequestFailure('loadKey', 'Invalid result payload', response.result)
 
             return null
@@ -227,9 +277,10 @@ export class SessionDaemonClient {
         return {
             ok: true,
             result: {
-                name: response.result.name,
-                address: response.result.address as Address,
-                expiresAt: response.result.expiresAt,
+                name: loaded.data.name,
+                // SAFETY: loadKey schema accepted address as a string.
+                address: loaded.data.address as Address,
+                expiresAt: loaded.data.expiresAt,
             },
         }
     }
@@ -247,15 +298,9 @@ export class SessionDaemonClient {
             return response
         }
 
-        if (
-            !isRecord(response.result) ||
-            typeof response.result.name !== 'string' ||
-            typeof response.result.privateKey !== 'string' ||
-            typeof response.result.address !== 'string' ||
-            typeof response.result.expiresAt !== 'number' ||
-            (response.result.encryptionDevice !== undefined &&
-                typeof response.result.encryptionDevice !== 'string')
-        ) {
+        const secrets = secretsResultSchema.safeParse(response.result)
+
+        if (!secrets.success) {
             this.logRequestFailure('getSessionSecrets', 'Invalid result payload', response.result)
 
             return {
@@ -270,11 +315,14 @@ export class SessionDaemonClient {
         return {
             ok: true,
             result: {
-                name: response.result.name,
-                privateKey: response.result.privateKey as Hex,
-                address: response.result.address as Address,
-                expiresAt: response.result.expiresAt,
-                encryptionDevice: response.result.encryptionDevice as Hex | undefined,
+                name: secrets.data.name,
+                // SAFETY: secrets schema accepted privateKey as a string.
+                privateKey: secrets.data.privateKey as Hex,
+                // SAFETY: secrets schema accepted address as a string.
+                address: secrets.data.address as Address,
+                expiresAt: secrets.data.expiresAt,
+                // SAFETY: secrets schema accepted encryptionDevice as a string when present.
+                encryptionDevice: secrets.data.encryptionDevice as Hex | undefined,
             },
         }
     }
@@ -290,7 +338,9 @@ export class SessionDaemonClient {
             return response
         }
 
-        if (!isRecord(response.result) || response.result.ok !== true) {
+        const removed = removeResultSchema.safeParse(response.result)
+
+        if (!removed.success) {
             this.logRequestFailure('remove', 'Invalid result payload', response.result)
 
             return null

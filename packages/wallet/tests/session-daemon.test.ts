@@ -437,6 +437,52 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
     }
 })
 
+test('a phrase-confirmed session refuses a Call-shaped payload with primaryType Call', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-primary-'))
+    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const daemon = await runSessionDaemon()
+    const client = new SessionDaemonClient()
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY)
+
+    try {
+        const load = await client.loadKey({
+            name: 'default',
+            privateKey: TEST_PRIVATE_KEY,
+            address: account.address,
+            durationSeconds: 60,
+            phraseConfirmed: true,
+            env: 'prod',
+        })
+
+        expect(load?.ok).toBe(true)
+
+        const encoded = encodeTypedDataBigInt(orchestratorIntent(account.address, '0x'))
+
+        if (!isRecord(encoded)) {
+            throw new Error('typed data encoding failed')
+        }
+
+        encoded.primaryType = 'Call'
+        encoded.message = { to: ROUTER, value: '$bigint:0', data: '0x' }
+
+        const refused = await sendSignOverSocket(
+            process.env.TW_AGENT_SOCK!,
+            'default',
+            JSON.stringify(encoded),
+        )
+
+        expect(refused.error).toBeDefined()
+        expect(JSON.stringify(refused)).not.toContain('"signature"')
+
+        if (refused.error) {
+            expect(refused.error.code).toBe('INVALID_REQUEST')
+            expect(refused.error.message).toBe('Session refused typed data that is not an Intent')
+        }
+    } finally {
+        await daemon.stop()
+    }
+})
+
 test('daemon drops oversized payload without newline', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
