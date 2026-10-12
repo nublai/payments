@@ -1,10 +1,20 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { z } from 'zod'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const artifactsDir = path.join(__dirname, 'envs') // Raw build envs from Solidity scripts
+
+function addressMustBeString(value, label) {
+  if (!z.string().safeParse(value).success) {
+    const got =
+      value === undefined ? 'undefined' : value === null ? 'null' : Array.isArray(value) ? 'array' : 'non-string'
+
+    throw new Error(`make-config: ${label} must be a string address (got ${got})`)
+  }
+}
 
 // Walk envs/{context}/{chainId}/*.json and build structure per context
 function getDeploymentsByContext() {
@@ -42,6 +52,7 @@ function getDeploymentsByContext() {
       for (const file of contractFiles) {
         const contractName = path.basename(file, '.json')
         const contractData = JSON.parse(fs.readFileSync(path.join(chainDir, file), 'utf8'))
+        addressMustBeString(contractData.address, `${context}/${chainId} "${contractName}"`)
         addresses[contractName] = contractData.address
       }
 
@@ -81,19 +92,11 @@ function convertToEnv(contextData, context) {
 
     for (const key of Object.keys(addresses).sort()) {
       const value = addresses[key]
+      addressMustBeString(value, `${context}/${chainId} "${key}"`)
 
-      if (typeof value === 'object') {
-        // Handle nested utils object
-        for (const nestedKey of Object.keys(value).sort()) {
-          const baseKey = `${keyToEnvKey(key)}_${keyToEnvKey(nestedKey)}`
-          const envKey = shouldSuffixByChain ? `${baseKey}_${chainId}` : baseKey
-          envContent += `${envKey}=${value[nestedKey]}\n`
-        }
-      } else {
-        const baseKey = keyToEnvKey(key)
-        const envKey = shouldSuffixByChain ? `${baseKey}_${chainId}` : baseKey
-        envContent += `${envKey}=${value}\n`
-      }
+      const baseKey = keyToEnvKey(key)
+      const envKey = shouldSuffixByChain ? `${baseKey}_${chainId}` : baseKey
+      envContent += `${envKey}=${value}\n`
     }
   }
 
@@ -131,8 +134,18 @@ function writeEnvFiles(context, contextData) {
 
 // Sort object keys recursively to ensure deterministic JSON output
 function sortObjectKeys(obj) {
-  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+  if (z.string().safeParse(obj).success) {
     return obj
+  }
+
+  if (obj === undefined || obj === null || Array.isArray(obj)) {
+    const got = obj === undefined ? 'undefined' : obj === null ? 'null' : 'array'
+
+    throw new Error(`make-config: address values must be strings (got ${got})`)
+  }
+
+  if (Object.getPrototypeOf(obj) !== Object.prototype) {
+    throw new Error('make-config: address values must be strings (got non-string)')
   }
 
   const sorted = {}

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { readFileSync } from 'node:fs'
+import { z } from 'zod'
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 
@@ -79,6 +80,21 @@ function percentile(values: bigint[], p: number): bigint {
     return sorted[Math.min(rank, sorted.length - 1)]
 }
 
+const TelemetryRowSchema = z
+    .object({
+        msg: z.literal('bundle gas telemetry'),
+        bundleId: z.string().optional().catch(undefined),
+        paymentEnabled: z.boolean().optional().catch(undefined),
+        simulationGas: z.string().optional().catch(undefined),
+        combinedGas: z.string().optional().catch(undefined),
+        estimatedTxGas: z.string().optional().catch(undefined),
+        actualGasUsed: z.string().optional().catch(undefined),
+        simulationDelta: z.string().optional().catch(undefined),
+        combinedDelta: z.string().optional().catch(undefined),
+        txEstimateDelta: z.string().optional().catch(undefined),
+    })
+    .passthrough()
+
 function maybeParseJsonString(input: string): Json | null {
     const trimmed = input.trim()
 
@@ -87,18 +103,11 @@ function maybeParseJsonString(input: string): Json | null {
     }
 
     try {
+        // SAFETY: a `{...}` JSON value is the Json union this script walks.
         return JSON.parse(trimmed) as Json
     } catch {
         return null
     }
-}
-
-function isObject(value: Json): value is { [key: string]: Json } {
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isTelemetryObject(value: Json): value is BundleTelemetry {
-    return isObject(value) && typeof value.msg === 'string' && value.msg === 'bundle gas telemetry'
 }
 
 function extractTelemetry(value: Json, out: BundleTelemetry[]): void {
@@ -110,39 +119,36 @@ function extractTelemetry(value: Json, out: BundleTelemetry[]): void {
         return
     }
 
-    if (!isObject(value)) {
-        if (typeof value === 'string' && value.includes('bundle gas telemetry')) {
-            const parsed = maybeParseJsonString(value)
+    if (value !== null && Object.getPrototypeOf(value) === Object.prototype) {
+        const row = TelemetryRowSchema.safeParse(value)
 
-            if (parsed) extractTelemetry(parsed, out)
+        if (row.success) {
+            out.push({
+                bundleId: row.data.bundleId,
+                paymentEnabled: row.data.paymentEnabled,
+                simulationGas: row.data.simulationGas,
+                combinedGas: row.data.combinedGas,
+                estimatedTxGas: row.data.estimatedTxGas,
+                actualGasUsed: row.data.actualGasUsed,
+                simulationDelta: row.data.simulationDelta,
+                combinedDelta: row.data.combinedDelta,
+                txEstimateDelta: row.data.txEstimateDelta,
+            })
+        }
+
+        for (const child of Object.values(value)) {
+            extractTelemetry(child, out)
         }
 
         return
     }
 
-    if (isTelemetryObject(value)) {
-        out.push({
-            bundleId: typeof value.bundleId === 'string' ? value.bundleId : undefined,
-            paymentEnabled:
-                typeof value.paymentEnabled === 'boolean' ? value.paymentEnabled : undefined,
-            simulationGas:
-                typeof value.simulationGas === 'string' ? value.simulationGas : undefined,
-            combinedGas: typeof value.combinedGas === 'string' ? value.combinedGas : undefined,
-            estimatedTxGas:
-                typeof value.estimatedTxGas === 'string' ? value.estimatedTxGas : undefined,
-            actualGasUsed:
-                typeof value.actualGasUsed === 'string' ? value.actualGasUsed : undefined,
-            simulationDelta:
-                typeof value.simulationDelta === 'string' ? value.simulationDelta : undefined,
-            combinedDelta:
-                typeof value.combinedDelta === 'string' ? value.combinedDelta : undefined,
-            txEstimateDelta:
-                typeof value.txEstimateDelta === 'string' ? value.txEstimateDelta : undefined,
-        })
-    }
+    const text = z.string().safeParse(value)
 
-    for (const child of Object.values(value)) {
-        extractTelemetry(child, out)
+    if (text.success && text.data.includes('bundle gas telemetry')) {
+        const parsed = maybeParseJsonString(text.data)
+
+        if (parsed !== null) extractTelemetry(parsed, out)
     }
 }
 
@@ -249,6 +255,7 @@ async function main(): Promise<void> {
         let parsed: Json | null = null
 
         try {
+            // SAFETY: each wrangler-tail / log line is a JSON value.
             parsed = JSON.parse(trimmed) as Json
         } catch {
             const jsonStart = trimmed.indexOf('{')

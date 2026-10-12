@@ -5,6 +5,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { Hono } from 'hono'
 import { privateKeyToAccount } from 'viem/accounts'
 import { hashAuthorization } from 'viem/utils'
@@ -83,7 +84,8 @@ function createEnv(
     gate: ReturnType<typeof createBurstGate>,
 ): Env {
     const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-        const bodyText = typeof init?.body === 'string' ? init.body : ''
+        const bodyParsed = z.string().safeParse(init?.body)
+        const bodyText = bodyParsed.success ? bodyParsed.data : ''
         let parsed: { type?: string } & RateBody = {}
 
         if (bodyText) {
@@ -101,9 +103,11 @@ function createEnv(
             return jsonStub({ error: 'execution reverted' }, false)
         }
 
+        const chainId = z.number().safeParse(parsed.chainId)
+
         const buckets = upgradeRateBuckets({
             kind: parsed.kind === 'prepare' ? 'prepare' : 'upgrade',
-            chainId: typeof parsed.chainId === 'number' ? parsed.chainId : CHAIN_ID,
+            chainId: chainId.success ? chainId.data : CHAIN_ID,
             account: parsed.account ?? 'unknown',
             ip: parsed.ip ?? 'unknown',
             identity: parsed.identity })
@@ -115,7 +119,8 @@ function createEnv(
         }
 
         if (parsed.action === 'release') {
-            const at = typeof parsed.reservedAt === 'number' ? parsed.reservedAt : NOW
+            const reservedAt = z.number().safeParse(parsed.reservedAt)
+            const at = reservedAt.success ? reservedAt.data : NOW
 
             for (const bucket of buckets) {
                 const secondId = `${bucket.key}#${at}`

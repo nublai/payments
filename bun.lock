@@ -32,6 +32,7 @@
         "prettier-plugin-solidity": "^1.4.2",
         "solhint": "^6.0.2",
         "typescript": "~5.8.3",
+        "zod": "^4.3.6",
       },
     },
     "packages/proto": {

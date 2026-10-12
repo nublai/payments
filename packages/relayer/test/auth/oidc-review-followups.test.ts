@@ -81,7 +81,8 @@ async function sign(claims: TokenClaims, audience?: string | string[]): Promise<
 async function withJwks<T>(url: string, run: () => Promise<T>, fail?: 'timeout'): Promise<T> {
     const previous = globalThis.fetch
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        const href =
+            input instanceof Request ? input.url : input instanceof URL ? input.href : input
 
         if (href === url) {
             if (fail === 'timeout') {

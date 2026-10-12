@@ -331,7 +331,7 @@ function installRpcRedirect(hosts: Record<string, string>): () => void {
 
     const redirected = async (input: string | URL | Request, init?: RequestInit) => {
         const url =
-            typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+            input instanceof Request ? input.url : input instanceof URL ? input.toString() : input
 
         const target = Object.entries(hosts).find(([host]) => url.includes(host))?.[1]
 
@@ -339,7 +339,7 @@ function installRpcRedirect(hosts: Record<string, string>): () => void {
 
         const body =
             init?.body ??
-            (typeof input !== 'string' && !(input instanceof URL) ? await input.clone().text() : undefined)
+            (input instanceof Request ? await input.clone().text() : undefined)
 
         return original(target, {
             method: 'POST',

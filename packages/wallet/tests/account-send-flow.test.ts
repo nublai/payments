@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
+import { z } from 'incur'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
@@ -162,7 +163,7 @@ test('executeAccountSend executes sponsored transfer flow', async () => {
 
     if (prepareInput.sessionKey === undefined) throw new Error('expected sessionKey')
 
-    expect(typeof prepareInput.sessionKey).toBe('string')
+    expect(z.string().safeParse(prepareInput.sessionKey).success).toBe(true)
     expect(prepareInput.sessionKey.startsWith('0x')).toBe(true)
     expect(prepareInput.nonce).toBe(2n)
     const sentSignature = firstMockArg(sendPreparedCalls).signature

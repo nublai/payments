@@ -65,7 +65,7 @@ type RequiredAddressKey = (typeof requiredAddressKeys)[number]
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 function isDeployedAddress(value: string | undefined): value is Address {
-  if (typeof value !== 'string') return false
+  if (value === undefined) return false
   const normalized = value.trim().toLowerCase()
 
   // Reject only empty and zero sentinels. Callers such as the relayer

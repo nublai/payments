@@ -23,11 +23,7 @@ function stubProvider(args: {
     return {
         name: args.name,
         enabled: () => true,
-        verify: async (input) => {
-            if (typeof input !== 'string' && !(input instanceof Request)) {
-                return { ok: false, code: 'INVALID_TOKEN', message: 'bad input' }
-            }
-
+        verify: async () => {
             if (!args.result.ok) return args.result
 
             return {

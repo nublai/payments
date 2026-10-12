@@ -5,6 +5,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { encodeAbiParameters, encodeEventTopics, zeroAddress, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { hashAuthorization, hashTypedData } from 'viem/utils'
@@ -53,6 +54,14 @@ import { parseJson } from '../helpers/rpc'
 import { jsonStub, signerPoolWithFetch } from '../helpers/stubs'
 
 const CHAIN_ID = 8453
+
+function requestUrl(input: RequestInfo | URL): string {
+    if (input instanceof Request) return input.url
+
+    if (input instanceof URL) return input.href
+
+    return input
+}
 
 const SECRET = 'paid-upgrade-test-secret'
 
@@ -120,7 +129,8 @@ type GasDecision = { allowed: boolean; gas?: number; failures?: number }
 
 function applyGas(body: PoolRequestBody): GasDecision {
     gasLog.push(body)
-    const amount = BigInt(typeof body.gas === 'string' ? body.gas : '0')
+    const gas = z.string().safeParse(body.gas)
+    const amount = BigInt(gas.success ? gas.data : '0')
 
     if (body.action === 'reserve-gas') {
         if (gasSpent + gasHeld + amount > rpc.gasBudget) return { allowed: false, gas: Number(gasSpent) }
@@ -136,8 +146,9 @@ function applyGas(body: PoolRequestBody): GasDecision {
     }
 
     if (body.action === 'settle-gas') {
-        const hold = BigInt(typeof body.hold === 'string' ? body.hold : '0')
-        gasHeld = gasHeld > hold ? gasHeld - hold : 0n
+        const hold = z.string().safeParse(body.hold)
+        const holdAmount = BigInt(hold.success ? hold.data : '0')
+        gasHeld = gasHeld > holdAmount ? gasHeld - holdAmount : 0n
         gasSpent += amount
 
         if (body.failure === true) gasFailures += 1
@@ -153,7 +164,7 @@ function applyGas(body: PoolRequestBody): GasDecision {
 }
 
 function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+    const url = requestUrl(input)
     const body = init?.body ? parseJson<PoolRequestBody>(String(init.body)) : {}
 
     if (url.includes('upgrade-rate-limit')) {
@@ -172,10 +183,14 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         rateBodies.push(body)
         const now = Math.floor(Date.now() / 1000)
 
+        const chainId = z.number().safeParse(body.chainId)
+        const account = z.string().safeParse(body.account)
+        const ip = z.string().safeParse(body.ip)
+
         const buckets = paidUpgradeRateBuckets({
-            chainId: typeof body.chainId === 'number' ? body.chainId : CHAIN_ID,
-            account: typeof body.account === 'string' ? body.account : 'unknown',
-            ip: typeof body.ip === 'string' ? body.ip : 'unknown',
+            chainId: chainId.success ? chainId.data : CHAIN_ID,
+            account: account.success ? account.data : 'unknown',
+            ip: ip.success ? ip.data : 'unknown',
             includeGlobal: body.action === 'reserve' || body.action === 'release',
         })
 
@@ -184,10 +199,11 @@ function poolFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         }
 
         if (body.action === 'release') {
+            const reservedAt = z.number().safeParse(body.reservedAt)
             releaseRateLimit(
                 rateStore,
                 buckets,
-                typeof body.reservedAt === 'number' ? body.reservedAt : now,
+                reservedAt.success ? reservedAt.data : now,
             )
 
             return Promise.resolve(jsonStub({ allowed: true }))
@@ -503,8 +519,7 @@ beforeEach(() => {
     rpc.receiptMissing = false
     rpcCalls.length = 0
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url =
-            typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+        const url = requestUrl(input)
 
         if (!url.includes('rpc.test')) {
             throw new Error(`unexpected fetch ${url}`)
