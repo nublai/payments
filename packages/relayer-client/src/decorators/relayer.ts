@@ -105,9 +105,9 @@ export type RelayerActions = {
 export function relayerActions(config: RelayerClientConfig) {
     return <TClient extends PublicClient>(client: TClient): RelayerActions => {
         // Attach config to client (viem pattern)
-        const relayerClient = Object.assign(client, {
+        const relayerClient: RelayerPublicClient<TClient> = Object.assign(client, {
             relayerConfig: config,
-        }) as RelayerPublicClient<TClient>
+        })
 
         return {
             relayerConfig: config,

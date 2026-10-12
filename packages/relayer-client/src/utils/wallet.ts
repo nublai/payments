@@ -36,5 +36,5 @@ export function getWalletAccount(walletClient: WalletClient): Account {
         throw new Error('WalletClient must have an account configured')
     }
 
-    return walletClient.account as Account
+    return walletClient.account
 }

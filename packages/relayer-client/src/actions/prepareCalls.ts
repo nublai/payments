@@ -129,12 +129,12 @@ export async function prepareCalls(
 
         if (isTargetChainConnected) {
             try {
-                resolvedNonce = (await client.readContract({
+                resolvedNonce = await client.readContract({
                     address: params.from,
                     abi: getNonceAbi,
                     functionName: 'getNonce',
                     args: [nonceSeqKey],
-                })) as bigint
+                })
             } catch {
                 // Fallback to relayer-side nonce handling when on-chain read is unavailable.
                 resolvedNonce = undefined

@@ -26,7 +26,7 @@ export interface WaitForBundleParams {
  * - 400: Reverted (on-chain intent failure)
  * - 500: PartiallyReverted
  */
-const FINAL_STATUS_CODES = [200, 201, 300, 400, 500] as const
+const FINAL_STATUS_CODES: readonly number[] = [200, 201, 300, 400, 500]
 
 /**
  * Wait for bundle to reach final status
@@ -76,7 +76,7 @@ export async function waitForBundle(
 
         if (
             status.statusCode &&
-            FINAL_STATUS_CODES.includes(status.statusCode as (typeof FINAL_STATUS_CODES)[number])
+            FINAL_STATUS_CODES.includes(status.statusCode)
         ) {
             return status
         }

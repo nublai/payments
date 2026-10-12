@@ -65,7 +65,7 @@ export async function getEscrowStatus(params: {
             refundTimestamp,
             settler,
             sender,
-            settlementId: settlementId as Hex,
+            settlementId,
             senderChainId,
         },
     }

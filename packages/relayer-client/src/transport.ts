@@ -226,12 +226,14 @@ export function createJsonRpcTransport(
                 )
             }
 
+            // SAFETY: response.json() is the JSON-RPC 2.0 object this transport posted for.
             const data = (await response.json()) as JsonRpcResponse<T>
 
             if (data.error) {
                 throw new JsonRpcClientError(data.error.code, data.error.message, data.error.data)
             }
 
+            // SAFETY: T is the result type the caller requested for this RPC method.
             return data.result as T
         },
 
@@ -252,6 +254,7 @@ export function createJsonRpcTransport(
                 )
             }
 
+            // SAFETY: response.json() is a JSON-RPC 2.0 batch array or a single error object.
             const json = (await response.json()) as JsonRpcResponse<T>[] | JsonRpcResponse<T>
             const data = Array.isArray(json) ? json : [json]
 
@@ -283,6 +286,7 @@ export function createJsonRpcTransport(
             // Sort by id to maintain request order and extract results
             const sorted = data.sort((a, b) => a.id - b.id)
 
+            // SAFETY: T is the result type the caller requested for this RPC method.
             return sorted.map((item) => item.result as T)
         },
     }

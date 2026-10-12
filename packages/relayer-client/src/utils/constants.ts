@@ -57,9 +57,13 @@ export const EMPTY_CALLDATA_SELECTOR: Hex = '0xe0e0e0e0'
  */
 export const ERC20_SELECTORS = {
     /** transfer(address,uint256) */
-    TRANSFER: '0xa9059cbb' as Hex,
+    TRANSFER: '0xa9059cbb',
     /** approve(address,uint256) */
-    APPROVE: '0x095ea7b3' as Hex,
+    APPROVE: '0x095ea7b3',
     /** transferFrom(address,address,uint256) */
-    TRANSFER_FROM: '0x23b872dd' as Hex,
-} as const
+    TRANSFER_FROM: '0x23b872dd',
+} as const satisfies {
+    readonly TRANSFER: Hex
+    readonly APPROVE: Hex
+    readonly TRANSFER_FROM: Hex
+}

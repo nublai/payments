@@ -55,8 +55,14 @@ export type IntentErrorName = (typeof INTENT_ERRORS)[keyof typeof INTENT_ERRORS]
  * }
  * ```
  */
+function isIntentErrorSelector(value: string): value is keyof typeof INTENT_ERRORS {
+    return Object.hasOwn(INTENT_ERRORS, value)
+}
+
 export function decodeIntentError(selector: Hex): IntentErrorName | undefined {
-    const normalized = selector.toLowerCase() as keyof typeof INTENT_ERRORS
+    const normalized = selector.toLowerCase()
+
+    if (!isIntentErrorSelector(normalized)) return undefined
 
     return INTENT_ERRORS[normalized]
 }

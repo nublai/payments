@@ -46,7 +46,7 @@ export function buildEscrowStruct(params: CreateEscrowParams): EscrowStruct {
     const salt = params.salt ?? padHex('0x', { size: 12, dir: 'right' })
 
     return {
-        salt: salt as `0x${string}`,
+        salt,
         depositor: params.buyer,
         recipient: params.seller,
         token: params.usdcAddress,
