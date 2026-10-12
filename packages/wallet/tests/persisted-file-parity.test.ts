@@ -523,3 +523,197 @@ test('readRotationIntent matches main errors for invalid marker files', async ()
         expect(JSON.parse(JSON.stringify(withMacKdf?.macKdf)).evil).toBeUndefined()
     })
 })
+
+test('readSessionKeystoreFile rejects a wrong session keystore version', async () => {
+    await withTempDir(async (dir) => {
+        const session = await createSessionKeystore({
+            password: 'pw',
+            sessionPrivateKey: generatePrivateKey(),
+            network: {
+                env: 'dev',
+                relayerUrl: 'http://127.0.0.1:8787',
+                rpcUrl: 'http://127.0.0.1:8545',
+                chainId: 31337,
+            },
+            delegated: ACCOUNT,
+            name: 'default',
+        })
+
+        const path = join(dir, 'wrong-session-version.json')
+        await writeFile(path, `${JSON.stringify({ ...session, version: 1 })}\n`)
+        await expect(readSessionKeystoreFile(path)).rejects.toBeInstanceOf(Error)
+        await expect(readSessionKeystoreFile(path)).rejects.toMatchObject({
+            name: 'Error',
+            message: `Unsupported session keystore format at ${path}`,
+        })
+    })
+})
+
+test('readKeystoreBundle rejects a wrong root keystore version', async () => {
+    await withTempDir(async (dir) => {
+        const root = await createRootKeystore({
+            password: 'pw',
+            rootPrivateKey: generatePrivateKey(),
+            env: 'dev',
+            relayerUrl: 'http://127.0.0.1:8787',
+            rpcUrl: 'http://127.0.0.1:8545',
+            chainId: 31337,
+        })
+
+        const session = await createSessionKeystore({
+            password: 'pw',
+            sessionPrivateKey: generatePrivateKey(),
+            network: root.network,
+            delegated: root.addresses.root,
+            name: 'default',
+        })
+
+        const rootPath = join(dir, 'wrong-root-version.keystore.json')
+        await writeFile(rootPath, `${JSON.stringify({ ...root, version: 1 })}\n`)
+        await writeSessionKeystoreFile(join(dir, 'sessions', 'default.json'), session)
+        await expect(readKeystoreBundle(rootPath)).rejects.toBeInstanceOf(Error)
+        await expect(readKeystoreBundle(rootPath)).rejects.toMatchObject({
+            name: 'Error',
+            message: `Unsupported keystore format at ${rootPath}; expected version 2 split keystore`,
+        })
+    })
+})
+
+test('readSessionKeystoreFile rejects a wrong kdf name', async () => {
+    await withTempDir(async (dir) => {
+        const session = await createSessionKeystore({
+            password: 'pw',
+            sessionPrivateKey: generatePrivateKey(),
+            network: {
+                env: 'dev',
+                relayerUrl: 'http://127.0.0.1:8787',
+                rpcUrl: 'http://127.0.0.1:8545',
+                chainId: 31337,
+            },
+            delegated: ACCOUNT,
+            name: 'default',
+        })
+
+        const path = join(dir, 'wrong-kdf-name.json')
+        await writeFile(
+            path,
+            `${JSON.stringify({ ...session, kdf: { ...session.kdf, name: 'pbkdf2' } })}\n`,
+        )
+        await expect(readSessionKeystoreFile(path)).rejects.toBeInstanceOf(Error)
+        await expect(readSessionKeystoreFile(path)).rejects.toMatchObject({
+            name: 'Error',
+            message: `Unsupported session keystore format at ${path}`,
+        })
+    })
+})
+
+test('readSessionKeystoreFile rejects a wrong cipher', async () => {
+    await withTempDir(async (dir) => {
+        const session = await createSessionKeystore({
+            password: 'pw',
+            sessionPrivateKey: generatePrivateKey(),
+            network: {
+                env: 'dev',
+                relayerUrl: 'http://127.0.0.1:8787',
+                rpcUrl: 'http://127.0.0.1:8545',
+                chainId: 31337,
+            },
+            delegated: ACCOUNT,
+            name: 'default',
+        })
+
+        const path = join(dir, 'wrong-cipher.json')
+        await writeFile(
+            path,
+            `${JSON.stringify({
+                ...session,
+                crypto: { ...session.crypto, algorithm: 'aes-256-cbc' },
+            })}\n`,
+        )
+        await expect(readSessionKeystoreFile(path)).rejects.toBeInstanceOf(Error)
+        await expect(readSessionKeystoreFile(path)).rejects.toMatchObject({
+            name: 'Error',
+            message: `Unsupported session keystore format at ${path}`,
+        })
+    })
+})
+
+test('readSessionKeystoreFile rejects an invalid encryptionDevice', async () => {
+    await withTempDir(async (dir) => {
+        const session = await createSessionKeystore({
+            password: 'pw',
+            sessionPrivateKey: generatePrivateKey(),
+            network: {
+                env: 'dev',
+                relayerUrl: 'http://127.0.0.1:8787',
+                rpcUrl: 'http://127.0.0.1:8545',
+                chainId: 31337,
+            },
+            delegated: ACCOUNT,
+            name: 'default',
+        })
+
+        const path = join(dir, 'invalid-encryption-device.json')
+        await writeFile(
+            path,
+            `${JSON.stringify({
+                ...session,
+                kind: 'agent',
+                secrets: {
+                    ...session.secrets,
+                    encryptionDevice: 'not-encrypted',
+                },
+            })}\n`,
+        )
+        await expect(readSessionKeystoreFile(path)).rejects.toBeInstanceOf(Error)
+        await expect(readSessionKeystoreFile(path)).rejects.toMatchObject({
+            name: 'Error',
+            message: `Unsupported session keystore format at ${path}`,
+        })
+    })
+})
+
+test('readPendingQuoteLimit rejects a non-integer period', async () => {
+    await withTempDir(async (dir) => {
+        const keystorePath = join(dir, 'default.keystore.json')
+        const path = `${keystorePath}.pending-quote-limit.json`
+        await writeFile(
+            path,
+            `${JSON.stringify({
+                ...validPendingQuote(),
+                keyExpiry: {
+                    previous: '1',
+                    installed: '2',
+                    keyType: 0,
+                    isSuperAdmin: false,
+                    publicKey: KEY_HASH,
+                    limits: [{ token: ACCOUNT, period: 1.5, limit: '1' }],
+                },
+            })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(Error)
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toMatchObject({
+            name: 'Error',
+            message: `Pending quote limit at ${path} has an invalid key limit.`,
+        })
+    })
+})
+
+test('readPendingQuoteLimit rejects a wrong-length call-grant selector', async () => {
+    await withTempDir(async (dir) => {
+        const keystorePath = join(dir, 'default.keystore.json')
+        const path = `${keystorePath}.pending-quote-limit.json`
+        await writeFile(
+            path,
+            `${JSON.stringify({
+                ...validPendingQuote(),
+                callGrants: [{ target: ACCOUNT, selector: '0xa9059c' }],
+            })}\n`,
+        )
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toBeInstanceOf(Error)
+        await expect(readPendingQuoteLimit(keystorePath)).rejects.toMatchObject({
+            name: 'Error',
+            message: `Pending quote limit at ${path} has an invalid call grant.`,
+        })
+    })
+})
