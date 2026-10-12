@@ -800,9 +800,9 @@ export class SignerDO extends DurableObject<Env> {
         }
 
         const row = rows[0]
-        // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+        // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
         const txHash = row.tx_hash as string
-        // SAFETY: pending_transactions.sent_at is INTEGER; performSend writes Date.now().
+        // SAFETY: pending_transactions.sent_at is INTEGER; performSend writes Date.now(), and tryReplaceStaleTransaction updates it.
         const sentAt = row.sent_at as number
         // SAFETY: pending_transactions.status is TEXT; performSend writes 'pending' and later paths update it.
         let status = row.status as string
@@ -833,7 +833,7 @@ export class SignerDO extends DurableObject<Env> {
                 // Return full receipt details
                 return {
                     txId,
-                    // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+                    // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it. Not checked here; may be ''.
                     txHash: txHash as Hex,
                     chainId,
                     status: status === 'confirmed' ? 'confirmed' : 'failed',
@@ -856,7 +856,7 @@ export class SignerDO extends DurableObject<Env> {
         // No receipt found - return persisted terminal status when available.
         return {
             txId,
-            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+            // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it. May be '' when no broadcast has happened yet.
             txHash: txHash as Hex,
             chainId,
             status: fallbackStatus,
@@ -1305,7 +1305,7 @@ export class SignerDO extends DurableObject<Env> {
             )
         }
 
-        // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+        // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
         let txHash = initialRow.tx_hash as string
 
         if (!txHash) {
@@ -1333,11 +1333,11 @@ export class SignerDO extends DurableObject<Env> {
             .toArray()[0]
 
         const recoveredRow = finalRow ?? initialRow
-        // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+        // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
         const recoveredTxHash = (recoveredRow.tx_hash as string) || txHash
 
         return {
-            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+            // SAFETY: recoveredTxHash is pending_transactions.tx_hash or the || txHash fallback after waitForTxHash found a non-empty hash.
             txHash: recoveredTxHash as Hex,
             // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
             nonce: recoveredRow.nonce as number,
@@ -1355,7 +1355,7 @@ export class SignerDO extends DurableObject<Env> {
                 .exec('SELECT tx_hash FROM pending_transactions WHERE id = ?', txId)
                 .toArray()[0]
 
-            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+            // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
             const txHash = (row?.tx_hash as string | undefined) ?? ''
 
             if (txHash) {
@@ -1401,7 +1401,7 @@ export class SignerDO extends DurableObject<Env> {
             .toArray()[0]
 
         return {
-            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+            // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
             txHash: (row.tx_hash as string) ?? '',
             // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
             nonce: row.nonce as number,
@@ -1893,7 +1893,7 @@ export class SignerDO extends DurableObject<Env> {
                 .toArray()
 
             if (rows.length === 0) return
-            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+            // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
             const activeTxHash = (rows[0].tx_hash as string) ?? ''
 
             if (!shouldApplyFinalization({ activeTxHash, eventTxHash: txHash, status })) {
@@ -2085,7 +2085,7 @@ export class SignerDO extends DurableObject<Env> {
                 try {
                     // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
                     const nonce = claimed.nonce as number
-                    // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+                    // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
                     const priorHash = (claimed.tx_hash as string | undefined) ?? ''
 
                     const replacementHash = await this.signAndBroadcastPrepared(
@@ -2121,7 +2121,7 @@ export class SignerDO extends DurableObject<Env> {
                     if (paidUpgrade && priorHash) {
                         await this.trackPaidUpgradeReplacement({
                             chainId,
-                            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+                            // SAFETY: pending_transactions.tx_hash may be ''; this cast is behind && priorHash, so the cell is a non-empty hash from performSend or a replacement.
                             priorHash: priorHash as Hex,
                             txHash: replacementHash,
                             nonce,
@@ -2197,7 +2197,7 @@ export class SignerDO extends DurableObject<Env> {
         let stuck = 0
 
         for (const tx of stale) {
-            // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+            // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. Not checked here; may be ''.
             const receipt = await this.getTransactionReceipt(tx.tx_hash as string, chainId)
 
             if (receipt) {
@@ -2254,7 +2254,7 @@ export class SignerDO extends DurableObject<Env> {
                 const queued = await this.enqueueMonitorJob(
                     // SAFETY: pending_transactions.id is TEXT written by performSend from RelayTransaction.id.
                     tx.id as string,
-                    // SAFETY: pending_transactions.tx_hash is TEXT; performSend writes the viem transaction hash.
+                    // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; this SELECT filters tx_hash != '', so the cell is the viem hash performSend or tryReplaceStaleTransaction wrote.
                     tx.tx_hash as Hex,
                     signerName,
                     chainId,

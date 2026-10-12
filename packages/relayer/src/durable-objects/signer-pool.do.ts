@@ -871,7 +871,7 @@ export class SignerPoolDO extends DurableObject<Env> {
             .toArray()
 
         for (const row of pending) {
-            // SAFETY: paid_upgrade_pending_receipt.tx_hash is TEXT; enqueue/track-replacement write a parseTxHash hex.
+            // SAFETY: paid_upgrade_pending_receipt.tx_hash is TEXT; enqueue-receipt, track-replacement, and settle write a parseTxHash hex.
             const found = await this.lookupPaidUpgradeReceipt(row.chain_id, row.tx_hash as Hex)
 
             if (found === 'wait' || found === 'mempool') continue
@@ -909,11 +909,11 @@ export class SignerPoolDO extends DurableObject<Env> {
                 continue
             }
 
-            // SAFETY: paid_upgrade_pending_receipt.tx_hash is TEXT; enqueue/track-replacement write a parseTxHash hex.
             const tracked = await this.trackSignerReplacement(
                 row.chain_id,
                 row.signer_name,
                 row.nonce,
+                // SAFETY: paid_upgrade_pending_receipt.tx_hash is TEXT; enqueue-receipt, track-replacement, and settle write a parseTxHash hex.
                 row.tx_hash as Hex,
             )
 
