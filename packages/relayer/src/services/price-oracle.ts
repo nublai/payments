@@ -10,6 +10,8 @@ import {
     type AssetUid,
     type PriceOracleConfig,
 } from '../types/price-oracle'
+import { z } from 'zod'
+
 import { logger, getErrorMessage } from '../lib/logger'
 
 type UsdPrice = bigint // scaled by 1e18
@@ -146,14 +148,18 @@ function parseDecimalToScaledBigInt(value: string, scale: number = 18): bigint |
 }
 
 function normalizeUsdPrice(value: unknown): UsdPrice | null {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        const parsed = parseDecimalToScaledBigInt(value.toString(), 18)
+    const asNumber = z.number().refine(Number.isFinite).safeParse(value)
+
+    if (asNumber.success) {
+        const parsed = parseDecimalToScaledBigInt(asNumber.data.toString(), 18)
 
         return parsed && parsed > 0n ? parsed : null
     }
 
-    if (typeof value === 'string') {
-        const parsed = parseDecimalToScaledBigInt(value, 18)
+    const asString = z.string().safeParse(value)
+
+    if (asString.success) {
+        const parsed = parseDecimalToScaledBigInt(asString.data, 18)
 
         return parsed && parsed > 0n ? parsed : null
     }
@@ -264,8 +270,8 @@ export async function updatePrices(
             const coinId = assetMapping[assetUid]
             const entry = response[String(coinId)]
 
-            const usdValue =
-                typeof entry === 'object' && entry !== null ? entry.usd : undefined
+            const quote = z.object({ usd: z.unknown().optional() }).passthrough().safeParse(entry)
+            const usdValue = quote.success ? quote.data.usd : undefined
 
             const price = normalizeUsdPrice(usdValue)
 

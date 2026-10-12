@@ -1,5 +1,6 @@
 import { getAddress, isAddress, type Address } from 'viem'
 import { PrivyClient } from '@privy-io/server-auth'
+import { z } from 'zod'
 
 import type { Env } from '../../types/env'
 import { authProviderFromIdentity, type IdentityProvider, type IdentityResult } from '../identity-provider'
@@ -69,21 +70,38 @@ function classifyPrivyError(error: unknown): PrivyErrorClass {
 
 const UPGRADE_METHODS = new Set(['wallet_prepareUpgradeAccount', 'wallet_upgradeAccount'])
 
+const upgradeParamsSchema = z
+    .object({
+        address: z.unknown().optional(),
+        context: z.unknown().optional(),
+    })
+    .passthrough()
+
+const upgradeContextSchema = z
+    .object({
+        address: z.string(),
+    })
+    .passthrough()
+
 function upgradeAccountAddress(method: string, params: unknown): Address | 'invalid' | undefined {
     const first = Array.isArray(params) ? params[0] : params
+    const record = upgradeParamsSchema.safeParse(first)
 
-    if (!first || typeof first !== 'object') return 'invalid'
-    // SAFETY: first is a non-null object; only address / context.address are read.
-    const record = first as { address?: unknown; context?: unknown }
+    if (!record.success) return 'invalid'
 
-    const raw =
-        method === 'wallet_upgradeAccount'
-            ? (record.context as { address?: unknown } | undefined)?.address
-            : record.address
+    if (method === 'wallet_upgradeAccount') {
+        const context = upgradeContextSchema.safeParse(record.data.context)
 
-    if (typeof raw !== 'string' || !isAddress(raw)) return 'invalid'
+        if (!context.success || !isAddress(context.data.address)) return 'invalid'
 
-    return getAddress(raw)
+        return getAddress(context.data.address)
+    }
+
+    const address = z.string().safeParse(record.data.address)
+
+    if (!address.success || !isAddress(address.data)) return 'invalid'
+
+    return getAddress(address.data)
 }
 
 async function upgradeAccountsFromRequest(
@@ -98,14 +116,18 @@ async function upgradeAccountsFromRequest(
     const accounts: Address[] = []
     let invalid = false
 
-    for (const item of items) {
-        if (!item || typeof item !== 'object') continue
-        // SAFETY: item is a non-null object; only method is read, then checked as a string.
-        const method = (item as { method?: unknown }).method
+    const rpcItemSchema = z
+        .object({
+            method: z.string(),
+            params: z.unknown().optional(),
+        })
+        .passthrough()
 
-        if (typeof method !== 'string' || !UPGRADE_METHODS.has(method)) continue
-        // SAFETY: item is a non-null object; only params is read, then parsed as RPC params.
-        const address = upgradeAccountAddress(method, (item as { params?: unknown }).params)
+    for (const item of items) {
+        const parsed = rpcItemSchema.safeParse(item)
+
+        if (!parsed.success || !UPGRADE_METHODS.has(parsed.data.method)) continue
+        const address = upgradeAccountAddress(parsed.data.method, parsed.data.params)
 
         if (address === 'invalid' || address === undefined) {
             invalid = true
@@ -128,9 +150,18 @@ function linkedWalletMatches(
     const target = getAddress(account)
     const candidates: string[] = []
 
+    const linkedWalletSchema = z
+        .object({
+            type: z.string().optional(),
+            address: z.string(),
+        })
+        .passthrough()
+
     for (const linked of user.linkedAccounts ?? []) {
-        if (linked.type === 'wallet' && typeof linked.address === 'string') {
-            candidates.push(linked.address)
+        const parsed = linkedWalletSchema.safeParse(linked)
+
+        if (parsed.success && parsed.data.type === 'wallet') {
+            candidates.push(parsed.data.address)
         }
     }
 

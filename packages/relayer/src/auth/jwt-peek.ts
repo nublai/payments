@@ -1,11 +1,21 @@
+import { z } from 'zod'
+
+const jwtIssuerSchema = z
+    .object({
+        iss: z.string(),
+    })
+    .passthrough()
+
 /**
  * Unverified JWT payload peek used only to route a bearer token to Privy or
  * OIDC. `jwtVerify` is the check that accepts a token.
  */
 export function peekJwtIssuer(token: string): string | undefined {
-    const payload = peekJwtPayload(token)
+    const parsed = jwtIssuerSchema.safeParse(peekJwtPayload(token))
 
-    return payload && typeof payload.iss === 'string' ? payload.iss : undefined
+    if (!parsed.success) return undefined
+
+    return parsed.data.iss
 }
 
 export function peekJwtHasAudience(token: string): boolean {

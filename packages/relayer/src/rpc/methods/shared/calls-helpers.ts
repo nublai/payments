@@ -1,4 +1,5 @@
 import { isAddress, zeroAddress, keccak256, toBytes, fromHex, type Address, type Hex } from 'viem'
+import { z } from 'zod'
 import { hashTypedData } from 'viem/utils'
 import type { RelayerConfig, Env } from '../../../types/env'
 import type { IntentStruct } from '../../../types/pool'
@@ -162,7 +163,9 @@ export async function validateQuote(
     const currentTime = Math.floor(Date.now() / 1000)
 
     // Boundary policy: equality is expired. A quote TTL at the current second is no longer valid.
-    if (typeof signedQuotes.ttl !== 'number' || signedQuotes.ttl <= currentTime) {
+    const ttl = z.number().safeParse(signedQuotes.ttl)
+
+    if (!ttl.success || ttl.data <= currentTime) {
         return new RpcError(
             QUOTE_EXPIRED,
             `Quote expired at ${signedQuotes.ttl}, current time is ${currentTime}`,

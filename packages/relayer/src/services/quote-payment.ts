@@ -1,4 +1,5 @@
 import { zeroAddress, type Address } from 'viem'
+import { z } from 'zod'
 
 import { INVALID_PARAMS, RpcError } from '../rpc/errors'
 import { convertToFeeToken } from './fees'
@@ -18,24 +19,30 @@ export interface QuotePaymentParts {
 }
 
 function coerceNonNegative(value: number | string | bigint | undefined, label: string): bigint {
-    if (typeof value === 'bigint') {
-        if (value < 0n) {
+    const asBigint = z.bigint().safeParse(value)
+
+    if (asBigint.success) {
+        if (asBigint.data < 0n) {
             throw new RpcError(INVALID_PARAMS, `Invalid ${label}`)
         }
 
-        return value
+        return asBigint.data
     }
 
-    if (typeof value === 'number') {
-        if (!Number.isSafeInteger(value) || value < 0) {
+    const asNumber = z.number().refine(Number.isSafeInteger).safeParse(value)
+
+    if (asNumber.success) {
+        if (asNumber.data < 0) {
             throw new RpcError(INVALID_PARAMS, `Invalid ${label}`)
         }
 
-        return BigInt(value)
+        return BigInt(asNumber.data)
     }
 
-    if (typeof value === 'string' && /^(0x[0-9a-fA-F]+|[0-9]+)$/.test(value)) {
-        const parsed = BigInt(value)
+    const asString = z.string().regex(/^(0x[0-9a-fA-F]+|[0-9]+)$/).safeParse(value)
+
+    if (asString.success) {
+        const parsed = BigInt(asString.data)
 
         if (parsed < 0n) {
             throw new RpcError(INVALID_PARAMS, `Invalid ${label}`)
@@ -68,18 +75,18 @@ export function recomputeQuotePaymentAmount(parts: QuotePaymentParts): bigint {
 
     const decimals = parts.paymentTokenDecimals
 
-    if (
-        typeof decimals !== 'number' ||
-        !Number.isInteger(decimals) ||
-        decimals < 0 ||
-        decimals > 36
-    ) {
+    const decimalsParsed = z
+        .number()
+        .refine((value) => Number.isInteger(value) && value >= 0 && value <= 36)
+        .safeParse(decimals)
+
+    if (!decimalsParsed.success) {
         throw new RpcError(INVALID_PARAMS, 'Quote paymentTokenDecimals is invalid')
     }
 
     return convertToFeeToken(
         nativeAmount,
         coerceNonNegative(parts.nativeRate, 'nativeRate'),
-        decimals,
+        decimalsParsed.data,
     )
 }

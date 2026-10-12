@@ -16,6 +16,7 @@
 
 import { DurableObject } from 'cloudflare:workers'
 import { createPublicClient, http, type Address, type Hex } from 'viem'
+import { z } from 'zod'
 
 import type { Env } from '../types/env'
 import type {
@@ -49,9 +50,11 @@ import {
 } from '../rpc/methods/shared/paid-upgrade'
 
 function parseTxHash(value: unknown): Hex | undefined {
-    if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return undefined
+    const parsed = z.string().regex(/^0x[0-9a-fA-F]{64}$/).safeParse(value)
 
-    return value as Hex
+    if (!parsed.success) return undefined
+
+    return parsed.data as Hex
 }
 
 function isTransactionMissing(
@@ -64,8 +67,10 @@ function isTransactionMissing(
 }
 
 function parseGasUnits(value: unknown): number | undefined {
-    if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) return undefined
-    const parsed = Number(value)
+    const parsedText = z.string().regex(/^[0-9]+$/).safeParse(value)
+
+    if (!parsedText.success) return undefined
+    const parsed = Number(parsedText.data)
 
     if (!Number.isSafeInteger(parsed) || parsed < 0) return undefined
 
@@ -284,19 +289,23 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         const paidUpgrade = body.kind === 'paid-upgrade'
 
-        if (
-            (body.kind !== 'prepare' && body.kind !== 'upgrade' && !paidUpgrade) ||
-            typeof body.chainId !== 'number' ||
-            !Number.isInteger(body.chainId) ||
-            typeof body.account !== 'string' ||
-            typeof body.ip !== 'string' ||
-            (body.identity !== undefined && typeof body.identity !== 'string') ||
-            (body.reservedAt !== undefined && !Number.isInteger(body.reservedAt)) ||
-            !knownAction
-        ) {
+        const rateLimitBody = z
+            .object({
+                kind: z.enum(['prepare', 'upgrade', 'paid-upgrade']),
+                chainId: z.number().refine(Number.isInteger),
+                account: z.string(),
+                ip: z.string(),
+                identity: z.string().optional(),
+                reservedAt: z.number().refine(Number.isInteger).optional(),
+            })
+            .passthrough()
+            .safeParse(body)
+
+        if (!rateLimitBody.success || !knownAction) {
             return { allowed: false }
         }
 
+        const parsedBody = rateLimitBody.data
         const action = body.action ?? 'commit'
         const nowSeconds = Math.floor(Date.now() / 1000)
         let globalLimit = 0
@@ -311,18 +320,18 @@ export class SignerPoolDO extends DurableObject<Env> {
 
         const buckets = paidUpgrade
             ? paidUpgradeRateBuckets({
-                  chainId: body.chainId,
-                  account: body.account,
-                  ip: body.ip,
+                  chainId: parsedBody.chainId,
+                  account: parsedBody.account,
+                  ip: parsedBody.ip,
                   globalLimit,
                   includeGlobal: action === 'reserve' || action === 'release',
               })
             : upgradeRateBuckets({
-                  kind: body.kind as UpgradeRateKind,
-                  chainId: body.chainId,
-                  account: body.account,
-                  ip: body.ip as string,
-                  identity: body.identity,
+                  kind: parsedBody.kind === 'prepare' ? 'prepare' : 'upgrade',
+                  chainId: parsedBody.chainId,
+                  account: parsedBody.account,
+                  ip: parsedBody.ip,
+                  identity: parsedBody.identity,
               })
 
         const sql = this.ensureUpgradeRateSchema()
@@ -426,7 +435,9 @@ export class SignerPoolDO extends DurableObject<Env> {
         found?: boolean
         nonceConsumed?: boolean
     }): PaidUpgradeGasResult {
-        if (typeof body.chainId !== 'number' || !Number.isInteger(body.chainId)) {
+        const chainId = z.number().refine(Number.isInteger).safeParse(body.chainId)
+
+        if (!chainId.success) {
             return { allowed: false }
         }
 
@@ -454,7 +465,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                             (tx_hash, chain_id, status, enqueued_at, nonce, signer_name)
                          VALUES (?, ?, 'pending', ?, ?, ?)`,
                         txHash,
-                        body.chainId,
+                        chainId.data,
                         Math.floor(Date.now() / 1000),
                         this.receiptNonce(body.nonce),
                         this.receiptSigner(body.signerName),
@@ -497,7 +508,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                             (tx_hash, chain_id, status, enqueued_at, nonce, signer_name)
                          VALUES (?, ?, 'pending', ?, ?, ?)`,
                         priorHash,
-                        body.chainId,
+                        chainId.data,
                         now,
                         body.nonce,
                         signerName,
@@ -510,7 +521,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                             (tx_hash, chain_id, status, enqueued_at, nonce, signer_name)
                          VALUES (?, ?, 'pending', ?, ?, ?)`,
                         txHash,
-                        body.chainId,
+                        chainId.data,
                         now,
                         body.nonce,
                         signerName,
@@ -538,7 +549,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     hold: Number(PAID_UPGRADE_GAS_HOLD),
                     failure: body.failure === true,
                     txHash,
-                    chainId: body.chainId,
+                    chainId: chainId.data,
                 })
             }
 
@@ -569,7 +580,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 hold,
                 failure: body.failure === true,
                 txHash,
-                chainId: body.chainId,
+                chainId: chainId.data,
             })
         }
 
@@ -783,14 +794,21 @@ export class SignerPoolDO extends DurableObject<Env> {
     }
 
     private receiptNonce(value: unknown): number | null {
-        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
+        const parsed = z
+            .number()
+            .refine((entry) => Number.isInteger(entry) && entry >= 0)
+            .safeParse(value)
 
-        return value
+        if (!parsed.success) return null
+
+        return parsed.data
     }
 
     private receiptSigner(value: unknown): string | null {
-        if (typeof value !== 'string') return null
-        const trimmed = value.trim()
+        const parsed = z.string().safeParse(value)
+
+        if (!parsed.success) return null
+        const trimmed = parsed.data.trim()
 
         return trimmed.length > 0 ? trimmed : null
     }

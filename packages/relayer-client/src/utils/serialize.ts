@@ -3,6 +3,7 @@
  */
 
 import type { Address, Hex } from 'viem'
+import { z } from 'zod'
 import type { Intent, Call } from '../types'
 import type { PrepareCallsContext } from '../actions/prepareCalls'
 
@@ -80,23 +81,21 @@ export function serializeContext(context: PrepareCallsContext): string {
 export function deserializeContext(serialized: string): PrepareCallsContext {
     const parsed: unknown = JSON.parse(serialized)
 
-    if (parsed === null || parsed === undefined || typeof parsed !== 'object' || !('quote' in parsed)) {
+    const contextSchema = z
+        .object({
+            quote: z
+                .object({
+                    quotes: z.array(z.unknown()),
+                })
+                .passthrough(),
+        })
+        .passthrough()
+
+    if (!contextSchema.safeParse(parsed).success) {
         throw new Error('Invalid PrepareCallsContext: expected { quote: { quotes: [...] } }')
     }
 
-    const quote = parsed.quote
-
-    if (
-        quote === null ||
-        quote === undefined ||
-        typeof quote !== 'object' ||
-        !('quotes' in quote) ||
-        !Array.isArray(quote.quotes)
-    ) {
-        throw new Error('Invalid PrepareCallsContext: expected { quote: { quotes: [...] } }')
-    }
-
-    // SAFETY: quote.quotes is an array; PrepareCallsContext requires SignedQuotes and the caller only needs that shape to pass the context back to sendPreparedCalls.
+    // SAFETY: schema accepted the JSON object; return the original so extras and key order stay.
     return parsed as PrepareCallsContext
 }
 

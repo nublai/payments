@@ -1,4 +1,5 @@
 import { decodeAbiParameters, isAddress, type Address, type Hex } from 'viem'
+import { z } from 'zod'
 
 /**
  * `session_key` on prepareCalls is `encodeAbiParameters([{ type: 'address' }], [sessionAddress])`.
@@ -9,13 +10,14 @@ export function sessionAddressFromEncodedKey(sessionKey: string | undefined): Ad
 
     try {
         const [decoded] = decodeAbiParameters([{ type: 'address' }], sessionKey as Hex)
+        const decodedAddress = z.string().safeParse(decoded)
 
-        if (typeof decoded === 'string' && isAddress(decoded)) {
-            return decoded
+        if (!decodedAddress.success || !isAddress(decodedAddress.data)) {
+            return undefined
         }
+
+        return decodedAddress.data
     } catch {
         return undefined
     }
-
-    return undefined
 }

@@ -1,8 +1,48 @@
 import { isAddress, type Address } from 'viem'
+import { z } from 'zod'
 
 import { unwrapParams } from '../../lib/rpc-utils'
 import { isLocalDevContext } from '../../config/runtime-context'
 import { parseAuthProtectedMethods } from '../policy'
+
+const integerChainIdSchema = z.number().refine((value) => Number.isInteger(value) && value > 0)
+
+const rpcItemSchema = z
+    .object({
+        method: z.string(),
+        params: z.unknown().optional(),
+    })
+    .passthrough()
+
+const sendContextSchema = z
+    .object({
+        quote: z
+            .object({
+                quotes: z.array(z.unknown()),
+            })
+            .passthrough(),
+    })
+    .passthrough()
+
+const quoteItemSchema = z
+    .object({
+        intent: z.unknown().optional(),
+        chainId: z.unknown().optional(),
+    })
+    .passthrough()
+
+const intentEoaSchema = z
+    .object({
+        eoa: z.unknown().optional(),
+    })
+    .passthrough()
+
+const upgradeSourceSchema = z
+    .object({
+        address: z.unknown().optional(),
+        chainId: z.unknown().optional(),
+    })
+    .passthrough()
 
 const BOUND_METHODS = new Set([
     'wallet_prepareCalls',
@@ -63,12 +103,14 @@ export type SignerDecision =
     | { ok: false; message: string; tryOnChain: boolean }
 
 export function parseChainId(value: unknown): number | undefined {
-    if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
-        return value
-    }
+    const asNumber = integerChainIdSchema.safeParse(value)
 
-    if (typeof value !== 'string') return undefined
-    const trimmed = value.trim()
+    if (asNumber.success) return asNumber.data
+
+    const asString = z.string().safeParse(value)
+
+    if (!asString.success) return undefined
+    const trimmed = asString.data.trim()
     const hex = /^0x[0-9a-fA-F]+$/.test(trimmed)
     const dec = /^[0-9]+$/.test(trimmed)
 
@@ -182,13 +224,11 @@ export async function authorizeErc8128Signer(args: {
 }
 
 function asAddress(value: unknown): Address | undefined {
-    if (typeof value === 'string' && isAddress(value)) return value
+    const parsed = z.string().safeParse(value)
+
+    if (parsed.success && isAddress(parsed.data)) return parsed.data
 
     return undefined
-}
-
-function isNonNullObject(value: unknown): value is object {
-    return typeof value === 'object' && value !== null
 }
 
 type RpcBindingParams = {
@@ -200,31 +240,28 @@ type RpcBindingParams = {
 }
 
 function accountsFromSend(params: RpcBindingParams | undefined): BoundAccount[] | null {
-    const context = params?.context
+    const context = sendContextSchema.safeParse(params?.context)
 
-    if (!isNonNullObject(context) || !('quote' in context)) return null
-    const quote = context.quote
-
-    if (!isNonNullObject(quote) || !('quotes' in quote)) return null
-
-    if (!Array.isArray(quote.quotes) || quote.quotes.length === 0) return null
+    if (!context.success || context.data.quote.quotes.length === 0) return null
 
     const accounts: BoundAccount[] = []
 
-    for (const item of quote.quotes) {
-        if (!isNonNullObject(item)) return null
+    for (const item of context.data.quote.quotes) {
+        const quote = quoteItemSchema.safeParse(item)
 
-        const intent = 'intent' in item ? item.intent : undefined
+        if (!quote.success) return null
 
-        const eoa =
-            isNonNullObject(intent) && 'eoa' in intent ? asAddress(intent.eoa) : undefined
+        const intent = intentEoaSchema.safeParse(quote.data.intent)
+        const eoa = intent.success ? asAddress(intent.data.eoa) : undefined
 
         // Ignore quote.authSigner. It is client-controlled until the HMAC, and even then
         // it is only a hint. Authorization uses the EOA or an on-chain key.
         if (!eoa) return null
         accounts.push({
             eoa,
-            chainId: 'chainId' in item ? parseChainId(item.chainId) : undefined,
+            chainId: Object.hasOwn(quote.data, 'chainId')
+                ? parseChainId(quote.data.chainId)
+                : undefined,
         })
     }
 
@@ -244,14 +281,23 @@ function accountsFromUpgrade(
     method: string,
     params: RpcBindingParams | undefined,
 ): BoundAccount[] | null {
-    const source = method === 'wallet_upgradeAccount' ? params?.context : params
+    const source = upgradeSourceSchema.safeParse(
+        method === 'wallet_upgradeAccount' ? params?.context : params,
+    )
 
-    if (!isNonNullObject(source)) return null
-    const eoa = 'address' in source ? asAddress(source.address) : undefined
+    if (!source.success) return null
+    const eoa = Object.hasOwn(source.data, 'address') ? asAddress(source.data.address) : undefined
 
     if (!eoa) return null
 
-    return [{ eoa, chainId: 'chainId' in source ? parseChainId(source.chainId) : undefined }]
+    return [
+        {
+            eoa,
+            chainId: Object.hasOwn(source.data, 'chainId')
+                ? parseChainId(source.data.chainId)
+                : undefined,
+        },
+    ]
 }
 
 /**
@@ -268,27 +314,25 @@ export function bindingFromRpcBody(
     let sawBindable = false
 
     for (const item of items) {
-        if (!isNonNullObject(item)) continue
-        // SAFETY: item is a non-null object; only method and params are read, then parsed.
-        const record = item as { method?: unknown; params?: unknown }
+        const record = rpcItemSchema.safeParse(item)
 
-        if (typeof record.method !== 'string') continue
+        if (!record.success) continue
 
-        if (protectedMethods.has(record.method) && !BOUND_METHODS.has(record.method)) {
-            otherProtectedMethods.push(record.method)
+        if (protectedMethods.has(record.data.method) && !BOUND_METHODS.has(record.data.method)) {
+            otherProtectedMethods.push(record.data.method)
         }
 
-        if (!BOUND_METHODS.has(record.method)) continue
+        if (!BOUND_METHODS.has(record.data.method)) continue
         sawBindable = true
 
-        const params = unwrapParams<RpcBindingParams>(record.params)
+        const params = unwrapParams<RpcBindingParams>(record.data.params)
 
         const extracted =
-            record.method === 'wallet_prepareCalls'
+            record.data.method === 'wallet_prepareCalls'
                 ? accountsFromPrepare(params)
-                : record.method === 'wallet_sendPreparedCalls'
+                : record.data.method === 'wallet_sendPreparedCalls'
                   ? accountsFromSend(params)
-                  : accountsFromUpgrade(record.method, params)
+                  : accountsFromUpgrade(record.data.method, params)
 
         if (!extracted) return { accounts: [], otherProtectedMethods }
         accounts.push(...extracted)

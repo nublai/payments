@@ -14,6 +14,7 @@ import {
 } from 'viem'
 import { recoverTypedDataAddress } from 'viem/utils'
 import { orchestratorAbi } from '@nubl/contracts/abis'
+import { z } from 'zod'
 
 import type { Env } from '../../../types/env'
 import { getChainConfig as getChainAssetsConfig } from '../../../config/chains'
@@ -687,10 +688,11 @@ async function postPaidUpgradeRateLimit(
     }
 
     const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
+    const reservedAt = z.number().safeParse(result.reservedAt)
 
     return {
         allowed: result.allowed === true,
-        reservedAt: typeof result.reservedAt === 'number' ? result.reservedAt : undefined,
+        reservedAt: reservedAt.success ? reservedAt.data : undefined,
     }
 }
 
@@ -799,13 +801,21 @@ async function postPaidUpgradeGas(
     }
 
     const pending = Array.isArray(result.pending)
-        ? result.pending.filter((hash): hash is Hex => typeof hash === 'string')
+        ? result.pending.flatMap((hash) => {
+              const parsed = z.string().safeParse(hash)
+
+              // SAFETY: pending hashes that pass z.string() are the same hex strings the DO stored.
+              return parsed.success ? [parsed.data as Hex] : []
+          })
         : undefined
+
+    const gas = z.number().safeParse(result.gas)
+    const failures = z.number().safeParse(result.failures)
 
     return {
         allowed: result.allowed === true,
-        gas: typeof result.gas === 'number' ? result.gas : undefined,
-        failures: typeof result.failures === 'number' ? result.failures : undefined,
+        gas: gas.success ? gas.data : undefined,
+        failures: failures.success ? failures.data : undefined,
         overBudget: result.overBudget === true,
         pending,
     }

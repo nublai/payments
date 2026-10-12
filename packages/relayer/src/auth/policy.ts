@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export const DEFAULT_AUTH_PROTECTED_METHODS = ['wallet_sendPreparedCalls'] as const
 
 /**
@@ -13,17 +15,21 @@ export const ALWAYS_AUTH_PROTECTED_METHODS = [
 
 export type JsonRpcId = string | number | null
 
-interface JsonRpcLike {
-    id?: JsonRpcId | unknown
-    method?: unknown
-}
+const jsonRpcIdSchema = z.union([z.string(), z.number(), z.null()])
+
+const rpcPeekSchema = z
+    .object({
+        method: z.string(),
+        id: z.unknown().optional(),
+    })
+    .passthrough()
 
 function coerceJsonRpcId(id: unknown): JsonRpcId {
-    if (id === null || typeof id === 'string' || typeof id === 'number') {
-        return id
-    }
+    const parsed = jsonRpcIdSchema.safeParse(id)
 
-    return null
+    if (!parsed.success) return null
+
+    return parsed.data
 }
 
 export function parseAuthProtectedMethods(value: string | undefined): Set<string> {
@@ -60,26 +66,23 @@ export function extractAuthRequirement(
     protectedMethods: Set<string>,
 ): AuthRequirement {
     if (Array.isArray(body)) {
-        const requiresAuth = body.some(
-            (item) =>
-                !!item &&
-                typeof item === 'object' &&
-                typeof (item as JsonRpcLike).method === 'string' &&
-                protectedMethods.has((item as JsonRpcLike).method as string),
-        )
+        const requiresAuth = body.some((item) => {
+            const parsed = rpcPeekSchema.safeParse(item)
+
+            return parsed.success && protectedMethods.has(parsed.data.method)
+        })
 
         return { requiresAuth, id: null }
     }
 
-    if (!body || typeof body !== 'object') {
+    const parsed = rpcPeekSchema.safeParse(body)
+
+    if (!parsed.success) {
         return { requiresAuth: false, id: null }
     }
 
-    const req = body as JsonRpcLike
-    const method = typeof req.method === 'string' ? req.method : undefined
-
     return {
-        requiresAuth: !!method && protectedMethods.has(method),
-        id: coerceJsonRpcId(req.id),
+        requiresAuth: protectedMethods.has(parsed.data.method),
+        id: coerceJsonRpcId(parsed.data.id),
     }
 }

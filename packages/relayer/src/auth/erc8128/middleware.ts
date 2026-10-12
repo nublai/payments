@@ -1,14 +1,17 @@
 import type { MiddlewareHandler } from 'hono'
+import { z } from 'zod'
 
 import type { Env } from '../../types/env'
 import { createHttpAuthNonceStore } from './nonce-store'
 import { getErc8128Policy } from './policy'
 import { verifyErc8128Request, type Erc8128VerifyFailure, type NonceStore } from './verify'
 
-interface JsonRpcLike {
-    id?: unknown
-    method?: unknown
-}
+const rpcPeekSchema = z
+    .object({
+        method: z.string(),
+        id: z.unknown().optional(),
+    })
+    .passthrough()
 
 interface MiddlewareDeps {
     verify?: typeof verifyErc8128Request
@@ -23,27 +26,24 @@ function extractAuthRequirement(
     protectedMethods: Set<string>,
 ): AuthRequirement {
     if (Array.isArray(body)) {
-        const requiresAuth = body.some(
-            (item) =>
-                !!item &&
-                typeof item === 'object' &&
-                typeof (item as JsonRpcLike).method === 'string' &&
-                protectedMethods.has((item as JsonRpcLike).method as string),
-        )
+        const requiresAuth = body.some((item) => {
+            const parsed = rpcPeekSchema.safeParse(item)
+
+            return parsed.success && protectedMethods.has(parsed.data.method)
+        })
 
         return { requiresAuth, id: null }
     }
 
-    if (!body || typeof body !== 'object') {
+    const parsed = rpcPeekSchema.safeParse(body)
+
+    if (!parsed.success) {
         return { requiresAuth: false, id: null }
     }
 
-    const req = body as JsonRpcLike
-    const method = typeof req.method === 'string' ? req.method : undefined
-
     return {
-        requiresAuth: !!method && protectedMethods.has(method),
-        id: req.id ?? null,
+        requiresAuth: protectedMethods.has(parsed.data.method),
+        id: parsed.data.id ?? null,
     }
 }
 

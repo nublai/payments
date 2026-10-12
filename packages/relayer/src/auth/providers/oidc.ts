@@ -6,6 +6,7 @@ import {
     jwtVerify,
     type JWTPayload,
 } from 'jose'
+import { z } from 'zod'
 
 import type { Env } from '../../types/env'
 import { peekJwtHasAudience, peekJwtIssuer } from '../jwt-peek'
@@ -90,10 +91,14 @@ function audienceMatches(payload: JWTPayload, clientId: string): boolean {
         return payload.client_id === clientId
     }
 
-    if (typeof audience === 'string') return audience === clientId
+    const asString = z.string().safeParse(audience)
 
-    if (Array.isArray(audience)) {
-        return audience.includes(clientId) && payload.azp === clientId
+    if (asString.success) return asString.data === clientId
+
+    const asArray = z.array(z.string()).safeParse(audience)
+
+    if (asArray.success) {
+        return asArray.data.includes(clientId) && payload.azp === clientId
     }
 
     return false
@@ -110,15 +115,15 @@ function parseWalletsClaim(payload: JWTPayload, claimName: string): Address[] | 
     const accounts: Address[] = []
 
     for (const item of items) {
-        const value =
-            typeof item === 'string'
-                ? item
-                : item &&
-                    typeof item === 'object' &&
-                    'address' in item &&
-                    typeof (item as { address?: unknown }).address === 'string'
-                  ? (item as { address: string }).address
-                  : undefined
+        const asString = z.string().safeParse(item)
+
+        const asObject = z.object({ address: z.string() }).passthrough().safeParse(item)
+
+        const value = asString.success
+            ? asString.data
+            : asObject.success
+              ? asObject.data.address
+              : undefined
 
         if (!value || !isAddress(value)) return 'invalid'
         const account = getAddress(value)
@@ -251,7 +256,9 @@ export function createOidcIdentityProvider(): IdentityProvider {
                 return classifyOidcError(error)
             }
 
-            if (typeof payload.sub !== 'string' || payload.sub.length === 0 || payload.sub.length > 256) {
+            const sub = z.string().min(1).max(256).safeParse(payload.sub)
+
+            if (!sub.success) {
                 return { ok: false, code: 'INVALID_TOKEN', message: 'Invalid or expired token' }
             }
 
@@ -271,13 +278,13 @@ export function createOidcIdentityProvider(): IdentityProvider {
 
             try {
                 const stub = walletBindingStub(ctx.env)
-                const rows = await stub.accountsFor(config.issuer, payload.sub)
+                const rows = await stub.accountsFor(config.issuer, sub.data)
                 stored = rows.map((row) => getAddress(row))
 
                 for (const account of claimed) {
                     const owner = await stub.ownerOf(account)
 
-                    if (owner && (owner.issuer !== config.issuer || owner.subject !== payload.sub)) {
+                    if (owner && (owner.issuer !== config.issuer || owner.subject !== sub.data)) {
                         return {
                             ok: false,
                             code: 'NO_LINKED_WALLET',
@@ -298,7 +305,7 @@ export function createOidcIdentityProvider(): IdentityProvider {
             return {
                 ok: true,
                 provider: 'oidc',
-                userId: payload.sub,
+                userId: sub.data,
                 issuer: config.issuer,
                 boundAccounts,
             }

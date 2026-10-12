@@ -13,6 +13,8 @@
  */
 
 import { DurableObject } from 'cloudflare:workers'
+import { z } from 'zod'
+
 import type { Env } from '../types/env'
 import { getErrorMessage } from '../lib/logger'
 
@@ -101,11 +103,13 @@ function getSeqFromRows(rows: unknown[]): bigint {
 }
 
 function coerceDraftTtlMs(value: unknown): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
+    const parsed = z.number().refine(Number.isFinite).safeParse(value)
+
+    if (!parsed.success) {
         return DEFAULT_DRAFT_TTL_MS
     }
 
-    const rounded = Math.floor(value)
+    const rounded = Math.floor(parsed.data)
 
     if (rounded < MIN_DRAFT_TTL_MS) return MIN_DRAFT_TTL_MS
 
@@ -374,11 +378,13 @@ export class IntentNonceDO extends DurableObject<Env> {
                         )
                     }
 
-                    if (!draftId || typeof draftId !== 'string') {
+                    const draftIdParsed = z.string().min(1).safeParse(draftId)
+
+                    if (!draftIdParsed.success) {
                         return Response.json({ error: 'draftId is required' }, { status: 400 })
                     }
 
-                    const status = this.markSubmitted(seqKeyBigInt, draftId)
+                    const status = this.markSubmitted(seqKeyBigInt, draftIdParsed.data)
 
                     return Response.json({ ok: true, status })
                 }
