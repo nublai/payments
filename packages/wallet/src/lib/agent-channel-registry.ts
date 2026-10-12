@@ -1,7 +1,17 @@
 import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { z } from 'incur'
 
 const AGENT_CHANNEL_REGISTRY_VERSION = 1 as const
+
+const agentChannelRegistryFileSchema = z
+    .object({
+        version: z.literal(AGENT_CHANNEL_REGISTRY_VERSION),
+        channels: z.union([z.object({}).passthrough(), z.array(z.unknown())]),
+    })
+    .passthrough()
+
+const agentChannelValuesSchema = z.array(z.string())
 
 export type AgentChannelRegistryFile = {
     version: typeof AGENT_CHANNEL_REGISTRY_VERSION
@@ -35,23 +45,18 @@ export async function readAgentChannelRegistry(
     try {
         const raw = await readFile(path, 'utf8')
         const parsed = JSON.parse(raw) as unknown
+        const file = agentChannelRegistryFileSchema.safeParse(parsed)
 
-        if (
-            typeof parsed !== 'object' ||
-            parsed === null ||
-            !('version' in parsed) ||
-            parsed.version !== AGENT_CHANNEL_REGISTRY_VERSION ||
-            !('channels' in parsed) ||
-            typeof parsed.channels !== 'object' ||
-            parsed.channels === null
-        ) {
+        if (!file.success) {
             throw new Error(`Unsupported agent channel registry format at ${path}`)
         }
 
-        for (const [key, value] of Object.entries(parsed.channels)) {
-            if (typeof key !== 'string' || typeof value !== 'string') {
-                throw new Error(`Invalid agent channel registry entry at ${path}`)
-            }
+        // SAFETY: schema accepted channels as an object; values come from the original parse
+        // so an own __proto__ key is included.
+        const channels = (parsed as { channels: object }).channels
+
+        if (!agentChannelValuesSchema.safeParse(Object.values(channels)).success) {
+            throw new Error(`Invalid agent channel registry entry at ${path}`)
         }
 
         // SAFETY: version and channels were checked; extra enumerable fields stay on parsed.
