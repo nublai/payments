@@ -266,14 +266,11 @@ function readAddress(value: unknown, label: string): Address {
     }
 }
 
-function lowerHex(value: string): Hex {
-    return `0x${value.startsWith('0x') ? value.slice(2).toLowerCase() : value.toLowerCase()}`
-}
-
 function readHex(value: unknown, label: string): Hex {
     if (typeof value !== 'string' || !value.startsWith('0x')) refuse(`invalid ${label}`)
 
-    return lowerHex(value)
+    // SAFETY: the startsWith('0x') check ran above, and lowercasing keeps the prefix.
+    return value.toLowerCase() as Hex
 }
 
 function readHexList(value: unknown, label: string): Hex[] {
@@ -547,15 +544,22 @@ export function bindPreparedCalls(
         calls: expected.calls.map((call) => ({
             to: getAddress(call.target),
             value: call.value,
-            data: lowerHex(call.data ?? '0x'),
+            // SAFETY: the caller typed expected.calls[].data as Hex; it is not re-validated here.
+            data: (call.data ?? '0x').toLowerCase() as Hex,
         })),
         nonce: expected.nonce,
         payer: getAddress(expected.payer ?? zeroAddress),
         paymentToken: getAddress(expected.paymentToken ?? zeroAddress),
         paymentMaxAmount: expected.paymentMaxAmount ?? 0n,
         combinedGas: typed.combinedGas,
-        encodedPreCalls: (expected.encodedPreCalls ?? []).map((item) => lowerHex(item)),
-        encodedFundTransfers: (expected.encodedFundTransfers ?? []).map((item) => lowerHex(item)),
+        encodedPreCalls: (expected.encodedPreCalls ?? []).map((item) => {
+            // SAFETY: the caller typed expected.encodedPreCalls as Hex; they are not re-validated here.
+            return item.toLowerCase() as Hex
+        }),
+        encodedFundTransfers: (expected.encodedFundTransfers ?? []).map((item) => {
+            // SAFETY: the caller typed expected.encodedFundTransfers as Hex; they are not re-validated here.
+            return item.toLowerCase() as Hex
+        }),
         settler: getAddress(expected.settler ?? zeroAddress),
         expiry: expected.expiry,
     }
