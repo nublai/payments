@@ -233,6 +233,7 @@ export async function handleSendPreparedCalls(
     params: unknown,
     ctx: RpcContext,
 ): Promise<SendPreparedCallsResult> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
     const io = rpcHandlerIo(ctx)
     const typedParams = unwrapParams<SendPreparedCallsParams>(params)
@@ -338,6 +339,7 @@ export async function handleSendPreparedCalls(
     }
 
     if (!response.ok) {
+        // SAFETY: SignerPoolDO /send error JSON is SignerError (error, optional code, optional broadcastAttempted).
         const error = (await response.json()) as {
             error: string
             code?: string
@@ -369,6 +371,7 @@ export async function handleSendPreparedCalls(
         throw new RpcError(rpcCodeForPoolSendFailure(error), error.error)
     }
 
+    // SAFETY: SignerPoolDO /send success JSON is SendResult (txHash, nonce, signer, signerName).
     const result = (await response.json()) as SendResult
 
     if (paidUpgrade) {
@@ -576,6 +579,7 @@ export async function handleBatchSendPreparedCalls(
 ): Promise<
     Array<{ id: string | number | null; result?: SendPreparedCallsResult; error?: unknown }>
 > {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
     const io = rpcHandlerIo(ctx)
 
@@ -708,6 +712,7 @@ export async function handleBatchSendPreparedCalls(
     })
 
     if (!response.ok) {
+        // SAFETY: SignerPoolDO /send error JSON is SignerError (error, optional code, optional broadcastAttempted).
         const error = (await response.json()) as {
             error: string
             code?: string
@@ -732,6 +737,7 @@ export async function handleBatchSendPreparedCalls(
         })
     }
 
+    // SAFETY: SignerPoolDO /send success JSON is SendResult (txHash, nonce, signer, signerName).
     const result = (await response.json()) as SendResult
     logger.info(
         {

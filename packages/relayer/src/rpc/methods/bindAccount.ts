@@ -79,6 +79,7 @@ export async function bindAccount(
             expiry,
             environment,
         },
+        // SAFETY: the regex above requires 0x plus 130 hex digits, which is Hex.
         signature: signature as Hex,
         scheme,
     })
@@ -131,6 +132,7 @@ export async function bindAccount(
 export async function handleBindAccount(params: unknown, ctx: RpcContext) {
     return bindAccount(
         params,
+        // SAFETY: the worker entry and tests put Env on ctx.env.
         ctx.env as Env,
         Math.floor(Date.now() / 1000),
         upgradeClientIp(ctx.request),

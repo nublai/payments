@@ -1,5 +1,4 @@
 import {
-    type AbiFunction,
     type Address,
     type Hex,
     type PublicClient,
@@ -230,7 +229,7 @@ export function buildKeyInitializationData(
                     const setCanExecuteData = encodeFunctionData({
                         abi: accountAbi,
                         functionName: 'setCanExecute',
-                        args: [keyHash, permission.to, permission.selector as `0x${string}`, true],
+                        args: [keyHash, permission.to, permission.selector, true],
                     })
 
                     calls.push({
@@ -309,7 +308,9 @@ export function parseSignature(signature: Hex): ParsedSignature {
         )
     }
 
+    // SAFETY: signature is Hex and slice(2) is 130 chars; r is 0x plus the first 64.
     const r = `0x${sig.slice(0, 64)}` as Hex
+    // SAFETY: signature is Hex and slice(2) is 130 chars; s is 0x plus chars 64..128.
     const s = `0x${sig.slice(64, 128)}` as Hex
     const v = parseInt(sig.slice(128, 130), 16)
     const yParity = v >= 27 ? v - 27 : v
@@ -355,11 +356,11 @@ const UPGRADE_PRECALL_SELECTORS = new Set(
     (['authorize', 'setCanExecute', 'setSpendLimit'] as const).map((name) => {
         const item = accountAbi.find((entry) => entry.type === 'function' && entry.name === name)
 
-        if (!item) {
+        if (!item || item.type !== 'function') {
             throw new Error(`Account ABI is missing ${name}`)
         }
 
-        return toFunctionSelector(item as AbiFunction).toLowerCase()
+        return toFunctionSelector(item).toLowerCase()
     }),
 )
 

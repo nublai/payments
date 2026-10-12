@@ -53,6 +53,7 @@ export async function handlePrepareUpgradeAccount(
     params: unknown,
     ctx: RpcContext,
 ): Promise<PrepareUpgradeResult> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
     const typedParams = unwrapParams<PrepareUpgradeParams>(params)
 

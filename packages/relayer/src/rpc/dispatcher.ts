@@ -70,6 +70,7 @@ async function handleSingle(
         return createErrorResponse(id, validationError.code, validationError.message)
     }
 
+    // SAFETY: validateRequest already checked jsonrpc, method, id, and params.
     const request = body as JsonRpcRequest
     const isNotification = request.id === null
 
@@ -134,7 +135,9 @@ async function handleBatch(
         const obj = req as { id?: unknown; method?: unknown; params?: unknown }
 
         parsedRequests.push({
+            // SAFETY: batch items skip validateRequest; id is forwarded unchanged as the JSON-RPC id.
             id: obj.id as string | number | null,
+            // SAFETY: method is forwarded unchanged; canOptimizeBatch compares it to the send method name.
             method: obj.method as string,
             params: obj.params,
         })

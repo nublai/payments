@@ -40,6 +40,7 @@ export async function handleGetCapabilities(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCapabilitiesResult> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
     const typedParams = unwrapParams<GetCapabilitiesParams>(params)
     const chainFilter = typedParams?.chains
@@ -95,6 +96,7 @@ export async function handleGetCapabilities(
                 )
             }
 
+            // SAFETY: SignerPoolDO /status JSON is the poolStatus object read below (signerCount, signers, capacities).
             poolStatus = (await response.json()) as typeof poolStatus
         } catch (error) {
             logger.error(
@@ -132,6 +134,7 @@ export async function handleGetCapabilities(
                 simulator: config.contracts.simulator,
             },
             fees: {
+                // SAFETY: FEE_RECIPIENT is the fee recipient address env var; the fallback is config.contracts.orchestrator.
                 recipient: (feeConfig.feeRecipient ?? config.contracts.orchestrator) as Address,
                 quoteConfig: {
                     ttlSeconds: feeConfig.quoteTtlSeconds,

@@ -107,6 +107,7 @@ export async function handleGetCallsHistory(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCallsHistoryResult> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
 
     const typedParams = unwrapParams<GetCallsHistoryParams>(params)
@@ -155,9 +156,7 @@ export async function handleGetCallsHistory(
                 try {
                     const doId = bundleStatusNamespace.idFromName(`bundle-status-${chainId}`)
 
-                    const bundleStatusDo = bundleStatusNamespace.get(
-                        doId,
-                    ) as BundleStatusHistoryStub
+                    const bundleStatusDo: BundleStatusHistoryStub = bundleStatusNamespace.get(doId)
 
                     const result = await bundleStatusDo.getBundlesByEoa(
                         normalizedAddress,

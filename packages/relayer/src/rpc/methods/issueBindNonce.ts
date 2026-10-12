@@ -111,6 +111,7 @@ export async function issueBindNonce(
 export async function handleIssueBindNonce(params: unknown, ctx: RpcContext) {
     return issueBindNonce(
         params,
+        // SAFETY: the worker entry and tests put Env on ctx.env.
         ctx.env as Env,
         Math.floor(Date.now() / 1000),
         upgradeClientIp(ctx.request),

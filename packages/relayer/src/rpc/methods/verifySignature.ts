@@ -48,6 +48,7 @@ export async function handleVerifySignature(
     params: unknown,
     ctx: RpcContext,
 ): Promise<VerifySignatureResult> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
     const io = rpcHandlerIo(ctx)
 
@@ -105,7 +106,9 @@ export async function handleVerifySignature(
             functionName: 'getKeys',
         })
 
+        // SAFETY: Account.getKeys ABI returns (Key[] keys, bytes32[] keyHashes).
         keys = result[0] as readonly ContractKey[]
+        // SAFETY: Account.getKeys ABI second return is bytes32[] keyHashes.
         keyHashes = result[1] as readonly Hex[]
     } catch (error) {
         // If getKeys fails, account might not be a valid Account
@@ -147,13 +150,16 @@ export async function handleVerifySignature(
                 args: [erc1271Digest, wrappedSignature],
             })
 
+            // SAFETY: unwrapAndValidateSignature ABI returns (bool isValid, bytes32 keyHash).
             const [isValid, returnedKeyHash] = result as [boolean, Hex]
 
             return { isValid, keyHash: returnedKeyHash, attemptedKeyHash: keyHash }
         } catch (error) {
             logger.debug({ error, keyHash }, 'Signature validation failed for key')
 
-            return { isValid: false, keyHash: '0x' as Hex, attemptedKeyHash: keyHash }
+            const emptyKeyHash: Hex = '0x'
+
+            return { isValid: false, keyHash: emptyKeyHash, attemptedKeyHash: keyHash }
         }
     })
 

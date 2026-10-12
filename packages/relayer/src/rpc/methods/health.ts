@@ -48,6 +48,7 @@ export async function handleLive(_params: unknown, _ctx: RpcContext): Promise<bo
  * @returns true boolean if ready, throws error otherwise
  */
 export async function handleReady(_params: unknown, _ctx: RpcContext): Promise<boolean> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = _ctx.env as Env
     const chainIds = getChainIds(env)
 

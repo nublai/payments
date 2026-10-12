@@ -16,12 +16,19 @@ export async function handleGetCallsStatus(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCallsStatusResult> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
 
     const firstParam = unwrapParams<unknown>(params)
 
-    const bundleId =
-        typeof firstParam === 'string' ? firstParam : (firstParam as { id?: string })?.id
+    let bundleId: string | undefined
+
+    if (typeof firstParam === 'string') {
+        bundleId = firstParam
+    } else {
+        // SAFETY: firstParam is not a string here; only id is read, then interpolated as the bundle id.
+        bundleId = (firstParam as { id?: string })?.id
+    }
 
     if (!bundleId) {
         throw new RpcError(INVALID_PARAMS, 'Missing required parameter: bundle ID')
@@ -32,6 +39,7 @@ export async function handleGetCallsStatus(
     let chainIdsToCheck: number[] = []
 
     if (typeof firstParam === 'object' && firstParam) {
+        // SAFETY: firstParam is a non-null object; only chain_id is read and passed to parseHexChainId if truthy.
         const maybeChainId = (firstParam as { chain_id?: string }).chain_id
 
         if (maybeChainId) {
@@ -57,6 +65,7 @@ export async function handleGetCallsStatus(
                     continue
                 }
 
+                // SAFETY: BundleStatusDO /get_bundle_status returns BundleStatusResult (bundleId, status, statusCode, receipts).
                 const result = (await response.json()) as {
                     bundleId: string
                     status: 'pending' | 'confirmed' | 'failed' | 'not_found'

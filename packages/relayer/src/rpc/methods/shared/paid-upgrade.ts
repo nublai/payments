@@ -308,6 +308,7 @@ export function paidUpgradeReceiptWaitMs(env: { PAID_UPGRADE_RECEIPT_WAIT_MS?: s
 export type { PaidUpgradeAuthorization, PaidUpgradePreCall, PaidUpgradeQuote }
 
 export function eip7702DelegationCode(accountProxy: Address): Hex {
+    // SAFETY: 0xef0100 plus getAddress() hex (40 digits) is EIP-7702 delegation bytecode.
     return `0xef0100${getAddress(accountProxy).slice(2).toLowerCase()}` as Hex
 }
 
@@ -333,7 +334,7 @@ export function chainUsdcAddress(chainId: number): Address {
         throw new RpcError(SERVICE_UNAVAILABLE, 'USDC fee token is not configured')
     }
 
-    return getAddress(usdc.address as Address)
+    return getAddress(usdc.address)
 }
 
 export function paidUpgradeMaxPayment(env: { PAID_UPGRADE_MAX_PAYMENT?: string }): bigint {
@@ -686,6 +687,7 @@ async function postPaidUpgradeRateLimit(
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
 
+    // SAFETY: SignerPoolDO /upgrade-rate-limit JSON has allowed and optional reservedAt; both are re-checked below.
     const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
 
     return {
@@ -790,6 +792,7 @@ async function postPaidUpgradeGas(
         throw new RpcError(SERVICE_UNAVAILABLE, 'Paid upgrade failed')
     }
 
+    // SAFETY: SignerPoolDO paid-upgrade gas JSON has allowed/gas/failures/overBudget/pending; each is re-checked below.
     const result = (await response.json()) as {
         allowed?: boolean
         gas?: number
@@ -943,15 +946,15 @@ function intentDigestMessage(intent: IntentStruct) {
         calls: intent.calls.map((call) => ({
             to: getAddress(call.to),
             value: BigInt(call.value ?? 0),
-            data: (call.data ?? '0x') as Hex,
+            data: call.data ?? '0x',
         })),
         nonce: BigInt(intent.nonce),
         payer: getAddress(intent.payer ?? zeroAddress),
         paymentToken: getAddress(intent.paymentToken ?? zeroAddress),
         paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? 0),
         combinedGas: BigInt(intent.combinedGas),
-        encodedPreCalls: (intent.encodedPreCalls ?? []) as Hex[],
-        encodedFundTransfers: (intent.encodedFundTransfers ?? []) as Hex[],
+        encodedPreCalls: intent.encodedPreCalls ?? [],
+        encodedFundTransfers: intent.encodedFundTransfers ?? [],
         settler: getAddress(intent.settler ?? zeroAddress),
         expiry: BigInt(intent.expiry),
     }
@@ -997,6 +1000,7 @@ export async function assertPaidUpgradeIntentSigner(args: {
 function storedExecuteSelector(data: Hex | undefined): Hex | undefined {
     if (!data || data === '0x' || data.length < 10) return undefined
 
+    // SAFETY: data is Hex and length >= 10; this is 0x plus the first 4 bytes.
     return `0x${data.slice(2, 10)}` as Hex
 }
 
@@ -1087,7 +1091,7 @@ export function paidUpgradeReceiptOutcome(receipt: {
             })
 
             if (decoded.eventName !== 'IntentExecuted') continue
-            const err = (decoded.args as { err?: Hex }).err
+            const err = decoded.args.err
 
             if (!err || err === '0x00000000') {
                 return { failure: false, gasUsed }

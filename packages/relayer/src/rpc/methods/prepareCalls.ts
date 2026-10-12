@@ -54,6 +54,7 @@ export async function handlePrepareCalls(
     params: unknown,
     ctx: RpcContext,
 ): Promise<PrepareCallsResult> {
+    // SAFETY: the worker entry and tests put Env on ctx.env.
     const env = ctx.env as Env
     const io = rpcHandlerIo(ctx)
     const typedParams = unwrapParams<PrepareCallsParams>(params)
