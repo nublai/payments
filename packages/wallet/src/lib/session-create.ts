@@ -777,7 +777,7 @@ export async function executeSessionCreate(
         const statusCode = finalStatus.statusCode ?? 0
 
         if (!finalStatus.success || ![200, 201].includes(statusCode)) {
-            // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
+            // SAFETY: session create receipt.intentError is relayer JSON, not checked here; decodeIntentError wants Hex.
             const intentError = finalStatus.receipt?.intentError as Hex | undefined
             throw new SessionCreateError(
                 'SESSION_CREATE_FAILED',

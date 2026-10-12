@@ -679,7 +679,7 @@ export async function executeAccountSend(
         }
 
         const statusCode = finalStatus.statusCode ?? 0
-        // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
+        // SAFETY: send receipt.intentError is relayer JSON, not checked here; decodeIntentError wants Hex.
         const intentError = finalStatus.receipt?.intentError as Hex | undefined
         const intentErrorName = intentError ? decodeIntentError(intentError) : undefined
 

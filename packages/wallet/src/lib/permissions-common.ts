@@ -163,11 +163,13 @@ export function isKeyHashRef(value: string): boolean {
 }
 
 export function normalizeAddressLower(value: Address): Address {
-    return `0x${value.slice(2).toLowerCase()}`
+    // SAFETY: callers pass Address-typed values (getAddress results, token configs); this function does not check the input.
+    return value.toLowerCase() as Address
 }
 
 export function normalizeHexLower(value: Hex): Hex {
-    return `0x${value.slice(2).toLowerCase()}`
+    // SAFETY: callers pass Hex-typed values including raw CLI --key-hash (not parseKeyHash'd here) and on-chain/local hashes; this function does not check the input.
+    return value.toLowerCase() as Hex
 }
 
 export function callRuleId(target: Address, selector: Hex): string {

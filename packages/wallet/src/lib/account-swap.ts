@@ -1568,7 +1568,7 @@ export async function executeAccountSwap(
         }
 
         const statusCode = finalStatus.statusCode
-        // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
+        // SAFETY: swap receipt.intentError is relayer JSON, not checked here; decodeIntentError wants Hex.
         const intentError = finalStatus.receipt?.intentError as Hex | undefined
         const intentErrorName = intentError ? decodeIntentError(intentError) : undefined
 

@@ -1937,7 +1937,7 @@ export async function executeSessionRotate(
                             data: encodeFunctionData({
                                 abi: accountAbi,
                                 functionName: 'setCanExecute' as const,
-                                // SAFETY: permission.to/selector come from getKeys; encodeFunctionData wants Address and Hex.
+                                // SAFETY: permission.to/selector come from getDefaultSessionPermissions (local constants typed Address/Hex), not getKeys.
                                 args: [newKeyHash, permission.to, permission.selector, true] as [
                                     Hex,
                                     Address,
@@ -1976,7 +1976,7 @@ export async function executeSessionRotate(
                         data: encodeFunctionData({
                             abi: accountAbi,
                             functionName: 'setCanExecute' as const,
-                            // SAFETY: permissionDefaults.target/selector are Address/Hex from buildPermissionDefaults; encodeFunctionData wants that tuple.
+                            // SAFETY: values come from storedPermissionDefaults(intent.permissions): zod checks each selector with /^0x[0-9a-fA-F]{8}$/, but target is only z.string() (raw CLI --target) and is not address-checked.
                             args: [newKeyHash, permissionDefaults.target, selector, true] as [
                                 Hex,
                                 Address,
@@ -2157,7 +2157,7 @@ export async function executeSessionRotate(
             !finalStatus.success ||
             ![200, 201].includes(finalStatus.statusCode ?? 0)
         ) {
-            // SAFETY: relayer receipt.intentError is a hex string when present; decodeIntentError wants Hex.
+            // SAFETY: session rotate receipt.intentError is relayer JSON, not checked here; decodeIntentError wants Hex.
             const intentError = finalStatus?.receipt?.intentError as Hex | undefined
             throw new SessionRotateError(
                 'ROTATION_FAILED',
