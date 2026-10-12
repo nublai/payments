@@ -8,7 +8,6 @@ import {
     type Hex,
     type PublicClient,
 } from 'viem'
-import { z } from 'zod'
 import { accountAbi } from '@nubl/contracts/abis'
 
 import { getChainClient } from '../../lib/multi-chain-client'
@@ -57,11 +56,8 @@ export async function isOnChainAccountKey(
 
         if (Number(key.keyType) !== 0) return false
         const [decoded] = decodeAbiParameters([{ type: 'address' }], key.publicKey)
-        const decodedAddress = z.string().safeParse(decoded)
 
-        if (!decodedAddress.success) return false
-
-        return decodedAddress.data.toLowerCase() === signer.toLowerCase()
+        return typeof decoded === 'string' && decoded.toLowerCase() === signer.toLowerCase()
     } catch {
         return false
     }

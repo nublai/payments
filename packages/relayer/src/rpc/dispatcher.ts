@@ -5,8 +5,6 @@
  * Supports single requests, batch requests, and notifications.
  */
 
-import { z } from 'zod'
-
 import type {
     JsonRpcRequest,
     JsonRpcResponse,
@@ -23,15 +21,6 @@ import {
     ERROR_MESSAGES,
 } from './errors'
 import { canOptimizeBatch, handleBatchSendPreparedCalls } from './methods/sendPreparedCalls'
-
-const jsonRpcRequestSchema = z
-    .object({
-        jsonrpc: z.literal('2.0'),
-        method: z.string(),
-        id: z.union([z.string(), z.number(), z.null()]).optional(),
-        params: z.unknown().optional(),
-    })
-    .passthrough()
 
 /**
  * Dispatch a JSON-RPC request (or batch of requests) to the appropriate handler(s)
@@ -189,17 +178,42 @@ async function handleBatch(
  * Returns an error object if invalid, null if valid
  */
 function validateRequest(body: unknown): JsonRpcErrorObject | null {
-    const parsed = jsonRpcRequestSchema.safeParse(body)
-
-    if (!parsed.success) {
+    if (typeof body !== 'object' || body === null) {
         return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
     }
 
-    // params, if present, must be array or object. JSON `null` stays allowed:
-    // `typeof null === 'object'`, so main accepted it.
+    const obj = {
+        jsonrpc: 'jsonrpc' in body ? body.jsonrpc : undefined,
+        method: 'method' in body ? body.method : undefined,
+        id: 'id' in body ? body.id : undefined,
+        params: 'params' in body ? body.params : undefined,
+    }
+
+    // Must have jsonrpc: "2.0"
+    if (obj.jsonrpc !== '2.0') {
+        return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
+    }
+
+    // Must have method as string
+    if (typeof obj.method !== 'string') {
+        return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
+    }
+
+    // id can be string, number, or null (for notifications)
+    // If present and not one of these types, it's invalid
     if (
-        parsed.data.params !== undefined &&
-        typeof parsed.data.params !== 'object'
+        obj.id !== undefined &&
+        obj.id !== null &&
+        typeof obj.id !== 'string' &&
+        typeof obj.id !== 'number'
+    ) {
+        return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
+    }
+
+    // params, if present, must be array or object
+    if (
+        obj.params !== undefined &&
+        typeof obj.params !== 'object' // arrays and objects are both "object"
     ) {
         return { code: INVALID_REQUEST, message: ERROR_MESSAGES[INVALID_REQUEST] }
     }

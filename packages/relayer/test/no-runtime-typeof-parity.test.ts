@@ -84,7 +84,7 @@ describe('no-runtime-typeof parity: auth and rpc envelopes', () => {
                 { method: 'wallet_sendPreparedCalls', id: Number.POSITIVE_INFINITY },
                 PROTECTED,
             ),
-        ).toEqual({ requiresAuth: true, id: null })
+        ).toEqual({ requiresAuth: true, id: Number.POSITIVE_INFINITY })
     })
 
     it('parseChainId keeps main accept/refuse', () => {

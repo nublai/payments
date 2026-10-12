@@ -23,8 +23,7 @@
     "dependencies": {
         "@slicekit/erc8128": "^0.1.0",
         "@nubl/contracts": "workspace:^",
-        "@nubl/relayer": "workspace:^",
-        "zod": "^4.3.6"
+        "@nubl/relayer": "workspace:^"
     },
     "peerDependencies": {
         "viem": "2.45.1"

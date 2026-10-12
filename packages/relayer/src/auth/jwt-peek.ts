@@ -1,10 +1,8 @@
 import { z } from 'zod'
 
-const jwtIssuerSchema = z
-    .object({
-        iss: z.string(),
-    })
-    .passthrough()
+const jwtIssuerSchema = z.object({
+    iss: z.string(),
+})
 
 /**
  * Unverified JWT payload peek used only to route a bearer token to Privy or

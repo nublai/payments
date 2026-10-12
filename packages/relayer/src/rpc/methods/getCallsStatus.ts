@@ -1,5 +1,4 @@
 import type { Hex } from 'viem'
-import { z } from 'zod'
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
 import type { GetCallsStatusResult } from '../schema/getCallsStatus'
@@ -20,29 +19,9 @@ export async function handleGetCallsStatus(
     const env = ctx.env as Env
 
     const firstParam = unwrapParams<unknown>(params)
-    const asString = z.string().safeParse(firstParam)
 
-    const asObject = z
-        .object({
-            id: z.unknown().optional(),
-            chain_id: z.unknown().optional(),
-        })
-        .passthrough()
-        .safeParse(firstParam)
-
-    let bundleId: string | undefined
-
-    if (asString.success) {
-        bundleId = asString.data
-    } else if (asObject.success) {
-        const objectId = z.string().safeParse(asObject.data.id)
-
-        if (objectId.success) {
-            bundleId = objectId.data
-        } else if (asObject.data.id) {
-            bundleId = String(asObject.data.id)
-        }
-    }
+    const bundleId =
+        typeof firstParam === 'string' ? firstParam : (firstParam as { id?: string })?.id
 
     if (!bundleId) {
         throw new RpcError(INVALID_PARAMS, 'Missing required parameter: bundle ID')
@@ -52,17 +31,12 @@ export async function handleGetCallsStatus(
     let receipts: GetCallsStatusResult['receipts'] = []
     let chainIdsToCheck: number[] = []
 
-    if (asObject.success && asObject.data.chain_id) {
-        const chainId = z.string().safeParse(asObject.data.chain_id)
+    if (typeof firstParam === 'object' && firstParam) {
+        const maybeChainId = (firstParam as { chain_id?: string }).chain_id
 
-        // Main passed any truthy chain_id to parseHexChainId; Number.parseInt
-        // coerces non-strings the same way String() does.
-        chainIdsToCheck = [
-            parseHexChainId(
-                chainId.success ? chainId.data : String(asObject.data.chain_id),
-                'chain_id',
-            ),
-        ]
+        if (maybeChainId) {
+            chainIdsToCheck = [parseHexChainId(maybeChainId, 'chain_id')]
+        }
     }
 
     if (chainIdsToCheck.length === 0) {

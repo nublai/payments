@@ -1,6 +1,5 @@
 import { getAddress, zeroAddress, type Address, type Hex } from 'viem'
 import { hashTypedData } from 'viem/utils'
-import { z } from 'zod'
 import type { PrepareCallsResponse } from '../actions/prepareCalls'
 import { INTENT_TYPES, type Call } from '../types'
 
@@ -158,24 +157,6 @@ type NormalizedIntent = {
     expiry: bigint
 }
 
-const intentRecordSchema = z
-    .object({
-        multichain: z.unknown().optional(),
-        eoa: z.unknown().optional(),
-        calls: z.unknown().optional(),
-        nonce: z.unknown().optional(),
-        payer: z.unknown().optional(),
-        paymentToken: z.unknown().optional(),
-        paymentMaxAmount: z.unknown().optional(),
-        combinedGas: z.unknown().optional(),
-        encodedPreCalls: z.unknown().optional(),
-        encodedFundTransfers: z.unknown().optional(),
-        settler: z.unknown().optional(),
-        settlerContext: z.unknown().optional(),
-        expiry: z.unknown().optional(),
-    })
-    .passthrough()
-
 function refuse(detail: string): never {
     throw new PreparedCallsBindingError(`Refusing to sign prepared calls: ${detail}`)
 }
@@ -198,26 +179,16 @@ export function parseQuotePaymentAmount(
     if (value === undefined || value === null || value === '') return { ok: false, reason: 'missing' }
 
     try {
-        const asBigint = z.bigint().safeParse(value)
-
-        if (asBigint.success) {
-            return asBigint.data < 0n
-                ? { ok: false, reason: 'invalid' }
-                : { ok: true, amount: asBigint.data }
+        if (typeof value === 'bigint') {
+            return value < 0n ? { ok: false, reason: 'invalid' } : { ok: true, amount: value }
         }
 
-        const asNumber = z.number().refine(Number.isInteger).safeParse(value)
-
-        if (asNumber.success) {
-            return asNumber.data < 0
-                ? { ok: false, reason: 'invalid' }
-                : { ok: true, amount: BigInt(asNumber.data) }
+        if (typeof value === 'number' && Number.isInteger(value)) {
+            return value < 0 ? { ok: false, reason: 'invalid' } : { ok: true, amount: BigInt(value) }
         }
 
-        const asString = z.string().safeParse(value)
-
-        if (asString.success && asString.data.trim() !== '') {
-            const text = asString.data.trim()
+        if (typeof value === 'string' && value.trim() !== '') {
+            const text = value.trim()
 
             if (text.startsWith('-')) return { ok: false, reason: 'invalid' }
 
@@ -270,19 +241,13 @@ export function resolveSignedFeeCap(input: {
 }
 
 function readUint(value: unknown, label: string): bigint {
-    const asBigint = z.bigint().safeParse(value)
+    if (typeof value === 'bigint') return value
 
-    if (asBigint.success) return asBigint.data
+    if (typeof value === 'number' && Number.isInteger(value)) return BigInt(value)
 
-    const asNumber = z.number().refine(Number.isInteger).safeParse(value)
-
-    if (asNumber.success) return BigInt(asNumber.data)
-
-    const asString = z.string().safeParse(value)
-
-    if (asString.success && asString.data.trim() !== '') {
+    if (typeof value === 'string' && value.trim() !== '') {
         try {
-            return BigInt(asString.data.trim())
+            return BigInt(value.trim())
         } catch {
             refuse(`invalid ${label}`)
         }
@@ -292,23 +257,19 @@ function readUint(value: unknown, label: string): bigint {
 }
 
 function readAddress(value: unknown, label: string): Address {
-    const asString = z.string().safeParse(value)
-
-    if (!asString.success) refuse(`missing ${label}`)
+    if (typeof value !== 'string') refuse(`missing ${label}`)
 
     try {
-        return getAddress(asString.data)
+        return getAddress(value)
     } catch {
         refuse(`invalid ${label}`)
     }
 }
 
 function readHex(value: unknown, label: string): Hex {
-    const asString = z.string().safeParse(value)
+    if (typeof value !== 'string' || !value.startsWith('0x')) refuse(`invalid ${label}`)
 
-    if (!asString.success || !asString.data.startsWith('0x')) refuse(`invalid ${label}`)
-
-    return asString.data.toLowerCase() as Hex
+    return value.toLowerCase() as Hex
 }
 
 function readHexList(value: unknown, label: string): Hex[] {
@@ -328,23 +289,16 @@ function sameHexList(actual: readonly Hex[], expected: readonly Hex[]): boolean 
 function readCalls(value: unknown, label: string): NormalizedCall[] {
     if (!Array.isArray(value)) refuse(`missing ${label}`)
 
-    const callSchema = z
-        .object({
-            to: z.unknown().optional(),
-            value: z.unknown().optional(),
-            data: z.unknown().optional(),
-        })
-        .passthrough()
-
     return value.map((item, index) => {
-        const call = callSchema.safeParse(item)
+        if (item === null || typeof item !== 'object') refuse(`invalid ${label}[${index}]`)
 
-        if (!call.success) refuse(`invalid ${label}[${index}]`)
+        // SAFETY: item is a non-null object; only to/value/data are read, each through a typed parser.
+        const call = item as { to?: unknown; value?: unknown; data?: unknown }
 
         return {
-            to: readAddress(call.data.to, `${label}[${index}].to`),
-            value: readUint(call.data.value, `${label}[${index}].value`),
-            data: readHex(call.data.data ?? '0x', `${label}[${index}].data`),
+            to: readAddress(call.to, `${label}[${index}].to`),
+            value: readUint(call.value, `${label}[${index}].value`),
+            data: readHex(call.data ?? '0x', `${label}[${index}].data`),
         }
     })
 }
@@ -363,10 +317,24 @@ function typesMatch(types: PrepareCallsResponse['typedData']['types']): boolean 
 
 function parseTypedIntent(prepared: PrepareCallsResponse): NormalizedIntent {
     const message = prepared.typedData?.message as unknown
-    const recordParsed = intentRecordSchema.safeParse(message)
 
-    if (!recordParsed.success) refuse('typed data message is missing')
-    const record = recordParsed.data
+    if (message === null || typeof message !== 'object') refuse('typed data message is missing')
+
+    // SAFETY: message is a non-null object; each Intent field is parsed below before use.
+    const record = message as {
+        multichain?: unknown
+        eoa?: unknown
+        calls?: unknown
+        nonce?: unknown
+        payer?: unknown
+        paymentToken?: unknown
+        paymentMaxAmount?: unknown
+        combinedGas?: unknown
+        encodedPreCalls?: unknown
+        encodedFundTransfers?: unknown
+        settler?: unknown
+        expiry?: unknown
+    }
 
     if (prepared.typedData.primaryType !== 'Intent') refuse('typed data primary type does not match')
 
@@ -395,10 +363,23 @@ function optionalAddress(value: unknown, fallback: Address): Address {
 }
 
 function parseQuoteIntent(intent: unknown): NormalizedIntent & { settlerContext: Hex } {
-    const recordParsed = intentRecordSchema.safeParse(intent)
+    if (intent === null || typeof intent !== 'object') refuse('quote does not match the signed intent')
 
-    if (!recordParsed.success) refuse('quote does not match the signed intent')
-    const record = recordParsed.data
+    // SAFETY: intent is a non-null object; each quote field is parsed below before use.
+    const record = intent as {
+        eoa?: unknown
+        calls?: unknown
+        nonce?: unknown
+        payer?: unknown
+        paymentToken?: unknown
+        paymentMaxAmount?: unknown
+        combinedGas?: unknown
+        encodedPreCalls?: unknown
+        encodedFundTransfers?: unknown
+        settler?: unknown
+        settlerContext?: unknown
+        expiry?: unknown
+    }
 
     return {
         multichain: false,
@@ -650,9 +631,7 @@ export function bindPreparedCalls(
         message: canonical,
     })
 
-    const digestParsed = z.string().safeParse(prepared.digest)
-
-    if (!digestParsed.success || digestParsed.data.toLowerCase() !== digest.toLowerCase()) {
+    if (typeof prepared.digest !== 'string' || prepared.digest.toLowerCase() !== digest.toLowerCase()) {
         refuse('digest does not match')
     }
 

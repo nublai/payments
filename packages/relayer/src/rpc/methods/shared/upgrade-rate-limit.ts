@@ -1,5 +1,3 @@
-import { z } from 'zod'
-
 import type { RpcContext } from '../../types'
 import type { Env } from '../../../types/env'
 import { logger } from '../../../lib/logger'
@@ -392,11 +390,10 @@ async function postUpgradeRateLimit(
     }
 
     const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
-    const reservedAt = z.number().safeParse(result.reservedAt)
 
     return {
         allowed: result.allowed === true,
-        reservedAt: reservedAt.success ? reservedAt.data : undefined,
+        reservedAt: typeof result.reservedAt === 'number' ? result.reservedAt : undefined,
     }
 }
 

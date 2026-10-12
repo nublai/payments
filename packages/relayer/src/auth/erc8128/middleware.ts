@@ -1,23 +1,14 @@
 import type { MiddlewareHandler } from 'hono'
-import { z } from 'zod'
 
 import type { Env } from '../../types/env'
 import { createHttpAuthNonceStore } from './nonce-store'
 import { getErc8128Policy } from './policy'
 import { verifyErc8128Request, type Erc8128VerifyFailure, type NonceStore } from './verify'
 
-const rpcPeekSchema = z
-    .object({
-        method: z.string(),
-        id: z.unknown().optional(),
-    })
-    .passthrough()
-
-const rpcIdOnlySchema = z
-    .object({
-        id: z.unknown().optional(),
-    })
-    .passthrough()
+interface JsonRpcLike {
+    id?: unknown
+    method?: unknown
+}
 
 interface MiddlewareDeps {
     verify?: typeof verifyErc8128Request
@@ -32,29 +23,27 @@ function extractAuthRequirement(
     protectedMethods: Set<string>,
 ): AuthRequirement {
     if (Array.isArray(body)) {
-        const requiresAuth = body.some((item) => {
-            const parsed = rpcPeekSchema.safeParse(item)
-
-            return parsed.success && protectedMethods.has(parsed.data.method)
-        })
+        const requiresAuth = body.some(
+            (item) =>
+                !!item &&
+                typeof item === 'object' &&
+                typeof (item as JsonRpcLike).method === 'string' &&
+                protectedMethods.has((item as JsonRpcLike).method as string),
+        )
 
         return { requiresAuth, id: null }
     }
 
-    const parsed = rpcPeekSchema.safeParse(body)
-
-    if (parsed.success) {
-        return {
-            requiresAuth: protectedMethods.has(parsed.data.method),
-            id: parsed.data.id ?? null,
-        }
+    if (!body || typeof body !== 'object') {
+        return { requiresAuth: false, id: null }
     }
 
-    const idOnly = rpcIdOnlySchema.safeParse(body)
+    const req = body as JsonRpcLike
+    const method = typeof req.method === 'string' ? req.method : undefined
 
     return {
-        requiresAuth: false,
-        id: idOnly.success ? (idOnly.data.id ?? null) : null,
+        requiresAuth: !!method && protectedMethods.has(method),
+        id: req.id ?? null,
     }
 }
 

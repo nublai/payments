@@ -1,5 +1,4 @@
 import { getAddress, type Hex } from 'viem'
-import { z } from 'zod'
 
 import type { RpcContext } from '../types'
 import type { Env } from '../../types/env'
@@ -35,24 +34,15 @@ export async function bindAccount(
         throw new RpcError(INVALID_PARAMS, 'Invalid bind scheme')
     }
 
-    const nonceParsed = z.string().regex(/^[0-9a-f]{32}$/).safeParse(nonce)
-
-    if (!nonceParsed.success) {
+    if (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce)) {
         throw new RpcError(INVALID_PARAMS, 'Invalid bind nonce')
     }
 
-    const expiryParsed = z
-        .number()
-        .refine((value) => Number.isInteger(value) && value >= 0)
-        .safeParse(expiry)
-
-    if (!expiryParsed.success) {
+    if (typeof expiry !== 'number' || !Number.isInteger(expiry) || expiry < 0) {
         throw new RpcError(INVALID_PARAMS, 'Invalid bind expiry')
     }
 
-    const signatureParsed = z.string().regex(/^0x[0-9a-fA-F]{130}$/).safeParse(signature)
-
-    if (!signatureParsed.success) {
+    if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
         throw new RpcError(INVALID_SIGNATURE, 'Invalid bind signature')
     }
 
@@ -84,12 +74,12 @@ export async function bindAccount(
             account: address,
             issuer: caller.issuer,
             sub: caller.subject,
-            nonce: nonceParsed.data,
+            nonce,
             chainId,
-            expiry: expiryParsed.data,
+            expiry,
             environment,
         },
-        signature: signatureParsed.data as Hex,
+        signature: signature as Hex,
         scheme,
     })
 
@@ -101,12 +91,12 @@ export async function bindAccount(
 
     try {
         outcome = await walletBindingStub(env).bind({
-            nonce: nonceParsed.data,
+            nonce,
             issuer: caller.issuer,
             subject: caller.subject,
             address,
             chainId,
-            expiry: expiryParsed.data,
+            expiry,
             nowSeconds,
             ip,
             charged: true,

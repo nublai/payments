@@ -1,5 +1,3 @@
-import { z } from 'zod'
-
 export const DEFAULT_AUTH_PROTECTED_METHODS = ['wallet_sendPreparedCalls'] as const
 
 /**
@@ -15,27 +13,17 @@ export const ALWAYS_AUTH_PROTECTED_METHODS = [
 
 export type JsonRpcId = string | number | null
 
-const jsonRpcIdSchema = z.union([z.string(), z.number(), z.null()])
-
-const rpcPeekSchema = z
-    .object({
-        method: z.string(),
-        id: z.unknown().optional(),
-    })
-    .passthrough()
-
-const rpcIdOnlySchema = z
-    .object({
-        id: z.unknown().optional(),
-    })
-    .passthrough()
+interface JsonRpcLike {
+    id?: JsonRpcId | unknown
+    method?: unknown
+}
 
 function coerceJsonRpcId(id: unknown): JsonRpcId {
-    const parsed = jsonRpcIdSchema.safeParse(id)
+    if (id === null || typeof id === 'string' || typeof id === 'number') {
+        return id
+    }
 
-    if (!parsed.success) return null
-
-    return parsed.data
+    return null
 }
 
 export function parseAuthProtectedMethods(value: string | undefined): Set<string> {
@@ -72,28 +60,26 @@ export function extractAuthRequirement(
     protectedMethods: Set<string>,
 ): AuthRequirement {
     if (Array.isArray(body)) {
-        const requiresAuth = body.some((item) => {
-            const parsed = rpcPeekSchema.safeParse(item)
-
-            return parsed.success && protectedMethods.has(parsed.data.method)
-        })
+        const requiresAuth = body.some(
+            (item) =>
+                !!item &&
+                typeof item === 'object' &&
+                typeof (item as JsonRpcLike).method === 'string' &&
+                protectedMethods.has((item as JsonRpcLike).method as string),
+        )
 
         return { requiresAuth, id: null }
     }
 
-    const parsed = rpcPeekSchema.safeParse(body)
-
-    if (parsed.success) {
-        return {
-            requiresAuth: protectedMethods.has(parsed.data.method),
-            id: coerceJsonRpcId(parsed.data.id),
-        }
+    if (!body || typeof body !== 'object') {
+        return { requiresAuth: false, id: null }
     }
 
-    const idOnly = rpcIdOnlySchema.safeParse(body)
+    const req = body as JsonRpcLike
+    const method = typeof req.method === 'string' ? req.method : undefined
 
     return {
-        requiresAuth: false,
-        id: idOnly.success ? coerceJsonRpcId(idOnly.data.id) : null,
+        requiresAuth: !!method && protectedMethods.has(method),
+        id: coerceJsonRpcId(req.id),
     }
 }
