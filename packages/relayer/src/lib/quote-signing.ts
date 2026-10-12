@@ -57,7 +57,7 @@ export async function verifyQuoteSignature(quotes: SignedQuotes, secret: string)
         ['verify'],
     )
 
-    const signatureBytes = toBytes(quotes.signature as Hex)
+    const signatureBytes = toBytes(quotes.signature)
 
     return crypto.subtle.verify('HMAC', key, signatureBytes, dataToSign)
 }

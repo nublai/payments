@@ -1,4 +1,3 @@
-import type { Address } from 'viem'
 import {
     ChainsConfigSchema,
     type ChainsConfig,
@@ -50,7 +49,7 @@ export function getChainConfig(chainId: number | string): TypedChainConfig | und
     for (const [key, asset] of Object.entries(chain.assets)) {
         typedAssets[key] = {
             ...asset,
-            address: asset.address as Address,
+            address: `0x${asset.address.slice(2)}`,
         }
     }
 

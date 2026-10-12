@@ -1,4 +1,4 @@
-import { encodeAbiParameters, zeroAddress, type Address, type Hex } from 'viem'
+import { encodeAbiParameters, zeroAddress, type Hex } from 'viem'
 
 import type { IntentStruct } from '../types/pool'
 
@@ -8,9 +8,9 @@ import type { IntentStruct } from '../types/pool'
  */
 export function encodeIntentCalldata(intent: IntentStruct): Hex {
     const calls = intent.calls.map((call) => ({
-        to: call.to as Address,
+        to: call.to,
         value: call.value ? BigInt(call.value) : 0n,
-        data: (call.data ?? '0x') as Hex,
+        data: call.data ?? '0x',
     }))
 
     const executionData = encodeAbiParameters(
@@ -28,27 +28,26 @@ export function encodeIntentCalldata(intent: IntentStruct): Hex {
     )
 
     const intentForContract = {
-        eoa: intent.eoa as Address,
+        eoa: intent.eoa,
         executionData,
         nonce: BigInt(intent.nonce),
-        payer: (intent.payer ?? zeroAddress) as Address,
-        paymentToken: (intent.paymentToken ?? zeroAddress) as Address,
+        payer: intent.payer ?? zeroAddress,
+        paymentToken: intent.paymentToken ?? zeroAddress,
         paymentMaxAmount: BigInt(intent.paymentMaxAmount ?? '0'),
         combinedGas: BigInt(intent.combinedGas),
-        encodedPreCalls: (intent.encodedPreCalls ?? []) as Hex[],
-        encodedFundTransfers: (intent.encodedFundTransfers ?? []) as Hex[],
-        settler: (intent.settler ?? zeroAddress) as Address,
+        encodedPreCalls: intent.encodedPreCalls ?? [],
+        encodedFundTransfers: intent.encodedFundTransfers ?? [],
+        settler: intent.settler ?? zeroAddress,
         expiry: BigInt(intent.expiry ?? '0'),
         isMultichain: intent.isMultichain ?? false,
-        funder: (intent.funder ?? zeroAddress) as Address,
-        funderSignature: (intent.funderSignature ?? '0x') as Hex,
-        settlerContext: (intent.settlerContext ?? '0x') as Hex,
+        funder: intent.funder ?? zeroAddress,
+        funderSignature: intent.funderSignature ?? '0x',
+        settlerContext: intent.settlerContext ?? '0x',
         paymentAmount: BigInt(intent.paymentAmount ?? '0'),
-        paymentRecipient: (intent.paymentRecipient ?? zeroAddress) as Address,
-        signature: intent.signature as Hex,
-        paymentSignature: (intent.paymentSignature ?? '0x') as Hex,
-        supportedAccountImplementation: (intent.supportedAccountImplementation ??
-            zeroAddress) as Address,
+        paymentRecipient: intent.paymentRecipient ?? zeroAddress,
+        signature: intent.signature,
+        paymentSignature: intent.paymentSignature ?? '0x',
+        supportedAccountImplementation: intent.supportedAccountImplementation ?? zeroAddress,
     }
 
     return encodeAbiParameters(

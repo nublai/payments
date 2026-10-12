@@ -6,7 +6,7 @@ import { concat, encodeAbiParameters, keccak256, type Address, type Hex } from '
  */
 export const ERC1271_SIGN_TYPEHASH = keccak256(
     new TextEncoder().encode('ERC1271Sign(bytes32 digest)'),
-) as Hex
+)
 
 /**
  * Domain typehash with only verifyingContract
@@ -14,7 +14,7 @@ export const ERC1271_SIGN_TYPEHASH = keccak256(
  */
 export const DOMAIN_TYPEHASH_ONLY_VERIFYING_CONTRACT = keccak256(
     new TextEncoder().encode('EIP712Domain(address verifyingContract)'),
-) as Hex
+)
 
 /**
  * Compute ERC-1271 replay-safe digest.
@@ -41,7 +41,7 @@ export function computeErc1271Digest(originalDigest: Hex, accountAddress: Addres
  * Wrap a signature with keyHash and prehash flag for Account.
  */
 export function wrapSignature(innerSignature: Hex, keyHash: Hex, prehash: boolean = false): Hex {
-    const prehashByte = prehash ? '0x01' : '0x00'
+    const prehashByte: Hex = prehash ? '0x01' : '0x00'
 
-    return concat([innerSignature, keyHash, prehashByte as Hex])
+    return concat([innerSignature, keyHash, prehashByte])
 }

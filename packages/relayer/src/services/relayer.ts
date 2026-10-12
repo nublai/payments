@@ -241,6 +241,7 @@ export function createIntentNonceProvider(
             })
 
             if (response.status === 409) {
+                // SAFETY: IntentNonceDO /acquire_or_get_draft 409 JSON has error and conflictDraftId.
                 const body = (await response.json()) as {
                     error: string
                     conflictDraftId: string
@@ -254,10 +255,12 @@ export function createIntentNonceProvider(
             }
 
             if (!response.ok) {
+                // SAFETY: IntentNonceDO /acquire_or_get_draft non-OK JSON has error.
                 const error = (await response.json()) as { error: string }
                 throw new Error(`Failed to acquire intent draft: ${error.error}`)
             }
 
+            // SAFETY: IntentNonceDO /acquire_or_get_draft success JSON has nonce, draftId, createdAtMs, expiresAtMs, fromCache.
             const data = (await response.json()) as {
                 nonce: string
                 draftId: string
@@ -286,10 +289,12 @@ export function createIntentNonceProvider(
             })
 
             if (!response.ok) {
+                // SAFETY: IntentNonceDO /mark_submitted non-OK JSON has error.
                 const error = (await response.json()) as { error: string }
                 throw new Error(`Failed to mark intent draft submitted: ${error.error}`)
             }
 
+            // SAFETY: IntentNonceDO /mark_submitted success JSON has ok and status.
             const data = (await response.json()) as {
                 ok: boolean
                 status: 'cleared' | 'not_found' | 'mismatch'
@@ -378,8 +383,10 @@ export function calculateCombinedGas(
 
 function normalizeCalls(calls: CallInput[]): Array<{ to: Address; value: bigint; data: Hex }> {
     return calls.map((call) => ({
+        // SAFETY: CallInput.to is an unchecked request string treated as Address.
         to: call.to as Address,
         value: call.value ? BigInt(call.value) : 0n,
+        // SAFETY: CallInput.data is an unchecked request string, or the 0x default, treated as Hex.
         data: (call.data ?? '0x') as Hex,
     }))
 }
@@ -389,7 +396,8 @@ function normalizeCalls(calls: CallInput[]): Array<{ to: Address; value: bigint;
  */
 function extractRevertData(error: unknown): Hex | null {
     if (error instanceof BaseError) {
-        const rawError = error.walk((e) => e instanceof RawContractError) as RawContractError | null
+        const walked = error.walk((e) => e instanceof RawContractError)
+        const rawError = walked instanceof RawContractError ? walked : null
         const rawData = rawError?.data
 
         if (isHex(rawData)) {
@@ -397,7 +405,7 @@ function extractRevertData(error: unknown): Hex | null {
         }
 
         if (rawData && typeof rawData === 'object' && 'data' in rawData) {
-            const nested = (rawData as { data?: unknown }).data
+            const nested = rawData.data
 
             if (isHex(nested)) {
                 return nested
@@ -407,6 +415,7 @@ function extractRevertData(error: unknown): Hex | null {
         let current: unknown = error
 
         while (current) {
+            // SAFETY: current is the next Error.cause; only data and cause are read.
             const curr = current as { data?: unknown; cause?: unknown }
 
             if (isHex(curr.data)) {
@@ -416,6 +425,7 @@ function extractRevertData(error: unknown): Hex | null {
             current = curr.cause
         }
     } else if (typeof error === 'object' && error !== null) {
+        // SAFETY: error is a non-null object; only data and cause.data are read, then isHex-checked.
         const err = error as { data?: unknown; cause?: { data?: unknown } }
 
         if (isHex(err.data)) return err.data
@@ -486,12 +496,12 @@ export class RelayerService {
         nonce: bigint,
     ): Promise<{ success: true; nonce: bigint } | { success: false; error: string }> {
         try {
-            const onChainNonce = (await this.publicClient.readContract({
+            const onChainNonce = await this.publicClient.readContract({
                 address: eoa,
                 abi: accountAbi,
                 functionName: 'getNonce',
                 args: [seqKey],
-            })) as bigint
+            })
 
             if (nonce < onChainNonce) {
                 return {
@@ -566,12 +576,12 @@ export class RelayerService {
 
     private async fetchOnChainSeq(eoa: Address, seqKey: bigint): Promise<bigint | null> {
         try {
-            const onChainNonce = (await this.publicClient.readContract({
+            const onChainNonce = await this.publicClient.readContract({
                 address: eoa,
                 abi: accountAbi,
                 functionName: 'getNonce',
                 args: [seqKey],
-            })) as bigint
+            })
 
             return onChainNonce & ((1n << 64n) - 1n)
         } catch {
@@ -583,12 +593,12 @@ export class RelayerService {
 
     private async fetchOnChainNonce(eoa: Address, seqKey: bigint): Promise<bigint> {
         try {
-            return (await this.publicClient.readContract({
+            return await this.publicClient.readContract({
                 address: eoa,
                 abi: accountAbi,
                 functionName: 'getNonce',
                 args: [seqKey],
-            })) as bigint
+            })
         } catch {
             return 0n
         }
@@ -605,6 +615,7 @@ export class RelayerService {
             this.logger.info({ eoa: request.eoa }, 'simulating intent execution')
 
             // Check if account has EIP-7702 delegation code before simulating
+            // SAFETY: request.eoa is an unchecked simulate input string treated as Address.
             const code = await this.publicClient.getCode({ address: request.eoa as Address })
 
             let delegationCode: Hex | undefined
@@ -666,6 +677,7 @@ export class RelayerService {
             // The account extracts keyHash from the suffix; validation fails but
             // simulation mode overrides isValid=true. This makes GuardedExecutor
             // run the session-key path (canExecute + _incrementSpent) for accurate gas.
+            // SAFETY: request.signature is an unchecked simulate input string, or the 0x default, treated as Hex.
             let signature: Hex = (request.signature ?? '0x') as Hex
 
             if (request.sessionKey && !request.signature) {
@@ -676,29 +688,41 @@ export class RelayerService {
                     ]),
                 )
 
-                signature = concat([`0x${'00'.repeat(65)}` as Hex, keyHash, '0x00' as Hex])
+                signature = concat([`0x${'00'.repeat(65)}`, keyHash, '0x00'])
             }
 
             const intent = {
+                // SAFETY: request.eoa is an unchecked simulate input string treated as Address.
                 eoa: request.eoa as Address,
                 executionData,
                 nonce: BigInt(request.nonce ?? '0'),
+                // SAFETY: request.payer is an unchecked simulate input string, or zeroAddress, treated as Address.
                 payer: (request.payer ?? zeroAddress) as Address,
+                // SAFETY: request.paymentToken is an unchecked simulate input string, or zeroAddress, treated as Address.
                 paymentToken: (request.paymentToken ?? zeroAddress) as Address,
                 paymentMaxAmount: BigInt(request.paymentMaxAmount ?? '0'),
                 combinedGas: BigInt(request.combinedGas ?? '10000000'), // High default for estimation
+                // SAFETY: request.encodedPreCalls is an unchecked simulate input string array treated as Hex[].
                 encodedPreCalls: (request.encodedPreCalls ?? []) as Hex[],
+                // SAFETY: request.encodedFundTransfers is an unchecked simulate input string array treated as Hex[].
                 encodedFundTransfers: (request.encodedFundTransfers ?? []) as Hex[],
+                // SAFETY: request.settler is an unchecked simulate input string, or zeroAddress, treated as Address.
                 settler: (request.settler ?? zeroAddress) as Address,
                 expiry,
                 isMultichain: request.isMultichain ?? false,
+                // SAFETY: request.funder is an unchecked simulate input string, or zeroAddress, treated as Address.
                 funder: (request.funder ?? zeroAddress) as Address,
+                // SAFETY: request.funderSignature is an unchecked simulate input string, or the 0x default, treated as Hex.
                 funderSignature: (request.funderSignature ?? '0x') as Hex,
+                // SAFETY: request.settlerContext is an unchecked simulate input string, or the 0x default, treated as Hex.
                 settlerContext: (request.settlerContext ?? '0x') as Hex,
                 paymentAmount: BigInt(request.paymentAmount ?? '0'),
+                // SAFETY: request.paymentRecipient is an unchecked simulate input string, or zeroAddress, treated as Address.
                 paymentRecipient: (request.paymentRecipient ?? zeroAddress) as Address,
                 signature,
+                // SAFETY: request.paymentSignature is an unchecked simulate input string, or the 0x default, treated as Hex.
                 paymentSignature: (request.paymentSignature ?? '0x') as Hex,
+                // SAFETY: request.supportedAccountImplementation is an unchecked simulate input string, or zeroAddress, treated as Address.
                 supportedAccountImplementation: (request.supportedAccountImplementation ??
                     zeroAddress) as Address,
             }
@@ -754,6 +778,7 @@ export class RelayerService {
                           data: calldata,
                           stateOverride: [
                               {
+                                  // SAFETY: request.eoa is an unchecked simulate input string treated as Address.
                                   address: request.eoa as Address,
                                   code: delegationCode,
                               },
@@ -807,6 +832,7 @@ export class RelayerService {
                 this.logger.warn(
                     {
                         eoa: request.eoa,
+                        // SAFETY: callError is the unknown catch value; constructor.name is read without an instanceof check.
                         errorType: (callError as object)?.constructor?.name,
                         errorMessage,
                     },
@@ -839,6 +865,7 @@ export class RelayerService {
         try {
             this.logger.info({ eoa: request.eoa }, 'preparing intent')
 
+            // SAFETY: request.eoa is an unchecked prepare input string treated as Address.
             const eoaAddress = request.eoa as Address
             const seqKey = BigInt(request.seqKey ?? '0')
 
@@ -863,16 +890,21 @@ export class RelayerService {
             const expiry = resolveIntentExpirySeconds(request.expiry, nowSeconds)
 
             // PreCalls defaults
+            // SAFETY: request.encodedPreCalls is an unchecked prepare input string array treated as Hex[].
             const encodedPreCalls = (request.encodedPreCalls ?? []) as Hex[]
 
             // Funding defaults
+            // SAFETY: request.encodedFundTransfers is an unchecked prepare input string array treated as Hex[].
             const encodedFundTransfers = (request.encodedFundTransfers ?? []) as Hex[]
 
             // Settler defaults
+            // SAFETY: request.settler is an unchecked prepare input string, or zeroAddress, treated as Address.
             const settler = (request.settler ?? zeroAddress) as Address
 
             // Payment defaults
+            // SAFETY: request.payer is an unchecked prepare input string, or zeroAddress, treated as Address.
             const payer = (request.payer ?? zeroAddress) as Address
+            // SAFETY: request.paymentToken is an unchecked prepare input string, or zeroAddress, treated as Address.
             const paymentToken = (request.paymentToken ?? zeroAddress) as Address
             const paymentMaxAmount = BigInt(request.paymentMaxAmount ?? '0')
             const paymentEnabled = isPaymentEnabled(payer, paymentToken)

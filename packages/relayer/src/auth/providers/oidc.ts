@@ -116,8 +116,8 @@ function parseWalletsClaim(payload: JWTPayload, claimName: string): Address[] | 
                 : item &&
                     typeof item === 'object' &&
                     'address' in item &&
-                    typeof (item as { address?: unknown }).address === 'string'
-                  ? (item as { address: string }).address
+                    typeof item.address === 'string'
+                  ? item.address
                   : undefined
 
         if (!value || !isAddress(value)) return 'invalid'

@@ -26,8 +26,7 @@ function createChainConfig(chainId: number, rpcUrl: string): Chain {
  * Looks for RPC_<chainId> first, falls back to RPC_URL
  */
 export function getChainRpcUrl(chainId: number, env: Partial<Env>): string {
-    const chainSpecificKey = `RPC_${chainId}` as keyof Env
-    const chainRpc = env[chainSpecificKey] as string | undefined
+    const chainRpc = env[`RPC_${chainId}`]
 
     if (chainRpc) {
         return chainRpc

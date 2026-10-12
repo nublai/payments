@@ -5,11 +5,6 @@ import { createHttpAuthNonceStore } from './nonce-store'
 import { getErc8128Policy } from './policy'
 import { verifyErc8128Request, type Erc8128VerifyFailure, type NonceStore } from './verify'
 
-interface JsonRpcLike {
-    id?: unknown
-    method?: unknown
-}
-
 interface MiddlewareDeps {
     verify?: typeof verifyErc8128Request
     nowSeconds?: () => number
@@ -27,8 +22,9 @@ function extractAuthRequirement(
             (item) =>
                 !!item &&
                 typeof item === 'object' &&
-                typeof (item as JsonRpcLike).method === 'string' &&
-                protectedMethods.has((item as JsonRpcLike).method as string),
+                'method' in item &&
+                typeof item.method === 'string' &&
+                protectedMethods.has(item.method),
         )
 
         return { requiresAuth, id: null }
@@ -38,12 +34,12 @@ function extractAuthRequirement(
         return { requiresAuth: false, id: null }
     }
 
-    const req = body as JsonRpcLike
-    const method = typeof req.method === 'string' ? req.method : undefined
+    const method =
+        'method' in body && typeof body.method === 'string' ? body.method : undefined
 
     return {
         requiresAuth: !!method && protectedMethods.has(method),
-        id: req.id ?? null,
+        id: ('id' in body ? body.id : undefined) ?? null,
     }
 }
 

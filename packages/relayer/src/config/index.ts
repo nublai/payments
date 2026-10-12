@@ -44,7 +44,7 @@ export function validateEnv(env: Env, deps: ValidateEnvDeps = {}): ValidateEnvRe
     const missing: string[] = []
 
     for (const key of REQUIRED_ENV_VARS) {
-        if (!env[key as keyof Env]) {
+        if (!env[key]) {
             missing.push(key)
         }
     }

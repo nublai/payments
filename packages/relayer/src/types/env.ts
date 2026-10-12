@@ -273,7 +273,7 @@ function parseJsonRecord(envValue: string | undefined, label: string) {
     }
 
     try {
-        const parsed = JSON.parse(envValue) as unknown
+        const parsed: unknown = JSON.parse(envValue)
 
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             throw new Error('expected JSON object')

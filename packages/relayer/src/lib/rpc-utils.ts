@@ -16,7 +16,7 @@ export function validateAddress(value: string, paramName: string): Address {
         throw new RpcError(INVALID_PARAMS, `Invalid ${paramName}: must be a valid Ethereum address`)
     }
 
-    return value as Address
+    return `0x${value.slice(2)}`
 }
 
 /**
@@ -36,9 +36,11 @@ export function requireParam<T>(value: T | null | undefined, paramName: string):
  */
 export function unwrapParams<T>(params: unknown): T | undefined {
     if (Array.isArray(params)) {
+        // SAFETY: T is the caller's expected params shape; JSON-RPC params[0] is not validated here.
         return params[0] as T | undefined
     }
 
+    // SAFETY: T is the caller's expected params shape; the named-object params bag is not validated here.
     return params as T | undefined
 }
 
