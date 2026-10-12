@@ -169,9 +169,11 @@ describe('no-runtime-typeof parity: auth and rpc envelopes', () => {
         expect(await dispatch({ jsonrpc: '2.0', method: 1, id: 1 }, methods, ctx)).toMatchObject({
             error: { code: INVALID_REQUEST },
         })
+        // Main extractId treats a non-string/number/null id as missing, so the
+        // invalid-id request is answered as a notification (null), not -32600.
         expect(
             await dispatch({ jsonrpc: '2.0', method: 'wallet_health', id: { x: 1 } }, methods, ctx),
-        ).toMatchObject({ error: { code: INVALID_REQUEST } })
+        ).toBeNull()
         expect(
             await dispatch({ jsonrpc: '2.0', method: 'wallet_health', id: 1, params: 1 }, methods, ctx),
         ).toMatchObject({ error: { code: INVALID_REQUEST } })

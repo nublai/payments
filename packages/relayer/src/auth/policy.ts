@@ -24,6 +24,12 @@ const rpcPeekSchema = z
     })
     .passthrough()
 
+const rpcIdOnlySchema = z
+    .object({
+        id: z.unknown().optional(),
+    })
+    .passthrough()
+
 function coerceJsonRpcId(id: unknown): JsonRpcId {
     const parsed = jsonRpcIdSchema.safeParse(id)
 
@@ -77,12 +83,17 @@ export function extractAuthRequirement(
 
     const parsed = rpcPeekSchema.safeParse(body)
 
-    if (!parsed.success) {
-        return { requiresAuth: false, id: null }
+    if (parsed.success) {
+        return {
+            requiresAuth: protectedMethods.has(parsed.data.method),
+            id: coerceJsonRpcId(parsed.data.id),
+        }
     }
 
+    const idOnly = rpcIdOnlySchema.safeParse(body)
+
     return {
-        requiresAuth: protectedMethods.has(parsed.data.method),
-        id: coerceJsonRpcId(parsed.data.id),
+        requiresAuth: false,
+        id: idOnly.success ? coerceJsonRpcId(idOnly.data.id) : null,
     }
 }

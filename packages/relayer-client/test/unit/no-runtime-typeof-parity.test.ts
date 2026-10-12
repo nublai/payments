@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { zeroAddress } from 'viem'
 import { hashTypedData } from 'viem/utils'
 
+import type { PrepareCallsResponse } from '../../src/actions/prepareCalls.js'
 import {
     bindPreparedCalls,
     parseQuotePaymentAmount,
@@ -32,9 +33,15 @@ type PreparedOverrides = {
     nullIntent?: boolean
 }
 
+function bindFixture(prepared: ReturnType<typeof makePrepared>) {
+    // SAFETY: fixtures include refuse-path values (null message/intent, numeric eoa)
+    // that bindPreparedCalls decodes at its I/O boundary.
+    return bindPreparedCalls(prepared as PrepareCallsResponse, expected)
+}
+
 function refuseBind(prepared: ReturnType<typeof makePrepared>): string {
     try {
-        bindPreparedCalls(prepared, expected)
+        bindFixture(prepared)
         throw new Error('expected bindPreparedCalls to refuse')
     } catch (error) {
         if (error instanceof PreparedCallsBindingError) return error.message
@@ -95,7 +102,14 @@ function makePrepared(overrides: PreparedOverrides = {}) {
                     {
                         chainId: '0x2105',
                         orchestrator: ORCHESTRATOR,
+                        extraPayment: '0x0',
+                        ethPrice: '0x0',
+                        paymentTokenDecimals: 6,
+                        txGas: 1,
+                        nativeFeeEstimate: { maxFeePerGas: 1, maxPriorityFeePerGas: 1 },
                         paymentAmount: overrides.paymentAmount ?? '1000',
+                        feeTokenDeficit: '0x0',
+                        assetDeficits: [],
                         extra: 1,
                         intent: overrides.nullIntent
                             ? null
@@ -118,8 +132,6 @@ function makePrepared(overrides: PreparedOverrides = {}) {
                 ttl: 1,
             },
         },
-        capabilities: { feeTotals: {}, assetDiffs: {} },
-        signature: '0x',
     }
 }
 
@@ -191,7 +203,7 @@ describe('no-runtime-typeof parity: bind and serialize', () => {
 
     it('bindPreparedCalls still signs a matching quote', () => {
         const prepared = makePrepared()
-        const bound = bindPreparedCalls(prepared, expected)
+        const bound = bindFixture(prepared)
 
         expect(bound.digest).toBe(prepared.digest)
         expect(bound.typedData.primaryType).toBe('Intent')

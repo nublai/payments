@@ -52,12 +52,17 @@ export async function handleGetCallsStatus(
     let receipts: GetCallsStatusResult['receipts'] = []
     let chainIdsToCheck: number[] = []
 
-    if (asObject.success) {
+    if (asObject.success && asObject.data.chain_id) {
         const chainId = z.string().safeParse(asObject.data.chain_id)
 
-        if (chainId.success) {
-            chainIdsToCheck = [parseHexChainId(chainId.data, 'chain_id')]
-        }
+        // Main passed any truthy chain_id to parseHexChainId; Number.parseInt
+        // coerces non-strings the same way String() does.
+        chainIdsToCheck = [
+            parseHexChainId(
+                chainId.success ? chainId.data : String(asObject.data.chain_id),
+                'chain_id',
+            ),
+        ]
     }
 
     if (chainIdsToCheck.length === 0) {

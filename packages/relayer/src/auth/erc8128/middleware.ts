@@ -13,6 +13,12 @@ const rpcPeekSchema = z
     })
     .passthrough()
 
+const rpcIdOnlySchema = z
+    .object({
+        id: z.unknown().optional(),
+    })
+    .passthrough()
+
 interface MiddlewareDeps {
     verify?: typeof verifyErc8128Request
     nowSeconds?: () => number
@@ -37,13 +43,18 @@ function extractAuthRequirement(
 
     const parsed = rpcPeekSchema.safeParse(body)
 
-    if (!parsed.success) {
-        return { requiresAuth: false, id: null }
+    if (parsed.success) {
+        return {
+            requiresAuth: protectedMethods.has(parsed.data.method),
+            id: parsed.data.id ?? null,
+        }
     }
 
+    const idOnly = rpcIdOnlySchema.safeParse(body)
+
     return {
-        requiresAuth: protectedMethods.has(parsed.data.method),
-        id: parsed.data.id ?? null,
+        requiresAuth: false,
+        id: idOnly.success ? (idOnly.data.id ?? null) : null,
     }
 }
 
