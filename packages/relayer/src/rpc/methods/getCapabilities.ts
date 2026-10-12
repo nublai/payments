@@ -134,7 +134,7 @@ export async function handleGetCapabilities(
                 simulator: config.contracts.simulator,
             },
             fees: {
-                // SAFETY: FEE_RECIPIENT is the fee recipient address env var; the fallback is config.contracts.orchestrator.
+                // SAFETY: not runtime-checked; FEE_RECIPIENT is an operator-set string assumed to be an address, else config.contracts.orchestrator.
                 recipient: (feeConfig.feeRecipient ?? config.contracts.orchestrator) as Address,
                 quoteConfig: {
                     ttlSeconds: feeConfig.quoteTtlSeconds,

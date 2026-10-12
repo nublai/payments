@@ -308,9 +308,9 @@ export function parseSignature(signature: Hex): ParsedSignature {
         )
     }
 
-    // SAFETY: signature is Hex and slice(2) is 130 chars; r is 0x plus the first 64.
+    // SAFETY: signature is typed Hex; its characters are not checked here. After the 130-char length check, r is 0x plus the first 64 characters.
     const r = `0x${sig.slice(0, 64)}` as Hex
-    // SAFETY: signature is Hex and slice(2) is 130 chars; s is 0x plus chars 64..128.
+    // SAFETY: signature is typed Hex; its characters are not checked here. After the 130-char length check, s is 0x plus the next 64 characters.
     const s = `0x${sig.slice(64, 128)}` as Hex
     const v = parseInt(sig.slice(128, 130), 16)
     const yParity = v >= 27 ? v - 27 : v

@@ -70,7 +70,7 @@ async function handleSingle(
         return createErrorResponse(id, validationError.code, validationError.message)
     }
 
-    // SAFETY: validateRequest already checked jsonrpc, method, id, and params.
+    // SAFETY: validateRequest checked jsonrpc === '2.0', method is a string, id is string/number/null/undefined, and params is undefined or typeof 'object' (null passes).
     const request = body as JsonRpcRequest
     const isNotification = request.id === null
 
