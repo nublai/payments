@@ -8,7 +8,7 @@ export function sessionAddressFromEncodedKey(sessionKey: string | undefined): Ad
     if (!sessionKey || sessionKey === '0x') return undefined
 
     try {
-        // SAFETY: sessionKey is an unchecked string; decodeAbiParameters throws on non-hex, and the catch below returns undefined.
+        // SAFETY: sessionKey is an unchecked string; viem skips the first two characters without checking them (so 0X… decodes), throws on non-hex digits or short data, the catch returns undefined, and isAddress checks the result.
         const [decoded] = decodeAbiParameters([{ type: 'address' }], sessionKey as Hex)
 
         if (typeof decoded === 'string' && isAddress(decoded)) {
