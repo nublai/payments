@@ -65,7 +65,7 @@ export type AccountDelegateArgs = {
 
 export type AccountDelegateOptions = {
     env: EnvName
-    chains: ChainName[]
+    chains: string[]
     keystorePath?: string
     name?: string
     password: string
@@ -114,6 +114,29 @@ function normalizeChain(value?: string): ChainName {
         const message = error instanceof Error ? error.message : `Unsupported chain: ${value}`
         throw new AccountDelegateError('UNSUPPORTED_CHAIN', message, { cause: error })
     }
+}
+
+function resolveDelegateChains(env: EnvName, chains: string[]): ChainName[] {
+    if (chains.length === 0) {
+        return [selectDefaultChain(env)]
+    }
+
+    const resolved: ChainName[] = []
+    const seen = new Set<ChainName>()
+
+    for (const chain of chains) {
+        if (chain === '') {
+            throw new AccountDelegateError('UNSUPPORTED_CHAIN', `Unsupported chain: ${chain}`)
+        }
+
+        const name = normalizeChain(chain)
+
+        if (seen.has(name)) continue
+        seen.add(name)
+        resolved.push(name)
+    }
+
+    return resolved
 }
 
 function getDefaultDeps(): AccountDelegateDeps {
@@ -173,6 +196,7 @@ export async function executeAccountDelegate(
     depsArg?: Partial<AccountDelegateDeps>,
 ): Promise<AccountDelegateResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
+    const chains = resolveDelegateChains(options.env, options.chains)
     let keystorePath = options.keystorePath ?? '<default>'
 
     try {
@@ -191,11 +215,8 @@ export async function executeAccountDelegate(
         const results: AccountDelegateChainResult[] = []
         let hasDelegatedAtLeastOne = false
 
-        for (const chain of options.chains) {
-            const network = resolveNetworkConfig(
-                options.env,
-                chain ? normalizeChain(chain) : selectDefaultChain(options.env),
-            )
+        for (const chain of chains) {
+            const network = resolveNetworkConfig(options.env, chain)
 
             try {
                 const code = await deps.getDelegatedCode({ network, address: rootAddress })

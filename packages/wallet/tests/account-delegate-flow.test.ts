@@ -4,7 +4,6 @@ import {
     AccountDelegateError,
     resolveAccountDelegatePassword,
     type AccountDelegateDeps,
-    type AccountDelegateOptions,
 } from '../src/lib/account-delegate'
 import { executeAccountDelegate } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
@@ -80,10 +79,6 @@ function makeSessionKeystore(
         secrets: {
             sessionPrivateKey: { nonce: 'd', ciphertext: 'e', tag: 'f' } },
         ...overrides }
-}
-
-function unsetDelegateChain(): string | undefined {
-    return undefined
 }
 
 test('resolveAccountDelegatePassword prefers env password', async () => {
@@ -249,32 +244,12 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
 })
 
 test('executeAccountDelegate refuses an unsupported chain', async () => {
-    const root = makeRootKeystore()
-    const session = makeSessionKeystore()
-    const unsupportedChain: string = 'foobar'
-
-    const invalidOptions: AccountDelegateOptions = {
-        env: 'prod',
-        keystorePath: '/tmp/alice.json',
-        password: 'pw',
-        // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
-        chains: [unsupportedChain] as AccountDelegateOptions['chains'],
-    }
-
     try {
-        await executeAccountDelegate(invalidOptions, {
-            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
-                format: 'split',
-                rootPath: '/tmp/alice.json',
-                sessionPath: '/tmp/sessions/default.json',
-                root,
-                session })),
-            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
-                rootPrivateKey:
-                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
-            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
-                sessionPrivateKey:
-                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })) })
+        await executeAccountDelegate({
+            env: 'prod',
+            keystorePath: '/tmp/alice.json',
+            password: 'pw',
+            chains: ['foobar'] })
         throw new Error('expected executeAccountDelegate to throw')
     } catch (error) {
         expect(error).toBeInstanceOf(AccountDelegateError)
@@ -286,17 +261,88 @@ test('executeAccountDelegate refuses an unsupported chain', async () => {
     }
 })
 
-test('executeAccountDelegate defaults to base for prod when chain is undefined', async () => {
+test('executeAccountDelegate refuses a mixed list before signing', async () => {
+    const decryptRootKeystore = typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => {
+        throw new Error('should not decrypt')
+    })
+
+    const delegateAccount = typedMock<AccountDelegateDeps['delegateAccount']>(async () => {
+        throw new Error('should not sign')
+    })
+
+    try {
+        await executeAccountDelegate(
+            {
+                env: 'prod',
+                keystorePath: '/tmp/alice.json',
+                password: 'pw',
+                chains: ['base', 'foobar'] },
+            {
+                decryptRootKeystore,
+                delegateAccount },
+        )
+        throw new Error('expected executeAccountDelegate to throw')
+    } catch (error) {
+        expect(error).toBeInstanceOf(AccountDelegateError)
+
+        if (!(error instanceof AccountDelegateError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.message).toBe('Unsupported chain: foobar')
+    }
+
+    expect(decryptRootKeystore).not.toHaveBeenCalled()
+    expect(delegateAccount).not.toHaveBeenCalled()
+})
+
+test('executeAccountDelegate refuses an empty chain entry', async () => {
+    const decryptRootKeystore = typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => {
+        throw new Error('should not decrypt')
+    })
+
+    const delegateAccount = typedMock<AccountDelegateDeps['delegateAccount']>(async () => {
+        throw new Error('should not sign')
+    })
+
+    try {
+        await executeAccountDelegate(
+            {
+                env: 'prod',
+                keystorePath: '/tmp/alice.json',
+                password: 'pw',
+                chains: ['polygon', ''] },
+            {
+                decryptRootKeystore,
+                delegateAccount },
+        )
+        throw new Error('expected executeAccountDelegate to throw')
+    } catch (error) {
+        expect(error).toBeInstanceOf(AccountDelegateError)
+
+        if (!(error instanceof AccountDelegateError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.message).toBe('Unsupported chain: ')
+    }
+
+    expect(decryptRootKeystore).not.toHaveBeenCalled()
+    expect(delegateAccount).not.toHaveBeenCalled()
+})
+
+test('executeAccountDelegate de-duplicates aliases after resolving', async () => {
     const root = makeRootKeystore()
     const session = makeSessionKeystore()
+
+    const delegateAccount = typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
+        accountAddress: ROOT_ADDRESS,
+        txHash: '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' }))
 
     const result = await executeAccountDelegate(
         {
             env: 'prod',
+            chains: ['matic', 'polygon'],
             keystorePath: '/tmp/alice.json',
-            password: 'pw',
-            // SAFETY: undefined is not a ChainName; this checks the prod env default.
-            chains: [unsetDelegateChain()] as AccountDelegateOptions['chains'] },
+            password: 'pw' },
         {
             readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
                 format: 'split',
@@ -310,46 +356,14 @@ test('executeAccountDelegate defaults to base for prod when chain is undefined',
             decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
                 sessionPrivateKey:
                     '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
-            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0xef0100'),
-            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
-                accountAddress: ROOT_ADDRESS })),
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0x'),
+            delegateAccount,
             writeRootKeystoreFile: typedMock<AccountDelegateDeps['writeRootKeystoreFile']>(async () => {}) },
     )
 
     expect(result.results).toHaveLength(1)
-    expect(result.results[0]?.chainId).toBe(8453)
-})
-
-test('executeAccountDelegate defaults to anvil for dev when chain is undefined', async () => {
-    const root = makeRootKeystore()
-    const session = makeSessionKeystore()
-
-    const result = await executeAccountDelegate(
-        {
-            env: 'dev',
-            keystorePath: '/tmp/alice.json',
-            password: 'pw',
-            // SAFETY: undefined is not a ChainName; this checks the dev env default.
-            chains: [unsetDelegateChain()] as AccountDelegateOptions['chains'] },
-        {
-            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
-                format: 'split',
-                rootPath: '/tmp/alice.json',
-                sessionPath: '/tmp/sessions/default.json',
-                root,
-                session })),
-            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
-                rootPrivateKey:
-                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
-            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
-                sessionPrivateKey:
-                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
-            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0xef0100'),
-            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
-                accountAddress: ROOT_ADDRESS })),
-            writeRootKeystoreFile: typedMock<AccountDelegateDeps['writeRootKeystoreFile']>(async () => {}) },
-    )
-
-    expect(result.results).toHaveLength(1)
-    expect(result.results[0]?.chainId).toBe(31337)
+    expect(result.results[0]?.chain).toBe('polygon')
+    expect(result.results[0]?.chainId).toBe(137)
+    expect(result.results[0]?.status).toBe('delegated')
+    expect(delegateAccount).toHaveBeenCalledTimes(1)
 })

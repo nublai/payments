@@ -874,9 +874,7 @@ account.command('delegate', {
 
         return executeAccountDelegate({
             env: options.env,
-            // SAFETY: split/trim is string[]; executeAccountDelegate resolves each entry with
-            // (chain ? normalizeChain(chain) : selectDefaultChain(env)) before resolveNetworkConfig.
-            chains: options.chain.split(',').map((c) => c.trim()) as ChainName[],
+            chains: options.chain.split(',').map((c) => c.trim()),
             name: options.profile,
             keystorePath: options.keystorePath,
             password,
