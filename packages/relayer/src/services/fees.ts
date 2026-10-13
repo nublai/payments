@@ -127,6 +127,7 @@ export function getPaymentRecipient(
     signerAddress: Address,
 ): Address {
     if (configuredRecipient && configuredRecipient !== zeroAddress) {
+        // SAFETY: not runtime-checked; configuredRecipient is an operator-set string assumed to be an address when it is present and not the zero address.
         return configuredRecipient as Address
     }
 

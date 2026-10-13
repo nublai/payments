@@ -65,6 +65,7 @@ function resolveConfig(config?: PriceOracleConfigInput): ResolvedPriceOracleConf
         typeof config.providerId === 'string' &&
         config.assetMapping
     ) {
+        // SAFETY: rateTtlMs, fetchIntervalMs, and providerId were typeof-checked and assetMapping is truthy; coingeckoUrl, fallbackEthUsd, and fallbackUsdPrices are not re-checked here and stay whatever the caller passed.
         return config as ResolvedPriceOracleConfig
     }
 

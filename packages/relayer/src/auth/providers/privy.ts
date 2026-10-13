@@ -76,10 +76,14 @@ function upgradeAccountAddress(method: string, params: unknown): Address | 'inva
     // SAFETY: first is a non-null object; only address / context.address are read.
     const record = first as { address?: unknown; context?: unknown }
 
-    const raw =
-        method === 'wallet_upgradeAccount'
-            ? (record.context as { address?: unknown } | undefined)?.address
-            : record.address
+    let raw: unknown
+
+    if (method === 'wallet_upgradeAccount') {
+        // SAFETY: record.context is unchecked; only address is read, then isAddress-checked below.
+        raw = (record.context as { address?: unknown } | undefined)?.address
+    } else {
+        raw = record.address
+    }
 
     if (typeof raw !== 'string' || !isAddress(raw)) return 'invalid'
 

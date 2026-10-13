@@ -33,6 +33,7 @@ export async function jsonRpcRequest<T>(
             throw new Error(`RPC not reachable: ${response.status} ${response.statusText}`)
         }
 
+        // SAFETY: the upstream chain RPC JSON is unchecked; only error and result are read. T is the caller's assertion for this method.
         const payload = (await response.json()) as JsonRpcResponse<T>
 
         if (payload.error) {

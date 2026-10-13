@@ -8,7 +8,7 @@
 
 import { HDKey } from '@scure/bip32'
 import { mnemonicToSeedSync } from '@scure/bip39'
-import { bytesToHex, type Address, type Hex } from 'viem'
+import { bytesToHex, type Address } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
 export function deriveRelayerSignerAddress(mnemonic: string, index: number): Address {
@@ -21,7 +21,7 @@ export function deriveRelayerSignerAddress(mnemonic: string, index: number): Add
         throw new Error(`Failed to derive key at path ${path}`)
     }
 
-    const privateKey = bytesToHex(derived.privateKey) as Hex
+    const privateKey = bytesToHex(derived.privateKey)
 
     return privateKeyToAccount(privateKey).address
 }

@@ -13,11 +13,6 @@ export const ALWAYS_AUTH_PROTECTED_METHODS = [
 
 export type JsonRpcId = string | number | null
 
-interface JsonRpcLike {
-    id?: JsonRpcId | unknown
-    method?: unknown
-}
-
 function coerceJsonRpcId(id: unknown): JsonRpcId {
     if (id === null || typeof id === 'string' || typeof id === 'number') {
         return id
@@ -64,8 +59,9 @@ export function extractAuthRequirement(
             (item) =>
                 !!item &&
                 typeof item === 'object' &&
-                typeof (item as JsonRpcLike).method === 'string' &&
-                protectedMethods.has((item as JsonRpcLike).method as string),
+                'method' in item &&
+                typeof item.method === 'string' &&
+                protectedMethods.has(item.method),
         )
 
         return { requiresAuth, id: null }
@@ -75,11 +71,11 @@ export function extractAuthRequirement(
         return { requiresAuth: false, id: null }
     }
 
-    const req = body as JsonRpcLike
-    const method = typeof req.method === 'string' ? req.method : undefined
+    const method =
+        'method' in body && typeof body.method === 'string' ? body.method : undefined
 
     return {
         requiresAuth: !!method && protectedMethods.has(method),
-        id: coerceJsonRpcId(req.id),
+        id: coerceJsonRpcId('id' in body ? body.id : undefined),
     }
 }

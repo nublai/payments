@@ -142,7 +142,7 @@ app.post('/', async (c) => {
         return c.json(redactRpcResponse(response, c.env))
     } catch (error) {
         // JSON parse error
-        logger.error(errorDetails(error as Error), 'JSON-RPC parse error')
+        logger.error(errorDetails(error), 'JSON-RPC parse error')
 
         return c.json(
             {
@@ -367,6 +367,7 @@ async function logBundleGasTelemetry(
         )
 
         if (!bundleLookupResponse.ok) return
+        // SAFETY: BundleStatusDO /get_bundle_id_by_tx JSON is trusted and not validated; expected { bundleId: string | null }.
         const bundleLookup = (await bundleLookupResponse.json()) as { bundleId: string | null }
 
         if (!bundleLookup.bundleId) return
@@ -377,6 +378,7 @@ async function logBundleGasTelemetry(
 
         if (!telemetryResponse.ok) return
 
+        // SAFETY: BundleStatusDO /get_bundle_telemetry JSON is trusted and not validated; expected BundleGasTelemetry or null (simulationGas, combinedGas, txGas, paymentEnabled).
         const telemetry = (await telemetryResponse.json()) as {
             simulationGas?: string
             combinedGas?: string
@@ -449,6 +451,7 @@ async function getTransactionReceipt(
         }),
     })
 
+    // SAFETY: the chain RPC eth_getTransactionReceipt JSON is unchecked; only result is returned.
     const data = (await response.json()) as {
         result: {
             status: string

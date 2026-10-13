@@ -22,6 +22,7 @@ function peekJwtPayload(token: string): { iss?: unknown; aud?: unknown } | undef
     if (parts.length !== 3 || !parts[1]) return undefined
 
     try {
+        // SAFETY: JSON.parse of the JWT payload segment is unchecked; only iss and aud are read by the callers.
         return JSON.parse(decodeBase64Url(parts[1])) as { iss?: unknown; aud?: unknown }
     } catch {
         return undefined
