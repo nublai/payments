@@ -423,16 +423,17 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         if (
             !isRecord(encodedCustomDomain) ||
             !('types' in encodedCustomDomain) ||
-            !isRecord(encodedCustomDomain.types) ||
-            !('EIP712Domain' in encodedCustomDomain.types)
+            !isRecord(encodedCustomDomain.types)
         ) {
             throw new Error('typed data encoding failed')
         }
 
-        encodedCustomDomain.types.EIP712Domain = [
-            { name: 'name', type: 'string' },
-            { name: 'version', type: 'string' },
-        ]
+        Object.assign(encodedCustomDomain.types, {
+            EIP712Domain: [
+                { name: 'name', type: 'string' },
+                { name: 'version', type: 'string' },
+            ],
+        })
 
         const refusedCustomDomain = await sendSignOverSocket(
             process.env.TW_AGENT_SOCK!,
