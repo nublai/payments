@@ -12,6 +12,7 @@ import {
     writeRootKeystoreFile,
 } from './keystore'
 import {
+    normalizeChainName,
     resolveNetworkConfig,
     type ChainName,
     type CliNetworkConfig,
@@ -64,7 +65,7 @@ export type AccountDelegateArgs = {
 
 export type AccountDelegateOptions = {
     env: EnvName
-    chains: ChainName[]
+    chains: string[]
     keystorePath?: string
     name?: string
     password: string
@@ -104,6 +105,34 @@ export type AccountDelegateDeps = {
         network: CliNetworkConfig
         permissions: Permission[]
     }) => Promise<{ accountAddress: Address; txHash?: Hex }>
+}
+
+function normalizeChain(value: string): ChainName {
+    try {
+        return normalizeChainName(value)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : `Unsupported chain: ${value}`
+        throw new AccountDelegateError('UNSUPPORTED_CHAIN', message, { cause: error })
+    }
+}
+
+function resolveDelegateChains(chains: string[]): ChainName[] {
+    const resolved: ChainName[] = []
+    const seen = new Set<ChainName>()
+
+    for (const chain of chains) {
+        if (!chain) {
+            throw new AccountDelegateError('UNSUPPORTED_CHAIN', `Unsupported chain: ${chain}`)
+        }
+
+        const name = normalizeChain(chain)
+
+        if (seen.has(name)) continue
+        seen.add(name)
+        resolved.push(name)
+    }
+
+    return resolved
 }
 
 function getDefaultDeps(): AccountDelegateDeps {
@@ -163,6 +192,7 @@ export async function executeAccountDelegate(
     depsArg?: Partial<AccountDelegateDeps>,
 ): Promise<AccountDelegateResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
+    const chains = resolveDelegateChains(options.chains)
     let keystorePath = options.keystorePath ?? '<default>'
 
     try {
@@ -181,7 +211,7 @@ export async function executeAccountDelegate(
         const results: AccountDelegateChainResult[] = []
         let hasDelegatedAtLeastOne = false
 
-        for (const chain of options.chains) {
+        for (const chain of chains) {
             const network = resolveNetworkConfig(options.env, chain)
 
             try {

@@ -874,8 +874,7 @@ account.command('delegate', {
 
         return executeAccountDelegate({
             env: options.env,
-            // SAFETY: unchecked here; executeAccountDelegate calls resolveNetworkConfig which indexes chainConfig and does not call normalizeChainName.
-            chains: options.chain.split(',').map((c) => c.trim()) as ChainName[],
+            chains: options.chain.split(',').map((c) => c.trim()),
             name: options.profile,
             keystorePath: options.keystorePath,
             password,

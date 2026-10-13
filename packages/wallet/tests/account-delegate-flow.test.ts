@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import type { Address } from 'viem'
-import { resolveAccountDelegatePassword, type AccountDelegateDeps } from '../src/lib/account-delegate'
+import {
+    AccountDelegateError,
+    resolveAccountDelegatePassword,
+    type AccountDelegateDeps,
+} from '../src/lib/account-delegate'
 import { executeAccountDelegate } from './helpers/stub-execute'
 import type { RelayerRootKeystoreV2, RelayerSessionKeystoreV2 } from '../src/lib/keystore'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
@@ -237,4 +241,146 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
     expect(result.results[0]?.status).toBe('delegated')
     expect(result.results[1]?.status).toBe('failed')
     expect(result.results[1]?.errorCode).toBe('DELEGATION_FAILED')
+})
+
+test('executeAccountDelegate refuses an unsupported chain', async () => {
+    const root = makeRootKeystore()
+    const session = makeSessionKeystore()
+
+    try {
+        await executeAccountDelegate(
+            {
+                env: 'prod',
+                keystorePath: '/tmp/alice.json',
+                password: 'pw',
+                chains: ['foobar'] },
+            {
+                readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
+                    format: 'split',
+                    rootPath: '/tmp/alice.json',
+                    sessionPath: '/tmp/sessions/default.json',
+                    root,
+                    session })),
+                decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
+                    rootPrivateKey:
+                        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
+                decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
+                    sessionPrivateKey:
+                        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })) })
+        throw new Error('expected executeAccountDelegate to throw')
+    } catch (error) {
+        expect(error).toBeInstanceOf(AccountDelegateError)
+
+        if (!(error instanceof AccountDelegateError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.message).toBe('Unsupported chain: foobar')
+    }
+})
+
+test('executeAccountDelegate refuses a mixed list before signing', async () => {
+    const decryptRootKeystore = typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => {
+        throw new Error('should not decrypt')
+    })
+
+    const delegateAccount = typedMock<AccountDelegateDeps['delegateAccount']>(async () => {
+        throw new Error('should not sign')
+    })
+
+    try {
+        await executeAccountDelegate(
+            {
+                env: 'prod',
+                keystorePath: '/tmp/alice.json',
+                password: 'pw',
+                chains: ['base', 'foobar'] },
+            {
+                decryptRootKeystore,
+                delegateAccount },
+        )
+        throw new Error('expected executeAccountDelegate to throw')
+    } catch (error) {
+        expect(error).toBeInstanceOf(AccountDelegateError)
+
+        if (!(error instanceof AccountDelegateError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.message).toBe('Unsupported chain: foobar')
+    }
+
+    expect(decryptRootKeystore).not.toHaveBeenCalled()
+    expect(delegateAccount).not.toHaveBeenCalled()
+})
+
+test('executeAccountDelegate refuses an empty chain entry', async () => {
+    const decryptRootKeystore = typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => {
+        throw new Error('should not decrypt')
+    })
+
+    const delegateAccount = typedMock<AccountDelegateDeps['delegateAccount']>(async () => {
+        throw new Error('should not sign')
+    })
+
+    try {
+        await executeAccountDelegate(
+            {
+                env: 'prod',
+                keystorePath: '/tmp/alice.json',
+                password: 'pw',
+                chains: ['polygon', ''] },
+            {
+                decryptRootKeystore,
+                delegateAccount },
+        )
+        throw new Error('expected executeAccountDelegate to throw')
+    } catch (error) {
+        expect(error).toBeInstanceOf(AccountDelegateError)
+
+        if (!(error instanceof AccountDelegateError)) throw error
+
+        expect(error.code).toBe('UNSUPPORTED_CHAIN')
+        expect(error.message).toBe('Unsupported chain: ')
+    }
+
+    expect(decryptRootKeystore).not.toHaveBeenCalled()
+    expect(delegateAccount).not.toHaveBeenCalled()
+})
+
+test('executeAccountDelegate de-duplicates aliases after resolving', async () => {
+    const root = makeRootKeystore()
+    const session = makeSessionKeystore()
+
+    const delegateAccount = typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
+        accountAddress: ROOT_ADDRESS,
+        txHash: '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' }))
+
+    const result = await executeAccountDelegate(
+        {
+            env: 'prod',
+            chains: ['matic', 'polygon'],
+            keystorePath: '/tmp/alice.json',
+            password: 'pw' },
+        {
+            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
+                format: 'split',
+                rootPath: '/tmp/alice.json',
+                sessionPath: '/tmp/sessions/default.json',
+                root,
+                session })),
+            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
+                rootPrivateKey:
+                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
+            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
+                sessionPrivateKey:
+                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0x'),
+            delegateAccount,
+            writeRootKeystoreFile: typedMock<AccountDelegateDeps['writeRootKeystoreFile']>(async () => {}) },
+    )
+
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0]?.chain).toBe('polygon')
+    expect(result.results[0]?.chainId).toBe(137)
+    expect(result.results[0]?.status).toBe('delegated')
+    expect(delegateAccount).toHaveBeenCalledTimes(1)
 })
