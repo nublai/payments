@@ -244,12 +244,29 @@ test('executeAccountDelegate returns failed chain results and hasFailures=true',
 })
 
 test('executeAccountDelegate refuses an unsupported chain', async () => {
+    const root = makeRootKeystore()
+    const session = makeSessionKeystore()
+
     try {
-        await executeAccountDelegate({
-            env: 'prod',
-            keystorePath: '/tmp/alice.json',
-            password: 'pw',
-            chains: ['foobar'] })
+        await executeAccountDelegate(
+            {
+                env: 'prod',
+                keystorePath: '/tmp/alice.json',
+                password: 'pw',
+                chains: ['foobar'] },
+            {
+                readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
+                    format: 'split',
+                    rootPath: '/tmp/alice.json',
+                    sessionPath: '/tmp/sessions/default.json',
+                    root,
+                    session })),
+                decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
+                    rootPrivateKey:
+                        '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
+                decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
+                    sessionPrivateKey:
+                        '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })) })
         throw new Error('expected executeAccountDelegate to throw')
     } catch (error) {
         expect(error).toBeInstanceOf(AccountDelegateError)

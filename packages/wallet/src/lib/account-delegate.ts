@@ -12,8 +12,8 @@ import {
     writeRootKeystoreFile,
 } from './keystore'
 import {
+    normalizeChainName,
     resolveNetworkConfig,
-    selectDefaultChain,
     type ChainName,
     type CliNetworkConfig,
     type EnvName,
@@ -107,25 +107,21 @@ export type AccountDelegateDeps = {
     }) => Promise<{ accountAddress: Address; txHash?: Hex }>
 }
 
-function normalizeChain(value?: string): ChainName {
+function normalizeChain(value: string): ChainName {
     try {
-        return selectDefaultChain('prod', value)
+        return normalizeChainName(value)
     } catch (error) {
         const message = error instanceof Error ? error.message : `Unsupported chain: ${value}`
         throw new AccountDelegateError('UNSUPPORTED_CHAIN', message, { cause: error })
     }
 }
 
-function resolveDelegateChains(env: EnvName, chains: string[]): ChainName[] {
-    if (chains.length === 0) {
-        return [selectDefaultChain(env)]
-    }
-
+function resolveDelegateChains(chains: string[]): ChainName[] {
     const resolved: ChainName[] = []
     const seen = new Set<ChainName>()
 
     for (const chain of chains) {
-        if (chain === '') {
+        if (!chain) {
             throw new AccountDelegateError('UNSUPPORTED_CHAIN', `Unsupported chain: ${chain}`)
         }
 
@@ -196,7 +192,7 @@ export async function executeAccountDelegate(
     depsArg?: Partial<AccountDelegateDeps>,
 ): Promise<AccountDelegateResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
-    const chains = resolveDelegateChains(options.env, options.chains)
+    const chains = resolveDelegateChains(options.chains)
     let keystorePath = options.keystorePath ?? '<default>'
 
     try {
