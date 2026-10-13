@@ -38,7 +38,7 @@ export class AccountBalanceError extends Error {
 }
 
 export type AccountBalanceOptions = AccountAddressOptions & {
-    chain?: ChainName
+    chain?: string
     legacy?: boolean
 }
 

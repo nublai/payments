@@ -33,7 +33,7 @@ export type EscrowSettleOptions = {
     oracle: string
     oraclePrivateKey?: string
     signature?: string
-    chain?: ChainName
+    chain?: string
     keystorePath?: string
     sessionFile?: string
     name?: string

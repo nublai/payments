@@ -125,7 +125,7 @@ export type SessionCreateArgs = {
 
 export type SessionCreateOptions = {
     env: EnvName
-    chain?: ChainName
+    chain?: string
     name?: string
     keystorePath?: string
     sessionName: string

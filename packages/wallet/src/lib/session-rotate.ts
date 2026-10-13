@@ -1219,7 +1219,7 @@ function storedPermissionDefaults(
 export async function executeSessionRotate(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         newName?: string
@@ -1976,7 +1976,7 @@ export async function executeSessionRotate(
                         data: encodeFunctionData({
                             abi: accountAbi,
                             functionName: 'setCanExecute' as const,
-                            // SAFETY: values come from storedPermissionDefaults(intent.permissions): zod checks each selector with /^0x[0-9a-fA-F]{8}$/, but target is only z.string() (raw CLI --target) and is not address-checked.
+                            // SAFETY: selectors are zod-checked only when the intent was re-read from disk (resume); on a fresh rotation they are the raw CLI --selector values or buildPermissionDefaults constants, and target is never address-checked.
                             args: [newKeyHash, permissionDefaults.target, selector, true] as [
                                 Hex,
                                 Address,

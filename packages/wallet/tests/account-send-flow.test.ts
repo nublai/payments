@@ -81,8 +81,7 @@ test('executeAccountSend preserves cause for invalid chain override', async () =
         env: 'prod',
         amount: '1',
         recipient: '0x2222222222222222222222222222222222222222',
-        // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
-        chain: 'foobar' as AccountSendOptions['chain'],
+        chain: 'foobar',
         password: 'pw',
         keystorePath: '/tmp/alice.json',
     }

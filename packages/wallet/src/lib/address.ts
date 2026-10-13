@@ -132,7 +132,7 @@ export async function executeAddress(
         env: EnvName
         name?: string
         keystorePath?: string
-        chain?: ChainName
+        chain?: string
         token?: string
         amount?: string
         decimals?: number

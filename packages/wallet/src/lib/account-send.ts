@@ -100,7 +100,7 @@ export type AccountSendArgs = {
     env: EnvName
     amount?: string
     recipient?: string
-    chain: ChainName
+    chain?: string
     legacy: boolean
     keystorePath?: string
     name?: string
@@ -113,7 +113,7 @@ export type AccountSendOptions = {
     env: EnvName
     amount: string
     recipient: string
-    chain?: ChainName
+    chain?: string
     legacy?: boolean
     keystorePath?: string
     sessionFile?: string

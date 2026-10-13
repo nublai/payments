@@ -22,7 +22,6 @@ import {
 import {
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -214,7 +213,7 @@ function registryKeyContainsAddress(registryKey: string, address: Address): bool
 export async function executeSessionRevoke(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         sessionName: string

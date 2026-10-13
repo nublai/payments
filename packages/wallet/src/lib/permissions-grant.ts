@@ -18,7 +18,6 @@ import {
     getUsdcTokenConfig,
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -194,7 +193,7 @@ async function loadLocalKeyMeta(input: {
 export async function executePermissionsGrant(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         keyRef?: string

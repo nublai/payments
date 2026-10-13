@@ -81,7 +81,7 @@ export class AccountStatusError extends Error {
 
 export type AccountStatusOptions = {
     env: EnvName
-    chain?: ChainName
+    chain?: string
     legacy?: boolean
     keystorePath?: string
     name?: string

@@ -11,7 +11,6 @@ import {
 import {
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -86,7 +85,7 @@ function getDefaultDeps(): SessionListDeps {
 export async function executeSessionList(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         onChain?: boolean

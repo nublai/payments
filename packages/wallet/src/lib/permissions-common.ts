@@ -163,7 +163,7 @@ export function isKeyHashRef(value: string): boolean {
 }
 
 export function normalizeAddressLower(value: Address): Address {
-    // SAFETY: callers pass Address-typed values (getAddress results, token configs); this function does not check the input.
+    // SAFETY: callers pass Address-typed values from getAddress, token configs, and relayer getKeys JSON (permissions-show, permissions-list); this function does not check the input.
     return value.toLowerCase() as Address
 }
 

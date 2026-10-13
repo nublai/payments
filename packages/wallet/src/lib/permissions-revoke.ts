@@ -266,7 +266,7 @@ async function loadLocalKeyMeta(input: {
 export async function executePermissionsRevoke(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         keyRef?: string

@@ -29,7 +29,7 @@ export type EscrowCreateOptions = {
     seller: string
     oracle: string
     deadline: string
-    chain?: ChainName
+    chain?: string
     keystorePath?: string
     sessionFile?: string
     sessionName?: string

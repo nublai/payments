@@ -354,8 +354,7 @@ test('executeAccountStatus preserves cause for invalid chain override', async ()
     const invalidOptions: AccountStatusOptions = {
         env: 'prod',
         keystorePath: '/tmp/alice.json',
-        // SAFETY: 'foobar' is not a ChainName; this negative case checks UNSUPPORTED_CHAIN.
-        chain: 'foobar' as AccountStatusOptions['chain'],
+        chain: 'foobar',
     }
 
     try {

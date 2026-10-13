@@ -31,7 +31,7 @@ export class AccountNonceError extends Error {
 }
 
 export type AccountNonceOptions = AccountAddressOptions & {
-    chain?: ChainName
+    chain?: string
     seqKey?: bigint
 }
 

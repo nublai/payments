@@ -283,7 +283,8 @@ function expectedMinuteSlots(
 function normalizePermission(permission: QuoteKeyPermission): QuoteKeyPermission {
     return {
         target: getAddress(permission.target),
-        selector: `0x${permission.selector.slice(2).toLowerCase()}`,
+        // SAFETY: callers pass Hex-typed selectors from decodePackedCanExecute, isHex+length-10 pending grants, selectorOf, or relay allowlist constants; this function does not check the input.
+        selector: permission.selector.toLowerCase() as Hex,
     }
 }
 

@@ -5,7 +5,6 @@ import { readKeystoreBundle, readSessionKeystoreFile, resolveSessionKeystorePath
 import {
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -133,7 +132,7 @@ function splitPermissions(permissions: PermissionInfo[]) {
 export async function executePermissionsShow(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         keyRef?: string
