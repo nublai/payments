@@ -226,12 +226,14 @@ export function createJsonRpcTransport(
                 )
             }
 
+            // SAFETY: relayer JSON-RPC response is not validated; `.error` is checked below and `.result` is returned as T.
             const data = (await response.json()) as JsonRpcResponse<T>
 
             if (data.error) {
                 throw new JsonRpcClientError(data.error.code, data.error.message, data.error.data)
             }
 
+            // SAFETY: the result is unchecked; T is the caller's assertion for this RPC method.
             return data.result as T
         },
 
@@ -252,6 +254,7 @@ export function createJsonRpcTransport(
                 )
             }
 
+            // SAFETY: batch and single-error JSON are not schema-checked; only Array.isArray and `.error` run below, not each item.result.
             const json = (await response.json()) as JsonRpcResponse<T>[] | JsonRpcResponse<T>
             const data = Array.isArray(json) ? json : [json]
 
@@ -283,6 +286,7 @@ export function createJsonRpcTransport(
             // Sort by id to maintain request order and extract results
             const sorted = data.sort((a, b) => a.id - b.id)
 
+            // SAFETY: the result is unchecked; T is the caller's assertion for this RPC method.
             return sorted.map((item) => item.result as T)
         },
     }

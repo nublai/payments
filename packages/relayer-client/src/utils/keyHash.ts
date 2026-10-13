@@ -83,7 +83,7 @@ function requireCoordinate(value: Hex, label: string): Hex {
         throw new Error(`${label} must be a 32-byte hex coordinate`)
     }
 
-    return hex as Hex
+    return `0x${hex.slice(2)}`
 }
 
 /**

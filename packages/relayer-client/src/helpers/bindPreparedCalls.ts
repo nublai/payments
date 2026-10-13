@@ -269,6 +269,7 @@ function readAddress(value: unknown, label: string): Address {
 function readHex(value: unknown, label: string): Hex {
     if (typeof value !== 'string' || !value.startsWith('0x')) refuse(`invalid ${label}`)
 
+    // SAFETY: the startsWith('0x') check ran above, and lowercasing keeps the prefix.
     return value.toLowerCase() as Hex
 }
 
@@ -316,7 +317,7 @@ function typesMatch(types: PrepareCallsResponse['typedData']['types']): boolean 
 }
 
 function parseTypedIntent(prepared: PrepareCallsResponse): NormalizedIntent {
-    const message = prepared.typedData?.message as unknown
+    const message: unknown = prepared.typedData?.message
 
     if (message === null || typeof message !== 'object') refuse('typed data message is missing')
 
@@ -543,6 +544,7 @@ export function bindPreparedCalls(
         calls: expected.calls.map((call) => ({
             to: getAddress(call.target),
             value: call.value,
+            // SAFETY: the caller typed expected.calls[].data as Hex; it is not re-validated here.
             data: (call.data ?? '0x').toLowerCase() as Hex,
         })),
         nonce: expected.nonce,
@@ -550,8 +552,14 @@ export function bindPreparedCalls(
         paymentToken: getAddress(expected.paymentToken ?? zeroAddress),
         paymentMaxAmount: expected.paymentMaxAmount ?? 0n,
         combinedGas: typed.combinedGas,
-        encodedPreCalls: (expected.encodedPreCalls ?? []).map((item) => item.toLowerCase() as Hex),
-        encodedFundTransfers: (expected.encodedFundTransfers ?? []).map((item) => item.toLowerCase() as Hex),
+        encodedPreCalls: (expected.encodedPreCalls ?? []).map((item) => {
+            // SAFETY: the caller typed expected.encodedPreCalls as Hex; they are not re-validated here.
+            return item.toLowerCase() as Hex
+        }),
+        encodedFundTransfers: (expected.encodedFundTransfers ?? []).map((item) => {
+            // SAFETY: the caller typed expected.encodedFundTransfers as Hex; they are not re-validated here.
+            return item.toLowerCase() as Hex
+        }),
         settler: getAddress(expected.settler ?? zeroAddress),
         expiry: expected.expiry,
     }
@@ -579,9 +587,7 @@ export function bindPreparedCalls(
             refuse('quote does not match the signed intent')
         }
 
-        const parsedPayment = parseQuotePaymentAmount(
-            (quote as { paymentAmount?: unknown }).paymentAmount,
-        )
+        const parsedPayment = parseQuotePaymentAmount(quote.paymentAmount)
 
         if (!parsedPayment.ok) {
             refuse(

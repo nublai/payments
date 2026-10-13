@@ -77,7 +77,7 @@ function isDeployedAddress(value: string | undefined): value is Address {
 }
 
 function hasRequiredAddresses(
-  addresses: Record<string, Address | undefined>
+  addresses: { [key: string]: string | undefined }
 ): addresses is Record<RequiredAddressKey, Address> {
   return requiredAddressKeys.every((key) => isDeployedAddress(addresses[key]))
 }
@@ -101,7 +101,7 @@ export function getAddress(
   chainId: number,
   contract: string
 ): Address | undefined {
-  return getDeployment(context, chainId)?.addresses[contract] as Address | undefined
+  return getDeployment(context, chainId)?.addresses[contract]
 }
 
 // Get all addresses for a context/chain
@@ -115,7 +115,7 @@ export function getAddresses(
     return undefined
   }
 
-  const addresses = deployment.addresses as Record<string, Address | undefined>
+  const addresses = deployment.addresses
 
   if (!hasRequiredAddresses(addresses)) {
     return undefined
@@ -174,8 +174,7 @@ export function getAddressesFromEnvForChain(
   const prefix = opts?.keyPrefix ?? ''
   const envObj = opts?.env ?? (typeof process !== 'undefined' ? process.env : {})
 
-  const get = (key: string): Address | undefined =>
-    envObj[`${prefix}${key}_${chainId}`] as Address | undefined
+  const get = (key: string): string | undefined => envObj[`${prefix}${key}_${chainId}`]
 
   const addresses = {
     orchestrator: get(envKeys.orchestrator),
@@ -200,8 +199,7 @@ export function getAddressesFromEnv(opts?: EnvOpts): ContractAddresses | undefin
   const prefix = opts?.keyPrefix ?? ''
   const envObj = opts?.env ?? (typeof process !== 'undefined' ? process.env : {})
 
-  const get = (key: string): Address | undefined =>
-    envObj[`${prefix}${key}`] as Address | undefined
+  const get = (key: string): string | undefined => envObj[`${prefix}${key}`]
 
   const addresses = {
     orchestrator: get(envKeys.orchestrator),

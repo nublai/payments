@@ -13,7 +13,7 @@ import { keccak256, concat, encodeAbiParameters, type Address, type Hex } from '
  */
 export const ERC1271_SIGN_TYPEHASH = keccak256(
     new TextEncoder().encode('ERC1271Sign(bytes32 digest)'),
-) as Hex
+)
 
 /**
  * Domain typehash with only verifyingContract
@@ -21,7 +21,7 @@ export const ERC1271_SIGN_TYPEHASH = keccak256(
  */
 export const DOMAIN_TYPEHASH_ONLY_VERIFYING_CONTRACT = keccak256(
     new TextEncoder().encode('EIP712Domain(address verifyingContract)'),
-) as Hex
+)
 
 /**
  * Compute ERC-1271 replay-safe digest

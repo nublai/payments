@@ -114,7 +114,7 @@ function normalizeTxHash(value: unknown): Hex | undefined {
 
     if (!/^[a-fA-F0-9]{64}$/.test(withoutPrefix)) return undefined
 
-    return `0x${withoutPrefix}` as Hex
+    return `0x${withoutPrefix}`
 }
 
 function isDelegationConfirmationRace(error: unknown): boolean {
@@ -125,8 +125,8 @@ function isDelegationConfirmationRace(error: unknown): boolean {
 
 function getTxHashFromError(error: unknown): Hex | undefined {
     if (error instanceof JsonRpcClientError) {
-        if (error.data && typeof error.data === 'object') {
-            const maybeTxHash = (error.data as { txHash?: unknown }).txHash
+        if (error.data && typeof error.data === 'object' && 'txHash' in error.data) {
+            const maybeTxHash = error.data.txHash
             const normalizedTxHash = normalizeTxHash(maybeTxHash)
 
             if (normalizedTxHash) return normalizedTxHash
@@ -208,7 +208,7 @@ export async function upgradeAccount(
                 throw new Error('WalletClient must have an account configured')
             }
 
-            account = params.walletClient.account as Account
+            account = params.walletClient.account
             walletClientForTypedData = params.walletClient
         } else {
             throw new Error('Must provide either signerKey or walletClient')
