@@ -7,7 +7,6 @@
 import { type Address, type Hex, numberToHex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
 import { RpcError, ACCOUNT_NOT_DELEGATED, CONTRACT_ERROR } from '../errors'
 import { logger } from '../../lib/logger'
@@ -92,8 +91,7 @@ interface ContractSpendInfo {
  * @returns Keys keyed by hex chain ID
  */
 export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<GetKeysResult> {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
     const io = rpcHandlerIo(ctx)
 
     // Parse params (JSON-RPC array format)

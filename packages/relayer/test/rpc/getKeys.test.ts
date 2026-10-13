@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { CONTRACT_ERROR, RpcError } from '../../src/rpc/errors'
 import { handleGetKeys } from '../../src/rpc/methods/getKeys'
+import { testEnv, testRpcContext } from '../helpers/env'
 import { fixedChainConfig, mockedRelayerChainClient } from '../helpers/fakes'
 import { testRelayerConfig } from '../helpers/relayer'
 
@@ -16,21 +17,22 @@ const account = '0x1234567890123456789012345678901234567890'
 
 const keyHash = `0x${'ab'.repeat(32)}`
 
-const createMockCtx = (): RpcContext => ({
-    env: {
-        RPC_URL: 'http://127.0.0.1:8545',
-        CHAIN_IDS: '31337',
-    },
-    deps: {
-        getChainConfig: fixedChainConfig(
-            testRelayerConfig({
-                rpcUrl: 'http://127.0.0.1:8545',
-                chainId: 31337,
-            }),
-        ),
-        createRelayerPublicClient: () => client,
-    },
-})
+const createMockCtx = (): RpcContext =>
+    testRpcContext({
+        env: testEnv({
+            RPC_URL: 'http://127.0.0.1:8545',
+            CHAIN_IDS: '31337',
+        }),
+        deps: {
+            getChainConfig: fixedChainConfig(
+                testRelayerConfig({
+                    rpcUrl: 'http://127.0.0.1:8545',
+                    chainId: 31337,
+                }),
+            ),
+            createRelayerPublicClient: () => client,
+        },
+    })
 
 describe('wallet_getKeys permission lookup', () => {
     beforeEach(() => {

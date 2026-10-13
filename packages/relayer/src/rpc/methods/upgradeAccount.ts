@@ -1,6 +1,5 @@
 import { getAddress, type Hex } from 'viem'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { CreateAccountTransaction, SendResult } from '../../types/pool'
 import type { UpgradeAccountParams, UpgradeAccountResult } from '../schema/upgradeAccount'
 import {
@@ -40,8 +39,7 @@ export async function handleUpgradeAccount(
     params: unknown,
     ctx: RpcContext,
 ): Promise<UpgradeAccountResult> {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
     const typedParams = unwrapParams<UpgradeAccountParams>(params)
 
     const context = requireParam(typedParams?.context, 'context')

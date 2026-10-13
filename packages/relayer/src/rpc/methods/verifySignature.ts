@@ -8,7 +8,6 @@
 import { type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
 import type { VerifySignatureParams, VerifySignatureResult } from '../schema/verifySignature'
 import { RpcError, INVALID_PARAMS, INTERNAL_ERROR } from '../errors'
@@ -48,8 +47,7 @@ export async function handleVerifySignature(
     params: unknown,
     ctx: RpcContext,
 ): Promise<VerifySignatureResult> {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
     const io = rpcHandlerIo(ctx)
 
     // Parse params (JSON-RPC array format)
@@ -106,10 +104,8 @@ export async function handleVerifySignature(
             functionName: 'getKeys',
         })
 
-        // SAFETY: Account.getKeys ABI returns (Key[] keys, bytes32[] keyHashes).
-        keys = result[0] as readonly ContractKey[]
-        // SAFETY: Account.getKeys ABI second return is bytes32[] keyHashes.
-        keyHashes = result[1] as readonly Hex[]
+        keys = result[0]
+        keyHashes = result[1]
     } catch (error) {
         // If getKeys fails, account might not be a valid Account
         logger.warn({ error, address }, 'Failed to read account keys')
@@ -150,8 +146,7 @@ export async function handleVerifySignature(
                 args: [erc1271Digest, wrappedSignature],
             })
 
-            // SAFETY: unwrapAndValidateSignature ABI returns (bool isValid, bytes32 keyHash).
-            const [isValid, returnedKeyHash] = result as [boolean, Hex]
+            const [isValid, returnedKeyHash] = result
 
             return { isValid, keyHash: returnedKeyHash, attemptedKeyHash: keyHash }
         } catch (error) {

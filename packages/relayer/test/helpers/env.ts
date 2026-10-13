@@ -1,3 +1,4 @@
+import type { RpcContext } from '../../src/rpc/types'
 import type { BundleStatusDO } from '../../src/durable-objects/bundle-status.do'
 import type { HttpAuthNonceDO } from '../../src/durable-objects/http-auth-nonce.do'
 import type { IntentNonceDO } from '../../src/durable-objects/intent-nonce.do'
@@ -301,6 +302,16 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
         INTENT_NONCE_MANAGER: intentNonceNamespace(),
         MONITOR_QUEUE: queueBinding(),
         RELAYER_MNEMONIC: DEFAULT_MNEMONIC,
+        ...overrides,
+    }
+}
+
+/** RpcContext whose env is a typed full Env. Pass testEnv(...) when a site needs fields. */
+export function testRpcContext(
+    overrides: Omit<Partial<RpcContext>, 'env'> & { env?: Env } = {},
+): RpcContext {
+    return {
+        env: testEnv(),
         ...overrides,
     }
 }

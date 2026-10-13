@@ -1,7 +1,6 @@
 import type { Address } from 'viem'
 import { formatEther } from 'viem'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { GetCapabilitiesParams, GetCapabilitiesResult } from '../schema/getCapabilities'
 import { getChainConfig, getChainIds } from '../../config'
 import { getFeeConfig } from '../../types/env'
@@ -40,8 +39,7 @@ export async function handleGetCapabilities(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCapabilitiesResult> {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
     const typedParams = unwrapParams<GetCapabilitiesParams>(params)
     const chainFilter = typedParams?.chains
 

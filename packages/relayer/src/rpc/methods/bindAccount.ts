@@ -132,8 +132,7 @@ export async function bindAccount(
 export async function handleBindAccount(params: unknown, ctx: RpcContext) {
     return bindAccount(
         params,
-        // SAFETY: the worker entry and tests put Env on ctx.env.
-        ctx.env as Env,
+        ctx.env,
         Math.floor(Date.now() / 1000),
         upgradeClientIp(ctx.request),
     )

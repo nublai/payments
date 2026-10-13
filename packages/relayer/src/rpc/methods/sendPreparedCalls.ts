@@ -233,8 +233,7 @@ export async function handleSendPreparedCalls(
     params: unknown,
     ctx: RpcContext,
 ): Promise<SendPreparedCallsResult> {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
     const io = rpcHandlerIo(ctx)
     const typedParams = unwrapParams<SendPreparedCallsParams>(params)
 
@@ -579,8 +578,7 @@ export async function handleBatchSendPreparedCalls(
 ): Promise<
     Array<{ id: string | number | null; result?: SendPreparedCallsResult; error?: unknown }>
 > {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
     const io = rpcHandlerIo(ctx)
 
     const parsedRequests: Array<{

@@ -1,6 +1,5 @@
 import type { Hex } from 'viem'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { GetCallsStatusResult } from '../schema/getCallsStatus'
 import { getChainIds } from '../../config'
 import { logger, getErrorMessage } from '../../lib/logger'
@@ -16,8 +15,7 @@ export async function handleGetCallsStatus(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCallsStatusResult> {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
 
     const firstParam = unwrapParams<unknown>(params)
 

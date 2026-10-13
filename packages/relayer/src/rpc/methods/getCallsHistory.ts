@@ -1,5 +1,4 @@
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type {
     GetCallsHistoryParams,
     GetCallsHistoryResult,
@@ -107,8 +106,7 @@ export async function handleGetCallsHistory(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCallsHistoryResult> {
-    // SAFETY: the worker entry and tests put Env on ctx.env.
-    const env = ctx.env as Env
+    const env = ctx.env
 
     const typedParams = unwrapParams<GetCallsHistoryParams>(params)
 

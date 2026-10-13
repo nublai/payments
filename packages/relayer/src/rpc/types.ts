@@ -97,7 +97,7 @@ export interface RpcHandlerDeps {
  */
 export interface RpcContext {
     /** Cloudflare Worker environment bindings */
-    env: unknown
+    env: Env
     /** Original request (for headers, etc.) */
     request?: Request
     /** Set by the auth middleware after a provider succeeds. */
