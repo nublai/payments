@@ -11,14 +11,15 @@ import {
     handleBatchSendPreparedCalls,
     handleSendPreparedCalls,
 } from '../../src/rpc/methods/sendPreparedCalls'
+import { signerPoolNamespace, testEnv, testRpcContext } from '../helpers/env'
 
 const createMockCtx = (body: {
     error: string
     code: string
     broadcastAttempted: boolean
 }): RpcContext => {
-    return {
-        env: {
+    return testRpcContext({
+        env: testEnv({
             RPC_URL: 'https://example.com/rpc',
             RPC_8453: 'https://example.com/rpc',
             CHAIN_IDS: '8453',
@@ -31,18 +32,16 @@ const createMockCtx = (body: {
             SIMPLE_SETTLER_8453: '0x6789012345678901234567890123456789012345',
             ESCROW_8453: '0x7890123456789012345678901234567890123456',
             MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
-            INTENT_NONCE_MANAGER: {},
-            SIGNER_POOL: {
-                idFromName: vi.fn().mockReturnValue('pool-id'),
-                get: vi.fn().mockReturnValue({
+            SIGNER_POOL: signerPoolNamespace({
+                get: () => ({
                     fetch: vi.fn().mockResolvedValue({
                         ok: false,
                         json: () => Promise.resolve(body),
                     }),
                 }),
-            },
-        },
-    }
+            }),
+        }),
+    })
 }
 
 const createParams = () => ({

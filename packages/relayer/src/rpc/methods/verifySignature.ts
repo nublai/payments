@@ -8,7 +8,6 @@
 import { type Hex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
 import type { VerifySignatureParams, VerifySignatureResult } from '../schema/verifySignature'
 import { RpcError, INVALID_PARAMS, INTERNAL_ERROR } from '../errors'
@@ -48,7 +47,7 @@ export async function handleVerifySignature(
     params: unknown,
     ctx: RpcContext,
 ): Promise<VerifySignatureResult> {
-    const env = ctx.env as Env
+    const env = ctx.env
     const io = rpcHandlerIo(ctx)
 
     // Parse params (JSON-RPC array format)
@@ -105,8 +104,8 @@ export async function handleVerifySignature(
             functionName: 'getKeys',
         })
 
-        keys = result[0] as readonly ContractKey[]
-        keyHashes = result[1] as readonly Hex[]
+        keys = result[0]
+        keyHashes = result[1]
     } catch (error) {
         // If getKeys fails, account might not be a valid Account
         logger.warn({ error, address }, 'Failed to read account keys')
@@ -147,13 +146,15 @@ export async function handleVerifySignature(
                 args: [erc1271Digest, wrappedSignature],
             })
 
-            const [isValid, returnedKeyHash] = result as [boolean, Hex]
+            const [isValid, returnedKeyHash] = result
 
             return { isValid, keyHash: returnedKeyHash, attemptedKeyHash: keyHash }
         } catch (error) {
             logger.debug({ error, keyHash }, 'Signature validation failed for key')
 
-            return { isValid: false, keyHash: '0x' as Hex, attemptedKeyHash: keyHash }
+            const emptyKeyHash: Hex = '0x'
+
+            return { isValid: false, keyHash: emptyKeyHash, attemptedKeyHash: keyHash }
         }
     })
 

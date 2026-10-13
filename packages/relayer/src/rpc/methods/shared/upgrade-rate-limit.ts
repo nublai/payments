@@ -389,6 +389,7 @@ async function postUpgradeRateLimit(
         throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
 
+    // SAFETY: SignerPoolDO /upgrade-rate-limit JSON has allowed and optional reservedAt; both are re-checked below.
     const result = (await response.json()) as { allowed?: boolean; reservedAt?: number }
 
     return {

@@ -1,5 +1,4 @@
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type {
     GetCallsHistoryParams,
     GetCallsHistoryResult,
@@ -107,7 +106,7 @@ export async function handleGetCallsHistory(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCallsHistoryResult> {
-    const env = ctx.env as Env
+    const env = ctx.env
 
     const typedParams = unwrapParams<GetCallsHistoryParams>(params)
 
@@ -155,9 +154,7 @@ export async function handleGetCallsHistory(
                 try {
                     const doId = bundleStatusNamespace.idFromName(`bundle-status-${chainId}`)
 
-                    const bundleStatusDo = bundleStatusNamespace.get(
-                        doId,
-                    ) as BundleStatusHistoryStub
+                    const bundleStatusDo: BundleStatusHistoryStub = bundleStatusNamespace.get(doId)
 
                     const result = await bundleStatusDo.getBundlesByEoa(
                         normalizedAddress,

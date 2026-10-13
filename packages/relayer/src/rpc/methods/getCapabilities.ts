@@ -1,7 +1,6 @@
 import type { Address } from 'viem'
 import { formatEther } from 'viem'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { GetCapabilitiesParams, GetCapabilitiesResult } from '../schema/getCapabilities'
 import { getChainConfig, getChainIds } from '../../config'
 import { getFeeConfig } from '../../types/env'
@@ -40,7 +39,7 @@ export async function handleGetCapabilities(
     params: unknown,
     ctx: RpcContext,
 ): Promise<GetCapabilitiesResult> {
-    const env = ctx.env as Env
+    const env = ctx.env
     const typedParams = unwrapParams<GetCapabilitiesParams>(params)
     const chainFilter = typedParams?.chains
 
@@ -95,6 +94,7 @@ export async function handleGetCapabilities(
                 )
             }
 
+            // SAFETY: SignerPoolDO /status JSON is the poolStatus object read below (signerCount, signers, capacities).
             poolStatus = (await response.json()) as typeof poolStatus
         } catch (error) {
             logger.error(
@@ -132,6 +132,7 @@ export async function handleGetCapabilities(
                 simulator: config.contracts.simulator,
             },
             fees: {
+                // SAFETY: not runtime-checked; FEE_RECIPIENT is an operator-set string assumed to be an address, else config.contracts.orchestrator.
                 recipient: (feeConfig.feeRecipient ?? config.contracts.orchestrator) as Address,
                 quoteConfig: {
                     ttlSeconds: feeConfig.quoteTtlSeconds,

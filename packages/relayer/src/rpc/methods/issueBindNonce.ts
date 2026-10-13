@@ -111,7 +111,7 @@ export async function issueBindNonce(
 export async function handleIssueBindNonce(params: unknown, ctx: RpcContext) {
     return issueBindNonce(
         params,
-        ctx.env as Env,
+        ctx.env,
         Math.floor(Date.now() / 1000),
         upgradeClientIp(ctx.request),
     )

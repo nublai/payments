@@ -1,5 +1,4 @@
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type {
     AuthorizeKeyResponse,
     Authorization,
@@ -53,7 +52,7 @@ export async function handlePrepareUpgradeAccount(
     params: unknown,
     ctx: RpcContext,
 ): Promise<PrepareUpgradeResult> {
-    const env = ctx.env as Env
+    const env = ctx.env
     const typedParams = unwrapParams<PrepareUpgradeParams>(params)
 
     const accountAddress = validateAddress(requireParam(typedParams?.address, 'address'), 'address')

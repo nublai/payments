@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { dispatch } from '../../src/rpc/dispatcher'
 import type { MethodRegistry, RpcContext } from '../../src/rpc/types'
+import { testRpcContext } from '../helpers/env'
 import { requireJsonRpcBatch } from '../helpers/rpc'
 import {
     PARSE_ERROR,
@@ -15,9 +16,7 @@ import {
 } from '../../src/rpc/errors'
 
 // Mock context for tests
-const mockCtx: RpcContext = {
-    env: {},
-}
+const mockCtx: RpcContext = testRpcContext()
 
 // Test method handlers
 const echoHandler = vi.fn(async (params: unknown) => params)

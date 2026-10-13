@@ -1,6 +1,5 @@
-import { getAddress, type Address, type Hex } from 'viem'
+import { getAddress, type Hex } from 'viem'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { CreateAccountTransaction, SendResult } from '../../types/pool'
 import type { UpgradeAccountParams, UpgradeAccountResult } from '../schema/upgradeAccount'
 import {
@@ -40,7 +39,7 @@ export async function handleUpgradeAccount(
     params: unknown,
     ctx: RpcContext,
 ): Promise<UpgradeAccountResult> {
-    const env = ctx.env as Env
+    const env = ctx.env
     const typedParams = unwrapParams<UpgradeAccountParams>(params)
 
     const context = requireParam(typedParams?.context, 'context')
@@ -170,6 +169,7 @@ export async function handleUpgradeAccount(
         let broadcastAttempted = true
 
         try {
+            // SAFETY: SignerPoolDO /send error JSON has optional error and broadcastAttempted; both are re-checked below.
             const errorBody = (await response.json()) as {
                 error?: unknown
                 broadcastAttempted?: unknown
@@ -195,6 +195,7 @@ export async function handleUpgradeAccount(
         throw new RpcError(SERVICE_UNAVAILABLE, 'Account upgrade failed')
     }
 
+    // SAFETY: SignerPoolDO /send success JSON is SendResult (txHash, nonce, signer, signerName).
     const result = (await response.json()) as SendResult
     logger.info(
         {
@@ -207,7 +208,7 @@ export async function handleUpgradeAccount(
 
     try {
         const receipt = await publicClient.waitForTransactionReceipt({
-            hash: result.txHash as Hex,
+            hash: result.txHash,
             timeout: 60_000,
         })
 
@@ -221,7 +222,7 @@ export async function handleUpgradeAccount(
 
         const code = await waitForDelegationCode(
             publicClient,
-            context.address as Address,
+            context.address,
             receipt.blockNumber,
         )
 

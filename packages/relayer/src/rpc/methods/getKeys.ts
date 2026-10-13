@@ -7,7 +7,6 @@
 import { type Address, type Hex, numberToHex } from 'viem'
 import { accountAbi } from '@nubl/contracts/abis'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import type { ContractKey } from '../../types/contract'
 import { RpcError, ACCOUNT_NOT_DELEGATED, CONTRACT_ERROR } from '../errors'
 import { logger } from '../../lib/logger'
@@ -58,7 +57,9 @@ type PackedCanExecute = { target: Address; selector: Hex }
  */
 function decodePackedCanExecute(packed: Hex): PackedCanExecute {
     const value = BigInt(packed)
+    // SAFETY: value >> 96 is the upper 20 bytes of the packed bytes32, padded to 40 hex digits.
     const target = `0x${(value >> 96n).toString(16).padStart(40, '0')}` as Address
+    // SAFETY: value & 0xffffffff is the lower 4 bytes of the packed bytes32, padded to 8 hex digits.
     const selector = `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex
 
     return { target, selector }
@@ -90,7 +91,7 @@ interface ContractSpendInfo {
  * @returns Keys keyed by hex chain ID
  */
 export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<GetKeysResult> {
-    const env = ctx.env as Env
+    const env = ctx.env
     const io = rpcHandlerIo(ctx)
 
     // Parse params (JSON-RPC array format)
@@ -148,8 +149,8 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
                 functionName: 'getKeys',
             })
 
-            keys = result[0] as readonly ContractKey[]
-            keyHashes = result[1] as readonly Hex[]
+            keys = result[0]
+            keyHashes = result[1]
         } catch (error) {
             logger.error({ error, address, chainId }, 'Failed to read account keys')
 
@@ -179,11 +180,11 @@ export async function handleGetKeys(params: unknown, ctx: RpcContext): Promise<G
                 address,
                 abi: accountAbi,
                 functionName: 'spendAndExecuteInfos',
-                args: [keyHashes as readonly `0x${string}`[]],
+                args: [keyHashes],
             })
 
-            spends = result[0] as readonly (readonly ContractSpendInfo[])[]
-            executes = result[1] as readonly (readonly Hex[])[]
+            spends = result[0]
+            executes = result[1]
         } catch (error) {
             logger.error({ error, address, chainId }, 'Failed to read key permissions')
             throw new RpcError(CONTRACT_ERROR, 'Failed to read key permissions')

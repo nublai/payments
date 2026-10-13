@@ -81,20 +81,20 @@ export function hashQuotes(signedQuotes: SignedQuotes, config: RelayerConfig): H
 
         const intentMessage = {
             multichain: false,
-            eoa: quote.intent.eoa as Address,
+            eoa: quote.intent.eoa,
             calls: quote.intent.calls.map((call) => ({
-                to: call.to as Address,
+                to: call.to,
                 value: BigInt(call.value || '0'),
-                data: call.data as Hex,
+                data: call.data,
             })),
             nonce: BigInt(quote.intent.nonce || '0'),
-            payer: (quote.intent.payer ?? zeroAddress) as Address,
-            paymentToken: (quote.intent.paymentToken ?? zeroAddress) as Address,
+            payer: quote.intent.payer ?? zeroAddress,
+            paymentToken: quote.intent.paymentToken ?? zeroAddress,
             paymentMaxAmount: BigInt(quote.intent.paymentMaxAmount ?? '0'),
             combinedGas: BigInt(quote.intent.combinedGas || '0'),
-            encodedPreCalls: (quote.intent.encodedPreCalls ?? []) as Hex[],
-            encodedFundTransfers: (quote.intent.encodedFundTransfers ?? []) as Hex[],
-            settler: (quote.intent.settler ?? zeroAddress) as Address,
+            encodedPreCalls: quote.intent.encodedPreCalls ?? [],
+            encodedFundTransfers: quote.intent.encodedFundTransfers ?? [],
+            settler: quote.intent.settler ?? zeroAddress,
             expiry: BigInt(quote.intent.expiry || '0'),
         }
 
@@ -245,9 +245,7 @@ export async function assertErc8128BoundToQuotes(
 
     for (const quote of quotes) {
         const eoa =
-            quote.intent?.eoa && isAddress(quote.intent.eoa)
-                ? (quote.intent.eoa as Address)
-                : undefined
+            quote.intent?.eoa && isAddress(quote.intent.eoa) ? quote.intent.eoa : undefined
 
         if (!eoa) {
             return new RpcError(

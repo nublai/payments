@@ -2,7 +2,6 @@ import type { Hex } from 'viem'
 import { zeroAddress, createPublicClient, http } from 'viem'
 import { hashTypedData } from 'viem/utils'
 import type { RpcContext } from '../types'
-import type { Env } from '../../types/env'
 import { getFeeConfig, getGasConfig, getPriceOracleConfig } from '../../types/env'
 import { convertToFeeToken } from '../../services/fees'
 import { toHexChainId } from '../../lib/viem-utils'
@@ -54,7 +53,7 @@ export async function handlePrepareCalls(
     params: unknown,
     ctx: RpcContext,
 ): Promise<PrepareCallsResult> {
-    const env = ctx.env as Env
+    const env = ctx.env
     const io = rpcHandlerIo(ctx)
     const typedParams = unwrapParams<PrepareCallsParams>(params)
 

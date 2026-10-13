@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { RpcError } from '../../src/rpc/errors'
 import { handleSendPreparedCalls } from '../../src/rpc/methods/sendPreparedCalls'
+import { signerPoolNamespace, testEnv, testRpcContext } from '../helpers/env'
 
 type SignerPoolJson =
     | { txHash: string; signer: string }
@@ -21,8 +22,8 @@ const createMockCtx = (signerPoolResponse?: {
         json: () => Promise.resolve({ txHash: '0xabc', signer: '0x123' }),
     }
 
-    return {
-        env: {
+    return testRpcContext({
+        env: testEnv({
             RPC_URL: 'https://example.com/rpc',
             RPC_8453: 'https://example.com/rpc',
             CHAIN_IDS: '8453',
@@ -36,15 +37,13 @@ const createMockCtx = (signerPoolResponse?: {
             SIMPLE_SETTLER_8453: '0x6789012345678901234567890123456789012345',
             ESCROW_8453: '0x7890123456789012345678901234567890123456',
             MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
-            INTENT_NONCE_MANAGER: {},
-            SIGNER_POOL: {
-                idFromName: vi.fn().mockReturnValue('pool-id'),
-                get: vi.fn().mockReturnValue({
+            SIGNER_POOL: signerPoolNamespace({
+                get: () => ({
                     fetch: vi.fn().mockResolvedValue(signerPoolResponse ?? defaultResponse),
                 }),
-            },
-        },
-    }
+            }),
+        }),
+    })
 }
 
 // Helper to create valid params with specified expiry

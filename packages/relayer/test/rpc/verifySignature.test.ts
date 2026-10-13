@@ -6,26 +6,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { RpcContext } from '../../src/rpc/types'
 import { RpcError, INVALID_PARAMS } from '../../src/rpc/errors'
 import { handleVerifySignature } from '../../src/rpc/methods/verifySignature'
+import { testEnv, testRpcContext } from '../helpers/env'
 import { fixedChainConfig, mockedRelayerChainClient } from '../helpers/fakes'
 import { testRelayerConfig } from '../helpers/relayer'
 
 const { client, mockGetCode, mockReadContract } = mockedRelayerChainClient()
 
-const createMockCtx = (): RpcContext => ({
-    env: {
-        RPC_URL: 'https://example.com/rpc',
-        CHAIN_IDS: '8453',
-    },
-    deps: {
-        getChainConfig: fixedChainConfig(
-            testRelayerConfig({
-                rpcUrl: 'https://example.com/rpc',
-                chainId: 8453,
-            }),
-        ),
-        createRelayerPublicClient: () => client,
-    },
-})
+const createMockCtx = (): RpcContext =>
+    testRpcContext({
+        env: testEnv({
+            RPC_URL: 'https://example.com/rpc',
+            CHAIN_IDS: '8453',
+        }),
+        deps: {
+            getChainConfig: fixedChainConfig(
+                testRelayerConfig({
+                    rpcUrl: 'https://example.com/rpc',
+                    chainId: 8453,
+                }),
+            ),
+            createRelayerPublicClient: () => client,
+        },
+    })
 
 // Test data
 const validAddress = '0x1234567890123456789012345678901234567890'
