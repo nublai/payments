@@ -20,7 +20,7 @@ function getDefaultEscrowStatusDeps(): EscrowChainNetworkContractsDeps {
 export type EscrowStatusOptions = {
     env: EnvName
     escrowId: string
-    chain?: ChainName
+    chain?: string
 }
 
 export type EscrowStatusResult = {

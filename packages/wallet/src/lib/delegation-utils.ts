@@ -79,7 +79,9 @@ export async function delegateAccountWithAuthorizeKeys(input: {
     }
 
     return {
+        // SAFETY: result.accountAddress is relayer JSON, not address-checked here; the fallback is privateKeyToAccount().address.
         accountAddress: (result.accountAddress ?? account.address) as Address,
+        // SAFETY: upgradeAccount txHash is a hex string when the relayer included one; it is not re-checked here.
         txHash: result.txHash as Hex | undefined,
     }
 }

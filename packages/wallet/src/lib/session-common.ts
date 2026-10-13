@@ -146,7 +146,7 @@ export function parseSelector(value: string): Hex {
         throw new Error(`Invalid selector: ${value}`)
     }
 
-    return normalized as Hex
+    return `0x${normalized.slice(2)}`
 }
 
 export function parseSpendLimit(value: string): bigint {
@@ -266,12 +266,14 @@ export function buildPermissionDefaults(input: {
     }
 
     if (input.fullAccess) {
+        const spendPeriod: SpendPeriod = 'forever'
+
         return {
             target: ANY_TARGET,
-            selectors: [ANY_FUNCTION_SELECTOR as Hex],
+            selectors: [ANY_FUNCTION_SELECTOR],
             spendToken: zeroAddress,
             spendLimit: MAX_UINT256,
-            spendPeriod: 'forever' as SpendPeriod,
+            spendPeriod,
         }
     }
 

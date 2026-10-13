@@ -601,7 +601,7 @@ account.command('balance', {
             env: options.env,
             name: options.profile,
             keystorePath: options.keystorePath,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             legacy: options.legacy,
         })
     },
@@ -627,7 +627,7 @@ account.command('nonce', {
     async run({ options }) {
         return executeAccountNonce({
             env: options.env,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             name: options.profile,
             keystorePath: options.keystorePath,
             seqKey: BigInt(options.seqKey),
@@ -725,7 +725,7 @@ account.command('status', {
     async run({ options, error }) {
         const result = await executeAccountStatus({
             env: options.env,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             legacy: options.legacy,
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -856,7 +856,7 @@ account.command('delegate', {
         const password = await resolveAccountDelegatePassword(
             {
                 env: options.env,
-                chains: options.chain.split(',').map((c) => c.trim()) as ChainName[],
+                chains: options.chain.split(',').map((c) => c.trim()),
                 passwordStdin: options.passwordStdin ?? false,
                 json: false,
                 help: false,
@@ -874,6 +874,7 @@ account.command('delegate', {
 
         return executeAccountDelegate({
             env: options.env,
+            // SAFETY: unchecked here; executeAccountDelegate calls resolveNetworkConfig which indexes chainConfig and does not call normalizeChainName.
             chains: options.chain.split(',').map((c) => c.trim()) as ChainName[],
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -926,7 +927,7 @@ tw.command('send', {
             env: options.env,
             amount: args.amount,
             recipient: args.recipient,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             legacy: options.legacy,
             name: options.profile,
             keystorePath: options.keystorePath,
@@ -939,7 +940,7 @@ tw.command('send', {
                         env: options.env,
                         amount: args.amount,
                         recipient: args.recipient,
-                        chain: options.chain as ChainName,
+                        chain: options.chain,
                         legacy: options.legacy ?? false,
                         keystorePath: options.keystorePath,
                         name: options.profile,
@@ -1401,10 +1402,15 @@ account.command('passkey', {
         try {
             return await executeAccountPasskey({
                 rpcUrl: options.rpcUrl,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 privateKey: options.privateKey as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 publicKey: options.publicKey as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 digest: options.digest as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 authenticatorData: options.authenticatorData as `0x${string}`,
+                // SAFETY: unchecked here; executeAccountPasskey.requireHex runs isHex and length checks.
                 clientDataJson: options.clientDataJson as `0x${string}`,
                 r: BigInt(options.r),
                 s: BigInt(options.s),
@@ -1582,14 +1588,16 @@ session.command('create', {
         try {
             return await executeSessionCreate({
                 env: options.env,
-                chain: options.chain as ChainName | undefined,
+                chain: options.chain,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 sessionName: args.sessionName,
                 activate: options.activate,
                 resume: options.resume,
                 fullAccess: options.fullAccess,
+                // SAFETY: unchecked here; executeSessionCreate passes target to buildPermissionDefaults without parseTargetAddress.
                 target: options.target as `0x${string}` | undefined,
+                // SAFETY: unchecked here; executeSessionCreate passes selector to buildPermissionDefaults without parseSelector.
                 selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
                 spendLimit: resolveSpendLimitInput({
                     spendLimit: options.spendLimit,
@@ -1734,7 +1742,7 @@ session.command('list', {
     async run({ options }) {
         return executeSessionList({
             env: options.env,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             name: options.profile,
             keystorePath: options.keystorePath,
             onChain: options.onChain,
@@ -1917,13 +1925,15 @@ session.command('rotate', {
 
         return executeSessionRotate({
             env: options.env,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             name: options.profile,
             keystorePath: options.keystorePath,
             newName: options.newName,
             resume: options.resume,
             fullAccess: options.fullAccess,
+            // SAFETY: unchecked here; executeSessionRotate passes target to buildPermissionDefaults without parseTargetAddress.
             target: options.target as `0x${string}` | undefined,
+            // SAFETY: unchecked here; executeSessionRotate passes selector to buildPermissionDefaults without parseSelector.
             selectors: options.selector ? [options.selector as `0x${string}`] : undefined,
             spendLimit: resolveSpendLimitInput({
                 spendLimit: options.spendLimit,
@@ -2001,7 +2011,7 @@ session.command('revoke', {
 
         return executeSessionRevoke({
             env: options.env,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             name: options.profile,
             keystorePath: options.keystorePath,
             sessionName: args.sessionName,
@@ -2207,7 +2217,7 @@ permissions.command('list', {
     async run({ options }) {
         return executePermissionsList({
             env: options.env,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             name: options.profile,
             keystorePath: options.keystorePath,
         })
@@ -2261,11 +2271,12 @@ permissions.command('show', {
     async run({ args, options }) {
         return executePermissionsShow({
             env: options.env,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             name: options.profile,
             keystorePath: options.keystorePath,
             keyRef: args.keyRef,
             keyName: options.keyName,
+            // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
             keyHash: options.keyHash as `0x${string}` | undefined,
         })
     },
@@ -2366,15 +2377,19 @@ permissions.command('grant', {
         try {
             return await executePermissionsGrant({
                 env: options.env,
-                chain: options.chain as ChainName | undefined,
+                chain: options.chain,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 keyRef: args.keyRef,
                 keyName: options.keyName,
+                // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
                 keyHash: options.keyHash as `0x${string}` | undefined,
                 grantType: options.type,
+                // SAFETY: unchecked here; executePermissionsGrant passes target to encodeFunctionData without parseAddressOrAny.
                 target: options.target as `0x${string}` | undefined,
+                // SAFETY: unchecked here; executePermissionsGrant passes selector to encodeFunctionData without parseSelectorOrAny.
                 selector: options.selector as `0x${string}` | undefined,
+                // SAFETY: unchecked here; executePermissionsGrant passes token to encodeFunctionData without parseAddressOrAny.
                 token: options.token as `0x${string}` | undefined,
                 spendLimit: resolveSpendLimitInput({
                     spendLimit: options.spendLimit,
@@ -2481,6 +2496,7 @@ permissions.command('revoke', {
                 selector: {
                     positional: args.keyRef,
                     keyName: options.keyName,
+                    // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
                     keyHash: options.keyHash as `0x${string}` | undefined,
                 },
                 keys: getChainKeys(keysResponse, network.chainId),
@@ -2532,11 +2548,12 @@ permissions.command('revoke', {
         try {
             return await executePermissionsRevoke({
                 env: options.env,
-                chain: options.chain as ChainName | undefined,
+                chain: options.chain,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 keyRef: args.keyRef,
                 keyName: options.keyName,
+                // SAFETY: unchecked here; resolveSelectedKey uses keyHash as an explicit hash and does not run parseKeyHash on this field.
                 keyHash: options.keyHash as `0x${string}` | undefined,
                 rule: options.rule,
                 all: options.all,
@@ -2625,7 +2642,7 @@ escrow.command('create', {
                 oracle: options.oracle,
                 deadline: options.deadline,
                 salt: options.salt,
-                chain: options.chain as ChainName | undefined,
+                chain: options.chain,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
@@ -2634,7 +2651,7 @@ escrow.command('create', {
                     resolveAccountSendPassword(
                         {
                             env: options.env,
-                            chain: options.chain as ChainName,
+                            chain: options.chain,
                             keystorePath: options.keystorePath,
                             name: options.profile,
                             passwordStdin: options.passwordStdin ?? false,
@@ -2691,7 +2708,7 @@ escrow.command('status', {
             return await executeEscrowStatus({
                 env: options.env,
                 escrowId: args.escrowId,
-                chain: options.chain as ChainName | undefined,
+                chain: options.chain,
             })
         } catch (err) {
             if (err instanceof EscrowError) {
@@ -2788,7 +2805,7 @@ escrow.command('settle', {
                 oracle: options.oracle,
                 oraclePrivateKey: oracleKey,
                 signature: options.signature,
-                chain: options.chain as ChainName | undefined,
+                chain: options.chain,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
@@ -2797,7 +2814,7 @@ escrow.command('settle', {
                     resolveAccountSendPassword(
                         {
                             env: options.env,
-                            chain: options.chain as ChainName,
+                            chain: options.chain,
                             keystorePath: options.keystorePath,
                             name: options.profile,
                             passwordStdin: options.passwordStdin ?? false,
@@ -2865,7 +2882,7 @@ escrow.command('refund', {
             return await executeEscrowRefund({
                 env: options.env,
                 escrowId: args.escrowId,
-                chain: options.chain as ChainName | undefined,
+                chain: options.chain,
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
@@ -2874,7 +2891,7 @@ escrow.command('refund', {
                     resolveAccountSendPassword(
                         {
                             env: options.env,
-                            chain: options.chain as ChainName,
+                            chain: options.chain,
                             keystorePath: options.keystorePath,
                             name: options.profile,
                             passwordStdin: options.passwordStdin ?? false,
@@ -2948,7 +2965,7 @@ tw.command('address', {
             env: options.env,
             name: options.profile,
             keystorePath: options.keystorePath,
-            chain: options.chain as ChainName | undefined,
+            chain: options.chain,
             token: options.token,
             amount: options.amount,
             decimals: options.decimals,

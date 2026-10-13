@@ -54,7 +54,7 @@ export class AccountDelegateError extends Error {
 
 export type AccountDelegateArgs = {
     env: EnvName
-    chains: ChainName[]
+    chains: string[]
     keystorePath?: string
     name?: string
     passwordStdin: boolean

@@ -103,7 +103,7 @@ function parseBytes32Hex(value: string, label: string): Hex {
         )
     }
 
-    return value as Hex
+    return value
 }
 
 /**
@@ -154,7 +154,7 @@ export function assertEscrowSessionNetworkMatches(
  * Resolve chain, network config, and escrow contracts from env and optional chain override.
  * When chain is provided, uses options.env for consistency (not hardcoded prod).
  */
-export function resolveEscrowChainNetworkContracts(env: EnvName, chainOption?: ChainName) {
+export function resolveEscrowChainNetworkContracts(env: EnvName, chainOption?: string) {
     const chain = chainOption ? selectDefaultChain(env, chainOption) : selectDefaultChain(env)
     const network = resolveNetworkConfig(env, chain)
     const contracts = resolveEscrowContracts(env, network.chainId, chain)
@@ -171,7 +171,7 @@ export type ResolveEscrowChainNetworkContractsResult = ReturnType<
 export type EscrowChainNetworkContractsDeps = {
     resolveEscrowChainNetworkContracts: (
         env: EnvName,
-        chainOption?: ChainName,
+        chainOption?: string,
     ) => ResolveEscrowChainNetworkContractsResult
 }
 

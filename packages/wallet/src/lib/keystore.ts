@@ -400,7 +400,7 @@ export function decryptHexSecret(secret: EncryptedSecret, key: Buffer): Hex {
         decipher.final(),
     ])
 
-    return `0x${plaintext.toString('hex')}` as Hex
+    return `0x${plaintext.toString('hex')}`
 }
 
 export function decryptBufferSecret(secret: EncryptedSecret, key: Buffer): Uint8Array {
@@ -613,7 +613,7 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
             typeof error === 'object' &&
             error !== null &&
             'code' in error &&
-            (error as { code?: unknown }).code === 'ENOENT'
+            error.code === 'ENOENT'
         ) {
             const sessionOnlyPath = join(dirname(rootPath), 'session.json')
 
@@ -643,7 +643,7 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
                     typeof sessionError === 'object' &&
                     sessionError !== null &&
                     'code' in sessionError &&
-                    (sessionError as { code?: unknown }).code === 'ENOENT'
+                    sessionError.code === 'ENOENT'
                 ) {
                     // Root keystore is missing and there is no session-only marker either.
                 } else {
@@ -658,7 +658,7 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
     let parsed: unknown
 
     try {
-        parsed = JSON.parse(content) as unknown
+        parsed = JSON.parse(content)
     } catch (error) {
         if (error instanceof Error) {
             throw new Error(`Failed to parse keystore JSON at ${rootPath}: ${error.message}`)
@@ -690,12 +690,13 @@ async function readKeystoreBundleNow(rootPath: string): Promise<KeystoreBundle> 
 export async function readRootKeystoreFile(path: string): Promise<RelayerRootKeystoreV2> {
     const content = await readFile(path, 'utf8')
 
+    // SAFETY: this reader does not run isRootKeystoreV2; callers treat the file as a v2 root keystore.
     return JSON.parse(content) as RelayerRootKeystoreV2
 }
 
 export async function readSessionKeystoreFile(path: string): Promise<AnySessionKeystore> {
     const content = await readFile(path, 'utf8')
-    const parsed = JSON.parse(content) as unknown
+    const parsed: unknown = JSON.parse(content)
 
     if (!sessionKeystoreSchema.safeParse(parsed).success) {
         throw new Error(`Unsupported session keystore format at ${path}`)
@@ -728,7 +729,7 @@ function isEnoent(error: unknown): error is { code: 'ENOENT' } {
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
+        error.code === 'ENOENT'
     )
 }
 
@@ -791,7 +792,7 @@ async function writeJsonAtomic(
                 typeof error === 'object' &&
                 error !== null &&
                 'code' in error &&
-                (error as { code?: unknown }).code === 'ENOENT'
+                error.code === 'ENOENT'
             ) {
                 // Path does not exist yet, continue.
             } else {
@@ -866,13 +867,10 @@ export class KeystoreLockError extends Error {
         const lockPath = `${rootKeystorePath}.lock`
         super(
             `Keystore is locked at ${lockPath}. Retry shortly or remove stale lock if no process is running.`,
+            cause !== undefined ? { cause } : undefined,
         )
         this.name = 'KeystoreLockError'
         this.lockPath = lockPath
-
-        if (cause !== undefined) {
-            ;(this as { cause?: unknown }).cause = cause
-        }
     }
 }
 
@@ -902,7 +900,7 @@ export async function withKeystoreLock<T>(
             typeof error === 'object' &&
             error !== null &&
             'code' in error &&
-            (error as { code?: unknown }).code === 'ENOENT'
+            error.code === 'ENOENT'
         ) {
             throw error
         }
@@ -935,5 +933,6 @@ export async function withKeystoreLock<T>(
         throw actionError
     }
 
+    // SAFETY: action() assigned result; the actionError path already threw.
     return result as T
 }

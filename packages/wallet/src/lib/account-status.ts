@@ -81,7 +81,7 @@ export class AccountStatusError extends Error {
 
 export type AccountStatusOptions = {
     env: EnvName
-    chain?: ChainName
+    chain?: string
     legacy?: boolean
     keystorePath?: string
     name?: string
@@ -201,7 +201,7 @@ function addCheck(
 }
 
 function normalizeHex(value: string): Hex {
-    return `0x${value.slice(2).toLowerCase()}` as Hex
+    return `0x${value.slice(2).toLowerCase()}`
 }
 
 function normalizeAddress(value: string): Address {

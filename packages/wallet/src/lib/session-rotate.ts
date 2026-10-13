@@ -808,7 +808,8 @@ function isPossiblySubmittedRotation(error: unknown): error is { rotationPossibl
     return (
         typeof error === 'object' &&
         error !== null &&
-        (error as { rotationPossiblySubmitted?: unknown }).rotationPossiblySubmitted === true
+        'rotationPossiblySubmitted' in error &&
+        error.rotationPossiblySubmitted === true
     )
 }
 
@@ -1005,7 +1006,7 @@ function isBundleWaitTimeout(error: unknown): boolean {
 
 function bundleWaitTimeoutId(error: unknown): string | undefined {
     if (typeof error === 'object' && error !== null && 'bundleId' in error) {
-        const id = (error as { bundleId?: unknown }).bundleId
+        const id = error.bundleId
 
         if (typeof id === 'string' && id.length > 0) return id
     }
@@ -1102,7 +1103,7 @@ function isEnoent(error: unknown): error is { code: 'ENOENT' } {
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
+        error.code === 'ENOENT'
     )
 }
 
@@ -1218,7 +1219,7 @@ function storedPermissionDefaults(
 export async function executeSessionRotate(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         newName?: string
@@ -1936,6 +1937,7 @@ export async function executeSessionRotate(
                             data: encodeFunctionData({
                                 abi: accountAbi,
                                 functionName: 'setCanExecute' as const,
+                                // SAFETY: permission.to/selector come from getDefaultSessionPermissions (local constants typed Address/Hex), not getKeys.
                                 args: [newKeyHash, permission.to, permission.selector, true] as [
                                     Hex,
                                     Address,
@@ -1974,6 +1976,7 @@ export async function executeSessionRotate(
                         data: encodeFunctionData({
                             abi: accountAbi,
                             functionName: 'setCanExecute' as const,
+                            // SAFETY: selectors are zod-checked only when the intent was re-read from disk (resume); on a fresh rotation they are the raw CLI --selector values or buildPermissionDefaults constants, and target is never address-checked.
                             args: [newKeyHash, permissionDefaults.target, selector, true] as [
                                 Hex,
                                 Address,
@@ -2154,6 +2157,7 @@ export async function executeSessionRotate(
             !finalStatus.success ||
             ![200, 201].includes(finalStatus.statusCode ?? 0)
         ) {
+            // SAFETY: session rotate receipt.intentError is relayer JSON, not checked here; decodeIntentError wants Hex.
             const intentError = finalStatus?.receipt?.intentError as Hex | undefined
             throw new SessionRotateError(
                 'ROTATION_FAILED',

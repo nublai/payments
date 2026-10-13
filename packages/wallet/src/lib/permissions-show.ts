@@ -5,7 +5,6 @@ import { readKeystoreBundle, readSessionKeystoreFile, resolveSessionKeystorePath
 import {
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -21,9 +20,7 @@ import {
     spendHashId,
     spendRuleId,
     tokenLabel,
-    type KeySelector,
     type LocalKeyMeta,
-    type OnChainPermissionKey,
 } from './permissions-common'
 import { createCliRelayerClient } from './relayer-client-utils'
 import {
@@ -135,7 +132,7 @@ function splitPermissions(permissions: PermissionInfo[]) {
 export async function executePermissionsShow(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         keyRef?: string
@@ -172,14 +169,14 @@ export async function executePermissionsShow(
         chainId: network.chainId,
     })
 
-    const chainKeys = getChainKeys(keysResponse, network.chainId) as OnChainPermissionKey[]
+    const chainKeys = getChainKeys(keysResponse, network.chainId)
 
     const selected = resolveSelectedKey({
         selector: {
             positional: options.keyRef,
             keyName: options.keyName,
             keyHash: options.keyHash,
-        } as KeySelector,
+        },
         keys: chainKeys,
         localKeys,
     })

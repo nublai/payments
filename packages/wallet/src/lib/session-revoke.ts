@@ -22,7 +22,6 @@ import {
 import {
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -214,7 +213,7 @@ function registryKeyContainsAddress(registryKey: string, address: Address): bool
 export async function executeSessionRevoke(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         sessionName: string
@@ -472,6 +471,7 @@ export async function executeSessionRevoke(
         const statusCode = finalStatus.statusCode ?? 0
 
         if (!finalStatus.success || ![200, 201].includes(statusCode)) {
+            // SAFETY: session revoke receipt.intentError is relayer JSON, not checked here; decodeIntentError wants Hex.
             const intentError = finalStatus.receipt?.intentError as Hex | undefined
             throw new SessionRevokeError(
                 'SESSION_REVOKE_FAILED',

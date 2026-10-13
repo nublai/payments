@@ -18,7 +18,6 @@ import {
     getUsdcTokenConfig,
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -26,9 +25,7 @@ import {
     parsePeriod,
     periodToEnum,
     resolveSelectedKey,
-    type KeySelector,
     type LocalKeyMeta,
-    type OnChainPermissionKey,
     PermissionsError,
 } from './permissions-common'
 import {
@@ -196,7 +193,7 @@ async function loadLocalKeyMeta(input: {
 export async function executePermissionsGrant(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         keyRef?: string
@@ -243,14 +240,14 @@ export async function executePermissionsGrant(
             chainId: network.chainId,
         })
 
-        const chainKeys = getChainKeys(keysResponse, network.chainId) as OnChainPermissionKey[]
+        const chainKeys = getChainKeys(keysResponse, network.chainId)
 
         const selected = resolveSelectedKey({
             selector: {
                 positional: options.keyRef,
                 keyName: options.keyName,
                 keyHash: options.keyHash,
-            } as KeySelector,
+            },
             keys: chainKeys,
             localKeys,
         })

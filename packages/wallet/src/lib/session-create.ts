@@ -125,7 +125,7 @@ export type SessionCreateArgs = {
 
 export type SessionCreateOptions = {
     env: EnvName
-    chain?: ChainName
+    chain?: string
     name?: string
     keystorePath?: string
     sessionName: string
@@ -777,6 +777,7 @@ export async function executeSessionCreate(
         const statusCode = finalStatus.statusCode ?? 0
 
         if (!finalStatus.success || ![200, 201].includes(statusCode)) {
+            // SAFETY: session create receipt.intentError is relayer JSON, not checked here; decodeIntentError wants Hex.
             const intentError = finalStatus.receipt?.intentError as Hex | undefined
             throw new SessionCreateError(
                 'SESSION_CREATE_FAILED',

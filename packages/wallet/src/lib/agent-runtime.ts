@@ -6,7 +6,7 @@ export function isErrnoNotFound(error: unknown): error is { code: 'ENOENT' } {
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
+        error.code === 'ENOENT'
     )
 }
 
@@ -15,7 +15,7 @@ function isErrnoCode(error: unknown, code: string): boolean {
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        (error as { code?: unknown }).code === code
+        error.code === code
     )
 }
 

@@ -109,7 +109,7 @@ export function parseSelectorOrAny(value: string): Hex {
         throw new PermissionsError('RULE_PARSE_FAILED', `Invalid selector: ${value}`)
     }
 
-    return normalized as Hex
+    return `0x${normalized.slice(2)}`
 }
 
 export function parseAddressOrAny(value: string): Address {
@@ -155,7 +155,7 @@ export function parseKeyHash(value: string): Hex {
         throw new PermissionsError('INVALID_KEY_SELECTOR', `Invalid key hash: ${value}`)
     }
 
-    return normalized as Hex
+    return `0x${normalized.slice(2)}`
 }
 
 export function isKeyHashRef(value: string): boolean {
@@ -163,10 +163,12 @@ export function isKeyHashRef(value: string): boolean {
 }
 
 export function normalizeAddressLower(value: Address): Address {
+    // SAFETY: callers pass Address-typed values from getAddress, token configs, and relayer getKeys JSON (permissions-show, permissions-list); this function does not check the input.
     return value.toLowerCase() as Address
 }
 
 export function normalizeHexLower(value: Hex): Hex {
+    // SAFETY: callers pass Hex-typed values including raw CLI --key-hash (not parseKeyHash'd here) and on-chain/local hashes; this function does not check the input.
     return value.toLowerCase() as Hex
 }
 

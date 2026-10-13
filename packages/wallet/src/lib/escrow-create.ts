@@ -29,7 +29,7 @@ export type EscrowCreateOptions = {
     seller: string
     oracle: string
     deadline: string
-    chain?: ChainName
+    chain?: string
     keystorePath?: string
     sessionFile?: string
     sessionName?: string
@@ -78,7 +78,14 @@ function parseDeadline(value: string): bigint {
             )
         }
 
-        const unit = match[2] as 'm' | 'h' | 'd' | 'w'
+        const unit = match[2]
+
+        if (unit !== 'm' && unit !== 'h' && unit !== 'd' && unit !== 'w') {
+            throw new EscrowError(
+                'INVALID_ARGUMENT',
+                `Invalid deadline: "${value}". Use relative (1h, 2d, 30m, 1w) or unix timestamp.`,
+            )
+        }
 
         const seconds: Record<'m' | 'h' | 'd' | 'w', number> = {
             m: 60,
@@ -175,7 +182,7 @@ export async function executeEscrowCreate(
         const oracle = getAddress(options.oracle)
         const deadline = parseDeadline(options.deadline)
 
-        const orderId = padHex(`0x${Date.now().toString(16)}`, { size: 32, dir: 'right' }) as Hex
+        const orderId = padHex(`0x${Date.now().toString(16)}`, { size: 32, dir: 'right' })
         let salt: Hex | undefined
 
         if (options.salt) {
@@ -186,7 +193,7 @@ export async function executeEscrowCreate(
                 )
             }
 
-            salt = padHex(options.salt as Hex, { size: 12, dir: 'right' }) as Hex
+            salt = padHex(options.salt, { size: 12, dir: 'right' })
         }
 
         const escrowParamsBase = {

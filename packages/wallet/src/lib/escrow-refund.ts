@@ -26,7 +26,7 @@ function getDefaultEscrowRefundDeps(): EscrowChainNetworkContractsDeps {
 export type EscrowRefundOptions = {
     env: EnvName
     escrowId: string
-    chain?: ChainName
+    chain?: string
     keystorePath?: string
     sessionFile?: string
     name?: string

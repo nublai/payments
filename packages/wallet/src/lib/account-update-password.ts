@@ -248,7 +248,7 @@ export async function executeAccountUpdatePassword(
                 options.currentPassword,
             )
 
-            const decryptedSessions = new Map<string, string>()
+            const decryptedSessions = new Map<string, Hex>()
 
             for (const [name, keystore] of sessionKeystores.entries()) {
                 const decrypted = await deps.decryptSessionKeystore(
@@ -277,7 +277,7 @@ export async function executeAccountUpdatePassword(
             const rewrittenSessions = new Map<string, AnySessionKeystore>()
 
             for (const [name, existing] of sessionKeystores.entries()) {
-                const sessionPrivateKey = decryptedSessions.get(name)! as Hex
+                const sessionPrivateKey = decryptedSessions.get(name)!
 
                 const baseInput = {
                     password: options.newPassword,

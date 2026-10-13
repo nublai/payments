@@ -134,7 +134,7 @@ export function relayEntryPoints(chainId: number): RelayEntryPoint[] {
         for (const [selector, functionName] of Object.entries(contract.selectors)) {
             points.push({
                 target: contract.address,
-                selector: selector as Hex,
+                selector: `0x${selector.slice(2)}`,
                 contractName: contract.name,
                 functionName,
             })
@@ -415,7 +415,7 @@ function decodeDepositNative(data: Hex, user: Address): DecodedDepositNative {
 
     try {
         const depositor = getAddress(`0x${data.slice(10 + 24, 10 + 64)}`)
-        const id = `0x${data.slice(10 + 64, 10 + 64 * 2)}` as Hex
+        const id: Hex = `0x${data.slice(10 + 64, 10 + 64 * 2)}`
         assertParty(depositor, user, 'depositor')
 
         return { depositor, id }
@@ -448,7 +448,7 @@ function decodeDepositErc20(
         depositor = getAddress(`0x${data.slice(10 + 24, 10 + 64)}`)
         token = getAddress(`0x${data.slice(10 + 64 + 24, 10 + 64 * 2)}`)
         amount = BigInt(`0x${data.slice(10 + 64 * 2, 10 + 64 * 3)}`)
-        id = `0x${data.slice(10 + 64 * 3, 10 + 64 * 4)}` as Hex
+        id = `0x${data.slice(10 + 64 * 3, 10 + 64 * 4)}`
     } catch (error) {
         throw new RelayQuoteRejected('relay.link quote depositErc20 calldata is invalid.', {
             cause: error,
@@ -1096,6 +1096,7 @@ export function formatRelayQuoteCalls(quote: RelayQuoteResponse): string {
 
         if (selector === APPROVE_SELECTOR) {
             try {
+                // SAFETY: quote item data is a 0x string from the quote schema; decodeApprove wants Hex and does not re-check here.
                 const decoded = decodeApprove(item.data.data as Hex)
                 const name = spenderName(item.data.chainId, decoded.spender)
                 const spenderLabel = name ? `${name} (${decoded.spender})` : decoded.spender
@@ -1105,6 +1106,7 @@ export function formatRelayQuoteCalls(quote: RelayQuoteResponse): string {
             }
         }
 
+        // SAFETY: quote item data is a 0x string from the quote schema; partySuffix wants Hex and does not re-check here.
         const party = partySuffix(item.data.data as Hex, selector)
         callIndex += 1
         lines.push(

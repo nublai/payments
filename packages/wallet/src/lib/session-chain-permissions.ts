@@ -9,8 +9,8 @@ import {
 } from './network-config'
 
 /** GuardedExecutor wildcard key. Packed calls and checkers here apply to every key. */
-export const ANY_KEYHASH =
-    '0x3232323232323232323232323232323232323232323232323232323232323232' as Hex
+export const ANY_KEYHASH: Hex =
+    '0x3232323232323232323232323232323232323232323232323232323232323232'
 
 const ESCROW_ESCROW_SELECTOR = '0x657061bf'
 
@@ -55,7 +55,7 @@ type PackedCanExecute = { target: Address; selector: Hex }
 function decodePackedCanExecute(packed: Hex): PackedCanExecute {
     const value = BigInt(packed)
     const target = getAddress(`0x${(value >> 96n).toString(16).padStart(40, '0')}`)
-    const selector = `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}` as Hex
+    const selector: Hex = `0x${(value & 0xffffffffn).toString(16).padStart(8, '0')}`
 
     return { target, selector }
 }

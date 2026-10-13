@@ -38,13 +38,13 @@ type AccountCreateErrorCode =
 
 type NetworkDefaults = CliNetworkConfig
 
-const ESCROW_ESCROW_SELECTOR = '0x657061bf' as Hex
+const ESCROW_ESCROW_SELECTOR: Hex = '0x657061bf'
 
-const ESCROW_REFUND_SELECTOR = '0x6023fda5' as Hex
+const ESCROW_REFUND_SELECTOR: Hex = '0x6023fda5'
 
-const ESCROW_SETTLE_SELECTOR = '0xe7f921a2' as Hex
+const ESCROW_SETTLE_SELECTOR: Hex = '0xe7f921a2'
 
-const SIMPLE_SETTLER_WRITE_SELECTOR = '0x84523a30' as Hex
+const SIMPLE_SETTLER_WRITE_SELECTOR: Hex = '0x84523a30'
 
 /**
  * Narrow default session. `write` and `settle` are included because
@@ -227,6 +227,7 @@ async function defaultDelegateAccount(input: DelegateInput): Promise<DelegateRes
 
     const result = await delegateAccountWithAuthorizeKeys({
         rootPrivateKey: input.rootPrivateKey,
+        // SAFETY: sessionAddress is the session keystore address written from privateKeyToAccount; this path does not re-check 0x/20-byte form.
         sessionAddress: input.sessionAddress as `0x${string}`,
         network: input.network,
         authorizeKeys: [
@@ -234,6 +235,7 @@ async function defaultDelegateAccount(input: DelegateInput): Promise<DelegateRes
                 expiry: '0',
                 type: 'secp256k1',
                 role: 'normal',
+                // SAFETY: same sessionAddress string as above; encodeSecp256k1Key wants Address.
                 publicKey: encodeSecp256k1Key(input.sessionAddress as `0x${string}`),
                 permissions: getDefaultSessionPermissions(input.network.chainId, {
                     env: input.network.env,

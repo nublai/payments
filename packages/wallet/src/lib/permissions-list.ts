@@ -5,7 +5,6 @@ import { readKeystoreBundle, readSessionKeystoreFile, resolveSessionKeystorePath
 import {
     resolveNetworkConfig,
     selectDefaultChain,
-    type ChainName,
     type CliNetworkConfig,
     type EnvName,
 } from './network-config'
@@ -19,7 +18,6 @@ import {
     spendRuleId,
     tokenLabel,
     type LocalKeyMeta,
-    type OnChainPermissionKey,
 } from './permissions-common'
 import {
     computeSessionKeyHash,
@@ -126,7 +124,7 @@ function splitPermissions(permissions: PermissionInfo[]) {
 export async function executePermissionsList(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
     },
@@ -160,7 +158,7 @@ export async function executePermissionsList(
         chainId: network.chainId,
     })
 
-    const chainKeys = getChainKeys(keysResponse, network.chainId) as OnChainPermissionKey[]
+    const chainKeys = getChainKeys(keysResponse, network.chainId)
 
     const keys = chainKeys.map((key) => {
         const local = resolveLocalNameByHash(key.hash, localKeys)

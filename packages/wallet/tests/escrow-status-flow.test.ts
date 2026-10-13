@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import type { EscrowStatus } from '@nubl/relayer-client'
 import { executeEscrowStatus } from '../src/lib/escrow-status'
 import { EscrowError, type ResolveEscrowChainNetworkContractsResult } from '../src/lib/escrow-common'
-import type { ChainName, EnvName } from '../src/lib/network-config'
+import type { EnvName } from '../src/lib/network-config'
 import { installFormerProdDeployments } from './helpers/former-deployment-env'
 
 let restoreFormerProdDeployments = () => {}
@@ -65,8 +65,8 @@ test('executeEscrowStatus returns status shape with mocked getEscrowStatus', asy
         },
         {
             resolveEscrowChainNetworkContracts: mock(
-                (_env: EnvName, chain?: ChainName): ResolveEscrowChainNetworkContractsResult => {
-                    const chainName = chain ?? 'base'
+                (_env: EnvName, chain?: string): ResolveEscrowChainNetworkContractsResult => {
+                    const chainName = chain === 'polygon' || chain === 'anvil' ? chain : 'base'
 
                     return {
                         chain: chainName,

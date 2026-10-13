@@ -31,7 +31,7 @@ export class AccountNonceError extends Error {
 }
 
 export type AccountNonceOptions = AccountAddressOptions & {
-    chain?: ChainName
+    chain?: string
     seqKey?: bigint
 }
 
@@ -100,6 +100,7 @@ export async function executeAccountNonce(
         const nonce = await deps.readNonce({
             chain,
             rpcUrl: network.rpcUrl,
+            // SAFETY: executeAccountAddress returns the keystore address as a string; this path does not re-check 0x/20-byte form.
             account: addressResult.address as Address,
             seqKey,
         })

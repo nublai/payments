@@ -35,9 +35,7 @@ import {
     parseRuleId,
     periodToEnum,
     resolveSelectedKey,
-    type KeySelector,
     type LocalKeyMeta,
-    type OnChainPermissionKey,
     PermissionsError,
 } from './permissions-common'
 import {
@@ -268,7 +266,7 @@ async function loadLocalKeyMeta(input: {
 export async function executePermissionsRevoke(
     options: {
         env: EnvName
-        chain?: ChainName
+        chain?: string
         name?: string
         keystorePath?: string
         keyRef?: string
@@ -311,14 +309,14 @@ export async function executePermissionsRevoke(
             chainId: network.chainId,
         })
 
-        const chainKeys = getChainKeys(keysResponse, network.chainId) as OnChainPermissionKey[]
+        const chainKeys = getChainKeys(keysResponse, network.chainId)
 
         const selected = resolveSelectedKey({
             selector: {
                 positional: options.keyRef,
                 keyName: options.keyName,
                 keyHash: options.keyHash,
-            } as KeySelector,
+            },
             keys: chainKeys,
             localKeys,
         })

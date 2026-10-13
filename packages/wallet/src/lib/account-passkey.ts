@@ -104,6 +104,7 @@ function loadAccountCreationBytecode(): Hex {
     const here = dirname(fileURLToPath(import.meta.url))
     const artifactPath = resolve(here, '../../../contracts/out/Account.sol/Account.json')
 
+    // SAFETY: unchecked Foundry Account.json; only bytecode.object is read.
     const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as {
         bytecode?: { object?: string }
     }
@@ -117,7 +118,7 @@ function loadAccountCreationBytecode(): Hex {
         )
     }
 
-    return (object.startsWith('0x') ? object : `0x${object}`) as Hex
+    return object.startsWith('0x') ? `0x${object.slice(2)}` : `0x${object}`
 }
 
 async function rpc(rpcUrl: string, method: string, params: unknown[]): Promise<void> {
@@ -127,6 +128,7 @@ async function rpc(rpcUrl: string, method: string, params: unknown[]): Promise<v
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     })
 
+    // SAFETY: JSON-RPC body is unchecked; only error.message is read.
     const body = (await response.json()) as { result?: unknown; error?: { message?: string } }
 
     if (!response.ok || body.error) {
@@ -187,7 +189,7 @@ export async function executeAccountPasskey(
         throw new AccountPasskeyError('CHAIN_FAILED', 'Account deployment did not return an address')
     }
 
-    const delegation = `0xef0100${implementation.slice(2).toLowerCase()}` as Hex
+    const delegation = `0xef0100${implementation.slice(2).toLowerCase()}`
     await rpc(args.rpcUrl, 'anvil_setCode', [account.address, delegation])
     const code = await publicClient.getCode({ address: account.address })
 
