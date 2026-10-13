@@ -65,7 +65,7 @@ export class HttpAuthNonceDO extends DurableObject<Env> {
         expiryUnixSeconds: number,
         nowUnixSeconds: number,
     ): boolean {
-        const result = this.ctx.storage.transactionSync(() => {
+        return this.ctx.storage.transactionSync((): boolean => {
             const existing = this.sql
                 .exec<{
                     expires_at: number
@@ -89,8 +89,6 @@ export class HttpAuthNonceDO extends DurableObject<Env> {
 
             return true
         })
-
-        return result as boolean
     }
 
     private cleanupExpiredNonces(nowUnixSeconds: number): void {

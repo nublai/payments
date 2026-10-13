@@ -26,7 +26,6 @@ import type {
     MaintenanceResult,
     SignerMaintenanceResult,
     SignerError,
-    ExecuteIntentTransaction,
 } from '../types/pool'
 import { getErrorMessage, logger } from '../lib/logger'
 import { getChainRpcUrl } from '../lib/multi-chain-client'
@@ -37,6 +36,7 @@ import {
     peekRateLimit,
     releaseRateLimit,
     upgradeRateBuckets,
+    type RateBucket,
     type UpgradeRateAction,
     type UpgradeRateKind,
 } from '../rpc/methods/shared/upgrade-rate-limit'
@@ -51,6 +51,7 @@ import {
 function parseTxHash(value: unknown): Hex | undefined {
     if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return undefined
 
+    // SAFETY: the regex above accepts only 0x plus 64 hex digits, which is Hex.
     return value as Hex
 }
 
@@ -142,6 +143,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
 
+                    // SAFETY: request.json() from sendPreparedCalls/upgradeAccount; this handler does not parse the JSON shape.
                     const tx = (await request.json()) as RelayTransaction
                     const result = await this.sendTransaction(tx)
 
@@ -169,6 +171,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                         return new Response('Method not allowed', { status: 405 })
                     }
 
+                    // SAFETY: request.json() from upgrade-rate-limit/paid-upgrade/signer.do; this handler does not parse the JSON shape.
                     const body = (await request.json()) as {
                         action?:
                             | UpgradeRateAction
@@ -246,7 +249,9 @@ export class SignerPoolDO extends DurableObject<Env> {
                 return Response.json(errorBody, { status: 500 })
             }
 
-            return Response.json({ error: message } as SignerError, { status: 500 })
+            const errorBody: SignerError = { error: message }
+
+            return Response.json(errorBody, { status: 500 })
         }
     }
 
@@ -309,21 +314,27 @@ export class SignerPoolDO extends DurableObject<Env> {
             }
         }
 
-        const buckets = paidUpgrade
-            ? paidUpgradeRateBuckets({
-                  chainId: body.chainId,
-                  account: body.account,
-                  ip: body.ip,
-                  globalLimit,
-                  includeGlobal: action === 'reserve' || action === 'release',
-              })
-            : upgradeRateBuckets({
-                  kind: body.kind as UpgradeRateKind,
-                  chainId: body.chainId,
-                  account: body.account,
-                  ip: body.ip as string,
-                  identity: body.identity,
-              })
+        let buckets: RateBucket[]
+
+        if (paidUpgrade) {
+            buckets = paidUpgradeRateBuckets({
+                chainId: body.chainId,
+                account: body.account,
+                ip: body.ip,
+                globalLimit,
+                includeGlobal: action === 'reserve' || action === 'release',
+            })
+        } else if (body.kind === 'prepare' || body.kind === 'upgrade') {
+            buckets = upgradeRateBuckets({
+                kind: body.kind,
+                chainId: body.chainId,
+                account: body.account,
+                ip: body.ip,
+                identity: body.identity,
+            })
+        } else {
+            return { allowed: false }
+        }
 
         const sql = this.ensureUpgradeRateSchema()
 
@@ -860,6 +871,7 @@ export class SignerPoolDO extends DurableObject<Env> {
             .toArray()
 
         for (const row of pending) {
+            // SAFETY: paid_upgrade_pending_receipt.tx_hash is TEXT; enqueue-receipt, track-replacement, and settle write a parseTxHash hex.
             const found = await this.lookupPaidUpgradeReceipt(row.chain_id, row.tx_hash as Hex)
 
             if (found === 'wait' || found === 'mempool') continue
@@ -901,6 +913,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 row.chain_id,
                 row.signer_name,
                 row.nonce,
+                // SAFETY: paid_upgrade_pending_receipt.tx_hash is TEXT; enqueue-receipt, track-replacement, and settle write a parseTxHash hex.
                 row.tx_hash as Hex,
             )
 
@@ -991,6 +1004,7 @@ export class SignerPoolDO extends DurableObject<Env> {
             )
 
             if (!response.ok) return false
+            // SAFETY: SignerDO /paid-upgrade-tx JSON; this method does not parse the body, and SignerDO is the only producer.
             const body = (await response.json()) as { txHash?: string } | null
             const txHash = parseTxHash(body?.txHash)
 
@@ -1033,12 +1047,14 @@ export class SignerPoolDO extends DurableObject<Env> {
             )
 
             if (!response.ok) return 'unknown'
+            // SAFETY: SignerDO /paid-upgrade-tx JSON; this method does not parse the body, and SignerDO is the only producer.
             const body = (await response.json()) as { address?: string } | null
 
             if (!body?.address) return 'unknown'
             const rpcUrl = getChainRpcUrl(chainId, this.env)
             const publicClient = createPublicClient({ transport: http(rpcUrl) })
 
+            // SAFETY: SignerDO writes signer_state.address (viem account.address) into that JSON field; this line does not check address format.
             const onChain = await publicClient.getTransactionCount({
                 address: body.address as Address,
                 blockTag: 'latest',
@@ -1161,6 +1177,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                 const response = await signer.fetch(`http://do/capacity?signerName=${signerName}`)
 
                 if (!response.ok) {
+                    // SAFETY: SignerDO /capacity error JSON; this method does not parse the body, and SignerDO is the only producer.
                     const error = (await response.json()) as SignerError
                     console.error(`Signer ${i} capacity check failed:`, error)
 
@@ -1173,6 +1190,7 @@ export class SignerPoolDO extends DurableObject<Env> {
                     }
                 }
 
+                // SAFETY: SignerDO /capacity JSON; this method does not parse the body, and SignerDO is the only producer.
                 const info = (await response.json()) as CapacityInfo
 
                 return { index: i, ...info, error: false }
@@ -1255,8 +1273,7 @@ export class SignerPoolDO extends DurableObject<Env> {
         // For execute-intent transactions, use per-EOA routing
         // This ensures transactions for the same EOA go to the same signer
         if (tx.type === 'execute-intent') {
-            const intentTx = tx as ExecuteIntentTransaction
-            const preferredIndex = selectSignerForEoa(intentTx.intent.eoa, numSigners)
+            const preferredIndex = selectSignerForEoa(tx.intent.eoa, numSigners)
 
             // Reorder candidates to try the preferred signer first (if available)
             const preferredIdx = candidates.findIndex((c) => c.index === preferredIndex)
@@ -1289,16 +1306,18 @@ export class SignerPoolDO extends DurableObject<Env> {
                 })
 
                 if (response.ok) {
+                    // SAFETY: SignerDO /send JSON; this method does not parse the body, and SignerDO is the only producer.
                     const result = (await response.json()) as SendResult
 
                     return result
                 }
 
                 // An unreadable body is treated as a send: the slot stays reserved.
-                let error: SignerError & { broadcastAttempted?: boolean }
+                let error: SignerError
 
                 try {
-                    error = (await response.json()) as SignerError & { broadcastAttempted?: boolean }
+                    // SAFETY: SignerDO /send error JSON; this method does not parse the body, and SignerDO is the only producer.
+                    error = (await response.json()) as SignerError
                 } catch {
                     throw new SignerPoolSendError('unreadable signer error', true)
                 }
@@ -1391,11 +1410,13 @@ export class SignerPoolDO extends DurableObject<Env> {
                     )
 
                     if (!response.ok) {
+                        // SAFETY: SignerDO /maintenance error JSON; this method does not parse the body, and SignerDO is the only producer.
                         const error = (await response.json()) as SignerError
+                        const emptyAddress: Hex = '0x'
 
                         return {
                             index: i,
-                            address: '0x' as Hex,
+                            address: emptyAddress,
                             staleTransactions: 0,
                             confirmedTransactions: 0,
                             failedTransactions: 0,
@@ -1406,13 +1427,15 @@ export class SignerPoolDO extends DurableObject<Env> {
                         }
                     }
 
+                    // SAFETY: SignerDO /maintenance JSON; this method does not parse the body, and SignerDO is the only producer.
                     return (await response.json()) as SignerMaintenanceResult
                 } catch (err) {
                     console.error(`Signer ${i} maintenance failed:`, err)
+                    const emptyAddress: Hex = '0x'
 
                     return {
                         index: i,
-                        address: '0x' as Hex,
+                        address: emptyAddress,
                         staleTransactions: 0,
                         confirmedTransactions: 0,
                         failedTransactions: 0,

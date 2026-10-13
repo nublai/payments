@@ -250,7 +250,7 @@ export class BundleStatusDO extends DurableObject<Env> {
             this.sql
                 .exec('PRAGMA table_info(pending_refunds)')
                 .toArray()
-                .map((row) => String((row as { name?: unknown }).name ?? '')),
+                .map((row) => String(row.name ?? '')),
         )
 
         const requiredColumns: Array<{ name: string; definition: string }> = [
@@ -287,7 +287,7 @@ export class BundleStatusDO extends DurableObject<Env> {
             this.sql
                 .exec('PRAGMA table_info(bundle_transactions)')
                 .toArray()
-                .map((row) => String((row as { name?: unknown }).name ?? '')),
+                .map((row) => String(row.name ?? '')),
         )
 
         if (!columns.has('created_at')) {
@@ -335,6 +335,7 @@ export class BundleStatusDO extends DurableObject<Env> {
 
             if (!response.ok) return null
 
+            // SAFETY: SignerDO /get_tx_status JSON; this method does not parse the body, and SignerDO is the only producer.
             return (await response.json()) as TxStatusResponse
         } catch (error) {
             logger.warn(
@@ -382,6 +383,7 @@ export class BundleStatusDO extends DurableObject<Env> {
 
         try {
             if (request.method === 'POST' && path === '/add_bundle_tx') {
+                // SAFETY: request.json() from sendPreparedCalls; this handler does not parse the JSON shape.
                 const body = (await request.json()) as {
                     bundleId: string
                     txId: string
@@ -394,6 +396,7 @@ export class BundleStatusDO extends DurableObject<Env> {
             }
 
             if (request.method === 'POST' && path === '/upsert_bundle_telemetry') {
+                // SAFETY: request.json() from sendPreparedCalls; this handler does not parse the JSON shape.
                 const body = (await request.json()) as {
                     bundleId: string
                     chainId: number
@@ -541,7 +544,9 @@ export class BundleStatusDO extends DurableObject<Env> {
         const chainId = this.getChainIdFromName()
 
         for (const row of txRows) {
+            // SAFETY: bundle_transactions.tx_id is TEXT; add_bundle_tx writes the worker's tx id.
             const txId = row.tx_id as string
+            // SAFETY: bundle_transactions.signer_name is TEXT or NULL; add_bundle_tx writes the signer DO name.
             const signerName = row.signer_name as string | null
 
             if (!signerName) {
@@ -760,6 +765,7 @@ export class BundleStatusDO extends DurableObject<Env> {
 
         for (const log of logs) {
             try {
+                // SAFETY: receipt logs from SignerDO getTxStatus (eth_getTransactionReceipt); this loop does not parse log shape.
                 const logEntry = log as { topics?: Hex[]; data?: Hex }
 
                 if (!logEntry.topics || logEntry.topics.length === 0) continue
@@ -767,10 +773,12 @@ export class BundleStatusDO extends DurableObject<Env> {
                 const decoded = decodeEventLog({
                     abi: orchestratorAbi,
                     data: logEntry.data,
+                    // SAFETY: decodeEventLog wants a topic tuple; topics came from the receipt log above and are not re-checked as hex.
                     topics: logEntry.topics as [Hex, ...Hex[]],
                 })
 
                 if (decoded.eventName === 'IntentExecuted') {
+                    // SAFETY: IntentExecuted in orchestratorAbi has err; this line does not re-parse decoded.args.
                     const args = decoded.args as { err?: Hex }
 
                     if (args.err && args.err !== '0x00000000') {
@@ -852,6 +860,7 @@ export class BundleStatusDO extends DurableObject<Env> {
         return {
             bundleId: String(row.bundle_id),
             chainId: Number(row.chain_id),
+            // SAFETY: bundle_gas_telemetry.eoa is TEXT; upsertBundleTelemetry writes input.eoa.toLowerCase().
             eoa: row.eoa ? (String(row.eoa) as Address) : undefined,
             paymentEnabled: Number(row.payment_enabled) === 1,
             simulationGas: row.simulation_gas ? String(row.simulation_gas) : undefined,
