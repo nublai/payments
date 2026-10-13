@@ -13,6 +13,7 @@ import {
 } from './keystore'
 import {
     resolveNetworkConfig,
+    selectDefaultChain,
     type ChainName,
     type CliNetworkConfig,
     type EnvName,
@@ -106,6 +107,15 @@ export type AccountDelegateDeps = {
     }) => Promise<{ accountAddress: Address; txHash?: Hex }>
 }
 
+function normalizeChain(value?: string): ChainName {
+    try {
+        return selectDefaultChain('prod', value)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : `Unsupported chain: ${value}`
+        throw new AccountDelegateError('UNSUPPORTED_CHAIN', message, { cause: error })
+    }
+}
+
 function getDefaultDeps(): AccountDelegateDeps {
     return {
         readKeystoreBundle,
@@ -182,7 +192,7 @@ export async function executeAccountDelegate(
         let hasDelegatedAtLeastOne = false
 
         for (const chain of options.chains) {
-            const network = resolveNetworkConfig(options.env, chain)
+            const network = resolveNetworkConfig(options.env, normalizeChain(chain))
 
             try {
                 const code = await deps.getDelegatedCode({ network, address: rootAddress })
