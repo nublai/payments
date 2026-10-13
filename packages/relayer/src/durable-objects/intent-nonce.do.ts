@@ -158,7 +158,7 @@ export class IntentNonceDO extends DurableObject<Env> {
             switch (url.pathname) {
                 case '/acquire': {
                     // Acquire the next nonce for a sequence key
-                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
+                    // SAFETY: /acquire body is unchecked request.json(); no src caller posts here, only intent-nonce-monotonic.test.ts. This handler does not validate the JSON shape.
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
 
@@ -176,7 +176,7 @@ export class IntentNonceDO extends DurableObject<Env> {
 
                 case '/peek': {
                     // Get current nonce without incrementing
-                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
+                    // SAFETY: /peek body is unchecked request.json(); no src caller posts here, only intent-nonce-monotonic.test.ts. This handler does not validate the JSON shape.
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
 
@@ -194,7 +194,7 @@ export class IntentNonceDO extends DurableObject<Env> {
 
                 case '/sync': {
                     // Sync with on-chain state
-                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
+                    // SAFETY: /sync body is unchecked request.json(); no src caller posts here, only intent-nonce-monotonic.test.ts. This handler does not validate the JSON shape.
                     const { seqKey, confirmedSeq } = (await request.json()) as {
                         seqKey: string
                         confirmedSeq: string
@@ -259,7 +259,7 @@ export class IntentNonceDO extends DurableObject<Env> {
 
                 case '/reset': {
                     // Reset a specific sequence key
-                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
+                    // SAFETY: /reset body is unchecked request.json(); no src caller posts here, only intent-nonce-monotonic.test.ts. This handler does not validate the JSON shape.
                     const { seqKey } = (await request.json()) as { seqKey: string }
                     const seqKeyBigInt = this.parseSeqKey(seqKey)
 
@@ -278,7 +278,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                 case '/acquire_synced': {
                     // Acquire nonce with drift detection and correction
                     // If local is ahead of chain, sync first to prevent InvalidNonce errors
-                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
+                    // SAFETY: /acquire_synced body is unchecked request.json(); no src caller posts here, only intent-nonce-monotonic.test.ts. This handler does not validate the JSON shape.
                     const { seqKey, onChainSeq } = (await request.json()) as {
                         seqKey: string
                         onChainSeq: string
@@ -391,7 +391,7 @@ export class IntentNonceDO extends DurableObject<Env> {
                 }
 
                 case '/cancel_draft': {
-                    // SAFETY: request.json() from RelayerService's nonce provider; this handler does not parse the JSON shape.
+                    // SAFETY: /cancel_draft body is unchecked request.json(); no src caller posts here, only intent-nonce-monotonic.test.ts. This handler does not validate the JSON shape.
                     const { seqKey, draftId } = (await request.json()) as {
                         seqKey: string
                         draftId?: string

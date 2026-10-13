@@ -1337,7 +1337,7 @@ export class SignerDO extends DurableObject<Env> {
         const recoveredTxHash = (recoveredRow.tx_hash as string) || txHash
 
         return {
-            // SAFETY: recoveredTxHash is pending_transactions.tx_hash or the || txHash fallback after waitForTxHash found a non-empty hash.
+            // SAFETY: recoveredTxHash is pending_transactions.tx_hash or the || txHash fallback; txHash is non-empty because !txHash throws above.
             txHash: recoveredTxHash as Hex,
             // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
             nonce: recoveredRow.nonce as number,
@@ -1401,7 +1401,7 @@ export class SignerDO extends DurableObject<Env> {
             .toArray()[0]
 
         return {
-            // SAFETY: pending_transactions.tx_hash is TEXT NOT NULL; performSend inserts '' before broadcast, then writes the viem tx hash; tryReplaceStaleTransaction overwrites it with the replacement hash. May be ''.
+            // SAFETY: paid_upgrade = 1 rows were written by the post-broadcast UPDATE, which sets tx_hash to the viem hash in the same statement; replacements overwrite it with a non-empty hash. Cannot be ''.
             txHash: (row.tx_hash as string) ?? '',
             // SAFETY: pending_transactions.nonce is INTEGER written by performSend from signer_state.nonce.
             nonce: row.nonce as number,
