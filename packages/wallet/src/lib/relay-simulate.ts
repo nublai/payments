@@ -369,7 +369,7 @@ function parseSimulateResult(
 
     const block = result[0]
 
-    if (!isRecord(block)) {
+    if (!isRecord(block) || !('calls' in block)) {
         throw new RelaySimulationRejected(
             'relay.link quote could not be simulated. Refusing to sign.',
         )
@@ -460,17 +460,21 @@ export async function readRelayerSignerOrigin(input: {
         table.get(hexChain.toLowerCase()) ??
         [...table].find(([key]) => Number.parseInt(key, 16) === input.chainId)?.[1]
 
-    const pool = isRecord(chain) ? chain.pool : undefined
-    const poolSigners = isRecord(pool) ? pool.signers : undefined
+    const pool = isRecord(chain) && 'pool' in chain ? chain.pool : undefined
+    const poolSigners = isRecord(pool) && 'signers' in pool ? pool.signers : undefined
 
     const signers: unknown[] = Array.isArray(poolSigners) ? poolSigners : []
 
     for (const signer of signers) {
         if (!isRecord(signer)) continue
 
-        if (signer.paused === true) continue
+        if ('paused' in signer && signer.paused === true) continue
 
-        if (typeof signer.address === 'string' && isAddress(signer.address)) {
+        if (
+            'address' in signer &&
+            typeof signer.address === 'string' &&
+            isAddress(signer.address)
+        ) {
             return getAddress(signer.address)
         }
     }

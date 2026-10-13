@@ -335,9 +335,9 @@ function normalizeStepItem(value: unknown): RelayStepItem {
         throw new RelayLinkError('INVALID_RESPONSE', 'relay.link returned an invalid step item.')
     }
 
-    const data = isRecord(value.data) ? value.data : {}
-    const check = isRecord(value.check) ? value.check : undefined
-    const calldata = String(data.data ?? '0x')
+    const data = 'data' in value && isRecord(value.data) ? value.data : {}
+    const check = 'check' in value && isRecord(value.check) ? value.check : undefined
+    const calldata = String(('data' in data ? data.data : undefined) ?? '0x')
 
     if (!isHexData(calldata)) {
         throw new RelayLinkError(
@@ -346,7 +346,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
         )
     }
 
-    const valueString = String(data.value ?? '0')
+    const valueString = String(('value' in data ? data.value : undefined) ?? '0')
 
     if (!/^\d+$/.test(valueString)) {
         throw new RelayLinkError(
@@ -355,7 +355,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
         )
     }
 
-    const chainId = Number(data.chainId ?? 0)
+    const chainId = Number(('chainId' in data ? data.chainId : undefined) ?? 0)
 
     if (!Number.isInteger(chainId) || chainId <= 0) {
         throw new RelayLinkError(
@@ -365,7 +365,9 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     }
 
     // Leftover: z.string() on `to` would fail the item/data object and change this message.
-    if (typeof data.to !== 'string' || data.to.length === 0) {
+    const toValue = 'to' in data ? data.to : undefined
+
+    if (typeof toValue !== 'string' || toValue.length === 0) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
             'relay.link returned an invalid to address in a step item.',
@@ -375,7 +377,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     let to: Address
 
     try {
-        to = getAddress(data.to)
+        to = getAddress(toValue)
     } catch (error) {
         throw new RelayLinkError(
             'INVALID_RESPONSE',
@@ -387,7 +389,7 @@ function normalizeStepItem(value: unknown): RelayStepItem {
     const checkFields = stepCheckSchema.safeParse(check)
 
     return {
-        status: normalizeStepItemStatus(value.status),
+        status: normalizeStepItemStatus('status' in value ? value.status : undefined),
         data: {
             to,
             data: calldata,

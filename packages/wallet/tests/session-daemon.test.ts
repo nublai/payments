@@ -316,7 +316,12 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
 
         const encodedBigintChain = encodeTypedDataBigInt(correct)
 
-        if (!isRecord(encodedBigintChain) || !isRecord(encodedBigintChain.domain)) {
+        if (
+            !isRecord(encodedBigintChain) ||
+            !('domain' in encodedBigintChain) ||
+            !isRecord(encodedBigintChain.domain) ||
+            !('chainId' in encodedBigintChain.domain)
+        ) {
             throw new Error('typed data encoding failed')
         }
 
@@ -388,7 +393,12 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
 
         const encodedStringChain = encodeTypedDataBigInt(correct)
 
-        if (!isRecord(encodedStringChain) || !isRecord(encodedStringChain.domain)) {
+        if (
+            !isRecord(encodedStringChain) ||
+            !('domain' in encodedStringChain) ||
+            !isRecord(encodedStringChain.domain) ||
+            !('chainId' in encodedStringChain.domain)
+        ) {
             throw new Error('typed data encoding failed')
         }
 
@@ -410,7 +420,12 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
 
         const encodedCustomDomain = encodeTypedDataBigInt(correct)
 
-        if (!isRecord(encodedCustomDomain) || !isRecord(encodedCustomDomain.types)) {
+        if (
+            !isRecord(encodedCustomDomain) ||
+            !('types' in encodedCustomDomain) ||
+            !isRecord(encodedCustomDomain.types) ||
+            !('EIP712Domain' in encodedCustomDomain.types)
+        ) {
             throw new Error('typed data encoding failed')
         }
 
@@ -458,7 +473,7 @@ test('a phrase-confirmed session refuses a Call-shaped payload with primaryType 
 
         const encoded = encodeTypedDataBigInt(orchestratorIntent(account.address, '0x'))
 
-        if (!isRecord(encoded)) {
+        if (!isRecord(encoded) || !('primaryType' in encoded) || !('message' in encoded)) {
             throw new Error('typed data encoding failed')
         }
 
