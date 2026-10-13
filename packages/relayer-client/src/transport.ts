@@ -226,7 +226,7 @@ export function createJsonRpcTransport(
                 )
             }
 
-            // SAFETY: the relayer response is trusted and not validated; only `.error` is read.
+            // SAFETY: relayer JSON-RPC response is not validated; `.error` is checked below and `.result` is returned as T.
             const data = (await response.json()) as JsonRpcResponse<T>
 
             if (data.error) {
@@ -254,7 +254,7 @@ export function createJsonRpcTransport(
                 )
             }
 
-            // SAFETY: the batch or error shape is unchecked.
+            // SAFETY: batch and single-error JSON are not schema-checked; only Array.isArray and `.error` run below, not each item.result.
             const json = (await response.json()) as JsonRpcResponse<T>[] | JsonRpcResponse<T>
             const data = Array.isArray(json) ? json : [json]
 
