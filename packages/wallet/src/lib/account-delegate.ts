@@ -192,7 +192,10 @@ export async function executeAccountDelegate(
         let hasDelegatedAtLeastOne = false
 
         for (const chain of options.chains) {
-            const network = resolveNetworkConfig(options.env, normalizeChain(chain))
+            const network = resolveNetworkConfig(
+                options.env,
+                chain ? normalizeChain(chain) : selectDefaultChain(options.env),
+            )
 
             try {
                 const code = await deps.getDelegatedCode({ network, address: rootAddress })

@@ -82,6 +82,10 @@ function makeSessionKeystore(
         ...overrides }
 }
 
+function unsetDelegateChain(): string | undefined {
+    return undefined
+}
+
 test('resolveAccountDelegatePassword prefers env password', async () => {
     const password = await resolveAccountDelegatePassword(
         {
@@ -280,4 +284,72 @@ test('executeAccountDelegate refuses an unsupported chain', async () => {
         expect(error.code).toBe('UNSUPPORTED_CHAIN')
         expect(error.message).toBe('Unsupported chain: foobar')
     }
+})
+
+test('executeAccountDelegate defaults to base for prod when chain is undefined', async () => {
+    const root = makeRootKeystore()
+    const session = makeSessionKeystore()
+
+    const result = await executeAccountDelegate(
+        {
+            env: 'prod',
+            keystorePath: '/tmp/alice.json',
+            password: 'pw',
+            // SAFETY: undefined is not a ChainName; this checks the prod env default.
+            chains: [unsetDelegateChain()] as AccountDelegateOptions['chains'] },
+        {
+            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
+                format: 'split',
+                rootPath: '/tmp/alice.json',
+                sessionPath: '/tmp/sessions/default.json',
+                root,
+                session })),
+            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
+                rootPrivateKey:
+                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
+            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
+                sessionPrivateKey:
+                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0xef0100'),
+            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
+                accountAddress: ROOT_ADDRESS })),
+            writeRootKeystoreFile: typedMock<AccountDelegateDeps['writeRootKeystoreFile']>(async () => {}) },
+    )
+
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0]?.chainId).toBe(8453)
+})
+
+test('executeAccountDelegate defaults to anvil for dev when chain is undefined', async () => {
+    const root = makeRootKeystore()
+    const session = makeSessionKeystore()
+
+    const result = await executeAccountDelegate(
+        {
+            env: 'dev',
+            keystorePath: '/tmp/alice.json',
+            password: 'pw',
+            // SAFETY: undefined is not a ChainName; this checks the dev env default.
+            chains: [unsetDelegateChain()] as AccountDelegateOptions['chains'] },
+        {
+            readKeystoreBundle: typedMock<AccountDelegateDeps['readKeystoreBundle']>(async () => ({
+                format: 'split',
+                rootPath: '/tmp/alice.json',
+                sessionPath: '/tmp/sessions/default.json',
+                root,
+                session })),
+            decryptRootKeystore: typedMock<AccountDelegateDeps['decryptRootKeystore']>(async () => ({
+                rootPrivateKey:
+                    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' })),
+            decryptSessionKeystore: typedMock<AccountDelegateDeps['decryptSessionKeystore']>(async () => ({
+                sessionPrivateKey:
+                    '0x8b3a350cf5c34c9194ca3a9d8b3f0d1244ec2ef5f4dbf9f8b8ce3f7b0f13f6d7' })),
+            getDelegatedCode: typedMock<AccountDelegateDeps['getDelegatedCode']>(async () => '0xef0100'),
+            delegateAccount: typedMock<AccountDelegateDeps['delegateAccount']>(async () => ({
+                accountAddress: ROOT_ADDRESS })),
+            writeRootKeystoreFile: typedMock<AccountDelegateDeps['writeRootKeystoreFile']>(async () => {}) },
+    )
+
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0]?.chainId).toBe(31337)
 })
