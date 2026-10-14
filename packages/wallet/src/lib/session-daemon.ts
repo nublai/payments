@@ -64,7 +64,13 @@ async function loadSpendLedger(path: string): Promise<Map<string, SpendBucket>> 
         if (!isRecord(raw)) return map
 
         for (const [key, value] of Object.entries(raw)) {
-            if (!isRecord(value) || typeof value.periodStart !== 'number' || typeof value.spent !== 'string') {
+            if (
+                !isRecord(value) ||
+                !('periodStart' in value) ||
+                !('spent' in value) ||
+                typeof value.periodStart !== 'number' ||
+                typeof value.spent !== 'string'
+            ) {
                 continue
             }
 
@@ -347,7 +353,7 @@ export async function runSessionDaemon(options?: {
                     try {
                         const pre: unknown = JSON.parse(line)
 
-                        if (isRecord(pre) && typeof pre.id === 'string') {
+                        if (isRecord(pre) && 'id' in pre && typeof pre.id === 'string') {
                             requestId = pre.id
                         }
                     } catch {

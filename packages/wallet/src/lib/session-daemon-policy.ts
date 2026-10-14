@@ -90,7 +90,7 @@ function asHex(value: unknown, label: string): Hex {
 }
 
 export function typesMatch(types: unknown): boolean {
-    if (!isRecord(types)) return false
+    if (!isRecord(types) || !('Intent' in types) || !('Call' in types)) return false
 
     return (
         JSON.stringify(types.Intent) === JSON.stringify(INTENT_TYPES.Intent) &&
@@ -212,13 +212,13 @@ export function assessPhraseLessIntent(input: {
         fail('Phrase-less session cannot sign because unlock did not record an environment')
     }
 
-    if (!isRecord(input.typedData)) {
+    if (!isRecord(input.typedData) || !('domain' in input.typedData)) {
         fail('Phrase-less sessions can only sign Orchestrator intents')
     }
 
     const domain = input.typedData.domain
 
-    if (!isRecord(domain)) {
+    if (!isRecord(domain) || !('name' in domain) || !('version' in domain)) {
         fail('Phrase-less sessions can only sign Orchestrator intents')
     }
 
@@ -226,11 +226,16 @@ export function assessPhraseLessIntent(input: {
         fail('Phrase-less sessions can only sign Orchestrator intents')
     }
 
-    if (input.typedData.primaryType !== 'Intent' || !typesMatch(input.typedData.types)) {
+    if (
+        !('primaryType' in input.typedData) ||
+        !('types' in input.typedData) ||
+        input.typedData.primaryType !== 'Intent' ||
+        !typesMatch(input.typedData.types)
+    ) {
         fail('Phrase-less sessions can only sign Orchestrator intents')
     }
 
-    const chainId = Number(asBigint(domain.chainId, 'chainId'))
+    const chainId = Number(asBigint('chainId' in domain ? domain.chainId : undefined, 'chainId'))
     const chainName = getChainNameByChainId(chainId)
     const allowedChains = new Set(chainsForEnv(input.env).map((name) => getChainConfig(name).chainId))
 
@@ -244,10 +249,17 @@ export function assessPhraseLessIntent(input: {
         fail('Phrase-less session refused an Orchestrator intent because the orchestrator is not deployed')
     }
 
-    const verifyingContract = asAddress(domain.verifyingContract, 'verifyingContract')
+    const verifyingContract = asAddress(
+        'verifyingContract' in domain ? domain.verifyingContract : undefined,
+        'verifyingContract',
+    )
 
     if (verifyingContract.toLowerCase() !== orchestrator.toLowerCase()) {
         fail('Phrase-less session refused an Orchestrator intent for a different verifying contract')
+    }
+
+    if (!('message' in input.typedData)) {
+        fail('Phrase-less sessions can only sign Orchestrator intents')
     }
 
     const message = input.typedData.message
@@ -256,12 +268,12 @@ export function assessPhraseLessIntent(input: {
         fail('Phrase-less sessions can only sign Orchestrator intents')
     }
 
-    if (message.multichain !== false) {
+    if (!('multichain' in message) || message.multichain !== false) {
         fail('Phrase-less session refused a multichain Orchestrator intent')
     }
 
-    const preCalls = message.encodedPreCalls
-    const fundTransfers = message.encodedFundTransfers
+    const preCalls = 'encodedPreCalls' in message ? message.encodedPreCalls : undefined
+    const fundTransfers = 'encodedFundTransfers' in message ? message.encodedFundTransfers : undefined
 
     if (!Array.isArray(preCalls) || preCalls.length !== 0) {
         fail('Phrase-less session refused an intent with pre-calls')
@@ -271,7 +283,7 @@ export function assessPhraseLessIntent(input: {
         fail('Phrase-less session refused an intent with fund transfers')
     }
 
-    if (!Array.isArray(message.calls)) {
+    if (!('calls' in message) || !Array.isArray(message.calls)) {
         fail('Phrase-less session refused an intent whose calls could not be read')
     }
 
@@ -285,16 +297,23 @@ export function assessPhraseLessIntent(input: {
         }
 
         usdcMoved += usdcMovedByCall({
-            to: asAddress(call.to, 'call.to'),
-            value: asBigint(call.value, 'call.value'),
-            data: asHex(call.data, 'call.data'),
+            to: asAddress('to' in call ? call.to : undefined, 'call.to'),
+            value: asBigint('value' in call ? call.value : undefined, 'call.value'),
+            data: asHex('data' in call ? call.data : undefined, 'call.data'),
             usdc,
             allowed,
         })
     }
 
-    const paymentToken = asAddress(message.paymentToken, 'paymentToken')
-    const paymentMax = asBigint(message.paymentMaxAmount, 'paymentMaxAmount')
+    const paymentToken = asAddress(
+        'paymentToken' in message ? message.paymentToken : undefined,
+        'paymentToken',
+    )
+
+    const paymentMax = asBigint(
+        'paymentMaxAmount' in message ? message.paymentMaxAmount : undefined,
+        'paymentMaxAmount',
+    )
 
     if (paymentMax !== 0n) {
         if (paymentToken.toLowerCase() !== usdc.toLowerCase()) {
@@ -405,13 +424,13 @@ function assertNoFundsOut(
  * Any other typed data is refused.
  */
 export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaymentBounds): void {
-    if (!isRecord(typedData)) {
+    if (!isRecord(typedData) || !('domain' in typedData)) {
         fail('Swap session refused typed data that is not an Orchestrator intent')
     }
 
     const domain = typedData.domain
 
-    if (!isRecord(domain)) {
+    if (!isRecord(domain) || !('name' in domain) || !('version' in domain)) {
         fail('Swap session refused typed data that is not an Orchestrator intent')
     }
 
@@ -419,11 +438,16 @@ export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaym
         fail('Swap session refused typed data that is not an Orchestrator intent')
     }
 
-    if (typedData.primaryType !== 'Intent' || !typesMatch(typedData.types)) {
+    if (
+        !('primaryType' in typedData) ||
+        !('types' in typedData) ||
+        typedData.primaryType !== 'Intent' ||
+        !typesMatch(typedData.types)
+    ) {
         fail('Swap session refused typed data that is not an Orchestrator intent')
     }
 
-    const chainId = Number(asBigint(domain.chainId, 'chainId'))
+    const chainId = Number(asBigint('chainId' in domain ? domain.chainId : undefined, 'chainId'))
     const chainName = getChainNameByChainId(chainId)
 
     if (!chainName) {
@@ -438,20 +462,33 @@ export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaym
         fail('Swap session refused an Orchestrator intent because the orchestrator is not configured')
     }
 
-    const verifyingContract = asAddress(domain.verifyingContract, 'verifyingContract')
+    const verifyingContract = asAddress(
+        'verifyingContract' in domain ? domain.verifyingContract : undefined,
+        'verifyingContract',
+    )
 
     if (verifyingContract.toLowerCase() !== orchestrator.toLowerCase()) {
         fail('Swap session refused an Orchestrator intent for a different verifying contract')
     }
 
-    const message = typedData.message
-
-    if (!isRecord(message) || !Array.isArray(message.calls)) {
+    if (!('message' in typedData)) {
         fail('Swap session refused an intent whose calls could not be read')
     }
 
-    assertSingleChainSwap(message)
-    const user = asAddress(message.eoa, 'eoa')
+    const message = typedData.message
+
+    if (!isRecord(message) || !('calls' in message) || !Array.isArray(message.calls)) {
+        fail('Swap session refused an intent whose calls could not be read')
+    }
+
+    assertSingleChainSwap({
+        settler: 'settler' in message ? message.settler : undefined,
+        multichain: 'multichain' in message ? message.multichain : undefined,
+        encodedFundTransfers:
+            'encodedFundTransfers' in message ? message.encodedFundTransfers : undefined,
+        encodedPreCalls: 'encodedPreCalls' in message ? message.encodedPreCalls : undefined,
+    })
+    const user = asAddress('eoa' in message ? message.eoa : undefined, 'eoa')
     const calls: { to: Address; value: bigint; data: Hex }[] = []
 
     for (const call of message.calls) {
@@ -460,9 +497,9 @@ export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaym
         }
 
         calls.push({
-            to: asAddress(call.to, 'call.to'),
-            value: asBigint(call.value, 'call.value'),
-            data: asHex(call.data, 'call.data'),
+            to: asAddress('to' in call ? call.to : undefined, 'call.to'),
+            value: asBigint('value' in call ? call.value : undefined, 'call.value'),
+            data: asHex('data' in call ? call.data : undefined, 'call.data'),
         })
     }
 
@@ -482,23 +519,27 @@ export function reviewSwapSessionSignature(typedData: unknown, bounds?: SwapPaym
         throw error
     }
 
+    const paymentTokenValue = 'paymentToken' in message ? message.paymentToken : undefined
+
     const paymentToken =
-        message.paymentToken === undefined ? zeroAddress : asAddress(message.paymentToken, 'paymentToken')
+        paymentTokenValue === undefined ? zeroAddress : asAddress(paymentTokenValue, 'paymentToken')
+
+    const paymentMaxValue = 'paymentMaxAmount' in message ? message.paymentMaxAmount : undefined
 
     const paymentMax =
-        message.paymentMaxAmount === undefined
-            ? 0n
-            : asBigint(message.paymentMaxAmount, 'paymentMaxAmount')
+        paymentMaxValue === undefined ? 0n : asBigint(paymentMaxValue, 'paymentMaxAmount')
+
+    const paymentAmountValue = 'paymentAmount' in message ? message.paymentAmount : undefined
 
     const statedAmount =
-        message.paymentAmount === undefined
-            ? paymentMax
-            : asBigint(message.paymentAmount, 'paymentAmount')
+        paymentAmountValue === undefined ? paymentMax : asBigint(paymentAmountValue, 'paymentAmount')
+
+    const paymentRecipientValue = 'paymentRecipient' in message ? message.paymentRecipient : undefined
 
     const paymentRecipient =
-        message.paymentRecipient === undefined
+        paymentRecipientValue === undefined
             ? zeroAddress
-            : asAddress(message.paymentRecipient, 'paymentRecipient')
+            : asAddress(paymentRecipientValue, 'paymentRecipient')
 
     const usdc = getUsdcTokenConfig(chainName).address
     const quotedFee = bounds?.feeAmount ?? PAID_FEE_CAP

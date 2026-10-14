@@ -628,7 +628,7 @@ function validateQuoteForExecution(
 }
 
 function extractSimulationCause(value: unknown): string | undefined {
-    if (!isRecord(value)) {
+    if (!isRecord(value) || !('cause' in value)) {
         return undefined
     }
 
@@ -648,7 +648,7 @@ function extractSimulationCause(value: unknown): string | undefined {
 }
 
 function extractAuthCode(value: unknown): string | undefined {
-    if (!isRecord(value)) {
+    if (!isRecord(value) || !('auth_code' in value)) {
         return undefined
     }
 

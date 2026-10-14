@@ -201,13 +201,11 @@ function reviveTypedDataInPlace(value: ParsedTypedDataRecord): void {
             continue
         }
 
-        for (const key of Object.keys(node)) {
-            const entry = node[key]
-
+        for (const [key, entry] of Object.entries(node)) {
             if (Array.isArray(entry) || isRecord(entry)) {
                 nodes.push(entry)
             } else {
-                node[key] = mapTypedDataBigInt(entry, true)
+                Object.assign(node, { [key]: mapTypedDataBigInt(entry, true) })
             }
         }
     }
@@ -247,11 +245,11 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
 
     // Leftover: sequential payload → id → unknown-method → params messages.
     // One envelope schema would change first-failing-field order.
-    if (!isRecord(parsed) || typeof parsed.method !== 'string') {
+    if (!isRecord(parsed) || !('method' in parsed) || typeof parsed.method !== 'string') {
         throw new Error('Invalid daemon request payload')
     }
 
-    if (typeof parsed.id !== 'string') {
+    if (!('id' in parsed) || typeof parsed.id !== 'string') {
         throw new Error('Invalid daemon request id')
     }
 
@@ -259,7 +257,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
         throw new Error(`Unknown daemon method: ${String(parsed.method)}`)
     }
 
-    if (!isRecord(parsed.params)) {
+    if (!('params' in parsed) || !isRecord(parsed.params)) {
         throw new Error('Invalid daemon request params')
     }
 
@@ -281,7 +279,7 @@ export function parseDaemonRequest(raw: string): DaemonRequest {
                 throw new Error('Invalid sign params.sessionName')
             }
 
-            if (!isRecord(params.typedData)) {
+            if (!('typedData' in params) || !isRecord(params.typedData)) {
                 throw new Error('Invalid sign params.typedData')
             }
 

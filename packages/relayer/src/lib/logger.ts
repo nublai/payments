@@ -6,9 +6,34 @@
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
-interface LogContext {
-    [key: string]: unknown
+type LogJson =
+    | null
+    | boolean
+    | number
+    | string
+    | LogJson[]
+    | { [key: string]: LogJson }
+
+type JsonLogContext = { [key: string]: LogJson | undefined }
+
+/** Catch/queue/JSON cells that are still unparsed when they reach the sink. */
+interface UnparsedLogContext {
+    address?: LogJson
+    attempts?: LogJson
+    chainId?: LogJson
+    eoa?: LogJson
+    error?: unknown
+    job?: unknown
+    keyHash?: LogJson
+    kind?: LogJson
+    nonce?: LogJson
+    result?: unknown
+    signerName?: LogJson
+    status?: LogJson
+    txHash?: LogJson
 }
+
+type LogContext = JsonLogContext | UnparsedLogContext
 
 interface Logger {
     debug(msg: string): void
