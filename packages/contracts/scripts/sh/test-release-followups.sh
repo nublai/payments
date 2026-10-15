@@ -1117,17 +1117,42 @@ wrong_endpoint_lz_settler_refused() {
     fi
 }
 
-# Dry-run must not overwrite committed deployments JSON. Fails on main:
-# DeployUnified always writes, and deploy.sh exports SAVE_DEPLOYMENTS=1
-# even without --broadcast.
+# Anvil Account #0. Tests only; never a real-network key.
+ANVIL_DEV_PK="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+# Owner must not be the deployer. deploy.sh refuses that outside local.
+NONLOCAL_OWNER="0x00000000000000000000000000000000000A11CE"
+
+# foundry.toml interpolates [rpc_endpoints].base_sepolia from RPC_84532.
+# Point it at this anvil so DeployFacet does not fetch a public RPC.
+# --chain 84532 defaults to context stage. No --verify, no LayerZero, no
+# Etherscan key: this never touches a real network.
+run_deploy_anvil_84532() {
+    local rpc="$1"
+    shift
+    env -u LZ_ENDPOINT -u LZ_SETTLER_SIGNER -u ETHERSCAN_API_KEY \
+        -u STAGE_OWNER -u STAGE_FUNDER -u STAGE_RELAYER_MNEMONIC \
+        RPC_84532="$rpc" "$SCRIPT_DIR/deploy.sh" --chain 84532 --rpc "$rpc" \
+        --skip-relayer --private-key "$ANVIL_DEV_PK" --owner "$NONLOCAL_OWNER" \
+        "$@"
+}
+
+restore_84532_deployments() {
+    git -C "$REPO_ROOT" checkout -- packages/contracts/deployments
+    rm -rf \
+        "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/84532" \
+        "$PROJECT_ROOT/cache/DeployUnified.s.sol/84532" \
+        "$PROJECT_ROOT/broadcast/VerifyRelease.s.sol/84532"
+}
+
+# Dry-run must not overwrite committed deployments JSON (PR 83). Then the
+# non-local path on anvil --chain-id 84532 must broadcast and pass
+# VerifyRelease without leaving the tree dirty.
 dry_run_does_not_write_deployments() {
     local port=18555
     local rpc="http://127.0.0.1:${port}"
-    local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-    local owner="0x00000000000000000000000000000000000A11CE"
     local tmp pid code
     tmp="$(mktemp -d)"
-    if ! git -C "$REPO_ROOT" diff --quiet -- packages/contracts/deployments; then
+    if ! git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
         echo "packages/contracts/deployments is already dirty" >&2
         git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
         rm -rf "$tmp"
@@ -1139,11 +1164,8 @@ dry_run_does_not_write_deployments() {
         trap - RETURN
         kill "$pid" 2>/dev/null || true
         wait "$pid" 2>/dev/null || true
-        git -C "$REPO_ROOT" checkout -- packages/contracts/deployments
-        rm -rf \
-            "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/84532" \
-            "$PROJECT_ROOT/cache/DeployUnified.s.sol/84532" \
-            "$tmp"
+        restore_84532_deployments
+        rm -rf "$tmp"
     }
     trap cleanup_dry_run RETURN
     local ready=0
@@ -1164,11 +1186,7 @@ dry_run_does_not_write_deployments() {
     cast rpc anvil_setCode "0xcA11bde05977b3631167028862bE2a173976CA11" "$multicall" \
         --rpc-url "$rpc" >/dev/null
     set +e
-    # foundry.toml interpolates [rpc_endpoints].base_sepolia from RPC_84532.
-    # Point it at this anvil so DeployFacet does not fetch a public RPC.
-    RPC_84532="$rpc" "$SCRIPT_DIR/deploy.sh" --chain 84532 --rpc "$rpc" --context dev \
-        --dry-run --skip-relayer --private-key "$pk" --owner "$owner" \
-        >"$tmp/out" 2>"$tmp/err"
+    run_deploy_anvil_84532 "$rpc" --dry-run >"$tmp/out" 2>"$tmp/err"
     code=$?
     set -e
     if [[ "$code" -ne 0 ]]; then
@@ -1177,8 +1195,37 @@ dry_run_does_not_write_deployments() {
         tail -40 "$tmp/out" >&2
         return 1
     fi
-    if ! git -C "$REPO_ROOT" diff --quiet -- packages/contracts/deployments; then
+    if ! git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
         echo "dry-run wrote packages/contracts/deployments" >&2
+        git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
+        return 1
+    fi
+
+    # Same anvil, same command without --dry-run. deploy.sh broadcasts and
+    # runs VerifyRelease against the written stage/84532 JSON.
+    set +e
+    run_deploy_anvil_84532 "$rpc" >"$tmp/broadcast.out" 2>"$tmp/broadcast.err"
+    code=$?
+    set -e
+    if [[ "$code" -ne 0 ]]; then
+        echo "non-local 84532 broadcast failed (exit $code)" >&2
+        cat "$tmp/broadcast.err" >&2
+        tail -40 "$tmp/broadcast.out" >&2
+        return 1
+    fi
+    if ! grep -q "immutables match the expected values" "$tmp/broadcast.out" "$tmp/broadcast.err"; then
+        echo "VerifyRelease did not report matching immutables" >&2
+        tail -40 "$tmp/broadcast.err" >&2
+        tail -40 "$tmp/broadcast.out" >&2
+        return 1
+    fi
+    if git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
+        echo "broadcast did not write packages/contracts/deployments" >&2
+        return 1
+    fi
+    restore_84532_deployments
+    if ! git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
+        echo "non-local 84532 deploy left packages/contracts/deployments dirty" >&2
         git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
         return 1
     fi
@@ -1339,7 +1386,13 @@ if package_scripts_run_check; then pass "build:contracts and generate run the si
 if towns_config_export_removed; then pass "Towns config/deployments.json export is gone"; else fail "Towns config/deployments.json export is gone"; fi
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
-if dry_run_does_not_write_deployments; then pass "dry-run does not write deployments JSON"; else fail "dry-run does not write deployments JSON"; fi
+if dry_run_does_not_write_deployments; then
+    pass "dry-run does not write deployments JSON"
+    pass "non-local 84532 deploy verifies on anvil"
+else
+    fail "dry-run does not write deployments JSON"
+    fail "non-local 84532 deploy verifies on anvil"
+fi
 if release_can_write_deployments; then pass "release profile can write deployments/"; else fail "release profile can write deployments/"; fi
 if etherscan_v2_for_base_chains; then pass "etherscan uses V2 for 8453 and 84532"; else fail "etherscan uses V2 for 8453 and 84532"; fi
 if immutable_spans_are_masked; then pass "immutable spans are masked"; else fail "immutable spans are masked"; fi
