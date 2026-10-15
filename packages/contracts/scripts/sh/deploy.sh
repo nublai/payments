@@ -530,7 +530,10 @@ deploy_to_chain() {
         fi
         shown_cmd+=("$arg")
         case "$arg" in
-            --private-key|--password) mask_next="true" ;;
+            --private-key|--password|--etherscan-api-key) mask_next="true" ;;
+            --private-key=*|--password=*|--etherscan-api-key=*)
+                shown_cmd[${#shown_cmd[@]}-1]="${arg%%=*}=***"
+                ;;
         esac
     done
     echo -e "${YELLOW}Command:$(printf ' %q' "${shown_cmd[@]}")${NC}"

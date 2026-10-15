@@ -384,8 +384,8 @@ All configuration can be overridden via flags:
 # Override RPC URL
 ./scripts/sh/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
 
-# Override Etherscan key
-./scripts/sh/deploy.sh prod --verify --etherscan-key YOUR_KEY --account deployer
+# Verify with ETHERSCAN_API_KEY
+ETHERSCAN_API_KEY=your_api_key ./scripts/sh/deploy.sh prod --verify --account deployer
 ```
 
 ### Priority Order
@@ -574,9 +574,6 @@ Ensure `ETHERSCAN_API_KEY` is set. Foundry 1.5 verifies through Etherscan's V2 m
 ```bash
 export ETHERSCAN_API_KEY="your_api_key"
 ./scripts/sh/deploy.sh dev --verify --account deployer
-
-# Or override via flag
-./scripts/sh/deploy.sh dev --verify --etherscan-key YOUR_KEY --account deployer
 ```
 
 Supported chains for verification:
