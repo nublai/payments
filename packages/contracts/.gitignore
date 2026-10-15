@@ -3,6 +3,7 @@ cache/
 out/
 deployments/envs/local/
 deployments/envs/local-verify-release-test/
+deployments/envs/local-mkdir-test/
 
 # Ignores development broadcast logs
 !/broadcast

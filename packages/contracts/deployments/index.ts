@@ -1,4 +1,4 @@
-import deployments from './addresses.json'
+import rawDeployments from './addresses.json'
 import { type Address } from 'viem'
 
 export type ChainDeployment = {
@@ -6,28 +6,30 @@ export type ChainDeployment = {
   addresses: Record<string, Address>
 }
 
-type JsonDeployments = typeof deployments
+// Empty `{}` (no committed placeholders) and a later make-config snapshot
+// are both this shape. Do not derive the type from `typeof addresses.json`
+// or a prune of every env JSON types every context as `never`.
+type JsonDeployments = Record<string, Record<string, ChainDeployment>>
 
-type DeploymentContext = keyof JsonDeployments
+const deployments: JsonDeployments = { ...rawDeployments }
 
-function isDeploymentContext(value: string): value is DeploymentContext {
+function isDeploymentContext(value: string): boolean {
   return Object.hasOwn(deployments, value)
 }
 
-function contextDeployments(context: string): JsonDeployments[DeploymentContext] | undefined {
+function contextDeployments(context: string): Record<string, ChainDeployment> | undefined {
   if (!isDeploymentContext(context)) return undefined
 
   return deployments[context]
 }
 
 function chainDeployment(
-  ctx: JsonDeployments[DeploymentContext],
+  ctx: Record<string, ChainDeployment>,
   chainId: number
 ): ChainDeployment | undefined {
   for (const [key, value] of Object.entries(ctx)) {
     if (Number(key) === chainId) {
-      // SAFETY: addresses.json values are 0x-prefixed address strings.
-      return value as ChainDeployment
+      return value
     }
   }
 
@@ -82,7 +84,7 @@ function hasRequiredAddresses(
   return requiredAddressKeys.every((key) => isDeployedAddress(addresses[key]))
 }
 
-// Re-export raw JSON
+// Mutable snapshot. Wallet tests install former addresses onto this object.
 export { deployments }
 
 // Type-safe accessor

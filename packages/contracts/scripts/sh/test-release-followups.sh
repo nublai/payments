@@ -11,6 +11,56 @@ failures=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1" >&2; failures=$((failures + 1)); }
 
+# Zero-address placeholders under envs/ are pruned. PoC tests that mutate
+# prod/8453 snapshot whatever is committed (often nothing), create the dir
+# if absent, and restore only that snapshot so they do not leave files behind.
+snapshot_deployment_dir() {
+    local dir="$1"
+    local dest="$2"
+    mkdir -p "$(dirname "$dest")"
+    if [[ -d "$dir" ]]; then
+        cp -a "$dir" "$dest"
+    else
+        mkdir -p "$dest"
+    fi
+    mkdir -p "$dir"
+}
+
+ensure_zero_deployment_jsons() {
+    local dir="$1"
+    python3 - "$dir" <<'PY'
+import json, sys
+from pathlib import Path
+
+zero = {"address": "0x0000000000000000000000000000000000000000"}
+directory = Path(sys.argv[1])
+directory.mkdir(parents=True, exist_ok=True)
+for name in (
+    "account",
+    "accountProxy",
+    "escrow",
+    "multiSigSigner",
+    "orchestrator",
+    "simpleFunder",
+    "simpleSettler",
+    "simulator",
+):
+    path = directory / f"{name}.json"
+    if not path.exists():
+        path.write_text(json.dumps(zero, separators=(",", ":")) + "\n")
+PY
+}
+
+restore_deployment_dir() {
+    local dir="$1"
+    local backup="$2"
+    rm -rf "$dir"
+    if [[ -d "$backup" ]] && [[ -n "$(find "$backup" -mindepth 1 -print -quit)" ]]; then
+        mkdir -p "$(dirname "$dir")"
+        cp -a "$backup" "$dir"
+    fi
+}
+
 # 1. A release-profile Orchestrator artifact planted at out/Account.sol/Account.json
 # must be rejected. A stub forge prints a cache hit so the planted file is not rewritten.
 substitution_rejected() {
@@ -723,16 +773,15 @@ selective_json_must_match_release() {
     local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
     local tmp pid code size deployed
     tmp="$(mktemp -d)"
-    cp -a "$dir" "$tmp/8453"
+    snapshot_deployment_dir "$dir" "$tmp/8453"
+    ensure_zero_deployment_jsons "$dir"
     anvil --port "$port" --chain-id 8453 --silent >"$tmp/anvil.log" 2>&1 &
     pid=$!
     cleanup_selective() {
         trap - RETURN
         kill "$pid" 2>/dev/null || true
         wait "$pid" 2>/dev/null || true
-        rm -rf "$dir"
-        mkdir -p "$dir"
-        cp -a "$tmp/8453/." "$dir/"
+        restore_deployment_dir "$dir" "$tmp/8453"
         rm -rf \
             "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/8453" \
             "$PROJECT_ROOT/cache/DeployUnified.s.sol/8453" \
@@ -920,13 +969,12 @@ wrong_orchestrator_account_refused() {
     local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
     local tmp code orch_init bad_init orch bad nonce_before nonce_after
     tmp="$(mktemp -d)"
-    cp -a "$dir" "$tmp/8453"
+    snapshot_deployment_dir "$dir" "$tmp/8453"
+    ensure_zero_deployment_jsons "$dir"
     cleanup_wrong_orch() {
         trap - RETURN
         stop_anvil_8453
-        rm -rf "$dir"
-        mkdir -p "$dir"
-        cp -a "$tmp/8453/." "$dir/"
+        restore_deployment_dir "$dir" "$tmp/8453"
         rm -rf \
             "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/8453" \
             "$PROJECT_ROOT/cache/DeployUnified.s.sol/8453" \
@@ -1026,13 +1074,12 @@ wrong_endpoint_lz_settler_refused() {
     local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
     local tmp code good_init reused bad
     tmp="$(mktemp -d)"
-    cp -a "$dir" "$tmp/8453"
+    snapshot_deployment_dir "$dir" "$tmp/8453"
+    ensure_zero_deployment_jsons "$dir"
     cleanup_wrong_endpoint() {
         trap - RETURN
         stop_anvil_8453
-        rm -rf "$dir"
-        mkdir -p "$dir"
-        cp -a "$tmp/8453/." "$dir/"
+        restore_deployment_dir "$dir" "$tmp/8453"
         rm -rf \
             "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/8453" \
             "$PROJECT_ROOT/cache/DeployUnified.s.sol/8453" \
