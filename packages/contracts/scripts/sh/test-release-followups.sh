@@ -1198,6 +1198,38 @@ EOF
     rm -f "$PROJECT_ROOT/cache/fs-probe-inside.out" "$PROJECT_ROOT/cache/fs-probe-src.out" "$PROJECT_ROOT/cache/fs-probe-deploy.out"
 }
 
+# Base (8453) and Base Sepolia (84532) must use Etherscan V2. A custom url
+# pins the retired Basescan V1 hosts; omitting it lets Foundry 1.5 resolve.
+etherscan_v2_for_base_chains() {
+    local cfg
+    cfg="$(env -u FOUNDRY_PROFILE -u ETHERSCAN_API_KEY FOUNDRY_PROFILE=release forge config --json)"
+    python3 -c '
+import json, sys
+c = json.loads(sys.argv[1])
+etherscan = c.get("etherscan") or {}
+expected = {"base": 8453, "base_sepolia": 84532}
+for alias, chain_id in expected.items():
+    entry = etherscan.get(alias)
+    if not isinstance(entry, dict):
+        print(f"missing etherscan.{alias} for chain {chain_id}", file=sys.stderr)
+        sys.exit(1)
+    key = entry.get("key")
+    if key != "${ETHERSCAN_API_KEY}":
+        print("etherscan.%s key: %r" % (alias, key), file=sys.stderr)
+        sys.exit(1)
+    url = entry.get("url")
+    if url:
+        want = f"https://api.etherscan.io/v2/api?chainid={chain_id}"
+        if url != want:
+            print(f"etherscan.{alias} url is {url!r}, not {want}", file=sys.stderr)
+            sys.exit(1)
+    chain = entry.get("chain")
+    if chain not in (None, chain_id, alias, alias.replace("_", "-"), str(chain_id)):
+        print(f"etherscan.{alias} chain is {chain!r}, not {chain_id}", file=sys.stderr)
+        sys.exit(1)
+' "$cfg"
+}
+
 if [[ "${1:-}" == "--only" ]]; then
     "$2"
     exit $?
@@ -1215,6 +1247,7 @@ if package_scripts_run_check; then pass "build:contracts and generate run the si
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
 if release_can_write_deployments; then pass "release profile can write deployments/"; else fail "release profile can write deployments/"; fi
+if etherscan_v2_for_base_chains; then pass "etherscan uses V2 for 8453 and 84532"; else fail "etherscan uses V2 for 8453 and 84532"; fi
 if immutable_spans_are_masked; then pass "immutable spans are masked"; else fail "immutable spans are masked"; fi
 if resume_rebroadcast_refused; then pass "--resume is refused"; else fail "--resume is refused"; fi
 if selective_json_must_match_release; then pass "JSON dependency must match the release runtime"; else fail "JSON dependency must match the release runtime"; fi
