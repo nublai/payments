@@ -110,6 +110,30 @@ if missing:
 PY
 }
 
+# Towns leftover: package exports and build must not ship config/deployments.json.
+towns_config_export_removed() {
+    python3 - <<'PY'
+import json
+import pathlib
+import sys
+
+pkg = json.loads(pathlib.Path("package.json").read_text())
+exports = pkg.get("exports") or {}
+if "./config/deployments.json" in exports:
+    print("package.json still exports ./config/deployments.json", file=sys.stderr)
+    sys.exit(1)
+leftover = pathlib.Path("deployments/config/deployments.json")
+if leftover.exists():
+    print("leftover Towns deployments/config/deployments.json is still present", file=sys.stderr)
+    sys.exit(1)
+for name in ("build", "build:contracts"):
+    script = pkg["scripts"][name]
+    if "deployments/config" in script or "config/deployments.json" in script:
+        print(f"{name} still copies leftover Towns config: {script}", file=sys.stderr)
+        sys.exit(1)
+PY
+}
+
 # 4. deploy.sh refuses a symlink planted under deployments/.
 symlink_refused() {
     local link="$PROJECT_ROOT/deployments/__symlink_probe"
@@ -691,10 +715,11 @@ selective_json_must_match_release() {
     local port=18547
     local rpc="http://127.0.0.1:${port}"
     local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-    local orch="0xE6CfdB399efdc88FA11964072AB519c65c044130"
-    local account="0x4343Bd720052fb353b8571b595a9AfC31Aae07B1"
     local towns="0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8"
-    local wrong="0x77C054f302C2FeB1790588747991c81c1fF97F76"
+    local orch account wrong
+    orch="$(cast to-check-sum-address "$(create2_release_address "$(release_initcode Orchestrator)")")"
+    account="$(cast to-check-sum-address "$(create2_release_address "$(release_initcode Account "$orch")")")"
+    wrong="$(cast to-check-sum-address "$(create2_release_address "$(release_initcode Account "$towns")")")"
     local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
     local tmp pid code size deployed
     tmp="$(mktemp -d)"
@@ -1279,6 +1304,7 @@ if bytecode_flags_refused; then pass "bytecode-changing forge flags are refused"
 if metadata_fields_required; then pass "release metadata fields are required"; else fail "release metadata fields are required"; fi
 if release_tests_in_ci; then pass "CI runs release forge test"; else fail "CI runs release forge test"; fi
 if package_scripts_run_check; then pass "build:contracts and generate run the size check"; else fail "build:contracts and generate run the size check"; fi
+if towns_config_export_removed; then pass "Towns config/deployments.json export is gone"; else fail "Towns config/deployments.json export is gone"; fi
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
 if dry_run_does_not_write_deployments; then pass "dry-run does not write deployments JSON"; else fail "dry-run does not write deployments JSON"; fi
