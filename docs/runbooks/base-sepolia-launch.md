@@ -6,7 +6,7 @@ First deploy to Base Sepolia (84532), context `stage`. Use `deploy.sh stage`, no
 
 - Foundry 1.5.1 (`forge --version`). CI pins this.
 - A deployer key (`--account`, `--ledger`, or `--private-key`). `--sender` is not enough.
-- `--owner <addr>` (or `STAGE_OWNER`). Required outside local. Must not be the deployer or `--funder`.
+- `--owner <addr>` (or `STAGE_OWNER`). Required outside local. Must not be the deployer or `--funder`. The owner pays gas for `setGasWallet` and `setOrchestrators`, so it needs Base Sepolia ETH too.
 - `ETHERSCAN_API_KEY` if you pass `--verify`. `foundry.toml` omits a custom explorer URL so Foundry 1.5 uses Etherscan V2 (`chainid=84532`).
 - Deployer funded on Base Sepolia. RPC is `RPC_84532`, or `https://sepolia.base.org` if unset.
 
@@ -15,10 +15,10 @@ From `packages/contracts`.
 ## 2. Dry run first
 
 ```bash
-./scripts/sh/deploy.sh stage --owner 0x... --account deployer --dry-run
+./scripts/sh/deploy.sh stage --owner 0x... --skip-relayer --account deployer --dry-run
 ```
 
-`--dry-run` drops `--broadcast` and unsets `SAVE_DEPLOYMENTS`. It does not write `deployments/`.
+`--dry-run` drops `--broadcast` and unsets `SAVE_DEPLOYMENTS`. It does not write `deployments/`. Same `--skip-relayer` as §3: off local, `deploy.sh` refuses a mnemonic even on a dry run.
 
 `DeployUnified` only writes JSON when `SAVE_DEPLOYMENTS` is true. `deploy.sh` exports that only on broadcast. A hand-run of `DeployUnified` without `deploy.sh` needs `SAVE_DEPLOYMENTS=1` to save.
 
@@ -30,7 +30,7 @@ From `packages/contracts`.
 
 `--skip-relayer` is required outside local when a mnemonic is set (`STAGE_RELAYER_MNEMONIC` or `--relayer-mnemonic`). Pass it on stage. Relayer setup is owner-only and the script would send it from the deployer.
 
-`--resume` is refused. A partial broadcast can still write addresses into `deployments/envs/stage/84532/` for transactions that never landed. Check `cast code <addr> --rpc-url "${RPC_84532:-https://sepolia.base.org}"` before rerunning. Empty code means do not treat that JSON as live.
+`--resume` is refused. A partial broadcast can still write addresses into `deployments/envs/stage/84532/` for transactions that never landed. Do not rerun blindly. For each saved file, `cast code <addr> --rpc-url "${RPC_84532:-https://sepolia.base.org}"`. Empty code: that JSON is not live — restore or delete those files (or the whole dir) before rerunning. Code present: CREATE2 skips a matching runtime; leave those files.
 
 ## 4. Owner: SimpleFunder wallets and ETH
 
@@ -42,9 +42,11 @@ SIMPLE_FUNDER="$(python3 -c 'import json; print(json.load(open("deployments/envs
 ORCH="$(python3 -c 'import json; print(json.load(open("deployments/envs/stage/84532/orchestrator.json"))["address"])')"
 COUNT="${RELAYER_COUNT:-1}"
 
+# --mnemonic is a file path here (Foundry also accepts a phrase; do not put the phrase on argv)
+MNEMONIC_FILE=./relayer.mnemonic
 SIGNERS=()
 for i in $(seq 0 $((COUNT - 1))); do
-  SIGNERS+=("$(cast wallet address --mnemonic "$RELAYER_MNEMONIC" --mnemonic-derivation-path "m/44'/60'/0'/0/${i}")")
+  SIGNERS+=("$(cast wallet address --mnemonic "$MNEMONIC_FILE" --mnemonic-derivation-path "m/44'/60'/0'/0/${i}")")
 done
 (
   IFS=,
@@ -73,11 +75,10 @@ bun run --cwd packages/contracts make-config
 # commit deployments/envs/stage/84532/*.json and deployments/addresses.json
 # (not the gitignored envs/stage/.env files)
 bun run --cwd packages/contracts build
+wrangler queues create relayer-monitor-queue-stage   # first time; skip if it already exists
 cd packages/relayer
 wrangler deploy --env stage
 ```
-
-First time, also `wrangler queues create relayer-monitor-queue-stage`.
 
 ## 6. Relayer stage secrets
 
@@ -105,9 +106,11 @@ wrangler secret delete CONTEXT --env stage
 
 ## 7. Wallet CLI
 
+From `packages/wallet` (`tw` is this CLI after a package build; this tree runs the source):
+
 ```bash
 export RELAYER_URL_STAGE=https://<worker-host>
-tw address --env stage
+bun ./src/cli.ts address --env stage
 ```
 
 `--env stage` defaults to `base-sepolia` (84532). RPC is `RPC_84532`, or `https://sepolia.base.org`. Optional: `--chain base-sepolia`.
