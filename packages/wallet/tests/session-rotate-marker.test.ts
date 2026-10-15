@@ -67,14 +67,14 @@ function rootBundle() {
     )
 }
 
-async function withStage<T>(fn: () => Promise<T>): Promise<T> {
+async function withStageAndProd<T>(fn: () => Promise<T>): Promise<T> {
     const previousStage = process.env.RELAYER_URL_STAGE
     const previousProd = process.env.RELAYER_URL_PROD
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
     process.env.RELAYER_URL_PROD = 'http://127.0.0.1:8787'
     // Published JSON is zero. Extra-chain polygon cleanup now lives on prod
     // (stage only scans base-sepolia). Former stage addresses still fill every
-    // published context, including prod, for tests that call withStage.
+    // published context, including prod, for tests that call withStageAndProd.
     const restoreStage = installFormerStageDeployments()
 
     try {
@@ -178,7 +178,7 @@ async function leaveRealMarker(keystorePath: string) {
 }
 
 test('rotation marker written by the real writer is read back and is not a session', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         await leaveRealMarker(keystorePath)
 
@@ -196,7 +196,7 @@ test('rotation marker written by the real writer is read back and is not a sessi
 })
 
 test('rotation marker written by the real writer is resumed instead of a noop', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath } = await stageDir()
         await leaveRealMarker(keystorePath)
 
@@ -219,7 +219,7 @@ test('rotation marker written by the real writer is resumed instead of a noop', 
 })
 
 test('rotation marker does not break session list, permissions, revoke, or password change', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         await writeFile(join(sessions, 'other.json'), '{}\n')
         await leaveRealMarker(keystorePath)
@@ -312,7 +312,7 @@ test('rotation marker does not break session list, permissions, revoke, or passw
 })
 
 test('rotation marker plus any other marker is ambiguous and does not sign', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         await leaveRealMarker(keystorePath)
         const hash = computeSessionKeyHash(newAddress)
@@ -360,7 +360,7 @@ test('rotation marker plus any other marker is ambiguous and does not sign', asy
 })
 
 test('rotation marker with fullAccess requires the human phrase on a plain resume', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         const hash = computeSessionKeyHash(newAddress)
         await writeFile(
@@ -410,7 +410,7 @@ test('rotation marker with fullAccess requires the human phrase on a plain resum
 })
 
 test('plain resume of a full-access marker tells the user to rerun with --resume --full-access', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         const hash = computeSessionKeyHash(newAddress)
         await writeFile(
@@ -473,7 +473,7 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
 })
 
 test('rotation marker newKeyHash must be 0x and 64 hex characters', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         await writeFile(
             join(sessions, '.rotation-bad.json'),
@@ -519,7 +519,7 @@ test('rotation marker newKeyHash must be 0x and 64 hex characters', async () => 
 })
 
 test('rotation marker stays after a bundle wait timeout and tells the user to resume', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         const unlinked: string[] = []
         let caught: unknown
@@ -579,7 +579,7 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
 })
 
 test('rotation without --resume refuses an existing marker and does not authorize again', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         await expect(
             executeSessionRotate(
@@ -654,7 +654,7 @@ test('rotation without --resume refuses an existing marker and does not authoriz
 })
 
 test('resume after the pointer moved finishes cleanup and signs nothing', async () => {
-    await withStage(async () => {
+    await withStageAndProd(async () => {
         const { keystorePath, sessions } = await stageDir()
         await writeFile(join(sessions, 'default-next.json'), '{}\n')
         const hash = computeSessionKeyHash(newAddress)
