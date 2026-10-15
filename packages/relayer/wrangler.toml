@@ -78,7 +78,10 @@ bindings = [
 # PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
 # ERC8128_ENABLED lets `tw account create` / `tw account delegate` sign the
 # sponsored upgrade with the new account's own key, without the allowlist.
-vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true" }
+# CONTEXT selects deployments/envs/<CONTEXT>/. Stage is Base Sepolia (84532).
+# This is a public var, not a secret. Unset still defaults to prod in code.
+# A leftover wrangler secret of the same name would override this var.
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true", CONTEXT = "stage" }
 preview_urls = false
 
 [env.stage.observability]
@@ -121,7 +124,10 @@ crons = ["*/5 * * * *"]
 # PRIVY_APP_SECRET. Set the var to "false" when those secrets are not ready.
 # ERC8128_ENABLED lets `tw account create` / `tw account delegate` sign the
 # sponsored upgrade with the new account's own key, without the allowlist.
-vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true" }
+# CONTEXT selects deployments/envs/<CONTEXT>/. Prod is Base mainnet (8453).
+# This is a public var, not a secret. Unset still defaults to prod in code.
+# A leftover wrangler secret of the same name would override this var.
+vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true", CONTEXT = "prod" }
 preview_urls = false
 
 [env.prod.observability]

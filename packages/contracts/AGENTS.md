@@ -51,8 +51,8 @@ bun run dev
 # Local Anvil
 ./scripts/sh/deploy.sh local
 
-# Base Sepolia (dev) - requires --account or env vars
-./scripts/sh/deploy.sh dev --account deployer
+# Base Sepolia (stage) - requires --account or env vars
+./scripts/sh/deploy.sh stage --account deployer
 
 # Base Sepolia (stage) - requires --owner and --ledger or --account
 ./scripts/sh/deploy.sh stage --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
@@ -61,7 +61,7 @@ bun run dev
 ./scripts/sh/deploy.sh prod --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
 
 # Selective deployment
-./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler
+./scripts/sh/deploy.sh stage --contracts SimpleFunder,SimpleSettler
 
 # Dry run (no broadcast)
 ./scripts/sh/deploy.sh local --dry-run
