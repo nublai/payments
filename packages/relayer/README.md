@@ -35,8 +35,9 @@ Set these via `wrangler secret put <NAME> --env <stage|prod>`:
 | ----------------------- | -------------------------------------------------------------------- |
 | `RPC_URL`               | JSON-RPC endpoint (e.g. `https://base-sepolia.g.alchemy.com/v2/...`) |
 | `RELAYER_MNEMONIC`      | HD wallet mnemonic for deriving signer keys                          |
-| `CHAIN_IDS`             | Comma-separated chain IDs (e.g. `8453,137`)                          |
+| `CHAIN_IDS`             | Comma-separated chain IDs. Stage is `84532` only.                    |
 | `QUOTE_SIGNING_SECRET`  | HMAC secret for quote integrity. Required on stage and prod.         |
+| `FEE_RECIPIENT`         | Address that receives USDC fees. Required on stage and prod.         |
 
 ### Optional: Per-Chain RPC Configuration
 
@@ -59,7 +60,7 @@ See `src/config/chains.json` for supported chains and their metadata.
 | `RELAYER_COUNT`          | `1`     | Number of signers (max 100)        |
 | `MAX_PENDING_PER_SIGNER` | `16`    | Max pending txs per signer         |
 | `MAX_PENDING_TOTAL`      | `1000`  | Max pending txs across all signers |
-| `MIN_SIGNER_BALANCE`     | `0.01`  | Min balance in ETH before pause    |
+| `MIN_SIGNER_BALANCE`     | unset = 0.01 ETH | Pause threshold. A value without `.` is wei (`1` is 1 wei, not 1 ETH). Example: `10000000000000000` is 0.01 ETH. Startup also requires an integer (wei); `0.01` is refused. |
 | `TARGET_SIGNER_BALANCE`  | `0.01`  | Target balance after refill (ETH)  |
 
 ### Optional: Contract Addresses
@@ -127,13 +128,13 @@ Launch is sponsored-only. Every first upgrade goes through `wallet_prepareUpgrad
 | `ERC8128_CLOCK_SKEW_SECONDS`   | `30`    | Allowed clock skew for signature timestamps          |
 | `ERC8128_ALLOWED_SIGNERS`      | empty   | Comma-separated addresses allowed to sign HTTP requests |
 
-Outside `local` and `dev`, a recovered ERC-8128 key is accepted only when one of these is true:
+Outside `local`, a recovered ERC-8128 key is accepted only when one of these is true:
 
 - the address is in `ERC8128_ALLOWED_SIGNERS`, or
 - the address is the intent EOA (`from` on prepare, `intent.eoa` on send) or the account being upgraded (`address` on `wallet_prepareUpgradeAccount`, `context.address` on `wallet_upgradeAccount`), or
 - the address is a live secp256k1 key registered on that account (`Account.getKey`). The relayer reads this from its own RPC. A client-supplied `session_key` or quote `authSigner` is not accepted by itself.
 
-`prepareCalls` writes `authSigner` only when `session_key` is that EOA or a live on-chain key. Send checks the HTTP signer against the quote only after the quote HMAC verifies. In one JSON-RPC batch, every protected method other than `wallet_prepareCalls`, `wallet_sendPreparedCalls`, `wallet_prepareUpgradeAccount`, and `wallet_upgradeAccount` requires the allowlist. A prepare, send, or upgrade binding does not authorize those methods. An empty allowlist is not "any key". `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Local and dev accept any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
+`prepareCalls` writes `authSigner` only when `session_key` is that EOA or a live on-chain key. Send checks the HTTP signer against the quote only after the quote HMAC verifies. In one JSON-RPC batch, every protected method other than `wallet_prepareCalls`, `wallet_sendPreparedCalls`, `wallet_prepareUpgradeAccount`, and `wallet_upgradeAccount` requires the allowlist. A prepare, send, or upgrade binding does not authorize those methods. An empty allowlist is not "any key". `CHAIN_IDS` must be non-empty; an empty list does not mean every chain. Only `CONTEXT=local` accepts any recovered key when the allowlist is unset, which is what `scripts/dev.sh` relies on. `CONTEXT=dev` is a Base Sepolia deploy context and does not get that exception. If the allowlist is set, it is enforced in every context, including local. Invalid entries fail worker startup.
 
 #### Privy Access Tokens
 
@@ -179,6 +180,8 @@ Account upgrade stays on the protected list in every environment, including thos
 
 ## Deployment
 
+Base Sepolia stage launch: [docs/runbooks/base-sepolia-launch.md](../../docs/runbooks/base-sepolia-launch.md).
+
 ### First-time Setup
 
 1. Create the queues:
@@ -191,13 +194,13 @@ wrangler queues create relayer-monitor-queue-prod
 2. Set secrets:
 
 ```bash
-# Stage
+# Stage (CHAIN_IDS=84532 only; stage/137 and stage/8453 are zero)
 wrangler secret put RPC_URL --env stage
 wrangler secret put RELAYER_MNEMONIC --env stage
 wrangler secret put CHAIN_IDS --env stage
+wrangler secret put FEE_RECIPIENT --env stage
 wrangler secret put QUOTE_SIGNING_SECRET --env stage
 wrangler secret put RPC_84532 --env stage
-wrangler secret put RPC_137 --env stage
 wrangler secret put PRIVY_APP_ID --env stage
 wrangler secret put PRIVY_APP_SECRET --env stage
 
@@ -205,6 +208,7 @@ wrangler secret put PRIVY_APP_SECRET --env stage
 wrangler secret put RPC_URL --env prod
 wrangler secret put RELAYER_MNEMONIC --env prod
 wrangler secret put CHAIN_IDS --env prod
+wrangler secret put FEE_RECIPIENT --env prod
 wrangler secret put QUOTE_SIGNING_SECRET --env prod
 wrangler secret put RPC_8453 --env prod
 wrangler secret put RPC_137 --env prod
@@ -256,4 +260,4 @@ Local `wrangler dev` listens on `http://127.0.0.1:8787`.
 - `RELAYER_URL_STAGE` for stage
 - `RELAYER_URL_PROD` for prod
 
-Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, and `QUOTE_SIGNING_SECRET`. `CONTEXT` is already set in wrangler.toml vars (`stage` / `prod`). Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, set `ERC8128_ALLOWED_SIGNERS` for operator keys that are not the user's account and not a key registered on that account. The on-chain key check uses the same RPC. Stage and prod set `PRIVY_ENABLED=true`, which requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET` at startup. Unset still means on in code; set `false` to turn Privy off. OIDC is off until `OIDC_ENABLED=true`, and then `OIDC_ISSUER`, `OIDC_JWKS_URL`, and `OIDC_CLIENT_ID` are required public vars (not secrets). The wallets claim stays off until `OIDC_WALLETS_CLAIM_ENABLED=true`. Stage and prod need a worker redeploy to pick up this code, plus those env values, and a new Durable Object migration (`WalletBindingDO`). No contract redeploy. No new secret. The Privy rate-limit bucket key changes from the raw user id to `privy:<user id>`, which resets in-flight identity windows once. In-flight quotes signed without the secret, and in-flight quotes whose recomputed fee is 0, are rejected until the client calls `wallet_prepareCalls` again.
+Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS` (stage: `84532` only), `RELAYER_MNEMONIC`, `QUOTE_SIGNING_SECRET`, and `FEE_RECIPIENT`. `CONTEXT` is already set in wrangler.toml vars (`stage` / `prod`). Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, set `ERC8128_ALLOWED_SIGNERS` for operator keys that are not the user's account and not a key registered on that account. The on-chain key check uses the same RPC. Stage and prod set `PRIVY_ENABLED=true`, which requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET` at startup. Unset still means on in code; set `false` to turn Privy off. OIDC is off until `OIDC_ENABLED=true`, and then `OIDC_ISSUER`, `OIDC_JWKS_URL`, and `OIDC_CLIENT_ID` are required public vars (not secrets). The wallets claim stays off until `OIDC_WALLETS_CLAIM_ENABLED=true`. Stage and prod need a worker redeploy to pick up this code, plus those env values, and a new Durable Object migration (`WalletBindingDO`). No contract redeploy. No new secret. The Privy rate-limit bucket key changes from the raw user id to `privy:<user id>`, which resets in-flight identity windows once. In-flight quotes signed without the secret, and in-flight quotes whose recomputed fee is 0, are rejected until the client calls `wallet_prepareCalls` again.

@@ -14,6 +14,8 @@ anvil
 # Deploy to stage (Base Sepolia) with keystore account
 ./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
+# Full Base Sepolia stage sequence: docs/runbooks/base-sepolia-launch.md
+
 # Deploy specific contracts
 ./scripts/sh/deploy.sh local --contracts SimpleFunder,SimpleSettler
 ```
