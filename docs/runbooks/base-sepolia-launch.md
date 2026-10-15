@@ -46,12 +46,16 @@ SIGNERS=()
 for i in $(seq 0 $((COUNT - 1))); do
   SIGNERS+=("$(cast wallet address --mnemonic "$RELAYER_MNEMONIC" --mnemonic-derivation-path "m/44'/60'/0'/0/${i}")")
 done
-IFS=,
-cast send "$SIMPLE_FUNDER" "setGasWallet(address[],bool)" "[${SIGNERS[*]}]" true \
-  --rpc-url "$RPC" --account <owner-keystore>
+(
+  IFS=,
+  cast send "$SIMPLE_FUNDER" "setGasWallet(address[],bool)" "[${SIGNERS[*]}]" true \
+    --rpc-url "$RPC" --account <owner-keystore>
+)
 cast send "$SIMPLE_FUNDER" "setOrchestrators(address[],bool)" "[$ORCH]" true \
   --rpc-url "$RPC" --account <owner-keystore>
 ```
+
+If the owner is a Safe, `--account` from an EOA keystore will not pass `onlyOwner`. Use `--ledger` when the owner is that Ledger address, or submit the two calls through the Safe.
 
 Then fund SimpleFunder (it has `receive() payable`; `pullGas` draws from this pot) and each gas wallet (the signer pays for the `pullGas` tx itself). Without both, signer refill stays at `MIN_SIGNER_BALANCE` / `TARGET_SIGNER_BALANCE` (default 0.01 ETH).
 
@@ -62,7 +66,7 @@ cast send "${SIGNERS[0]}" --value 0.02ether --rpc-url "$RPC" --account deployer
 
 ## 5. Relayer order
 
-The worker reads `@nubl/contracts` `dist/`, not the raw env JSON. Set the secrets in §6 (and delete a leftover `CONTEXT` secret) before `wrangler deploy`.
+From the repo root. The worker reads `@nubl/contracts` `dist/`, not the raw env JSON. Set the secrets in §6 (and delete a leftover `CONTEXT` secret) before `wrangler deploy`.
 
 ```bash
 bun run --cwd packages/contracts make-config
@@ -81,10 +85,9 @@ Set before deploy. `CHAIN_IDS=84532` only. Stage JSON for 137 / 8453 is zero; in
 
 ```bash
 wrangler secret put CHAIN_IDS --env stage          # 84532
-wrangler secret put FEE_RECIPIENT --env stage      # required; startup refuses missing or zero
+wrangler secret put FEE_RECIPIENT --env stage      # required; requests return 500 if missing or zero
 wrangler secret put QUOTE_SIGNING_SECRET --env stage
 wrangler secret put RELAYER_MNEMONIC --env stage
-wrangler secret put RPC_URL --env stage            # or RPC_84532
 wrangler secret put RPC_84532 --env stage
 ```
 
@@ -96,13 +99,15 @@ wrangler secret put RPC_84532 --env stage
 wrangler secret delete CONTEXT --env stage
 ```
 
-`MIN_SIGNER_BALANCE`: SignerDO treats a value with `.` as ETH and a value without `.` as wei. `MIN_SIGNER_BALANCE=1` is 1 wei, not 1 ETH. Example: `10000000000000000` is 0.01 ETH. Unset keeps that 0.01 ETH default. Startup `validatePoolConfig` also requires an integer (wei); `0.01` is refused.
+`not found` from that delete is fine on a first deploy.
+
+`MIN_SIGNER_BALANCE`: SignerDO treats a value with `.` as ETH and a value without `.` as wei. `MIN_SIGNER_BALANCE=1` is 1 wei, not 1 ETH. Example: `10000000000000000` is 0.01 ETH. Unset keeps that 0.01 ETH default. `validatePoolConfig` also requires an integer (wei); `0.01` makes requests return 500.
 
 ## 7. Wallet CLI
 
 ```bash
 export RELAYER_URL_STAGE=https://<worker-host>
-tw --env stage
+tw address --env stage
 ```
 
 `--env stage` defaults to `base-sepolia` (84532). RPC is `RPC_84532`, or `https://sepolia.base.org`. Optional: `--chain base-sepolia`.
