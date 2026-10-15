@@ -54,11 +54,17 @@ contract StorageNamespaceTest is Test {
             harness.accountStorageSlot(),
             uint256(uint72(bytes9(keccak256("NUBL_ACCOUNT_STORAGE"))))
         );
+        assertEq(harness.accountStorageSlot(), 0xb5d4fb4fa1aabbe4d3);
         assertEq(harness.upgradeHookId(), keccak256("NUBL_ACCOUNT_UPGRADE_HOOK_ID"));
+        assertEq(
+            harness.upgradeHookId(),
+            0x5f13e044594e776e415555b0dfce237fb9e82e09c9a912a301b771e84e02c348
+        );
         assertEq(
             harness.guardedExecutorKeyStorageNamespace(),
             uint256(uint72(bytes9(keccak256("NUBL_GUARDED_EXECUTOR_KEY_STORAGE"))))
         );
+        assertEq(harness.guardedExecutorKeyStorageNamespace(), 0x1a5b89b7f7e5dfe4d0);
         assertEq(
             harness.upgradeHookGuardTransientSlot(),
             bytes32(uint256(keccak256("_UPGRADE_HOOK_GUARD_TRANSIENT_SLOT")) - 1)
