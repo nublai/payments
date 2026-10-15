@@ -1,4 +1,4 @@
-import rawDeployments from './addresses.json'
+import deployments from './addresses.json'
 import { type Address } from 'viem'
 
 export type ChainDeployment = {
@@ -6,21 +6,17 @@ export type ChainDeployment = {
   addresses: Record<string, Address>
 }
 
-// Empty `{}` (no committed placeholders) and a later make-config snapshot
-// are both this shape. Do not derive the type from `typeof addresses.json`
-// or a prune of every env JSON types every context as `never`.
-type JsonDeployments = Record<string, Record<string, ChainDeployment>>
-
-const deployments: JsonDeployments = { ...rawDeployments }
-
-function isDeploymentContext(value: string): boolean {
-  return Object.hasOwn(deployments, value)
-}
-
 function contextDeployments(context: string): Record<string, ChainDeployment> | undefined {
-  if (!isDeploymentContext(context)) return undefined
+  for (const [key, chains] of Object.entries(deployments)) {
+    if (key !== context) continue
 
-  return deployments[context]
+    if (chains === undefined || chains === null) return undefined
+
+    // SAFETY: make-config writes { [chainId]: { addresses: Record<string, 0x-address> } }.
+    return chains as Record<string, ChainDeployment>
+  }
+
+  return undefined
 }
 
 function chainDeployment(

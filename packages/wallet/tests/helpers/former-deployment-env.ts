@@ -99,9 +99,11 @@ function installChains(
 }
 
 export function installFormerProdDeployments(): () => void {
-    return installChains(deployments, FORMER)
+    // SAFETY: tests mutate the bundled addresses.json object; make-config shape.
+    return installChains(deployments as DeploymentBook, FORMER)
 }
 
 export function installFormerStageDeployments(): () => void {
-    return installChains(deployments, STAGE)
+    // SAFETY: tests mutate the bundled addresses.json object; make-config shape.
+    return installChains(deployments as DeploymentBook, STAGE)
 }
