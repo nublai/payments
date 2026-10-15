@@ -50,9 +50,10 @@ local_arb = "http://localhost:8546"
 base_sepolia = "${RPC_84532}"
 base = "${RPC_8453}"
 
+# Omit url so Foundry 1.5 resolves Etherscan V2 by chain (8453 / 84532).
 [etherscan]
-base_sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
-base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }
+base_sepolia = { key = "${ETHERSCAN_API_KEY}" }
+base = { key = "${ETHERSCAN_API_KEY}" }
 
 [lint]
 lint_on_build = false

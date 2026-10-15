@@ -384,8 +384,8 @@ All configuration can be overridden via flags:
 # Override RPC URL
 ./scripts/sh/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
 
-# Override Etherscan key
-./scripts/sh/deploy.sh prod --verify --etherscan-key YOUR_KEY --account deployer
+# Verify with ETHERSCAN_API_KEY
+ETHERSCAN_API_KEY=your_api_key ./scripts/sh/deploy.sh prod --verify --account deployer
 ```
 
 ### Priority Order
@@ -571,21 +571,18 @@ On congested networks, specify higher gas settings:
 ```
 
 ### Verification fails
-Ensure `ETHERSCAN_API_KEY` is set and the chain is supported by Etherscan/Basescan:
+Ensure `ETHERSCAN_API_KEY` is set. Foundry 1.5 verifies through Etherscan's V2 multichain API (one key for every listed chain):
 ```bash
 export ETHERSCAN_API_KEY="your_api_key"
 ./scripts/sh/deploy.sh dev --verify --account deployer
-
-# Or override via flag
-./scripts/sh/deploy.sh dev --verify --etherscan-key YOUR_KEY --account deployer
 ```
 
 Supported chains for verification:
-- Base Sepolia (84532): Basescan
-- Base Mainnet (8453): Basescan
-- Optimism (10): Optimistic Etherscan
-- Arbitrum One (42161): Arbiscan
-- Polygon (137): Polygonscan
+- Base Sepolia (84532)
+- Base Mainnet (8453)
+- Optimism (10)
+- Arbitrum One (42161)
+- Polygon (137)
 
 ### "Anvil not running"
 For local deployment, start anvil in a separate terminal:
