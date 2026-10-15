@@ -62,8 +62,8 @@ Usage: $0 [environment] [options]
 
 Environments (shortcuts):
   local          Deploy to local Anvil (chains 31337,41337)
-  dev            Deploy to Base Sepolia (chain 84532)
-  stage          Deploy to Base Sepolia (chain 84532)
+  dev            Deploy to Base Sepolia (chain 84532, context `dev`)
+  stage          Deploy to Base Sepolia (chain 84532, context `stage`)
   prod           Deploy to Base Mainnet (chain 8453)
 
 Or specify chain directly:
@@ -120,11 +120,11 @@ Examples:
   # Local development
   $0 local
 
-  # Dev (Base Sepolia) with keystore (interactive password prompt)
-  $0 dev --account deployer
+  # Stage (Base Sepolia) with keystore (interactive password prompt)
+  $0 stage --owner 0x... --account deployer
 
-  # Dev with keystore and password
-  $0 dev --account deployer --password "mypassword"
+  # Stage with keystore and password
+  $0 stage --owner 0x... --account deployer --password "mypassword"
 
   # Prod with Ledger and verification
   $0 prod --ledger "m/44'/60'/0'/0/0" --verify
@@ -139,7 +139,7 @@ Examples:
   $0 --chain 8453 --funder 0x123... --owner 0x456... --skip-relayer --account deployer
 
   # Deploy specific contracts without relayer setup
-  $0 dev --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
+  $0 stage --owner 0x... --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
 
 EOF
     exit 1
@@ -366,7 +366,7 @@ get_default_context() {
     case "$chain_id" in
         31337) echo "local" ;;
         41337) echo "local" ;;
-        84532) echo "dev" ;;
+        84532) echo "stage" ;;
         8453)  echo "prod" ;;
         10)    echo "optimism" ;;
         42161) echo "arbitrum" ;;

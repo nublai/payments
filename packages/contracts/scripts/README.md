@@ -11,8 +11,8 @@ anvil
 # Deploy all contracts to local anvil
 ./scripts/sh/deploy.sh local
 
-# Deploy to dev (Base Sepolia) with keystore account
-./scripts/sh/deploy.sh dev --account deployer
+# Deploy to stage (Base Sepolia) with keystore account
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
 # Deploy specific contracts
 ./scripts/sh/deploy.sh local --contracts SimpleFunder,SimpleSettler
@@ -49,8 +49,8 @@ Usage: ./scripts/sh/deploy.sh [environment] [options]
 
 Environments (shortcuts):
   local          Deploy to local Anvil (chains 31337,41337)
-  dev            Deploy to Base Sepolia (chain 84532)
-  stage          Deploy to Base Sepolia (chain 84532)
+  dev            Deploy to Base Sepolia (chain 84532, context `dev`)
+  stage          Deploy to Base Sepolia (chain 84532, context `stage`)
   prod           Deploy to Base Mainnet (chain 8453)
 
 Or specify chain directly:
@@ -107,8 +107,8 @@ Compiler:
 # Local anvil
 ./scripts/sh/deploy.sh local
 
-# Base Sepolia (dev) with keystore
-./scripts/sh/deploy.sh dev --account deployer
+# Base Sepolia (stage) with keystore
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
 # Base Sepolia (stage) with Ledger and verification
 ./scripts/sh/deploy.sh stage --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
@@ -120,10 +120,10 @@ Compiler:
 ./scripts/sh/deploy.sh --chain 10,42161 --account deployer
 
 # Selective deployment
-./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --account deployer
 
 # Deploy without relayer setup
-./scripts/sh/deploy.sh dev --skip-relayer --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --skip-relayer --account deployer
 
 # Dry run to test deployment
 ./scripts/sh/deploy.sh prod --dry-run --account deployer
@@ -182,7 +182,7 @@ Deploy specific contracts only:
 ./scripts/sh/deploy.sh local --contracts Orchestrator
 
 # Multiple contracts
-./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --account deployer
 
 # Contract with dependencies (Orchestrator auto-deployed if missing)
 ./scripts/sh/deploy.sh local --contracts Account
@@ -245,7 +245,7 @@ Deploy contracts without setting up relayers:
 
 ```bash
 # Deploy without relayer configuration
-./scripts/sh/deploy.sh dev --skip-relayer --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --skip-relayer --account deployer
 
 # Useful when relayers will be configured later or manually
 ./scripts/sh/deploy.sh prod --skip-relayer --contracts SimpleFunder --account deployer
@@ -373,7 +373,7 @@ All configuration can be overridden via flags:
 
 ```bash
 # Override funder address
-./scripts/sh/deploy.sh dev --funder 0x123... --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --funder 0x123... --account deployer
 
 # Override owner address
 ./scripts/sh/deploy.sh prod --owner 0x456... --account deployer
@@ -410,7 +410,7 @@ The deployment context (directory name) is determined by:
 2. Environment shortcut (`local`, `dev`, `stage`, `prod`)
 3. Chain ID mapping:
    - 31337 → `local`
-   - 84532 → `dev`
+   - 84532 → `stage`
    - 8453 → `prod`
    - Others → `chain_{chainId}`
 
@@ -420,8 +420,8 @@ Examples:
 ./scripts/sh/deploy.sh local
 → deployments/envs/local/31337/orchestrator.json
 
-./scripts/sh/deploy.sh dev --account deployer
-→ deployments/envs/dev/84532/simpleFunder.json
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
+→ deployments/envs/stage/84532/simpleFunder.json
 
 # Chain ID (auto-context)
 ./scripts/sh/deploy.sh --chain 10 --account deployer
@@ -534,7 +534,7 @@ For prod:
 
 Outside local, a relayer mnemonic (`DEV_RELAYER_MNEMONIC`, `STAGE_RELAYER_MNEMONIC`, `PROD_RELAYER_MNEMONIC`, or `--relayer-mnemonic`) is refused unless `--skip-relayer` is passed. Then the owner calls SimpleFunder `setGasWallet` and `setOrchestrators`:
 ```bash
-./scripts/sh/deploy.sh dev --owner 0x... --skip-relayer --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --skip-relayer --account deployer
 ```
 
 ### "RPC URL not found for chain"
@@ -553,8 +553,8 @@ CREATE2 skips a predicted address when the on-chain runtime matches the release 
 
 Removing the deployment JSON does not clear code at the CREATE2 address. A matching runtime stays. To redeploy a contract that has no matching code, remove the stale JSON file and run the same command:
 ```bash
-rm deployments/envs/dev/84532/orchestrator.json
-./scripts/sh/deploy.sh dev --contracts Orchestrator --account deployer
+rm deployments/envs/stage/84532/orchestrator.json
+./scripts/sh/deploy.sh stage --owner 0x... --contracts Orchestrator --account deployer
 ```
 
 ### Deployment failed partway through
@@ -574,7 +574,7 @@ On congested networks, specify higher gas settings:
 Ensure `ETHERSCAN_API_KEY` is set. Foundry 1.5 verifies through Etherscan's V2 multichain API (one key for every listed chain):
 ```bash
 export ETHERSCAN_API_KEY="your_api_key"
-./scripts/sh/deploy.sh dev --verify --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --verify --account deployer
 ```
 
 Supported chains for verification:
@@ -604,8 +604,8 @@ For prod with Ledger:
 ### Dry run for testing
 Test deployment without broadcasting transactions:
 ```bash
-# Test dev deployment
-./scripts/sh/deploy.sh dev --dry-run --account deployer
+# Test stage deployment
+./scripts/sh/deploy.sh stage --owner 0x... --dry-run --account deployer
 
 # Test multi-chain deployment
 ./scripts/sh/deploy.sh --chain 10,42161 --dry-run --account deployer

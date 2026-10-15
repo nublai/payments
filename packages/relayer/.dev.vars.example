@@ -38,7 +38,7 @@ TARGET_SIGNER_BALANCE=0.01
 # SIMPLE_FUNDER_41337=0x...
 # SIMULATOR_41337=0x...
 # local skips quote HMAC when QUOTE_SIGNING_SECRET is unset and leaves ERC-8128 open.
-# Stage and prod must set CONTEXT to stage or prod. Unset is not local.
+# Stage and prod set CONTEXT in wrangler.toml vars (`stage` / `prod`). Unset is not local.
 CONTEXT=local
 
 # Fee config. Local may omit FEE_RECIPIENT; the signer address is the fallback.
@@ -72,7 +72,7 @@ CONTEXT=local
 
 # OIDC (public config, not secrets). WorkOS is the first issuer. All three
 # OIDC_ISSUER, OIDC_JWKS_URL, and OIDC_CLIENT_ID are required when OIDC_ENABLED=true.
-# An http JWKS URL is refused unless CONTEXT is local. CONTEXT=dev is Base Sepolia
+# An http JWKS URL is refused unless CONTEXT is local. CONTEXT=dev is not local
 # and does not get that exception.
 # OIDC_ENABLED=false
 # OIDC_ISSUER=https://auth.example.com

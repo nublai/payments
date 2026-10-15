@@ -74,7 +74,7 @@ Names match `@nubl/contracts` env var keys (no `_ADDRESS` suffix):
 | `ACCOUNT_PROXY` | Account Proxy contract                                         |
 | `SIMPLE_FUNDER` | SimpleFunder contract                                          |
 | `SIMULATOR`     | Simulator contract                                             |
-| `CONTEXT`       | Deployment context: `prod`\|`stage`\|`local` (default: `prod`) |
+| `CONTEXT`       | Deployment context: `prod`\|`stage`\|`local`. Stage and prod set this in wrangler.toml `[env.*.vars]` (`stage` and `prod`). Unset still defaults to `prod` in code. Not a secret. |
 
 ### Optional: Fee Configuration
 
@@ -195,7 +195,6 @@ wrangler queues create relayer-monitor-queue-prod
 wrangler secret put RPC_URL --env stage
 wrangler secret put RELAYER_MNEMONIC --env stage
 wrangler secret put CHAIN_IDS --env stage
-wrangler secret put CONTEXT --env stage
 wrangler secret put QUOTE_SIGNING_SECRET --env stage
 wrangler secret put RPC_84532 --env stage
 wrangler secret put RPC_137 --env stage
@@ -206,13 +205,14 @@ wrangler secret put PRIVY_APP_SECRET --env stage
 wrangler secret put RPC_URL --env prod
 wrangler secret put RELAYER_MNEMONIC --env prod
 wrangler secret put CHAIN_IDS --env prod
-wrangler secret put CONTEXT --env prod
 wrangler secret put QUOTE_SIGNING_SECRET --env prod
 wrangler secret put RPC_8453 --env prod
 wrangler secret put RPC_137 --env prod
 wrangler secret put PRIVY_APP_ID --env prod
 wrangler secret put PRIVY_APP_SECRET --env prod
 ```
+
+`CONTEXT` is a wrangler `[vars]` value, not a secret: `stage` in `[env.stage]`, `prod` in `[env.prod]`. Code still defaults to `prod` when it is unset. Delete any existing CONTEXT secret (`wrangler secret delete CONTEXT --env stage` / `--env prod`) before deploying; a secret and a var cannot share a name.
 
 3. Deploy:
 
@@ -256,4 +256,4 @@ Local `wrangler dev` listens on `http://127.0.0.1:8787`.
 - `RELAYER_URL_STAGE` for stage
 - `RELAYER_URL_PROD` for prod
 
-Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, `CONTEXT` (`stage` or `prod`), and `QUOTE_SIGNING_SECRET`. Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, set `ERC8128_ALLOWED_SIGNERS` for operator keys that are not the user's account and not a key registered on that account. The on-chain key check uses the same RPC. Stage and prod set `PRIVY_ENABLED=true`, which requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET` at startup. Unset still means on in code; set `false` to turn Privy off. OIDC is off until `OIDC_ENABLED=true`, and then `OIDC_ISSUER`, `OIDC_JWKS_URL`, and `OIDC_CLIENT_ID` are required public vars (not secrets). The wallets claim stays off until `OIDC_WALLETS_CLAIM_ENABLED=true`. Stage and prod need a worker redeploy to pick up this code, plus those env values, and a new Durable Object migration (`WalletBindingDO`). No contract redeploy. No new secret. The Privy rate-limit bucket key changes from the raw user id to `privy:<user id>`, which resets in-flight identity windows once. In-flight quotes signed without the secret, and in-flight quotes whose recomputed fee is 0, are rejected until the client calls `wallet_prepareCalls` again.
+Worker env to set before deploy (secrets or vars): `RPC_URL`, per-chain `RPC_<chainId>` (Base is `RPC_8453`; Sepolia is `RPC_84532`), `CHAIN_IDS`, `RELAYER_MNEMONIC`, and `QUOTE_SIGNING_SECRET`. `CONTEXT` is already set in wrangler.toml vars (`stage` / `prod`). Optional: `CORS_ALLOWED_ORIGINS`. If `ERC8128_ENABLED=true`, set `ERC8128_ALLOWED_SIGNERS` for operator keys that are not the user's account and not a key registered on that account. The on-chain key check uses the same RPC. Stage and prod set `PRIVY_ENABLED=true`, which requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET` at startup. Unset still means on in code; set `false` to turn Privy off. OIDC is off until `OIDC_ENABLED=true`, and then `OIDC_ISSUER`, `OIDC_JWKS_URL`, and `OIDC_CLIENT_ID` are required public vars (not secrets). The wallets claim stays off until `OIDC_WALLETS_CLAIM_ENABLED=true`. Stage and prod need a worker redeploy to pick up this code, plus those env values, and a new Durable Object migration (`WalletBindingDO`). No contract redeploy. No new secret. The Privy rate-limit bucket key changes from the raw user id to `privy:<user id>`, which resets in-flight identity windows once. In-flight quotes signed without the secret, and in-flight quotes whose recomputed fee is 0, are rejected until the client calls `wallet_prepareCalls` again.

@@ -2,6 +2,7 @@
  * Unit tests for config validation functions
  */
 
+import wranglerToml from '../wrangler.toml?raw'
 import { describe, it, expect } from 'vitest'
 
 import type { ContractAddresses } from '@nubl/contracts/deployments'
@@ -12,7 +13,10 @@ import {
     validatePoolConfig,
     type ValidateEnvDeps,
 } from '../src/config'
-import type { ContractAddressEnv } from '../src/config/addresses'
+import {
+    getContractAddresses as readContractAddresses,
+    type ContractAddressEnv,
+} from '../src/config/addresses'
 import { getGasConfig, type Env } from '../src/types/env'
 import { testEnv } from './helpers/env'
 
@@ -565,5 +569,24 @@ describe('getGasConfig', () => {
         const env = createMockEnv({ PAYMENT_GAS_BUFFER: '12345' })
         const gasConfig = getGasConfig(env)
         expect(gasConfig.paymentGasBuffer).toBe(12_345n)
+    })
+})
+
+describe('stage CONTEXT', () => {
+    it('sets CONTEXT=stage on [env.stage] and CONTEXT=prod on [env.prod]', () => {
+        const stage = wranglerToml.match(/\[env\.stage\][\s\S]*?(?=\n\[env\.|\n\[\[env\.|$)/)
+        const prod = wranglerToml.match(/\[env\.prod\][\s\S]*?(?=\n\[env\.|\n\[\[env\.|$)/)
+        expect(stage?.[0]).toMatch(/CONTEXT\s*=\s*"stage"/)
+        expect(prod?.[0]).toMatch(/CONTEXT\s*=\s*"prod"/)
+    })
+
+    it('reads stage/84532 when CONTEXT is stage', () => {
+        expect(() => readContractAddresses({ CONTEXT: 'stage' }, 84532)).toThrow(
+            /not deployed for stage\/84532/,
+        )
+        expect(() => readContractAddresses({ CONTEXT: 'prod' }, 84532)).toThrow(
+            /not deployed for prod\/84532/,
+        )
+        expect(() => readContractAddresses({}, 84532)).toThrow(/not deployed for prod\/84532/)
     })
 })

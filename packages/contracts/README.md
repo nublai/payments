@@ -28,8 +28,8 @@ bun run coverage         # Generate coverage report
 bun run fmt              # Format with Prettier
 bun run lint             # Check Prettier formatting
 bun run deploy:local     # Deploy to local Anvil (for CI)
-bun run deploy:dev       # Deploy to Base Sepolia
-bun run deploy:stage     # Deploy to Base Mainnet (stage context)
+bun run deploy:dev       # Deploy to Base Sepolia (dev context)
+bun run deploy:stage     # Deploy to Base Sepolia (stage context)
 bun run deploy:prod      # Deploy to Base Mainnet (prod context)
 bun run make-config      # Generate deployment config
 ```
@@ -120,9 +120,9 @@ Flags the script accepts: `--chain`, `--rpc`, `--contracts`, `--context`, `--acc
 
 ```bash
 ./scripts/sh/deploy.sh local
-./scripts/sh/deploy.sh dev --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 RPC_8453=https://mainnet.base.org ./scripts/sh/deploy.sh prod --account deployer
-./scripts/sh/deploy.sh dev --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --account deployer
 ```
 
 Then generate TypeScript ABIs:
