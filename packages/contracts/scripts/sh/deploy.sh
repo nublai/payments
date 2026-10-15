@@ -459,7 +459,6 @@ deploy_to_chain() {
     fi
 
     # Export environment variables for the Solidity script
-    export SAVE_DEPLOYMENTS=1
     export DEPLOYMENT_CONTEXT="$context"
     export RPC_URL="$rpc"
     export RELAYER_COUNT="${RELAYER_COUNT:-$DEFAULT_RELAYER_COUNT}"
@@ -515,7 +514,10 @@ deploy_to_chain() {
         fi
     fi
     if [[ -z "$DRY_RUN" ]]; then
+        export SAVE_DEPLOYMENTS=1
         forge_cmd+=(--broadcast)
+    else
+        unset SAVE_DEPLOYMENTS
     fi
 
     refuse_bytecode_changing_flags "${forge_cmd[@]}"

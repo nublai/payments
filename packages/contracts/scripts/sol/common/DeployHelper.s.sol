@@ -24,6 +24,9 @@ abstract contract DeployHelper is Script {
         string memory contractName,
         address contractAddress
     ) internal {
+        if (!vm.envOr("SAVE_DEPLOYMENTS", false)) {
+            return;
+        }
         string memory dirPath = _getDeploymentDir(chainId);
 
         // Build file path: deployments/envs/{context}/{chainId}/{contractName}.json

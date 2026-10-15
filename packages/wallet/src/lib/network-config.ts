@@ -1,11 +1,11 @@
-import { anvil, base, polygon } from 'viem/chains'
+import { anvil, base, baseSepolia, polygon } from 'viem/chains'
 import { zeroAddress, type Address } from 'viem'
 import { getAddresses } from '@nubl/contracts/deployments'
 import { assertRelayerUrl, type EthHttpSigner } from '@nubl/relayer-client'
 
 export type EnvName = 'prod' | 'stage' | 'dev'
 
-export type ChainName = 'base' | 'polygon' | 'anvil'
+export type ChainName = 'base' | 'polygon' | 'anvil' | 'base-sepolia'
 
 export type UsdcSymbol = 'USDC' | 'USDC.e'
 
@@ -21,7 +21,7 @@ export type CliNetworkConfig = {
 
 type CliChainConfig = {
     chain: ChainName
-    viemChain: typeof base | typeof polygon | typeof anvil
+    viemChain: typeof base | typeof polygon | typeof anvil | typeof baseSepolia
     rpcUrl: string
     chainId: number
     ethAddress: Address
@@ -70,6 +70,14 @@ const chainConfig: Record<ChainName, CliChainConfig> = {
         ethAddress: ETH_ADDRESS,
         // Local dev injects MockUSDC bytecode at Base mainnet USDC address.
         nativeUsdcAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    },
+    'base-sepolia': {
+        chain: 'base-sepolia',
+        viemChain: baseSepolia,
+        rpcUrl: 'https://sepolia.base.org',
+        chainId: 84532,
+        ethAddress: ETH_ADDRESS,
+        nativeUsdcAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
     },
 }
 
@@ -123,12 +131,22 @@ export function getEnvRelayerUrl(env: EnvName, chainId?: number): string {
 }
 
 export function getChainConfig(chain: ChainName): CliChainConfig {
-    return chainConfig[chain]
+    const config = chainConfig[chain]
+
+    if (chain !== 'base-sepolia') return config
+
+    const rpcUrl = readEnv('RPC_84532')
+
+    if (!rpcUrl) return config
+
+    return { ...config, rpcUrl }
 }
 
-/** Chains a session unlock must read. Dev is local Anvil; stage and prod are Base and Polygon. */
+/** Chains a session unlock must read. Dev is local Anvil; stage is Base Sepolia; prod is Base and Polygon. */
 export function chainsForEnv(env: EnvName): ChainName[] {
     if (env === 'dev') return ['anvil']
+
+    if (env === 'stage') return ['base-sepolia']
 
     return ['base', 'polygon']
 }
@@ -212,7 +230,6 @@ export function resolveNetworkConfig(env: EnvName, chain: ChainName): CliNetwork
  */
 const circleUsdcByChainId: Record<number, Address> = {
     42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
 }
 
 export function getUsdcAddressByChainId(chainId: number, legacy = false): Address | undefined {
@@ -240,6 +257,10 @@ export function normalizeChainName(value?: string): ChainName {
         return 'anvil'
     }
 
+    if (value === 'base-sepolia') {
+        return 'base-sepolia'
+    }
+
     throw new Error(`Unsupported chain: ${value}`)
 }
 
@@ -248,5 +269,9 @@ export function selectDefaultChain(env: EnvName, chainValue?: string): ChainName
         return normalizeChainName(chainValue)
     }
 
-    return env === 'dev' ? 'anvil' : 'base'
+    if (env === 'dev') return 'anvil'
+
+    if (env === 'stage') return 'base-sepolia'
+
+    return 'base'
 }
