@@ -12,7 +12,7 @@ anvil
 ./scripts/sh/deploy.sh local
 
 # Deploy to stage (Base Sepolia) with keystore account
-./scripts/sh/deploy.sh stage --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
 # Deploy specific contracts
 ./scripts/sh/deploy.sh local --contracts SimpleFunder,SimpleSettler
@@ -108,7 +108,7 @@ Compiler:
 ./scripts/sh/deploy.sh local
 
 # Base Sepolia (stage) with keystore
-./scripts/sh/deploy.sh stage --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
 # Base Sepolia (stage) with Ledger and verification
 ./scripts/sh/deploy.sh stage --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
@@ -120,10 +120,10 @@ Compiler:
 ./scripts/sh/deploy.sh --chain 10,42161 --account deployer
 
 # Selective deployment
-./scripts/sh/deploy.sh stage --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --account deployer
 
 # Deploy without relayer setup
-./scripts/sh/deploy.sh stage --skip-relayer --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --skip-relayer --account deployer
 
 # Dry run to test deployment
 ./scripts/sh/deploy.sh prod --dry-run --account deployer
@@ -182,7 +182,7 @@ Deploy specific contracts only:
 ./scripts/sh/deploy.sh local --contracts Orchestrator
 
 # Multiple contracts
-./scripts/sh/deploy.sh stage --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --account deployer
 
 # Contract with dependencies (Orchestrator auto-deployed if missing)
 ./scripts/sh/deploy.sh local --contracts Account
@@ -245,7 +245,7 @@ Deploy contracts without setting up relayers:
 
 ```bash
 # Deploy without relayer configuration
-./scripts/sh/deploy.sh stage --skip-relayer --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --skip-relayer --account deployer
 
 # Useful when relayers will be configured later or manually
 ./scripts/sh/deploy.sh prod --skip-relayer --contracts SimpleFunder --account deployer
@@ -373,7 +373,7 @@ All configuration can be overridden via flags:
 
 ```bash
 # Override funder address
-./scripts/sh/deploy.sh stage --funder 0x123... --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --funder 0x123... --account deployer
 
 # Override owner address
 ./scripts/sh/deploy.sh prod --owner 0x456... --account deployer
@@ -420,7 +420,7 @@ Examples:
 ./scripts/sh/deploy.sh local
 → deployments/envs/local/31337/orchestrator.json
 
-./scripts/sh/deploy.sh stage --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 → deployments/envs/stage/84532/simpleFunder.json
 
 # Chain ID (auto-context)
@@ -553,7 +553,7 @@ CREATE2 skips a predicted address when the on-chain runtime matches the release 
 Removing the deployment JSON does not clear code at the CREATE2 address. A matching runtime stays. To redeploy a contract that has no matching code, remove the stale JSON file and run the same command:
 ```bash
 rm deployments/envs/stage/84532/orchestrator.json
-./scripts/sh/deploy.sh stage --contracts Orchestrator --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --contracts Orchestrator --account deployer
 ```
 
 ### Deployment failed partway through
@@ -573,10 +573,10 @@ On congested networks, specify higher gas settings:
 Ensure `ETHERSCAN_API_KEY` is set and the chain is supported by Etherscan/Basescan:
 ```bash
 export ETHERSCAN_API_KEY="your_api_key"
-./scripts/sh/deploy.sh stage --verify --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --verify --account deployer
 
 # Or override via flag
-./scripts/sh/deploy.sh stage --verify --etherscan-key YOUR_KEY --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --verify --etherscan-key YOUR_KEY --account deployer
 ```
 
 Supported chains for verification:
@@ -607,7 +607,7 @@ For prod with Ledger:
 Test deployment without broadcasting transactions:
 ```bash
 # Test stage deployment
-./scripts/sh/deploy.sh stage --dry-run --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --dry-run --account deployer
 
 # Test multi-chain deployment
 ./scripts/sh/deploy.sh --chain 10,42161 --dry-run --account deployer

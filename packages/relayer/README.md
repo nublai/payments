@@ -212,7 +212,7 @@ wrangler secret put PRIVY_APP_ID --env prod
 wrangler secret put PRIVY_APP_SECRET --env prod
 ```
 
-`CONTEXT` is a wrangler `[vars]` value, not a secret: `stage` in `[env.stage]`, `prod` in `[env.prod]`. Code still defaults to `prod` when it is unset. A leftover `wrangler secret put CONTEXT` of the same name would override the var; delete that secret if it does not match.
+`CONTEXT` is a wrangler `[vars]` value, not a secret: `stage` in `[env.stage]`, `prod` in `[env.prod]`. Code still defaults to `prod` when it is unset. Delete any existing CONTEXT secret (`wrangler secret delete CONTEXT --env stage` / `--env prod`) before deploying; a secret and a var cannot share a name.
 
 3. Deploy:
 

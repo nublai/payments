@@ -80,7 +80,8 @@ bindings = [
 # sponsored upgrade with the new account's own key, without the allowlist.
 # CONTEXT selects deployments/envs/<CONTEXT>/. Stage is Base Sepolia (84532).
 # This is a public var, not a secret. Unset still defaults to prod in code.
-# A leftover wrangler secret of the same name would override this var.
+# Delete any existing CONTEXT secret (`wrangler secret delete CONTEXT --env stage`
+# / `--env prod`) before deploying; a secret and a var cannot share a name.
 vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true", CONTEXT = "stage" }
 preview_urls = false
 
@@ -126,7 +127,8 @@ crons = ["*/5 * * * *"]
 # sponsored upgrade with the new account's own key, without the allowlist.
 # CONTEXT selects deployments/envs/<CONTEXT>/. Prod is Base mainnet (8453).
 # This is a public var, not a secret. Unset still defaults to prod in code.
-# A leftover wrangler secret of the same name would override this var.
+# Delete any existing CONTEXT secret (`wrangler secret delete CONTEXT --env stage`
+# / `--env prod`) before deploying; a secret and a var cannot share a name.
 vars = { NODE_ENV = "production", PRIVY_ENABLED = "true", ERC8128_ENABLED = "true", CONTEXT = "prod" }
 preview_urls = false
 

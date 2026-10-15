@@ -121,10 +121,10 @@ Examples:
   $0 local
 
   # Stage (Base Sepolia) with keystore (interactive password prompt)
-  $0 stage --account deployer
+  $0 stage --owner 0x... --account deployer
 
   # Stage with keystore and password
-  $0 stage --account deployer --password "mypassword"
+  $0 stage --owner 0x... --account deployer --password "mypassword"
 
   # Prod with Ledger and verification
   $0 prod --ledger "m/44'/60'/0'/0/0" --verify
@@ -139,7 +139,7 @@ Examples:
   $0 --chain 8453 --funder 0x123... --owner 0x456... --skip-relayer --account deployer
 
   # Deploy specific contracts without relayer setup
-  $0 stage --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
+  $0 stage --owner 0x... --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
 
 EOF
     exit 1

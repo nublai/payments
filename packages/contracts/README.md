@@ -119,9 +119,9 @@ Flags the script accepts: `--chain`, `--rpc`, `--contracts`, `--context`, `--acc
 
 ```bash
 ./scripts/sh/deploy.sh local
-./scripts/sh/deploy.sh stage --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 RPC_8453=https://mainnet.base.org ./scripts/sh/deploy.sh prod --account deployer
-./scripts/sh/deploy.sh stage --contracts SimpleFunder,SimpleSettler --account deployer
+./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --account deployer
 ```
 
 Then generate TypeScript ABIs:

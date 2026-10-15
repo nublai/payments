@@ -51,8 +51,8 @@ bun run dev
 # Local Anvil
 ./scripts/sh/deploy.sh local
 
-# Base Sepolia (stage) - requires --account or env vars
-./scripts/sh/deploy.sh stage --account deployer
+# Base Sepolia (stage) - requires --owner and --account or env vars
+./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
 # Base Sepolia (stage) - requires --owner and --ledger or --account
 ./scripts/sh/deploy.sh stage --owner 0x... --ledger "m/44'/60'/0'/0/0" --verify
