@@ -68,10 +68,13 @@ function rootBundle() {
 }
 
 async function withStage<T>(fn: () => Promise<T>): Promise<T> {
-    const previous = process.env.RELAYER_URL_STAGE
+    const previousStage = process.env.RELAYER_URL_STAGE
+    const previousProd = process.env.RELAYER_URL_PROD
     process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
-    // Published JSON is zero. This file's stage/Base rotations still need the
-    // former stage addresses, and only for the test that calls withStage.
+    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:8787'
+    // Published JSON is zero. Extra-chain polygon cleanup now lives on prod
+    // (stage only scans base-sepolia). Former stage addresses still fill every
+    // published context, including prod, for tests that call withStage.
     const restoreStage = installFormerStageDeployments()
 
     try {
@@ -79,8 +82,11 @@ async function withStage<T>(fn: () => Promise<T>): Promise<T> {
     } finally {
         restoreStage()
 
-        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
-        else process.env.RELAYER_URL_STAGE = previous
+        if (previousStage === undefined) delete process.env.RELAYER_URL_STAGE
+        else process.env.RELAYER_URL_STAGE = previousStage
+
+        if (previousProd === undefined) delete process.env.RELAYER_URL_PROD
+        else process.env.RELAYER_URL_PROD = previousProd
     }
 }
 
@@ -159,7 +165,7 @@ async function leaveRealMarker(keystorePath: string) {
     await expect(
         executeSessionRotate(
             {
-                env: 'stage',
+                env: 'prod',
                 chain: 'base',
                 keystorePath,
                 password: 'pw',
@@ -196,7 +202,7 @@ test('rotation marker written by the real writer is resumed instead of a noop', 
 
         const result = executeSessionRotate(
             {
-                env: 'stage',
+                env: 'prod',
                 chain: 'base',
                 keystorePath,
                 password: 'pw',
