@@ -110,6 +110,30 @@ if missing:
 PY
 }
 
+# Towns leftover: package exports and build must not ship config/deployments.json.
+towns_config_export_removed() {
+    python3 - <<'PY'
+import json
+import pathlib
+import sys
+
+pkg = json.loads(pathlib.Path("package.json").read_text())
+exports = pkg.get("exports") or {}
+if "./config/deployments.json" in exports:
+    print("package.json still exports ./config/deployments.json", file=sys.stderr)
+    sys.exit(1)
+leftover = pathlib.Path("deployments/config/deployments.json")
+if leftover.exists():
+    print("leftover Towns deployments/config/deployments.json is still present", file=sys.stderr)
+    sys.exit(1)
+for name in ("build", "build:contracts"):
+    script = pkg["scripts"][name]
+    if "deployments/config" in script or "config/deployments.json" in script:
+        print(f"{name} still copies leftover Towns config: {script}", file=sys.stderr)
+        sys.exit(1)
+PY
+}
+
 # 4. deploy.sh refuses a symlink planted under deployments/.
 symlink_refused() {
     local link="$PROJECT_ROOT/deployments/__symlink_probe"
@@ -1213,6 +1237,7 @@ if bytecode_flags_refused; then pass "bytecode-changing forge flags are refused"
 if metadata_fields_required; then pass "release metadata fields are required"; else fail "release metadata fields are required"; fi
 if release_tests_in_ci; then pass "CI runs release forge test"; else fail "CI runs release forge test"; fi
 if package_scripts_run_check; then pass "build:contracts and generate run the size check"; else fail "build:contracts and generate run the size check"; fi
+if towns_config_export_removed; then pass "Towns config/deployments.json export is gone"; else fail "Towns config/deployments.json export is gone"; fi
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
 if release_can_write_deployments; then pass "release profile can write deployments/"; else fail "release profile can write deployments/"; fi

@@ -19,8 +19,8 @@ bun run dev
 
 ```bash
 bun run dev              # Start Anvil, deploy contracts, generate config
-bun run build            # Typecheck with tsc and copy addresses and config into dist
-bun run build:contracts  # release-profile forge build, wagmi generate, tsc, and copy addresses and config into dist
+bun run build            # Typecheck with tsc and copy addresses.json into dist
+bun run build:contracts  # release-profile forge build, wagmi generate, tsc, and copy addresses.json into dist
 bun run generate         # Generate TypeScript ABIs with wagmi
 bun run test             # Run tests with verbose output
 bun run test:gas         # Run tests with gas report
@@ -50,7 +50,7 @@ Set in `.env` (copy from `.env.example`):
 
 ### Deployment Config
 
-There is no `deployments/config.toml`. Committed address snapshots are `deployments/config/deployments.json` (top-level keys `alpha`, `beta`, `gamma`, `delta`, `omega`). That file is the exported config and still uses upstream labels such as `river`, `riverRegistry`, `riverAirdrop`, and `space`; those keys stay. `./scripts/sh/deploy.sh` does not read that file. Chain ids and RPCs come from the script: local Anvil defaults, `RPC_84532` for dev and stage, `RPC_8453` for prod. Relayer mnemonic and funder addresses come from flags or env (`DEV_RELAYER_MNEMONIC`, `STAGE_RELAYER_MNEMONIC`, `PROD_RELAYER_MNEMONIC`, and the matching `*_FUNDER` / `*_OWNER` vars). Outside local, `deploy.sh` and `DeployUnified` refuse an unset owner and an owner equal to the deployer or funder address. Outside local, a relayer mnemonic is refused unless `--skip-relayer` is passed, because relayer setup is owner-only and the script sends it from the deployer; the owner calls SimpleFunder `setGasWallet` and `setOrchestrators` afterwards. A LayerZeroSettler deploy refuses a zero `--lz-signer`. `deploy.sh` prints the forge command with `--private-key` and `--password` values masked.
+There is no `deployments/config.toml` and no leftover Towns `deployments/config/deployments.json`. Committed address snapshots are `deployments/addresses.json` and `deployments/envs/<context>/<chainId>/*.json`. `./scripts/sh/deploy.sh` writes those files and does not read a Towns config. Chain ids and RPCs come from the script: local Anvil defaults, `RPC_84532` for dev and stage, `RPC_8453` for prod. Relayer mnemonic and funder addresses come from flags or env (`DEV_RELAYER_MNEMONIC`, `STAGE_RELAYER_MNEMONIC`, `PROD_RELAYER_MNEMONIC`, and the matching `*_FUNDER` / `*_OWNER` vars). Outside local, `deploy.sh` and `DeployUnified` refuse an unset owner and an owner equal to the deployer or funder address. Outside local, a relayer mnemonic is refused unless `--skip-relayer` is passed, because relayer setup is owner-only and the script sends it from the deployer; the owner calls SimpleFunder `setGasWallet` and `setOrchestrators` afterwards. A LayerZeroSettler deploy refuses a zero `--lz-signer`. `deploy.sh` prints the forge command with `--private-key` and `--password` values masked.
 
 ## Architecture
 
