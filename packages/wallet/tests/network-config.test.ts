@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import {
     ETH_ADDRESS,
+    chainsForEnv,
+    getChainConfig,
     getUsdcTokenConfig,
     getEnvRelayerUrl,
     getTokenAddress,
@@ -36,12 +38,57 @@ test('normalizeChainName supports aliases', () => {
     expect(normalizeChainName('polygon')).toBe('polygon')
     expect(normalizeChainName('matic')).toBe('polygon')
     expect(normalizeChainName('local')).toBe('anvil')
+    expect(normalizeChainName('base-sepolia')).toBe('base-sepolia')
 })
 
-test('selectDefaultChain prefers anvil in dev and base otherwise', () => {
+test('normalizeChainName refuses unknown names with the same message', () => {
+    expect(() => normalizeChainName('84532')).toThrow('Unsupported chain: 84532')
+    expect(() => normalizeChainName('basesepolia')).toThrow('Unsupported chain: basesepolia')
+    expect(() => normalizeChainName('foobar')).toThrow('Unsupported chain: foobar')
+})
+
+test('selectDefaultChain prefers anvil in dev, base-sepolia in stage, and base in prod', () => {
     expect(selectDefaultChain('prod', undefined)).toBe('base')
-    expect(selectDefaultChain('stage', undefined)).toBe('base')
+    expect(selectDefaultChain('stage', undefined)).toBe('base-sepolia')
     expect(selectDefaultChain('dev', undefined)).toBe('anvil')
+    expect(selectDefaultChain('prod', 'base')).toBe('base')
+    expect(selectDefaultChain('dev', 'anvil')).toBe('anvil')
+})
+
+test('chainsForEnv is anvil in dev, base-sepolia in stage, and base plus polygon in prod', () => {
+    expect(chainsForEnv('dev')).toEqual(['anvil'])
+    expect(chainsForEnv('stage')).toEqual(['base-sepolia'])
+    expect(chainsForEnv('prod')).toEqual(['base', 'polygon'])
+})
+
+test('resolveNetworkConfig returns chain defaults for stage/base-sepolia and RPC_84532 when set', () => {
+    const stageUrl = process.env.RELAYER_URL_STAGE
+    expect(stageUrl).toBeTruthy()
+
+    if (!stageUrl) throw new Error('RELAYER_URL_STAGE must be set')
+
+    const previousRpc = process.env.RPC_84532
+    delete process.env.RPC_84532
+
+    try {
+        const network = resolveNetworkConfig('stage', 'base-sepolia')
+        expect(network.relayerUrl).toBe(stageUrl)
+        expect(network.rpcUrl).toBe('https://sepolia.base.org')
+        expect(network.chainId).toBe(84532)
+        expect(getUsdcAddressByChainId(84532)).toBe('0x036CbD53842c5426634e7929541eC2318f3dCF7e')
+        expect(getChainConfig('base-sepolia').nativeUsdcAddress).toBe(
+            '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        )
+
+        process.env.RPC_84532 = 'https://rpc.example/84532'
+        expect(resolveNetworkConfig('stage', 'base-sepolia').rpcUrl).toBe('https://rpc.example/84532')
+        expect(getChainConfig('base-sepolia').rpcUrl).toBe('https://rpc.example/84532')
+        expect(getChainConfig('base').rpcUrl).toBe('https://mainnet.base.org')
+        expect(getChainConfig('anvil').rpcUrl).toBe('http://127.0.0.1:8545')
+    } finally {
+        if (previousRpc === undefined) delete process.env.RPC_84532
+        else process.env.RPC_84532 = previousRpc
+    }
 })
 
 test('USDC mapping is centralized by chain id', () => {
@@ -49,6 +96,7 @@ test('USDC mapping is centralized by chain id', () => {
     expect(getUsdcAddressByChainId(137)).toBe('0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359')
     expect(getUsdcAddressByChainId(137, true)).toBe('0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174')
     expect(getUsdcAddressByChainId(31337)).toBe('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913')
+    expect(getUsdcAddressByChainId(84532)).toBe('0x036CbD53842c5426634e7929541eC2318f3dCF7e')
 })
 
 test('polygon token config defaults to native and supports legacy override', () => {

@@ -349,6 +349,11 @@ tw.command(myGroup)
   - relayer URL: local worker (`127.0.0.1:8787`)
   - RPC: local anvil (`127.0.0.1:8545`)
   - chain: `anvil`
+- `stage` defaults:
+  - chain: `base-sepolia` (84532)
+  - RPC: `RPC_84532`, or `https://sepolia.base.org` if unset
+- `prod` defaults:
+  - chain: `base`
 - Profile and keystore resolution follows `account-create` conventions in `src/lib/account-create.ts`
 
 ## Password Handling
