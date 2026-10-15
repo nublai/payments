@@ -234,6 +234,10 @@ contract DeployUnified is DeployBase, ReleaseRuntime {
 
     /// @notice Save all deployed contract addresses to JSON files
     function _saveAllDeployments(uint256 chainId) internal {
+        if (!vm.envOr("SAVE_DEPLOYMENTS", false)) {
+            console.log("  Skipping save (SAVE_DEPLOYMENTS unset)");
+            return;
+        }
         _writeContractDeployment(
             chainId,
             "orchestrator",

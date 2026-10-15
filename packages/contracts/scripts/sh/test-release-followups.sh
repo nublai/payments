@@ -1117,6 +1117,73 @@ wrong_endpoint_lz_settler_refused() {
     fi
 }
 
+# Dry-run must not overwrite committed deployments JSON. Fails on main:
+# DeployUnified always writes, and deploy.sh exports SAVE_DEPLOYMENTS=1
+# even without --broadcast.
+dry_run_does_not_write_deployments() {
+    local port=18555
+    local rpc="http://127.0.0.1:${port}"
+    local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    local owner="0x00000000000000000000000000000000000A11CE"
+    local tmp pid code
+    tmp="$(mktemp -d)"
+    if ! git -C "$REPO_ROOT" diff --quiet -- packages/contracts/deployments; then
+        echo "packages/contracts/deployments is already dirty" >&2
+        git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
+        rm -rf "$tmp"
+        return 1
+    fi
+    anvil --port "$port" --chain-id 84532 --silent >"$tmp/anvil.log" 2>&1 &
+    pid=$!
+    cleanup_dry_run() {
+        trap - RETURN
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        git -C "$REPO_ROOT" checkout -- packages/contracts/deployments
+        rm -rf \
+            "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/84532" \
+            "$PROJECT_ROOT/cache/DeployUnified.s.sol/84532" \
+            "$tmp"
+    }
+    trap cleanup_dry_run RETURN
+    local ready=0
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        if cast block-number --rpc-url "$rpc" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 0.25
+    done
+    if [[ "$ready" -ne 1 ]]; then
+        echo "anvil did not start for the dry-run save check" >&2
+        cat "$tmp/anvil.log" >&2
+        return 1
+    fi
+    local multicall
+    multicall="$(tr -d '[:space:]' < "$PROJECT_ROOT/scripts/sol/common/bytecodes/multicall3.txt")"
+    cast rpc anvil_setCode "0xcA11bde05977b3631167028862bE2a173976CA11" "$multicall" \
+        --rpc-url "$rpc" >/dev/null
+    set +e
+    # foundry.toml interpolates [rpc_endpoints].base_sepolia from RPC_84532.
+    # Point it at this anvil so DeployFacet does not fetch a public RPC.
+    RPC_84532="$rpc" "$SCRIPT_DIR/deploy.sh" --chain 84532 --rpc "$rpc" --context dev \
+        --dry-run --skip-relayer --private-key "$pk" --owner "$owner" \
+        >"$tmp/out" 2>"$tmp/err"
+    code=$?
+    set -e
+    if [[ "$code" -ne 0 ]]; then
+        echo "dry-run failed (exit $code)" >&2
+        cat "$tmp/err" >&2
+        tail -40 "$tmp/out" >&2
+        return 1
+    fi
+    if ! git -C "$REPO_ROOT" diff --quiet -- packages/contracts/deployments; then
+        echo "dry-run wrote packages/contracts/deployments" >&2
+        git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
+        return 1
+    fi
+}
+
 # Release profile write access is deployments/ only. Foundry 1.5 has no
 # --profile flag; deploy.sh selects the profile with FOUNDRY_PROFILE.
 release_can_write_deployments() {
@@ -1240,6 +1307,7 @@ if package_scripts_run_check; then pass "build:contracts and generate run the si
 if towns_config_export_removed; then pass "Towns config/deployments.json export is gone"; else fail "Towns config/deployments.json export is gone"; fi
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
+if dry_run_does_not_write_deployments; then pass "dry-run does not write deployments JSON"; else fail "dry-run does not write deployments JSON"; fi
 if release_can_write_deployments; then pass "release profile can write deployments/"; else fail "release profile can write deployments/"; fi
 if immutable_spans_are_masked; then pass "immutable spans are masked"; else fail "immutable spans are masked"; fi
 if resume_rebroadcast_refused; then pass "--resume is refused"; else fail "--resume is refused"; fi
