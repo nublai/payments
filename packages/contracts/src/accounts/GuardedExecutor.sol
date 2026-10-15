@@ -154,6 +154,10 @@ abstract contract GuardedExecutor is ERC7821 {
     /// @dev The canonical Permit2 address.
     address internal constant _PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
+    /// @dev Per-key spend/execute namespace. Truncated to 9 bytes to reduce bytecode size.
+    uint256 internal constant _GUARDED_EXECUTOR_KEY_STORAGE =
+        uint72(bytes9(keccak256("NUBL_GUARDED_EXECUTOR_KEY_STORAGE")));
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -202,8 +206,7 @@ abstract contract GuardedExecutor is ERC7821 {
         bytes32 seed = keyHash == ANY_KEYHASH
             ? ANY_KEYHASH
             : _getGuardedExecutorKeyStorageSeed(keyHash);
-        // The TOWNS_ string is the slot seed; leave it.
-        uint256 namespaceHash = uint72(bytes9(keccak256("TOWNS_GUARDED_EXECUTOR_KEY_STORAGE")));
+        uint256 namespaceHash = _GUARDED_EXECUTOR_KEY_STORAGE;
         assembly ("memory-safe") {
             // Non-standard hashing scheme to reduce chance of conflict with regular Solidity.
             mstore(0x09, namespaceHash)

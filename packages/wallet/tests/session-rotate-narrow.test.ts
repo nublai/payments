@@ -13,7 +13,7 @@ import { executeSignedCalls, executeSessionRotate } from './helpers/stub-execute
 import { computeSessionKeyHash } from '../src/lib/session-common'
 import { parseAddr } from './helpers/hex'
 import { matchingPreparedCalls } from './helpers/matching-prepared'
-import { installFormerStageDeployments } from './helpers/former-deployment-env'
+import { installFormerProdDeployments, installFormerStageDeployments } from './helpers/former-deployment-env'
 import { passthroughKeystoreLock, typedMock } from './helpers/typed-mock'
 import { testKeystoreBundleFrom, testSessionKeystore, sessionKeystoreFactory } from './helpers/keystore-bundle'
 import { testAuthorizedKey, testBaseKeys, testKeys } from './helpers/authorized-key'
@@ -378,9 +378,9 @@ const PLANTED_TARGET = '0x4444444444444444444444444444444444444444'
 const PLANTED_SELECTOR = '0x39509351'
 
 test('extra-chain cleanup resolves the fee policy for that chain', async () => {
-    const previous = process.env.RELAYER_URL_STAGE
-    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
-    const restoreStage = installFormerStageDeployments()
+    const previous = process.env.RELAYER_URL_PROD
+    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:8787'
+    const restoreProd = installFormerProdDeployments()
 
     const prepares: {
         chainId: number
@@ -393,7 +393,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
     try {
         const result = await executeSessionRotate(
             {
-                env: 'stage',
+                env: 'prod',
                 chain: 'base',
                 keystorePath: '/tmp/narrow-rotate-extra-chain.json',
                 password: 'pw',
@@ -433,7 +433,7 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
                         from: input.from,
                         calls: input.calls,
                         nonce: input.nonce,
-                        network: { env: 'stage', chainId: input.network.chainId },
+                        network: { env: 'prod', chainId: input.network.chainId },
                         expiry: input.expiry,
                         payer: input.payer,
                         paymentToken: input.paymentToken,
@@ -465,10 +465,10 @@ test('extra-chain cleanup resolves the fee policy for that chain', async () => {
         expect(decoded.args[2]).toBe(PLANTED_SELECTOR)
         expect(decoded.args[3]).toBe(false)
     } finally {
-        restoreStage()
+        restoreProd()
 
-        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
-        else process.env.RELAYER_URL_STAGE = previous
+        if (previous === undefined) delete process.env.RELAYER_URL_PROD
+        else process.env.RELAYER_URL_PROD = previous
     }
 })
 
@@ -532,7 +532,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
                 from: input.from,
                 calls: input.calls,
                 nonce: input.nonce,
-                network: { env: 'stage', chainId: input.network.chainId },
+                network: { env: 'prod', chainId: input.network.chainId },
                 expiry: input.expiry,
                 payer: input.payer,
                 paymentToken: input.paymentToken,
@@ -558,7 +558,7 @@ function partialRotateHarness(mode: 'status' | 'throw') {
     })
 
     const options = {
-        env: 'stage' as const,
+        env: 'prod' as const,
         chain: 'base' as const,
         keystorePath: '/tmp/narrow-rotate-partial.json',
         password: 'pw',
@@ -581,9 +581,9 @@ function partialRotateHarness(mode: 'status' | 'throw') {
 }
 
 test('a failed extra-chain bundle is a partial rotation and keeps both session files', async () => {
-    const previous = process.env.RELAYER_URL_STAGE
-    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
-    const restoreStage = installFormerStageDeployments()
+    const previous = process.env.RELAYER_URL_PROD
+    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:8787'
+    const restoreProd = installFormerProdDeployments()
     const harness = partialRotateHarness('status')
 
     try {
@@ -596,17 +596,17 @@ test('a failed extra-chain bundle is a partial rotation and keeps both session f
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
         expect(harness.unlinked.some((path) => path.endsWith('default.json'))).toBe(false)
     } finally {
-        restoreStage()
+        restoreProd()
 
-        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
-        else process.env.RELAYER_URL_STAGE = previous
+        if (previous === undefined) delete process.env.RELAYER_URL_PROD
+        else process.env.RELAYER_URL_PROD = previous
     }
 })
 
 test('a thrown extra-chain wait keeps the new session file', async () => {
-    const previous = process.env.RELAYER_URL_STAGE
-    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
-    const restoreStage = installFormerStageDeployments()
+    const previous = process.env.RELAYER_URL_PROD
+    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:8787'
+    const restoreProd = installFormerProdDeployments()
     const harness = partialRotateHarness('throw')
 
     try {
@@ -618,17 +618,17 @@ test('a thrown extra-chain wait keeps the new session file', async () => {
         })
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
-        restoreStage()
+        restoreProd()
 
-        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
-        else process.env.RELAYER_URL_STAGE = previous
+        if (previous === undefined) delete process.env.RELAYER_URL_PROD
+        else process.env.RELAYER_URL_PROD = previous
     }
 })
 
 test('resuming a partial rotation finishes the extra-chain cleanup', async () => {
-    const previous = process.env.RELAYER_URL_STAGE
-    process.env.RELAYER_URL_STAGE = 'http://127.0.0.1:8787'
-    const restoreStage = installFormerStageDeployments()
+    const previous = process.env.RELAYER_URL_PROD
+    process.env.RELAYER_URL_PROD = 'http://127.0.0.1:8787'
+    const restoreProd = installFormerProdDeployments()
     const harness = partialRotateHarness('status')
 
     try {
@@ -651,10 +651,10 @@ test('resuming a partial rotation finishes the extra-chain cleanup', async () =>
         )
         expect(harness.unlinked.some((path) => path.includes('default-next'))).toBe(false)
     } finally {
-        restoreStage()
+        restoreProd()
 
-        if (previous === undefined) delete process.env.RELAYER_URL_STAGE
-        else process.env.RELAYER_URL_STAGE = previous
+        if (previous === undefined) delete process.env.RELAYER_URL_PROD
+        else process.env.RELAYER_URL_PROD = previous
     }
 })
 

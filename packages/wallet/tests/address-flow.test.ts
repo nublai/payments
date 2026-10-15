@@ -28,6 +28,20 @@ test('executeAddress returns default usdc/base context', async () => {
     expect(result.warnings[0]).toContain('Send this token on this chain only')
 })
 
+test('executeAddress without --chain uses anvil for --env dev', async () => {
+    const result = await executeAddress(
+        {
+            env: 'dev',
+        },
+        {
+            executeAccountAddress: mock(async () => accountAddress),
+        },
+    )
+
+    expect(result.chain.name).toBe('anvil')
+    expect(result.chain.chainId).toBe(31337)
+})
+
 test('executeAddress requires decimals for custom token amount', async () => {
     await expect(
         executeAddress(

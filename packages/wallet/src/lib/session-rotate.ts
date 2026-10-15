@@ -367,7 +367,7 @@ const rotationIntentFileSchema = z
     .passthrough()
 
 const rotationIntentRequiredSchema = z.object({
-    chain: z.enum(['base', 'polygon', 'anvil']),
+    chain: z.enum(['base', 'polygon', 'anvil', 'base-sepolia']),
     chainId: z.number().int(),
     newKeyHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
     narrow: z.boolean(),

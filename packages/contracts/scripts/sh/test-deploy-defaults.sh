@@ -256,6 +256,58 @@ equals_form_secret_not_printed() {
     done
 }
 
+# --verify passes the key to forge as --etherscan-api-key. The printed
+# command must hide both the separate-arg and `--flag=value` forms.
+etherscan_key_not_printed() {
+    local key="LEAKME123"
+    setup_sandbox
+    run_deploy --chain 31337 --rpc http://127.0.0.1:1 --dry-run --skip-relayer \
+        --verify --etherscan-key "$key"
+    if [[ "$CODE" -ne 0 ]]; then
+        echo "deploy.sh --verify --etherscan-key failed (exit $CODE)" >&2
+        cat "$TMP/out" >&2
+        rm -rf "$TMP"
+        return 1
+    fi
+    if grep -qF -- "$key" "$TMP/out"; then
+        echo "deploy.sh printed the Etherscan API key:" >&2
+        grep -F -- "$key" "$TMP/out" >&2
+        rm -rf "$TMP"
+        return 1
+    fi
+    if ! grep -qxF -- "$key" "$TMP/forge.log"; then
+        echo "forge did not receive the Etherscan API key" >&2
+        rm -rf "$TMP"
+        return 1
+    fi
+    rm -rf "$TMP"
+
+    local arg
+    for arg in "--etherscan-key=$key" "--etherscan-api-key=$key"; do
+        setup_sandbox
+        run_deploy --chain 31337 --rpc http://127.0.0.1:1 --dry-run --skip-relayer \
+            --verify "$arg"
+        if [[ "$CODE" -eq 0 ]]; then
+            echo "deploy.sh accepted ${arg%%=*}=..." >&2
+            rm -rf "$TMP"
+            return 1
+        fi
+        if grep -qF -- "$key" "$TMP/out"; then
+            echo "deploy.sh printed the ${arg%%=*} value:" >&2
+            grep -F -- "$key" "$TMP/out" >&2
+            rm -rf "$TMP"
+            return 1
+        fi
+        if ! grep -qF -- "Unknown option: ${arg%%=*}" "$TMP/out"; then
+            echo "deploy.sh did not name the unknown option ${arg%%=*} (exit $CODE)" >&2
+            cat "$TMP/out" >&2
+            rm -rf "$TMP"
+            return 1
+        fi
+        rm -rf "$TMP"
+    done
+}
+
 local_needs_no_owner() {
     setup_sandbox
     run_deploy --chain 31337 --rpc http://127.0.0.1:1 --dry-run --skip-relayer
@@ -285,6 +337,7 @@ if prod_is_base; then pass "prod deploys to Base 8453"; else fail "prod deploys 
 if chain_84532_defaults_to_stage; then pass "84532 defaults to context stage"; else fail "84532 defaults to context stage"; fi
 if relayer_mnemonic_refused_outside_local; then pass "relayer mnemonic is refused outside local"; else fail "relayer mnemonic is refused outside local"; fi
 if equals_form_secret_not_printed; then pass "--opt=value secrets are not printed"; else fail "--opt=value secrets are not printed"; fi
+if etherscan_key_not_printed; then pass "--etherscan-api-key is not printed"; else fail "--etherscan-api-key is not printed"; fi
 if local_needs_no_owner; then pass "local deploy needs no owner"; else fail "local deploy needs no owner"; fi
 
 if [[ "$failures" -ne 0 ]]; then

@@ -384,8 +384,8 @@ All configuration can be overridden via flags:
 # Override RPC URL
 ./scripts/sh/deploy.sh --chain 999 --rpc https://custom-rpc.com --account deployer
 
-# Override Etherscan key
-./scripts/sh/deploy.sh prod --verify --etherscan-key YOUR_KEY --account deployer
+# Verify with ETHERSCAN_API_KEY
+ETHERSCAN_API_KEY=your_api_key ./scripts/sh/deploy.sh prod --verify --account deployer
 ```
 
 ### Priority Order
@@ -477,6 +477,7 @@ Release-profile bytecode is not the default-profile bytecode, so the addresses c
 | MultiSigSigner | `0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3` | same address | `0x1DdE1F548A0b0a676D325B2633eA3E5F5E7C52c8` |
 | Orchestrator | `0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8` or `0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC` | `0x2a87aD816CD97423E731E15206F0a84941B35B23` | `0xE6CfdB399efdc88FA11964072AB519c65c044130` |
 | Simulator | `0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65` | `0x7abfE2f168Cc82229F00D9Dd529E48b0f2515c72` | `0x58915cA306aF01724EC5d9AfE75a1Ce4C8dc4A08` |
+| Account | — | — | `0x27BF8f87F9a14F71D89153659294CaDf3EF9Eb85` |
 
 Account, SimpleFunder, SimpleSettler, and LayerZeroSettler append constructor arguments to that creation bytecode. The creation bytecode differs between profiles, so those CREATE2 addresses change for the same arguments. AccountProxy is not this salt-0 CREATE2 deployment.
 
@@ -570,21 +571,18 @@ On congested networks, specify higher gas settings:
 ```
 
 ### Verification fails
-Ensure `ETHERSCAN_API_KEY` is set and the chain is supported by Etherscan/Basescan:
+Ensure `ETHERSCAN_API_KEY` is set. Foundry 1.5 verifies through Etherscan's V2 multichain API (one key for every listed chain):
 ```bash
 export ETHERSCAN_API_KEY="your_api_key"
 ./scripts/sh/deploy.sh stage --owner 0x... --verify --account deployer
-
-# Or override via flag
-./scripts/sh/deploy.sh stage --owner 0x... --verify --etherscan-key YOUR_KEY --account deployer
 ```
 
 Supported chains for verification:
-- Base Sepolia (84532): Basescan
-- Base Mainnet (8453): Basescan
-- Optimism (10): Optimistic Etherscan
-- Arbitrum One (42161): Arbiscan
-- Polygon (137): Polygonscan
+- Base Sepolia (84532)
+- Base Mainnet (8453)
+- Optimism (10)
+- Arbitrum One (42161)
+- Polygon (137)
 
 ### "Anvil not running"
 For local deployment, start anvil in a separate terminal:

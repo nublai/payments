@@ -3,7 +3,7 @@ import { executeAccountAddress, type AccountAddressResult } from './account-addr
 import {
     getChainConfig,
     getUsdcTokenConfig,
-    normalizeChainName,
+    selectDefaultChain,
     type ChainName,
 } from './network-config'
 
@@ -80,9 +80,9 @@ function parseAmount(value?: string): string | undefined {
     return normalized
 }
 
-function resolveChain(value?: string): ChainName {
+function resolveChain(env: EnvName, value?: string): ChainName {
     try {
-        return normalizeChainName(value ?? 'base')
+        return selectDefaultChain(env, value)
     } catch (error) {
         throw new AddressError(
             'UNSUPPORTED_CHAIN',
@@ -142,7 +142,7 @@ export async function executeAddress(
     depsArg?: Partial<AddressDeps>,
 ): Promise<AddressResult> {
     const deps = { ...getDefaultDeps(), ...depsArg }
-    const chain = resolveChain(options.chain)
+    const chain = resolveChain(options.env, options.chain)
 
     if (
         options.decimals !== undefined &&

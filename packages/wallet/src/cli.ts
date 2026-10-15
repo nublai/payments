@@ -130,7 +130,7 @@ const profileSchema = z.string().optional().describe('Profile for default keysto
 
 const keystorePathSchema = z.string().optional().describe('Explicit keystore path')
 
-const chainSchema = z.string().optional().describe('Target chain (base, polygon, anvil)')
+const chainSchema = z.string().optional().describe('Target chain (base, polygon, anvil, base-sepolia)')
 
 const passwordStdinSchema = z.boolean().optional().describe('Read password from stdin')
 
@@ -645,7 +645,7 @@ account.command('history', {
         chain: z
             .string()
             .optional()
-            .describe('Chain filter as comma-separated names (base, polygon, anvil)'),
+            .describe('Chain filter as comma-separated names (base, polygon, anvil, base-sepolia)'),
         limit: z.coerce.number().int().optional().describe('Page size (default 20, max 100)'),
         offset: z.coerce.number().int().optional().describe('Page offset (default 0)'),
     }),

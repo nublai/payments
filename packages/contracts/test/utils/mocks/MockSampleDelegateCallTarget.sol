@@ -10,8 +10,8 @@ contract MockSampleDelegateCallTarget {
 
     uint256 public immutable version;
 
-    // Must match Account's upgrade-hook id. The TOWNS_ string is part of the hash.
-    bytes32 internal constant _UPGRADE_HOOK_ID = keccak256("TOWNS_ACCOUNT_UPGRADE_HOOK_ID");
+    // Must match Account's upgrade-hook id.
+    bytes32 internal constant _UPGRADE_HOOK_ID = keccak256("NUBL_ACCOUNT_UPGRADE_HOOK_ID");
 
     bytes32 internal constant _UPGRADE_HOOK_GUARD_TRANSIENT_SLOT =
         bytes32(uint256(keccak256("_UPGRADE_HOOK_GUARD_TRANSIENT_SLOT")) - 1);
