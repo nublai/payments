@@ -93,8 +93,7 @@ contract Account is IAccount, EIP712, GuardedExecutor {
 
     /// @dev Returns the storage pointer.
     function _getAccountStorage() internal pure returns (AccountStorage storage $) {
-        // Truncate to 9 bytes to reduce bytecode size. The TOWNS_ string is the slot seed; leave it.
-        uint256 s = uint72(bytes9(keccak256("TOWNS_ACCOUNT_STORAGE")));
+        uint256 s = _ACCOUNT_STORAGE_SLOT;
         assembly ("memory-safe") {
             $.slot := s
         }
@@ -201,10 +200,13 @@ contract Account is IAccount, EIP712, GuardedExecutor {
     /// ID. This constant is a pun for "chain ID 0".
     uint16 public constant MULTICHAIN_NONCE_PREFIX = 0xc1d0;
 
+    /// @dev Account storage namespace. Truncated to 9 bytes to reduce bytecode size.
+    uint256 internal constant _ACCOUNT_STORAGE_SLOT =
+        uint72(bytes9(keccak256("NUBL_ACCOUNT_STORAGE")));
+
     /// @dev A unique identifier to be passed into `upgradeHook(bytes32 previousVersion)`
     /// via the transient storage slot at `_UPGRADE_HOOK_GUARD_TRANSIENT_SLOT`.
-    /// The `TOWNS_` string is the hash seed; leave it.
-    bytes32 internal constant _UPGRADE_HOOK_ID = keccak256("TOWNS_ACCOUNT_UPGRADE_HOOK_ID");
+    bytes32 internal constant _UPGRADE_HOOK_ID = keccak256("NUBL_ACCOUNT_UPGRADE_HOOK_ID");
 
     /// @dev This transient slot must be set to `_UPGRADE_HOOK_ID` before `upgradeHook` can be
     /// processed.

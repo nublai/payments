@@ -112,6 +112,7 @@ Release creation bytecode differs from the default profile for every CREATE2 con
 | MultiSigSigner | `0xa3972FEebd6E1f973eD19cC586D79B3F61f892A3` | same address | `0x1DdE1F548A0b0a676D325B2633eA3E5F5E7C52c8` |
 | Orchestrator | `0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8` or `0x11050FEC41B66730E91c46Bfd25EBFF3B16F5bcC` | `0x2a87aD816CD97423E731E15206F0a84941B35B23` | `0xE6CfdB399efdc88FA11964072AB519c65c044130` |
 | Simulator | `0xDAD7c34d0c41698B227D3C5ee3d6d88A78c63a65` | `0x7abfE2f168Cc82229F00D9Dd529E48b0f2515c72` | `0x58915cA306aF01724EC5d9AfE75a1Ce4C8dc4A08` |
+| Account | — | — | `0x27BF8f87F9a14F71D89153659294CaDf3EF9Eb85` |
 
 Account, SimpleFunder, SimpleSettler, and LayerZeroSettler take constructor arguments. Their creation bytecode also differs between the two profiles, so the CREATE2 address for the same arguments changes. AccountProxy is deployed with `LibEIP7702`, not this salt-0 CREATE2.
 
