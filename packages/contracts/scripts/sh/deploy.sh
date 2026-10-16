@@ -57,8 +57,9 @@ DEFAULT_LOCAL_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae7
 # USAGE
 # =============================================================================
 usage() {
-    cat << EOF
-Usage: $0 [environment] [options]
+    local status="${1:-1}"
+    cat <<'EOF'
+Usage: ./scripts/sh/deploy.sh [environment] [options]
 
 Environments (shortcuts):
   local          Deploy to local Anvil (chains 31337,41337)
@@ -75,8 +76,7 @@ Options:
   --context <name>         Deployment context for output dir (default: derived from chain)
 
 Authentication (one required for non-local):
-  --account <name>         Use keystore account
-  --password <pass>        Password for keystore account
+  --account <name>         Use keystore account (password is prompted)
   --ledger <path>          Use Ledger with HD path
   --private-key <key>      Use private key directly
   --sender <addr>          Sender address (for simulations or with unlocked accounts)
@@ -118,31 +118,28 @@ Compiler:
 
 Examples:
   # Local development
-  $0 local
+  ./scripts/sh/deploy.sh local
 
-  # Stage (Base Sepolia) with keystore (interactive password prompt)
-  $0 stage --owner 0x... --account deployer
-
-  # Stage with keystore and password
-  $0 stage --owner 0x... --account deployer --password "mypassword"
+  # Stage (Base Sepolia) with keystore. The password is prompted.
+  ./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
   # Prod with Ledger and verification
-  $0 prod --ledger "m/44'/60'/0'/0/0" --verify
+  ./scripts/sh/deploy.sh prod --ledger "m/44'/60'/0'/0/0" --verify
 
   # Deploy to Optimism
-  $0 --chain 10 --contracts SimpleSettler --account deployer
+  ./scripts/sh/deploy.sh --chain 10 --contracts SimpleSettler --account deployer
 
   # Deploy to multiple chains
-  $0 --chain 10,42161 --contracts Orchestrator --account deployer
+  ./scripts/sh/deploy.sh --chain 10,42161 --contracts Orchestrator --account deployer
 
   # Custom configuration
-  $0 --chain 8453 --funder 0x123... --owner 0x456... --skip-relayer --account deployer
+  ./scripts/sh/deploy.sh --chain 8453 --funder 0x123... --owner 0x456... --skip-relayer --account deployer
 
   # Deploy specific contracts without relayer setup
-  $0 stage --owner 0x... --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
+  ./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
 
 EOF
-    exit 1
+    exit "$status"
 }
 
 # =============================================================================
@@ -180,7 +177,7 @@ case "${1:-}" in
         ENV_SHORTCUT=""
         ;;
     -h|--help|help)
-        usage
+        usage 0
         ;;
     *)
         echo -e "${RED}Unknown environment or option: $1${NC}"
@@ -279,7 +276,7 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
         --help|-h)
-            usage
+            usage 0
             ;;
         *)
             echo -e "${RED}Unknown option: ${1%%=*}${NC}"
@@ -556,7 +553,7 @@ deploy_to_chain() {
 # =============================================================================
 echo ""
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║           Agentic Payments Deployment Script                 ║${NC}"
+echo -e "${CYAN}║                   nubl Deployment Script                   ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

@@ -3,13 +3,13 @@ import { executeSessionStart, resolveDaemonEntrypoint } from '../src/lib/session
 import { runSessionDaemonEntry } from '../src/lib/session-daemon'
 import { typedMock } from './helpers/typed-mock'
 
-const originalSocket = process.env.TW_AGENT_SOCK
+const originalSocket = process.env.NUBL_AGENT_SOCK
 
 afterEach(() => {
     if (originalSocket) {
-        process.env.TW_AGENT_SOCK = originalSocket
+        process.env.NUBL_AGENT_SOCK = originalSocket
     } else {
-        delete process.env.TW_AGENT_SOCK
+        delete process.env.NUBL_AGENT_SOCK
     }
 })
 
@@ -47,12 +47,12 @@ test('resolveDaemonEntrypoint throws when no candidate exists', () => {
 })
 
 test('executeSessionStart with foreground calls runSessionDaemonEntry with keepStdio true', async () => {
-    const uniqueDir = `/tmp/tw-session-start-foreground-${Date.now()}`
-    process.env.TW_AGENT_SOCK = `${uniqueDir}/session.sock`
+    const uniqueDir = `/tmp/nubl-session-start-foreground-${Date.now()}`
+    process.env.NUBL_AGENT_SOCK = `${uniqueDir}/session.sock`
 
     const runEntryMock = mock(async (_keepStdio: boolean) => ({
         pid: process.pid,
-        socketPath: process.env.TW_AGENT_SOCK!,
+        socketPath: process.env.NUBL_AGENT_SOCK!,
         stop: async () => {},
         untilStopped: Promise.resolve(),
     }))
@@ -73,8 +73,8 @@ test('executeSessionStart with foreground calls runSessionDaemonEntry with keepS
 })
 
 test('runSessionDaemonEntry in foreground mode keeps stdio streams writable', async () => {
-    const uniqueDir = `/tmp/tw-session-start-smoke-${Date.now()}`
-    process.env.TW_AGENT_SOCK = `${uniqueDir}/session.sock`
+    const uniqueDir = `/tmp/nubl-session-start-smoke-${Date.now()}`
+    process.env.NUBL_AGENT_SOCK = `${uniqueDir}/session.sock`
 
     const originalStdoutDestroy = process.stdout.destroy
     const originalStderrDestroy = process.stderr.destroy

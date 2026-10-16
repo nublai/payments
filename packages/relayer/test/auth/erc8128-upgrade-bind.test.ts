@@ -1,5 +1,5 @@
 /**
- * `tw account create` / `tw account delegate` sign wallet_prepareUpgradeAccount
+ * `nubl account create` / `nubl account delegate` sign wallet_prepareUpgradeAccount
  * and wallet_upgradeAccount with ERC-8128 using the fresh account's own root
  * key, and send no bearer token. Outside local, that key is not on
  * ERC8128_ALLOWED_SIGNERS. The upgrade methods bind their account the same

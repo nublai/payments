@@ -29,7 +29,7 @@ export async function executeSessionLock(input: {
     if (response === null) {
         throw new SessionLockError(
             'DAEMON_UNAVAILABLE',
-            'Session daemon is not running. Run `tw daemon start` first.',
+            'Session daemon is not running. Run `nubl daemon start` first.',
         )
     }
 

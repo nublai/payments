@@ -31,19 +31,19 @@ afterAll(() => {
 const TEST_PRIVATE_KEY =
     '0x59c6995e998f97a5a0044966f0945388cf6f64f6b5f8a6d4f7e7a3fa8f8ff7f0' as const
 
-const originalSocket = process.env.TW_AGENT_SOCK
+const originalSocket = process.env.NUBL_AGENT_SOCK
 
 afterEach(async () => {
     if (originalSocket) {
-        process.env.TW_AGENT_SOCK = originalSocket
+        process.env.NUBL_AGENT_SOCK = originalSocket
     } else {
-        delete process.env.TW_AGENT_SOCK
+        delete process.env.NUBL_AGENT_SOCK
     }
 })
 
 test('daemon load/list/sign/expiry lifecycle works', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-test-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-test-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
@@ -182,8 +182,8 @@ function orchestratorIntent(user: Address, data: Hex): DaemonTypedData {
 }
 
 test('a phrase-confirmed swap session signs only a relay quote', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-swap-daemon-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-swap-daemon-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
     const account = privateKeyToAccount(TEST_PRIVATE_KEY)
@@ -247,8 +247,8 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
 })
 
 test('a phrase-confirmed session refuses a typed-data domain that does not match the session chain and orchestrator', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-domain-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-domain-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
     const account = privateKeyToAccount(TEST_PRIVATE_KEY)
@@ -328,7 +328,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         encodedBigintChain.domain.chainId = '$bigint:8453'
 
         const signedBigintChain = await sendSignOverSocket(
-            process.env.TW_AGENT_SOCK!,
+            process.env.NUBL_AGENT_SOCK!,
             'default',
             JSON.stringify(encodedBigintChain),
         )
@@ -367,7 +367,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         const permitSignature = await account.signTypedData(permit)
 
         const refusedPermit = await sendSignOverSocket(
-            process.env.TW_AGENT_SOCK!,
+            process.env.NUBL_AGENT_SOCK!,
             'default',
             JSON.stringify({
                 domain: permit.domain,
@@ -405,7 +405,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         encodedStringChain.domain.chainId = '8453'
 
         const refusedStringChain = await sendSignOverSocket(
-            process.env.TW_AGENT_SOCK!,
+            process.env.NUBL_AGENT_SOCK!,
             'default',
             JSON.stringify(encodedStringChain),
         )
@@ -436,7 +436,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
         })
 
         const refusedCustomDomain = await sendSignOverSocket(
-            process.env.TW_AGENT_SOCK!,
+            process.env.NUBL_AGENT_SOCK!,
             'default',
             JSON.stringify(encodedCustomDomain),
         )
@@ -454,8 +454,8 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
 })
 
 test('a phrase-confirmed session refuses a Call-shaped payload with primaryType Call', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-primary-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-primary-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
     const account = privateKeyToAccount(TEST_PRIVATE_KEY)
@@ -482,7 +482,7 @@ test('a phrase-confirmed session refuses a Call-shaped payload with primaryType 
         encoded.message = { to: ROUTER, value: '$bigint:0', data: '0x' }
 
         const refused = await sendSignOverSocket(
-            process.env.TW_AGENT_SOCK!,
+            process.env.NUBL_AGENT_SOCK!,
             'default',
             JSON.stringify(encoded),
         )
@@ -500,11 +500,11 @@ test('a phrase-confirmed session refuses a Call-shaped payload with primaryType 
 })
 
 test('daemon drops oversized payload without newline', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-test-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-test-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
 
-    const socket = net.createConnection(process.env.TW_AGENT_SOCK!)
+    const socket = net.createConnection(process.env.NUBL_AGENT_SOCK!)
 
     const closed = new Promise<void>((resolve) => {
         socket.once('close', () => resolve())

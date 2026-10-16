@@ -144,7 +144,7 @@ export async function resolveAccountUpdatePasswords(
     if (!currentPassword) {
         throw new AccountUpdatePasswordError(
             'PASSWORD_REQUIRED',
-            'Current and new passwords are required. Use stdin flags, TW_PASSWORD for current password, or run in interactive TTY.',
+            'Current and new passwords are required. Use stdin flags, NUBL_PASSWORD for current password, or run in interactive TTY.',
         )
     }
 
@@ -179,7 +179,7 @@ export async function resolveAccountUpdatePasswords(
     if (!newPassword) {
         throw new AccountUpdatePasswordError(
             'PASSWORD_REQUIRED',
-            'Current and new passwords are required. Use stdin flags, TW_PASSWORD for current password, or run in interactive TTY.',
+            'Current and new passwords are required. Use stdin flags, NUBL_PASSWORD for current password, or run in interactive TTY.',
         )
     }
 

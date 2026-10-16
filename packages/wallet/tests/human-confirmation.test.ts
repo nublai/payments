@@ -57,7 +57,7 @@ test('requireHumanConfirmation rejects MCP and non-interactive callers and accep
 
     expect(humanConfirmationMessage('Sending USDC', 'SEND USDC')).toContain('SEND USDC')
     expect(quoteConfirmationMessage('swap')).toContain('cannot pass yes')
-    expect(quoteConfirmationMessage('bridge')).toContain('tw bridge')
+    expect(quoteConfirmationMessage('bridge')).toContain('nubl bridge')
 })
 
 test('permissionNeedsFullAccessConfirmation treats wildcards, the account, admin selectors, and spend above 10 USDC as full access', () => {

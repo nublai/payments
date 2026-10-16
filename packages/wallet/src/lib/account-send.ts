@@ -356,7 +356,7 @@ export async function resolveAccountSendPassword(
 
     throw new AccountSendError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
     )
 }
 
@@ -392,7 +392,7 @@ export async function executeAccountSend(
 
         throw new AccountSendError(
             'PASSWORD_REQUIRED',
-            'Password required. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
+            'Password required. Use --password-stdin, NUBL_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
         )
     }
 
@@ -400,7 +400,7 @@ export async function executeAccountSend(
         if (!options.amount || !options.recipient) {
             throw new AccountSendError(
                 'MISSING_ARGUMENT',
-                'Usage requires <amount> and <recipient>. Run tw send --help.',
+                'Usage requires <amount> and <recipient>. Run nubl send --help.',
             )
         }
 
@@ -736,11 +736,11 @@ function debugSignerFallback(
     command: 'account_send',
     details: { reason: string; sessionName: string },
 ): void {
-    if (process.env.TW_DAEMON_DEBUG !== '1') {
+    if (process.env.NUBL_DAEMON_DEBUG !== '1') {
         return
     }
 
-    console.error(`[tw ${command}] daemon signer fallback ${JSON.stringify(details)}`)
+    console.error(`[nubl ${command}] daemon signer fallback ${JSON.stringify(details)}`)
 }
 
 function toAccountSendError(error: unknown, context: { keystorePath: string }): AccountSendError {

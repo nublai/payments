@@ -3,7 +3,7 @@ import { resolveEscrowContracts } from '../src/lib/escrow-common'
 import { resolveOrchestratorAddress } from '../src/lib/orchestrator-address'
 
 // Same keys the deleted envs/prod/.env exported. The values stand in for the
-// old Towns addresses that file held.
+// old addresses that file held.
 const staleEnv = {
     ORCHESTRATOR_8453: '0x1000000000000000000000000000000000000005',
     ACCOUNT_8453: '0x1000000000000000000000000000000000000001',

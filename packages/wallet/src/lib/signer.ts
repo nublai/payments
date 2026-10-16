@@ -15,7 +15,7 @@ import type { ExecuteSignedCallsDeps } from './execute-calls'
 const DAEMON_PLACEHOLDER_PRIVATE_KEY =
     '0x0000000000000000000000000000000000000000000000000000000000000001' as const
 
-const SESSION_EXPIRED_MESSAGE = 'Session key expired. Run `tw daemon unlock <name>` to reload.'
+const SESSION_EXPIRED_MESSAGE = 'Session key expired. Run `nubl daemon unlock <name>` to reload.'
 
 function unwrapDaemonSignature(response: SessionDaemonRpcResponse<Hex>): Hex {
     if (response === null || !response.ok) {

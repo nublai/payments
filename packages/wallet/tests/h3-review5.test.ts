@@ -38,11 +38,11 @@ const ESCROW = '0x05f9597eed844410b7c0746A1C584188d0644730'
 
 const SPENDER = '0x9999999999999999999999999999999999999999'
 
-const originalSocket = process.env.TW_AGENT_SOCK
+const originalSocket = process.env.NUBL_AGENT_SOCK
 
 afterEach(() => {
-    if (originalSocket) process.env.TW_AGENT_SOCK = originalSocket
-    else delete process.env.TW_AGENT_SOCK
+    if (originalSocket) process.env.NUBL_AGENT_SOCK = originalSocket
+    else delete process.env.NUBL_AGENT_SOCK
 })
 
 function transfer(amount: bigint): Hex {
@@ -112,8 +112,8 @@ function installAnvilDeployments(): () => void {
 
 async function loadPhraseLess() {
     const restore = installAnvilDeployments()
-    const dir = await mkdtemp(join(tmpdir(), 'tw-h3-daemon-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-h3-daemon-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
     const account = privateKeyToAccount(TEST_PRIVATE_KEY)
@@ -489,10 +489,10 @@ test('a key that is narrow on base and wildcard on polygon requires the phrase',
         spends: [{ token: polygonUsdc, period: 6, limit: 2n ** 256n - 1n }],
     })
 
-    process.env.TW_TEST_RPC_base = base.url
-    process.env.TW_TEST_RPC_polygon = polygon.url
+    process.env.NUBL_TEST_RPC_base = base.url
+    process.env.NUBL_TEST_RPC_polygon = polygon.url
 
-    // 34c5cbc reads chainConfig.rpcUrl and ignores TW_TEST_RPC_*. Redirect those hosts
+    // 34c5cbc reads chainConfig.rpcUrl and ignores NUBL_TEST_RPC_*. Redirect those hosts
     // so the old gate still sees the stubs (narrow Base, wildcard Polygon).
     const restoreFetch = installRpcRedirect({
         'mainnet.base.org': base.url,
@@ -509,8 +509,8 @@ test('a key that is narrow on base and wildcard on polygon requires the phrase',
         expect(phrase).toBe(true)
     } finally {
         restoreFetch()
-        delete process.env.TW_TEST_RPC_base
-        delete process.env.TW_TEST_RPC_polygon
+        delete process.env.NUBL_TEST_RPC_base
+        delete process.env.NUBL_TEST_RPC_polygon
 
         if (previousNodeEnv === undefined) delete process.env.NODE_ENV
         else process.env.NODE_ENV = previousNodeEnv
@@ -536,7 +536,7 @@ test('executeSessionUnlock uses sessionOnChainRequiresPhrase for an ANY_KEYHASH 
         ],
     })
 
-    process.env.TW_TEST_RPC_anvil = chain.url
+    process.env.NUBL_TEST_RPC_anvil = chain.url
     const decrypt = mock(async () => ({ sessionPrivateKey: TEST_PRIVATE_KEY }))
 
     const loadKey = mock(async () => ({
@@ -604,7 +604,7 @@ test('executeSessionUnlock uses sessionOnChainRequiresPhrase for an ANY_KEYHASH 
         expect(decrypt).not.toHaveBeenCalled()
         expect(loadKey).not.toHaveBeenCalled()
     } finally {
-        delete process.env.TW_TEST_RPC_anvil
+        delete process.env.NUBL_TEST_RPC_anvil
 
         if (previousNodeEnv === undefined) delete process.env.NODE_ENV
         else process.env.NODE_ENV = previousNodeEnv

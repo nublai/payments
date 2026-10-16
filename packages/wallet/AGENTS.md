@@ -6,7 +6,7 @@ It augments (does not replace) root-level guidance in `AGENTS.md` (repository ro
 
 ## Overview
 
-`wallet-cli` (`tw`) is the command-line interface for relayer account workflows:
+`wallet-cli` (`nubl`) is the command-line interface for relayer account workflows:
 
 - create and manage local keystore material
 - inspect account metadata/address/balance
@@ -306,27 +306,27 @@ const myGroup = Cli.create('my-group', {
 myGroup.command('sub-command', { ... })
 
 // Mount on root
-tw.command(myGroup)
+nubl.command(myGroup)
 ```
 
 ## Current Command Surface
 
 - Root commands:
-  - `tw address` — funding address with optional QR/link
-  - `tw bridge`
-  - `tw daemon ...`
-  - `tw account ...`
-  - `tw login`
-  - `tw logout`
-  - `tw permissions ...`
-  - `tw send`
-  - `tw session ...`
-  - `tw swap`
-  - `tw escrow ...`
-  - `tw --version`
-  - `tw --help`
-  - `tw --llms` (incur auto-generated manifest)
-  - `tw --mcp` (incur MCP server mode)
+  - `nubl address` — funding address with optional QR/link
+  - `nubl bridge`
+  - `nubl daemon ...`
+  - `nubl account ...`
+  - `nubl login`
+  - `nubl logout`
+  - `nubl permissions ...`
+  - `nubl send`
+  - `nubl session ...`
+  - `nubl swap`
+  - `nubl escrow ...`
+  - `nubl --version`
+  - `nubl --help`
+  - `nubl --llms` (incur auto-generated manifest)
+  - `nubl --mcp` (incur MCP server mode)
 - Account subcommands:
   - `create`, `delegate`, `balance`, `nonce`, `history`, `status`, `export`, `change-password`, `passkey`
 - Session subcommands:
@@ -361,25 +361,25 @@ tw.command(myGroup)
 Commands that need keystore decryption accept passwords through three channels (in priority order):
 
 1. `--password-stdin` — read from stdin pipe
-2. `TW_PASSWORD` env var — declared via incur's `env` schema
+2. `NUBL_PASSWORD` env var — declared via incur's `env` schema
 3. Interactive prompt via `@clack/prompts` — writes to stderr (incur controls stdout)
 
 The `passwordDeps()` helper in `cli.ts` wires all three. The `password-readline.ts` module provides the interactive prompts (password input with masking, new-password with confirmation).
 
-`TW_PASSWORD` is not a confirmation. These operations require a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). `tw --mcp` and any non-TTY `tw` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase; that is a human at this terminal, not a defense against a local shell. `--mcp` still refuses when the server itself is attached to a PTY.
+`NUBL_PASSWORD` is not a confirmation. These operations require a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). `nubl --mcp` and any non-TTY `nubl` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase; that is a human at this terminal, not a defense against a local shell. `--mcp` still refuses when the server itself is attached to a PTY.
 
-- `account export --show-private` and `session export` — type `EXPORT PRIVATE KEYS`. `TW_EXPORT_PASSWORD` does not skip it
+- `account export --show-private` and `session export` — type `EXPORT PRIVATE KEYS`. `NUBL_EXPORT_PASSWORD` does not skip it
 - `send`, `escrow create`, and `escrow refund` — type `SEND USDC`. Create and refund move USDC
 - `swap` and `bridge` — confirm the quote in the terminal. `--yes` / `yes: true` is ignored outside that terminal. On a TTY, `--yes` does not skip the call-target review: every target, selector, approve spender and amount, and native value is shown, and the human still confirms. `--yes` only skips refreshing a quote that went stale during that confirmation. Calls must match the relay.link allowlist in `src/lib/relay-allowlist.ts` (Base 8453 and Polygon 137). Chain 31337 is fail-closed. No flag or env var skips the allowlist. A local pseudo-terminal can still answer the confirm prompt
-- `account create` and `account delegate` — type `CREATE FULL ACCESS SESSION`. The session they install is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`) and `refund` (`0x6023fda5`), SimpleSettler `write` (`0x84523a30`), and Escrow `settle` (`0xe7f921a2`), plus 10 USDC per day. `write` and `settle` are included because `tw escrow settle` submits both from this session. A chain with no known USDC or Escrow address fails closed. The phrase stays; MCP cannot type it
+- `account create` and `account delegate` — type `CREATE FULL ACCESS SESSION`. The session they install is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`) and `refund` (`0x6023fda5`), SimpleSettler `write` (`0x84523a30`), and Escrow `settle` (`0xe7f921a2`), plus 10 USDC per day. `write` and `settle` are included because `nubl escrow settle` submits both from this session. A chain with no known USDC or Escrow address fails closed. The phrase stays; MCP cannot type it
 - `session create` / `session rotate` / `permissions grant` when the result is full access — type `CREATE FULL ACCESS SESSION` or `ROTATE FULL ACCESS SESSION` for rotate. Full access is the `--full-access` flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL`, `increaseAllowance` (`0x39509351`), or an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`), a spend period shorter than a day (`minute`, `hour`), a token other than that chain's USDC, a spend limit above the default 10 USDC, or a combined USDC spend across the account's active sessions on that chain that would exceed 10 USDC per day. A forever or longer-period cap counts at its full limit. If those keys cannot be read, the phrase is required. A day-or-longer USDC limit of exactly 10 stays allowed, including when the amount is omitted on `session create`, until the combined total would pass 10
 - `daemon unlock` when the session holds a wildcard, an unlimited or max-uint spend, anything else above that gate, or permissions that cannot be read — type `UNLOCK FULL ACCESS SESSION` before the password. A narrow session unlocks with the password alone. MCP cannot type the phrase
 - `session rotate --narrow` — type `ROTATE FULL ACCESS SESSION`. Replaces the active session with the narrow default and revokes the old key. `session revoke` of a full-access or unreadable session — type `REVOKE FULL ACCESS SESSION` before the password
-- `swap` and `bridge` need a dedicated session from `tw session create <name> --swap --chain <chain>`, then `--session <name>`. The payment session stays active. `--swap` requires `CREATE SWAP SESSION` at an interactive terminal. `CREATE FULL ACCESS SESSION` stays the phrase for a wildcard, an account admin, and a non-USDC spend. It does not install 10 USDC/day. A wildcard is refused. A swap key can move an NFT or a vault share if the account has approved the Relay router, the approval proxy, or the depository. Revoke those approvals with the root key. The wallet does not scan for them. Quote install sets the key's existing expiry to two hours and restores the previous expiry on cleanup only when the on-chain expiry, permissions, and spend limits still match what install wrote. A difference leaves the key unchanged, clears the pending record, and reports what differs. A snapshot mismatch leaves the approve grant until the on-chain expiry. That window matches a dead process and is not a longer one only if no root authorize sets a later expiry, and a later expiry includes 0, which means the key never expires. Spent counters, period start, and signature-checker sets are not compared. The swap daemon and the quote reviewer refuse a payment whose token or amount is outside the quote fee and the 5 USDC ceiling, or whose recipient is not the expected one. That does not change contract bytecode or storage, and it does not need a redeploy
+- `swap` and `bridge` need a dedicated session from `nubl session create <name> --swap --chain <chain>`, then `--session <name>`. The payment session stays active. `--swap` requires `CREATE SWAP SESSION` at an interactive terminal. `CREATE FULL ACCESS SESSION` stays the phrase for a wildcard, an account admin, and a non-USDC spend. It does not install 10 USDC/day. A wildcard is refused. A swap key can move an NFT or a vault share if the account has approved the Relay router, the approval proxy, or the depository. Revoke those approvals with the root key. The wallet does not scan for them. Quote install sets the key's existing expiry to two hours and restores the previous expiry on cleanup only when the on-chain expiry, permissions, and spend limits still match what install wrote. A difference leaves the key unchanged, clears the pending record, and reports what differs. A snapshot mismatch leaves the approve grant until the on-chain expiry. That window matches a dead process and is not a longer one only if no root authorize sets a later expiry, and a later expiry includes 0, which means the key never expires. Spent counters, period start, and signature-checker sets are not compared. The swap daemon and the quote reviewer refuse a payment whose token or amount is outside the quote fee and the 5 USDC ceiling, or whose recipient is not the expected one. That does not change contract bytecode or storage, and it does not need a redeploy
 - `account passkey` — type `AUTHORIZE PASSKEY`. The `privateKey` argument is not accepted over MCP
 - `escrow settle` when signing with an oracle private key — type `SIGN ESCROW SETTLEMENT`. The `oraclePrivateKey` argument is not accepted over MCP
 
-A session created without those elevated permissions keeps USDC `transfer` and a 10 USDC daily spend, and does not need the full-access phrase. Existing accounts keep a legacy wildcard plus max-uint session until `tw session rotate --narrow` or `tw session revoke`. `account status` warns when that wildcard is present: the key holds full access, and the daemon can spend it once unlocked. The daemon socket does not return raw session keys (`getSessionSecrets` is refused). `sign` and `signMessage` stay on the socket. Metadata export and escrow status do not spend. Local `e2e:local-payment` and `e2e:local-escrow` type `CREATE FULL ACCESS SESSION` for `account create`, `SEND USDC` for send and escrow create, and `SIGN ESCROW SETTLEMENT` for settle, through `scripts/tw-tty-confirm.py`, because those scripts are the operator, not an MCP client. `e2e:local-payment` exports the local deployment addresses so account create can resolve Escrow on chain 31337.
+A session created without those elevated permissions keeps USDC `transfer` and a 10 USDC daily spend, and does not need the full-access phrase. Existing accounts keep a legacy wildcard plus max-uint session until `nubl session rotate --narrow` or `nubl session revoke`. `account status` warns when that wildcard is present: the key holds full access, and the daemon can spend it once unlocked. The daemon socket does not return raw session keys (`getSessionSecrets` is refused). `sign` and `signMessage` stay on the socket. Metadata export and escrow status do not spend. Local `e2e:local-payment` and `e2e:local-escrow` type `CREATE FULL ACCESS SESSION` for `account create`, `SEND USDC` for send and escrow create, and `SIGN ESCROW SETTLEMENT` for settle, through `scripts/nubl-tty-confirm.py`, because those scripts are the operator, not an MCP client. `e2e:local-payment` exports the local deployment addresses so account create can resolve Escrow on chain 31337.
 
 ## Critical Gotchas
 
@@ -419,7 +419,7 @@ The default session for send and escrow is narrow:
 - SimpleSettler `write` (`0x84523a30`)
 - 10 USDC per day
 
-Swap and bridge need `tw session create <name> --swap --chain <chain>` and `--session <name>`, which requires `CREATE SWAP SESSION`. The resting `canExecute` set is the Relay router `multicall`, approval proxy `transferAndMulticall`, and depository `depositNative` / `depositErc20`. Input-token `approve` is granted for one quote and then revoked. `transfer` is granted only when that quote includes it. The unlocked swap daemon signs only a relay quote. A swap key can move an NFT or a vault share if the account has approved the router, the approval proxy, or the depository; revoke those with the root key. The wallet does not scan for them. `0xe0e0e0e0` is empty calldata selector, not wildcard selector. A legacy wildcard session is full access; `account status` warns, and `tw session rotate --narrow` replaces it.
+Swap and bridge need `nubl session create <name> --swap --chain <chain>` and `--session <name>`, which requires `CREATE SWAP SESSION`. The resting `canExecute` set is the Relay router `multicall`, approval proxy `transferAndMulticall`, and depository `depositNative` / `depositErc20`. Input-token `approve` is granted for one quote and then revoked. `transfer` is granted only when that quote includes it. The unlocked swap daemon signs only a relay quote. A swap key can move an NFT or a vault share if the account has approved the router, the approval proxy, or the depository; revoke those with the root key. The wallet does not scan for them. `0xe0e0e0e0` is empty calldata selector, not wildcard selector. A legacy wildcard session is full access; `account status` warns, and `nubl session rotate --narrow` replaces it.
 
 ### 5) Local chain restarts
 
