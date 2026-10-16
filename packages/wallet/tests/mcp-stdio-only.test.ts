@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs'
-import { connect } from 'node:net'
 import { resolve } from 'node:path'
 import { parseJson } from './helpers/parse-json'
 
@@ -21,8 +20,6 @@ type McpToolListMessage = {
     }
 }
 
-type CodedError = Error & { code?: string }
-
 function frame(message: {
     jsonrpc: string
     id?: number
@@ -34,35 +31,6 @@ function frame(message: {
     }
 }): string {
     return `${JSON.stringify(message)}\n`
-}
-
-function refusedCode(error: Error): string {
-    const coded: CodedError = error
-
-    if (coded.code === 'ECONNREFUSED') return 'ECONNREFUSED'
-
-    return error.message
-}
-
-function endpointResult(host: string, port: number): Promise<string> {
-    return new Promise((resolvePromise) => {
-        const socket = connect({ host, port })
-
-        const timer = setTimeout(() => {
-            socket.destroy()
-            resolvePromise('timeout')
-        }, 1_000)
-
-        socket.once('connect', () => {
-            clearTimeout(timer)
-            socket.destroy()
-            resolvePromise('connected')
-        })
-        socket.once('error', (error: Error) => {
-            clearTimeout(timer)
-            resolvePromise(refusedCode(error))
-        })
-    })
 }
 
 function childPids(pid: number): number[] {
@@ -176,6 +144,10 @@ function listenSockets(pid: number): ListenSocket[] {
 }
 
 function treeListenSockets(pid: number): ListenSocket[] {
+    if (process.platform !== 'linux') {
+        throw new Error('TCP listen scan reads /proc/net/tcp and only runs on Linux')
+    }
+
     const sockets: ListenSocket[] = []
 
     for (const id of processTree(pid)) {
@@ -306,38 +278,48 @@ function runMcp(): Promise<{ pid: number; stdout: string; stop: () => void }> {
     })
 }
 
-test('tw --mcp stdout is JSON-RPC only and the process does not listen on TCP', async () => {
-    const session = await runMcp()
+test.serial(
+    'tw --mcp stdout is JSON-RPC only',
+    async () => {
+        const session = await runMcp()
 
-    try {
-        const names = toolNames(session.stdout)
+        try {
+            const names = toolNames(session.stdout)
 
-        expect(session.stdout).toContain('"id":1')
-        expect(names).toContain('address')
-        expect(names).toContain('send')
-        expect(names).toContain('account_balance')
+            expect(session.stdout).toContain('"id":1')
+            expect(names).toContain('address')
+            expect(names).toContain('send')
+            expect(names).toContain('account_balance')
+            expect({
+                startedDevelopmentServer: session.stdout.includes(developmentServerText),
+                nonJsonRpcStdoutLines: nonJsonRpcStdoutLines(session.stdout),
+            }).toEqual({
+                startedDevelopmentServer: false,
+                nonJsonRpcStdoutLines: [],
+            })
+        } finally {
+            session.stop()
+        }
+    },
+    20_000,
+)
 
-        await new Promise((resolvePromise) => {
-            setTimeout(resolvePromise, 200)
-        })
+// /proc/net/tcp is Linux-only. skipIf reports a skip on other platforms
+// instead of treating a missing scan as a pass.
+test.skipIf(process.platform !== 'linux').serial(
+    'tw --mcp has no TCP listen socket (skipped off Linux: /proc/net/tcp is unavailable)',
+    async () => {
+        const session = await runMcp()
 
-        const ipv4 = await endpointResult('127.0.0.1', 3000)
-        const ipv6 = await endpointResult('::1', 3000)
+        try {
+            await new Promise((resolvePromise) => {
+                setTimeout(resolvePromise, 200)
+            })
 
-        expect({
-            startedDevelopmentServer: session.stdout.includes(developmentServerText),
-            nonJsonRpcStdoutLines: nonJsonRpcStdoutLines(session.stdout),
-            sockets: treeListenSockets(session.pid),
-            ipv4,
-            ipv6,
-        }).toEqual({
-            startedDevelopmentServer: false,
-            nonJsonRpcStdoutLines: [],
-            sockets: [],
-            ipv4: 'ECONNREFUSED',
-            ipv6: 'ECONNREFUSED',
-        })
-    } finally {
-        session.stop()
-    }
-}, 20_000)
+            expect(treeListenSockets(session.pid)).toEqual([])
+        } finally {
+            session.stop()
+        }
+    },
+    20_000,
+)

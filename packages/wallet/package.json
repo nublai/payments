@@ -13,7 +13,6 @@
     "publishConfig": {
         "access": "public"
     },
-    "module": "src/cli.ts",
     "scripts": {
         "clear": "rimraf dist",
         "test": "bun run --cwd ../contracts build:contracts && bun run --cwd ../relayer-client build && FORCE_COLOR=0 NODE_ENV=test RELAYER_URL_PROD=http://127.0.0.1:8787 RELAYER_URL_STAGE=http://127.0.0.1:8787 bun test",
