@@ -1,6 +1,6 @@
 # Contributing
 
-This repo is the Agentic Payments stack: `packages/contracts`, `packages/relayer`, `packages/relayer-client`, `packages/wallet` (`tw`), and `packages/proto`.
+This repo is the Agentic Payments stack: `packages/contracts`, `packages/relayer`, `packages/relayer-client`, `packages/wallet` (`nubl`), and `packages/proto`.
 
 ## Setup
 
@@ -30,11 +30,11 @@ bun run --cwd packages/relayer test:run
 bun run --cwd packages/contracts test
 # forge test also works if your shell is already in packages/contracts
 
-# local payment (Anvil, deploy, wrangler, tw send)
+# local payment (Anvil, deploy, wrangler, nubl send)
 bun run e2e:local-payment
 ```
 
-`e2e:local-payment` needs ports 8545, 8546, and 8787 free. It starts Anvil and the wrangler relayer and stops the processes it started. Swap and bridge have no local end-to-end script: `tw swap` and `tw bridge` call relay.link (`https://api.testnets.relay.link` on dev, `https://api.relay.link` otherwise). Login has no local end-to-end script either: `tw login` needs `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD`.
+`e2e:local-payment` needs ports 8545, 8546, and 8787 free. It starts Anvil and the wrangler relayer and stops the processes it started. Swap and bridge have no local end-to-end script: `nubl swap` and `nubl bridge` call relay.link (`https://api.testnets.relay.link` on dev, `https://api.relay.link` otherwise). Login has no local end-to-end script either: `nubl login` needs `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD`.
 
 Contract deploys use `packages/contracts/scripts/sh/deploy.sh`. See `packages/contracts/README.md`. Do not look for a Makefile.
 

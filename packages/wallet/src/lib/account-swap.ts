@@ -995,7 +995,7 @@ async function resolveSessionContext(
         }
 
         console.error(
-            `[tw debug] Root keystore missing at ${keystorePath}; falling back to session profile.`,
+            `[nubl debug] Root keystore missing at ${keystorePath}; falling back to session profile.`,
         )
         const sessionProfilePath = join(dirname(keystorePath), 'session.json')
         const loadedSessionKeystore = await deps.readSessionKeystoreFile(sessionProfilePath)
@@ -1691,7 +1691,7 @@ function debugSignerFallback(
         return
     }
 
-    console.error(`[tw ${command}] daemon signer fallback ${JSON.stringify(details)}`)
+    console.error(`[nubl ${command}] daemon signer fallback ${JSON.stringify(details)}`)
 }
 
 function toAccountSwapError(error: unknown, context: { keystorePath: string }): AccountSwapError {

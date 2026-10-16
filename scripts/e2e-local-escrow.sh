@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One local USDC escrow: same Anvil, deploy:local, and wrangler relayer as
-# e2e-local-payment.sh, then the real `tw` CLI (`bun ./src/cli.ts`).
+# e2e-local-payment.sh, then the real `nubl` CLI (`bun ./src/cli.ts`).
 #
 # Creates an escrow, checks on-chain status, and settles it with the Anvil
 # deployer key. SimpleSettler.write accepts only that owner's signature
@@ -167,7 +167,7 @@ echo "Creating and delegating account..."
 # account create installs the narrow default session and still requires the phrase.
 CREATE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
+  run_out python3 "$ROOT/scripts/nubl-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
     bun ./src/cli.ts account create \
     --env dev \
     --keystore-path "$KEYSTORE" \
@@ -192,7 +192,7 @@ echo "Creating 1 USDC escrow..."
 # escrow create locks USDC and requires SEND USDC on a TTY.
 ESCROW_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SEND USDC" \
+  run_out python3 "$ROOT/scripts/nubl-tty-confirm.py" "SEND USDC" \
     bun ./src/cli.ts escrow create 1 "$SELLER" \
     --oracle "$ORACLE" \
     --deadline 1h \
@@ -249,7 +249,7 @@ echo "Settling escrow..."
 # This script is the operator: it allocates a terminal and types the phrase.
 SETTLE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SIGN ESCROW SETTLEMENT" \
+  run_out python3 "$ROOT/scripts/nubl-tty-confirm.py" "SIGN ESCROW SETTLEMENT" \
     bun ./src/cli.ts escrow settle "$ESCROW_ID" \
     --settlement-id "$ORDER_ID" \
     --oracle "$ORACLE" \

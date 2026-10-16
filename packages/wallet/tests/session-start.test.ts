@@ -47,7 +47,7 @@ test('resolveDaemonEntrypoint throws when no candidate exists', () => {
 })
 
 test('executeSessionStart with foreground calls runSessionDaemonEntry with keepStdio true', async () => {
-    const uniqueDir = `/tmp/tw-session-start-foreground-${Date.now()}`
+    const uniqueDir = `/tmp/nubl-session-start-foreground-${Date.now()}`
     process.env.TW_AGENT_SOCK = `${uniqueDir}/session.sock`
 
     const runEntryMock = mock(async (_keepStdio: boolean) => ({
@@ -73,7 +73,7 @@ test('executeSessionStart with foreground calls runSessionDaemonEntry with keepS
 })
 
 test('runSessionDaemonEntry in foreground mode keeps stdio streams writable', async () => {
-    const uniqueDir = `/tmp/tw-session-start-smoke-${Date.now()}`
+    const uniqueDir = `/tmp/nubl-session-start-smoke-${Date.now()}`
     process.env.TW_AGENT_SOCK = `${uniqueDir}/session.sock`
 
     const originalStdoutDestroy = process.stdout.destroy

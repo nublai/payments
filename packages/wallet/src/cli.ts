@@ -335,7 +335,7 @@ async function refuseUnboundedSessionForQuote(
     if (wildcard) {
         throw new AccountSwapError(
             'QUOTE_FAILED',
-            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Create a dedicated swap session with \`tw session create <name> --swap\` and pass it with --session <name>.`,
+            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Create a dedicated swap session with \`nubl session create <name> --swap\` and pass it with --session <name>.`,
         )
     }
 }
@@ -545,7 +545,7 @@ function resolveSpendLimitInput(input: {
 
 // ============================ ROOT CLI ====================================
 
-const tw = Cli.create('tw', {
+const nubl = Cli.create('nubl', {
     description: 'Wallet CLI — manage smart accounts, session keys, and permissions.',
     version: readVersionSync(),
     sync: {
@@ -882,7 +882,7 @@ account.command('delegate', {
     },
 })
 
-tw.command('send', {
+nubl.command('send', {
     description:
         'Send USDC with the session key. An interactive terminal must type "SEND USDC". MCP and non-interactive callers cannot confirm.',
     args: z.object({
@@ -961,7 +961,7 @@ tw.command('send', {
     },
 })
 
-tw.command('swap', {
+nubl.command('swap', {
     description: 'Swap tokens on the same chain via relay.link',
     options: z.object({
         from: z.string().describe('Source token (ETH, USDC)'),
@@ -1071,7 +1071,7 @@ tw.command('swap', {
     },
 })
 
-tw.command('bridge', {
+nubl.command('bridge', {
     description: 'Bridge tokens cross-chain via relay.link',
     options: z.object({
         token: z.string().describe('Token to bridge (ETH, USDC)'),
@@ -2728,7 +2728,7 @@ escrow.command('settle', {
         settlementId: z
             .string()
             .describe(
-                'Settlement ID (bytes32 order ID used at creation). Obtain from create flow or tw escrow status.',
+                'Settlement ID (bytes32 order ID used at creation). Obtain from create flow or nubl escrow status.',
             ),
         oracle: z.string().describe('Oracle address that signs the settlement'),
         oraclePrivateKey: z
@@ -2920,7 +2920,7 @@ escrow.command('refund', {
 })
 
 // Top-level address command
-tw.command('address', {
+nubl.command('address', {
     description: 'Show funding address with optional QR/link output',
     options: z.object({
         env: envSchema,
@@ -2974,7 +2974,7 @@ tw.command('address', {
     },
 })
 
-tw.command('login', {
+nubl.command('login', {
     description: 'Authenticate via browser and install a session-only login profile',
     options: z.object({
         env: envSchema,
@@ -3061,7 +3061,7 @@ tw.command('login', {
     },
 })
 
-tw.command('logout', {
+nubl.command('logout', {
     description: 'Remove local login profile session key (does not revoke on-chain authorization)',
     options: z.object({
         env: envSchema,
@@ -3090,15 +3090,15 @@ tw.command('logout', {
 })
 
 // Mount command groups
-tw.command(account)
+nubl.command(account)
 
-tw.command(session)
+nubl.command(session)
 
-tw.command(daemon)
+nubl.command(daemon)
 
-tw.command(permissions)
+nubl.command(permissions)
 
-tw.command(escrow)
+nubl.command(escrow)
 
 async function main(): Promise<void> {
     let exitCode = 0
@@ -3106,7 +3106,7 @@ async function main(): Promise<void> {
     // tear that server down before a client can list or call tools.
     const mcp = process.argv.includes('--mcp')
 
-    await tw.serve(process.argv.slice(2), {
+    await nubl.serve(process.argv.slice(2), {
         exit: (code) => {
             exitCode = code
             updateCliProcessExitCode(code)
@@ -3119,4 +3119,4 @@ async function main(): Promise<void> {
 
 await main()
 
-export default tw
+export default nubl

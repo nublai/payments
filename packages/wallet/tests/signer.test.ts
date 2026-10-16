@@ -124,7 +124,7 @@ test('resolveSessionSigner returns direct signer when daemon unavailable', async
 })
 
 test('resolveSessionSigner uses daemon signer when key is loaded', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-signer-test-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-signer-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()
@@ -164,7 +164,7 @@ test('resolveSessionSigner uses daemon signer when key is loaded', async () => {
 })
 
 test('resolveSessionSigner falls back to direct signer when daemon key address mismatches', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-signer-test-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-signer-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()
@@ -203,7 +203,7 @@ test('resolveSessionSigner falls back to direct signer when daemon key address m
 })
 
 test('resolveSessionSigner throws SESSION_EXPIRED and daemon errors from daemon mode', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-signer-test-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-signer-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()

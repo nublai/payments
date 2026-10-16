@@ -128,7 +128,7 @@ test('executeSessionImport installs a session-only profile file', async () => {
         expect(result.status).toBe('complete')
         expect(result.sessionPath.endsWith(`/profiles/${profile}/session.json`)).toBe(true)
     } finally {
-        await rm(join(process.env.HOME ?? '', '.config', 'agentic-payments', 'tw', 'profiles', profile), {
+        await rm(join(process.env.HOME ?? '', '.config', 'agentic-payments', 'nubl', 'profiles', profile), {
             recursive: true,
             force: true,
         })

@@ -112,7 +112,7 @@ function installAnvilDeployments(): () => void {
 
 async function loadPhraseLess() {
     const restore = installAnvilDeployments()
-    const dir = await mkdtemp(join(tmpdir(), 'tw-h3-daemon-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-h3-daemon-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()

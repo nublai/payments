@@ -77,10 +77,10 @@ test('executeAccountStatus reports permission mismatches as warnings only', asyn
     )
 
     expect(missingSpendPermissionWarning?.message).toContain(
-        'Run tw session create without --full-access',
+        'Run nubl session create without --full-access',
     )
     expect(missingSpendPermissionWarning?.message).toContain(
-        'tw permissions grant --type spend --token',
+        'nubl permissions grant --type spend --token',
     )
     expect(result.checks.some((check) => check.level === 'fail')).toBe(false)
 })

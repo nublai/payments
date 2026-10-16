@@ -1,7 +1,7 @@
 ---
 name: verify-agentic-payments
 description: >-
-  Thin runner for the wallet CLI (tw, bun ./src/cli.ts) and the local Anvil
+  Thin runner for the wallet CLI (nubl, bun ./src/cli.ts) and the local Anvil
   scripts bun run e2e:local-payment and bun run e2e:local-escrow. Use it to
   prove a local dev USDC send or a local escrow create-and-settle. Do not use
   it for swap, bridge, or login, and do not reimplement the scripts.
@@ -9,9 +9,9 @@ description: >-
 
 # Verify Agentic Payments
 
-This skill does not start a second harness. It checks the machine, then runs the repo scripts `scripts/e2e-local-payment.sh` and `scripts/e2e-local-escrow.sh`. Those scripts start Anvil, deploy, start wrangler, drive `tw`, and tear down what they started.
+This skill does not start a second harness. It checks the machine, then runs the repo scripts `scripts/e2e-local-payment.sh` and `scripts/e2e-local-escrow.sh`. Those scripts start Anvil, deploy, start wrangler, drive `nubl`, and tear down what they started.
 
-Run every command from the repo root. The wallet CLI in these scripts is `bun ./src/cli.ts` from `packages/wallet` (the `tw` binary).
+Run every command from the repo root. The wallet CLI in these scripts is `bun ./src/cli.ts` from `packages/wallet` (the `nubl` binary).
 
 ## Launch
 

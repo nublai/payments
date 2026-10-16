@@ -152,5 +152,5 @@ function debugSessionStop(message: string, details?: { path: string; message: st
     }
 
     const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
-    console.error(`[tw daemon stop] ${message}${suffix}`)
+    console.error(`[nubl daemon stop] ${message}${suffix}`)
 }

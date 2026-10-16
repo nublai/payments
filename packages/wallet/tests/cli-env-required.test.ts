@@ -10,7 +10,7 @@ const missingEnvMessage =
     'Missing --env. Pass `--env prod`, `--env stage`, or `--env dev`.'
 
 function runCli(args: string[]) {
-    const home = mkdtempSync(join(tmpdir(), 'tw-env-required-'))
+    const home = mkdtempSync(join(tmpdir(), 'nubl-env-required-'))
 
     return spawnSync('bun', ['./src/cli.ts', ...args], {
         cwd: walletDir,

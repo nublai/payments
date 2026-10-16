@@ -400,7 +400,7 @@ export async function executeAccountSend(
         if (!options.amount || !options.recipient) {
             throw new AccountSendError(
                 'MISSING_ARGUMENT',
-                'Usage requires <amount> and <recipient>. Run tw send --help.',
+                'Usage requires <amount> and <recipient>. Run nubl send --help.',
             )
         }
 
@@ -740,7 +740,7 @@ function debugSignerFallback(
         return
     }
 
-    console.error(`[tw ${command}] daemon signer fallback ${JSON.stringify(details)}`)
+    console.error(`[nubl ${command}] daemon signer fallback ${JSON.stringify(details)}`)
 }
 
 function toAccountSendError(error: unknown, context: { keystorePath: string }): AccountSendError {

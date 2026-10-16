@@ -897,5 +897,5 @@ function debugDaemon(
     }
 
     const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
-    console.error(`[tw daemon] ${message}${suffix}`)
+    console.error(`[nubl daemon] ${message}${suffix}`)
 }

@@ -739,7 +739,7 @@ export type RelayQuoteReviewOptions = {
     /**
      * Review the calls only. A swap-session daemon signature has the
      * Orchestrator intent, not the relay order or the quoted minimum.
-     * Order binding and the output floor stay on `tw swap` / `tw bridge`
+     * Order binding and the output floor stay on `nubl swap` / `nubl bridge`
      * before that signature is requested.
      */
     callsOnly?: boolean

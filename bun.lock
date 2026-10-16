@@ -99,7 +99,7 @@
       "version": "7.3.1",
       "bin": {
         "wallet": "./dist/cli.js",
-        "tw": "./dist/cli.js",
+        "nubl": "./dist/cli.js",
       },
       "dependencies": {
         "@bufbuild/protobuf": "^2.9.0",

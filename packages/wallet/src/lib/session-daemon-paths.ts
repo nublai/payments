@@ -24,12 +24,12 @@ function resolveDefaultStateDir(): string {
     const customRuntimeDir = process.env.XDG_RUNTIME_DIR
 
     if (process.platform === 'linux' && customRuntimeDir) {
-        return resolve(customRuntimeDir, 'agentic-payments-tw')
+        return resolve(customRuntimeDir, 'agentic-payments-nubl')
     }
 
     const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'unknown'
 
-    return resolve(tmpdir(), `agentic-payments-tw-${uid}`)
+    return resolve(tmpdir(), `agentic-payments-nubl-${uid}`)
 }
 
 export function resolveSessionDaemonPaths(): SessionDaemonPaths {

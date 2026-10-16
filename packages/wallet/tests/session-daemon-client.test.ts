@@ -19,7 +19,7 @@ async function withSocketServer(
     handler: (socket: net.Socket) => void,
     run: () => Promise<void>,
 ): Promise<void> {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-daemon-client-test-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-daemon-client-test-'))
     const socketPath = join(dir, 'daemon.sock')
     process.env.TW_AGENT_SOCK = socketPath
 

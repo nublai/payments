@@ -210,7 +210,7 @@ async function listenOn8545(): Promise<{ hits: string[]; close: () => Promise<vo
     }
 }
 
-const home = mkdtempSync(join(tmpdir(), 'tw-h3-'))
+const home = mkdtempSync(join(tmpdir(), 'nubl-h3-'))
 
 const keystorePath = join(home, 'account.json')
 
@@ -721,7 +721,7 @@ test('MCP escrow_refund cannot move USDC without human confirmation', async () =
 })
 
 test('MCP account_create cannot install a wildcard session without the phrase', async () => {
-    const freshHome = mkdtempSync(join(tmpdir(), 'tw-h3-create-'))
+    const freshHome = mkdtempSync(join(tmpdir(), 'nubl-h3-create-'))
     const freshKeystore = join(freshHome, 'account.json')
 
     const output = await callMcpTool(
@@ -761,7 +761,7 @@ test('MCP account_delegate cannot install a wildcard session without the phrase'
 })
 
 test('daemon socket refuses unlock of an unreadable session and does not return the raw key', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-daemon-'))
+    const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-daemon-'))
     const socketPath = join(dir, 'session.sock')
     const previous = process.env.TW_AGENT_SOCK
     process.env.TW_AGENT_SOCK = socketPath
@@ -977,7 +977,7 @@ function signRaw(socketPath: string, line: string): Promise<DaemonResponse> {
 }
 
 test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator intent', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-unlock-'))
+    const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-unlock-'))
     const socketPath = join(dir, 'session.sock')
     const daemon = await startDaemon(socketPath)
 
@@ -1016,7 +1016,7 @@ test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator
 })
 
 test('MCP daemon_unlock of an unreadable session cannot sign an Orchestrator intent', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-unlock-mcp-'))
+    const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-unlock-mcp-'))
     const socketPath = join(dir, 'session.sock')
     const daemon = await startDaemon(socketPath)
 
@@ -1465,7 +1465,7 @@ async function expectUnlockRequiresPhrase(
     const chainServer = chain === 'down' ? undefined : await serveJson(8545, chainResponder(chain))
     const relayerServer = await serveJson(0, relayerResponder(relayer))
     const env = { TW_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
-    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-chain-'))
+    const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-chain-'))
     const socketPath = join(dir, 'session.sock')
     const daemon = await startDaemon(socketPath)
 
@@ -1533,7 +1533,7 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
     const chainServer = await serveJson(8545, chainResponder([narrowOnChain]))
     const relayerServer = await serveJson(0, relayerResponder(relayerKeys(wildcardRelayerPermissions)))
     const env = { TW_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
-    const dir = mkdtempSync(join(tmpdir(), 'tw-h3-narrow-'))
+    const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-narrow-'))
     const socketPath = join(dir, 'session.sock')
 
     try {
@@ -1574,7 +1574,7 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
         await daemon.stop()
     }
 
-    const mcpDir = mkdtempSync(join(tmpdir(), 'tw-h3-narrow-mcp-'))
+    const mcpDir = mkdtempSync(join(tmpdir(), 'nubl-h3-narrow-mcp-'))
     const mcpSocket = join(mcpDir, 'session.sock')
     const mcpDaemon = await startDaemon(mcpSocket)
 
@@ -1701,7 +1701,7 @@ test('two session creates started together authorize at most one 10 USDC/day key
         )(message),
     )
 
-    const keystorePathForRace = join(mkdtempSync(join(tmpdir(), 'tw-h3-race-')), 'account.json')
+    const keystorePathForRace = join(mkdtempSync(join(tmpdir(), 'nubl-h3-race-')), 'account.json')
     const keyA = generatePrivateKey()
     const keyB = generatePrivateKey()
 

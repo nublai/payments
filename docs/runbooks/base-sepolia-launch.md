@@ -111,7 +111,7 @@ wrangler secret delete CONTEXT --env stage
 
 ## 7. Wallet CLI
 
-From the repo root (`tw` is this CLI after a package build; this tree runs the source):
+From the repo root (`nubl` is this CLI after a package build; this tree runs the source):
 
 ```bash
 export RELAYER_URL_STAGE=https://<worker-host>
