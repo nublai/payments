@@ -1,42 +1,35 @@
-import deployments from './addresses.json'
-import { type Address } from 'viem'
+import addressesJson from './addresses.json'
+import { type Address, isAddress } from 'viem'
 
 export type ChainDeployment = {
   chainId?: number
-  addresses: Record<string, Address>
+  addresses: Record<string, string>
 }
 
-type JsonDeployments = typeof deployments
+export type ContextDeployments = Record<string, ChainDeployment>
 
-type DeploymentContext = keyof JsonDeployments
+export type DeploymentBook = Record<string, ContextDeployments>
 
-function isDeploymentContext(value: string): value is DeploymentContext {
-  return Object.hasOwn(deployments, value)
-}
+export type Deployments = DeploymentBook
 
-function contextDeployments(context: string): JsonDeployments[DeploymentContext] | undefined {
-  if (!isDeploymentContext(context)) return undefined
+const deployments: DeploymentBook = addressesJson
+
+function contextDeployments(context: string): ContextDeployments | undefined {
+  if (!Object.hasOwn(deployments, context)) return undefined
 
   return deployments[context]
 }
 
 function chainDeployment(
-  ctx: JsonDeployments[DeploymentContext],
+  ctx: ContextDeployments,
   chainId: number
 ): ChainDeployment | undefined {
-  for (const [key, value] of Object.entries(ctx)) {
-    if (Number(key) === chainId) {
-      // SAFETY: addresses.json values are 0x-prefixed address strings.
-      return value as ChainDeployment
-    }
-  }
+  const key = String(chainId)
 
-  return undefined
+  if (!Object.hasOwn(ctx, key)) return undefined
+
+  return ctx[key]
 }
-
-export type ContextDeployments = Record<number, ChainDeployment>
-
-export type Deployments = Record<string, ContextDeployments>
 
 export interface ContractAddresses {
   orchestrator: Address
@@ -66,14 +59,10 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 function isDeployedAddress(value: string | undefined): value is Address {
   if (value === undefined) return false
-  const normalized = value.trim().toLowerCase()
 
-  // Reject only empty and zero sentinels. Callers such as the relayer
-  // capabilities mock use non-address placeholders (for example "0xAccount"),
-  // and Boolean(value) used to accept those.
-  if (normalized.length === 0 || normalized === '0x' || normalized === '0x0') return false
+  if (!isAddress(value, { strict: false })) return false
 
-  return normalized !== ZERO_ADDRESS
+  return value.toLowerCase() !== ZERO_ADDRESS
 }
 
 function hasRequiredAddresses(
@@ -82,7 +71,7 @@ function hasRequiredAddresses(
   return requiredAddressKeys.every((key) => isDeployedAddress(addresses[key]))
 }
 
-// Re-export raw JSON
+// Mutable snapshot. Wallet tests install former addresses onto this object.
 export { deployments }
 
 // Type-safe accessor
@@ -101,7 +90,9 @@ export function getAddress(
   chainId: number,
   contract: string
 ): Address | undefined {
-  return getDeployment(context, chainId)?.addresses[contract]
+  const value = getDeployment(context, chainId)?.addresses[contract]
+
+  return isDeployedAddress(value) ? value : undefined
 }
 
 // Get all addresses for a context/chain

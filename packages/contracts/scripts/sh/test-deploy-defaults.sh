@@ -182,6 +182,19 @@ expect_env_chain() {
 stage_is_base_sepolia() { expect_env_chain stage 84532; }
 prod_is_base() { expect_env_chain prod 8453; }
 
+# DeployHelper mkdir -p so a fresh stage/84532 deploy does not need placeholders.
+deploy_helper_creates_dirs() {
+    local helper="$SCRIPT_DIR/../sol/common/DeployHelper.s.sol"
+    if ! grep -q 'mkdirCmd\[0\] = "mkdir"' "$helper"; then
+        echo "DeployHelper does not mkdir before writing deployments" >&2
+        return 1
+    fi
+    if ! grep -q 'mkdirCmd\[1\] = "-p"' "$helper"; then
+        echo "DeployHelper does not mkdir -p before writing deployments" >&2
+        return 1
+    fi
+}
+
 # --chain 84532 without --context or an env shortcut writes envs/stage/84532.
 chain_84532_defaults_to_stage() {
     setup_sandbox
@@ -335,6 +348,7 @@ if zero_lz_signer_refused; then pass "zero LayerZero signer is refused"; else fa
 if stage_is_base_sepolia; then pass "stage deploys to Base Sepolia 84532"; else fail "stage deploys to Base Sepolia 84532"; fi
 if prod_is_base; then pass "prod deploys to Base 8453"; else fail "prod deploys to Base 8453"; fi
 if chain_84532_defaults_to_stage; then pass "84532 defaults to context stage"; else fail "84532 defaults to context stage"; fi
+if deploy_helper_creates_dirs; then pass "DeployHelper mkdir -p creates missing dirs"; else fail "DeployHelper mkdir -p creates missing dirs"; fi
 if relayer_mnemonic_refused_outside_local; then pass "relayer mnemonic is refused outside local"; else fail "relayer mnemonic is refused outside local"; fi
 if equals_form_secret_not_printed; then pass "--opt=value secrets are not printed"; else fail "--opt=value secrets are not printed"; fi
 if etherscan_key_not_printed; then pass "--etherscan-api-key is not printed"; else fail "--etherscan-api-key is not printed"; fi

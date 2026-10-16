@@ -1,7 +1,19 @@
+import { existsSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { getAddressesWithFallback } from '@nubl/contracts/deployments'
+import { getAddressesWithFallback, requireAddresses } from '@nubl/contracts/deployments'
 
 import { getContractAddresses } from '../src/config/addresses'
+
+const envJson = (context: string, chainId: number, contract: string) =>
+    resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        '../../contracts/deployments/envs',
+        context,
+        String(chainId),
+        `${contract}.json`,
+    )
 
 // Same keys the deleted envs/{dev,stage,prod}/.env files exported. The values
 // stand in for the old Towns addresses those files held.
@@ -42,5 +54,15 @@ describe('zero address in deployments JSON', () => {
 
     it('@nubl/contracts does not resolve prod/8453 from env', () => {
         expect(getAddressesWithFallback('prod', 8453, { env: suffixed8453 })).toBeUndefined()
+    })
+
+    it('a missing env JSON throws not-deployed, same as a zero address', () => {
+        expect(existsSync(envJson('stage', 84532, 'orchestrator'))).toBe(false)
+        expect(() => getContractAddresses({ CONTEXT: 'stage' }, 84532)).toThrow(
+            /orchestrator is not deployed for stage\/84532/,
+        )
+        expect(() => requireAddresses('stage', 84532)).toThrow(
+            /orchestrator is not deployed for stage\/84532/,
+        )
     })
 })

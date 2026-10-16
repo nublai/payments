@@ -162,7 +162,6 @@ const byContext = getDeploymentsByContext()
 
 if (Object.keys(byContext).length === 0) {
   console.log('No deployments found to process')
-  process.exit(0)
 }
 
 // Generate .env files per context inside deployments/{context}/
@@ -180,10 +179,10 @@ for (const key of Object.keys(byContext)) {
   }
 }
 
-// Write addresses.json to deployments/ (after removing local)
-// Sort keys to ensure deterministic output regardless of fs.readdirSync order
+// Write addresses.json even when every context was local or absent, so a
+// prune of placeholder env JSONs does not leave stale zero addresses.
 const deploymentsFile = path.join(__dirname, 'addresses.json')
 
-fs.writeFileSync(deploymentsFile, JSON.stringify(sortObjectKeys(byContext), null, 2))
+fs.writeFileSync(deploymentsFile, JSON.stringify(sortObjectKeys(byContext), null, 2) + '\n')
 
 console.log(`Wrote ${deploymentsFile}`)
