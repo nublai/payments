@@ -1,4 +1,4 @@
-# `tw` Next Actions Matrix
+# `nubl` Next Actions Matrix
 
 This document defines what `next_actions` should include for each command.
 
@@ -6,7 +6,7 @@ Goal: keep agent guidance useful, safe, and concise.
 
 ## Implemented Now
 
-- `root` (`tw --json` with no command)
+- `root` (`nubl --json` with no command)
 - `help`
 - `status`
 - `schema`
@@ -21,8 +21,8 @@ Goal: keep agent guidance useful, safe, and concise.
 
 ## Never Suggest By Default
 
-- `tw account export --show-private`
-- `tw permissions revoke --all`
+- `nubl account export --show-private`
+- `nubl permissions revoke --all`
 - Any action that can duplicate a financial side effect without explicit intent
 - Any action requiring raw secret values inline
 
@@ -30,26 +30,26 @@ Goal: keep agent guidance useful, safe, and concise.
 
 | Command                              | Include in `next_actions`                                                           | Avoid in `next_actions`                                                     |
 | ------------------------------------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `root` (`tw --json` with no command) | `tw status --json`, `tw account status --json`, `tw schema --json`                  | Mutating commands (`account create`, `session rotate`, `permissions grant`) |
-| `help`                               | `tw schema --json`, `tw status --json`                                              | Mutating commands                                                           |
-| `schema`                             | `tw status --json`, `tw account status --json`                                      | Low-value loops/repeats                                                     |
-| `status`                             | `tw account status --json`, `tw schema --json`                                      | Mutating commands unless required by explicit status condition              |
-| `address`                            | `tw account balance --json`, `tw account status --json`                             | Secret export                                                               |
-| `account balance`                    | `tw account status --json`, `tw account nonce --json`                               | Financial mutations by default                                              |
-| `account nonce`                      | `tw account status --json`, `tw account balance --json`                             | Unrelated permission/session mutations                                      |
-| `account status`                     | `tw session list --json`, `tw permissions list --json`, `tw account balance --json` | Destructive actions                                                         |
-| `session list`                       | `tw session create <session-name> --json`, `tw account status --json`               | `session revoke` by default                                                 |
-| `permissions list`                   | `tw permissions show <key-ref> --json`, `tw account status --json`                  | `permissions revoke --all`                                                  |
-| `permissions show`                   | `tw permissions list --json`, `tw account status --json`                            | Destructive actions                                                         |
-| `account create`                     | `tw account status --json`, `tw session list --json`                                | `account export --show-private`                                             |
-| `account delegate`                   | `tw account status --json`, `tw permissions list --json`                            | `session revoke` default suggestion                                         |
-| `send`                               | `tw account balance --json`, `tw account nonce --json`, `tw account status --json`  | Immediate repeat send                                                       |
-| `account change-password`            | `tw session list --json`, `tw account status --json`                                | Secret/credential output actions                                            |
-| `session create`                     | `tw session list --json`, `tw permissions show <key-ref> --json`                    | Rotate/revoke as default happy-path next action                             |
-| `session rotate`                     | `tw session list --json`, `tw account status --json`                                | Extra destructive follow-ups                                                |
-| `session revoke`                     | `tw session list --json`, `tw account status --json`                                | Further revoke chains as default                                            |
-| `permissions grant`                  | `tw permissions show <key-ref> --json`, `tw permissions list --json`                | `permissions revoke --all`                                                  |
-| `permissions revoke`                 | `tw permissions show <key-ref> --json`, `tw permissions list --json`                | Additional destructive defaults                                             |
+| `root` (`nubl --json` with no command) | `nubl status --json`, `nubl account status --json`, `nubl schema --json`                  | Mutating commands (`account create`, `session rotate`, `permissions grant`) |
+| `help`                               | `nubl schema --json`, `nubl status --json`                                              | Mutating commands                                                           |
+| `schema`                             | `nubl status --json`, `nubl account status --json`                                      | Low-value loops/repeats                                                     |
+| `status`                             | `nubl account status --json`, `nubl schema --json`                                      | Mutating commands unless required by explicit status condition              |
+| `address`                            | `nubl account balance --json`, `nubl account status --json`                             | Secret export                                                               |
+| `account balance`                    | `nubl account status --json`, `nubl account nonce --json`                               | Financial mutations by default                                              |
+| `account nonce`                      | `nubl account status --json`, `nubl account balance --json`                             | Unrelated permission/session mutations                                      |
+| `account status`                     | `nubl session list --json`, `nubl permissions list --json`, `nubl account balance --json` | Destructive actions                                                         |
+| `session list`                       | `nubl session create <session-name> --json`, `nubl account status --json`               | `session revoke` by default                                                 |
+| `permissions list`                   | `nubl permissions show <key-ref> --json`, `nubl account status --json`                  | `permissions revoke --all`                                                  |
+| `permissions show`                   | `nubl permissions list --json`, `nubl account status --json`                            | Destructive actions                                                         |
+| `account create`                     | `nubl account status --json`, `nubl session list --json`                                | `account export --show-private`                                             |
+| `account delegate`                   | `nubl account status --json`, `nubl permissions list --json`                            | `session revoke` default suggestion                                         |
+| `send`                               | `nubl account balance --json`, `nubl account nonce --json`, `nubl account status --json`  | Immediate repeat send                                                       |
+| `account change-password`            | `nubl session list --json`, `nubl account status --json`                                | Secret/credential output actions                                            |
+| `session create`                     | `nubl session list --json`, `nubl permissions show <key-ref> --json`                    | Rotate/revoke as default happy-path next action                             |
+| `session rotate`                     | `nubl session list --json`, `nubl account status --json`                                | Extra destructive follow-ups                                                |
+| `session revoke`                     | `nubl session list --json`, `nubl account status --json`                                | Further revoke chains as default                                            |
+| `permissions grant`                  | `nubl permissions show <key-ref> --json`, `nubl permissions list --json`                | `permissions revoke --all`                                                  |
+| `permissions revoke`                 | `nubl permissions show <key-ref> --json`, `nubl permissions list --json`                | Additional destructive defaults                                             |
 
 ## New Command Checklist
 

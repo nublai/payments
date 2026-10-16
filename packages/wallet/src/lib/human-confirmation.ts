@@ -2,9 +2,9 @@ import { createInterface } from 'node:readline'
 import { PromptCancelledError } from './password-readline'
 
 /**
- * Confirmation for operations a prompt-injected MCP client or a non-TTY `tw`
+ * Confirmation for operations a prompt-injected MCP client or a non-TTY `nubl`
  * must not be able to complete by itself. The phrase is read from an
- * interactive terminal. `TW_PASSWORD`, `--yes`, and raw private-key arguments
+ * interactive terminal. `NUBL_PASSWORD`, `--yes`, and raw private-key arguments
  * are not accepted as substitutes.
  */
 export class HumanConfirmationError extends Error {
@@ -49,7 +49,7 @@ export function humanConfirmationMessage(operation: string, phrase: string): str
 }
 
 export function quoteConfirmationMessage(kind: 'swap' | 'bridge'): string {
-    return `HUMAN_CONFIRMATION_REQUIRED: ${kind} requires a human at an interactive terminal. MCP and non-interactive callers cannot pass yes to skip the quote confirmation. Run \`tw ${kind}\` in a terminal.`
+    return `HUMAN_CONFIRMATION_REQUIRED: ${kind} requires a human at an interactive terminal. MCP and non-interactive callers cannot pass yes to skip the quote confirmation. Run \`nubl ${kind}\` in a terminal.`
 }
 
 export function privateKeyMcpRefusal(operation: string, phrase: string): string {

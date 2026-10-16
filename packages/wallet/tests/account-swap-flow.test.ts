@@ -314,7 +314,7 @@ test('resolveAccountSwapPassword reports the supported non-interactive password 
         ),
     ).rejects.toMatchObject({
         code: 'PASSWORD_REQUIRED',
-        message: 'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
+        message: 'Password required. Use --password-stdin, NUBL_PASSWORD, or run in interactive TTY.',
     })
 })
 

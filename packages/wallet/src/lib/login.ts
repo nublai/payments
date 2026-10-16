@@ -15,7 +15,7 @@ import {
 import { isMissingFileError } from './fs-utils'
 import { getChainNameByChainId, resolveNetworkConfig, type EnvName } from './network-config'
 
-/** Browser login URL. Unset means `tw login` cannot open a page. Local payments do not use this. */
+/** Browser login URL. Unset means `nubl login` cannot open a page. Local payments do not use this. */
 export function getAuthUrl(env: EnvName): string | undefined {
     const key = env === 'prod' ? 'AUTH_URL_PROD' : env === 'stage' ? 'AUTH_URL_STAGE' : 'AUTH_URL_DEV'
     const value = process.env[key]?.trim()

@@ -139,7 +139,7 @@ export async function resolveSessionUnlockPassword(
 
     throw new SessionUnlockError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, or run in interactive TTY.',
     )
 }
 
@@ -277,7 +277,7 @@ export async function executeSessionUnlock(
     if (response === null) {
         throw new SessionUnlockError(
             'DAEMON_UNAVAILABLE',
-            'Session daemon is not running. Run `tw daemon start` first.',
+            'Session daemon is not running. Run `nubl daemon start` first.',
         )
     }
 

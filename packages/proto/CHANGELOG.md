@@ -17,7 +17,7 @@
 - #869 `961e84a` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Rename specialist invocation capability field from `capabilityName`/`capability_name` to `name`.
   - `SpecialistCapabilityInvocation` now uses `name` in protobuf/TS/Go generated types.
   - `GetBulkAgentProposals` request payloads now send invocation `name` and map it through backend fan-out.
-  - `@agentic-payments/app-framework` proposal processing now reads `invocation.name`.
+  - `@nubl/app-framework` proposal processing now reads `invocation.name`.
 
 ## 5.0.0
 
@@ -27,7 +27,7 @@
 
   `GetBulkAgentProposalsRequest` and `AppServiceRequest.ProposalsRequest` now include a `metadata` map so callers can forward tracing identifiers (for example `trace_id` and `parent_span_id`) to specialist handlers.
 
-  `@agentic-payments/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
+  `@nubl/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
 
 ## 4.1.2
 
@@ -37,7 +37,7 @@
 
   `GetBulkAgentProposalsRequest` and `AppServiceRequest.ProposalsRequest` now include a `metadata` map so callers can forward tracing identifiers (for example `trace_id` and `parent_span_id`) to specialist handlers.
 
-  `@agentic-payments/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
+  `@nubl/app-framework` capability handlers now receive `conversationSeedId` and `metadata` on `onCapability` events.
 
 ## 4.1.1
 

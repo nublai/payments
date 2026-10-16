@@ -113,20 +113,20 @@ function summarizeActiveResource(resource: unknown): HandleSummary {
 }
 
 export function scheduleActiveHandleDumpIfRequested(label: string): void {
-    if (process.env.TW_DEBUG_HANDLES !== '1') {
+    if (process.env.NUBL_DEBUG_HANDLES !== '1') {
         return
     }
 
     const timer = setTimeout(() => {
         const handles = process._getActiveHandles?.() ?? []
         const requests = process._getActiveRequests?.() ?? []
-        console.error(`[tw debug] active handles after ${label}:`, handles.length)
+        console.error(`[nubl debug] active handles after ${label}:`, handles.length)
         handles.forEach((handle, index) => {
-            console.error(`[tw debug] handle[${index}]`, summarizeActiveResource(handle))
+            console.error(`[nubl debug] handle[${index}]`, summarizeActiveResource(handle))
         })
-        console.error(`[tw debug] active requests after ${label}:`, requests.length)
+        console.error(`[nubl debug] active requests after ${label}:`, requests.length)
         requests.forEach((request, index) => {
-            console.error(`[tw debug] request[${index}]`, summarizeActiveResource(request))
+            console.error(`[nubl debug] request[${index}]`, summarizeActiveResource(request))
         })
     }, 1000)
 

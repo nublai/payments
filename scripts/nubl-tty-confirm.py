@@ -7,8 +7,8 @@ PHRASE and Enter (CR) to the terminal. The child is the foreground process of
 that terminal so readline can leave raw mode and exit. Echo is turned off so
 the phrase is not mixed into the JSON the command prints on stdout.
 
-MCP stdio and a non-TTY `tw` cannot use this. Local e2e scripts are the operator
-for `tw send` and oracle-key `tw escrow settle`.
+MCP stdio and a non-TTY `nubl` cannot use this. Local e2e scripts are the operator
+for `nubl send` and oracle-key `nubl escrow settle`.
 """
 
 import fcntl
@@ -27,7 +27,7 @@ def become_foreground_tty(slave_fd: int) -> None:
 
 def main() -> int:
     if len(sys.argv) < 3:
-        print("usage: tw-tty-confirm.py PHRASE COMMAND [ARG ...]", file=sys.stderr)
+        print("usage: nubl-tty-confirm.py PHRASE COMMAND [ARG ...]", file=sys.stderr)
         return 2
 
     phrase = sys.argv[1]

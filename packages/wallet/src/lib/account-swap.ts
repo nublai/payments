@@ -874,7 +874,7 @@ export async function resolveAccountSwapPassword(
 
     throw new AccountSwapError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, or run in interactive TTY.',
     )
 }
 
@@ -995,7 +995,7 @@ async function resolveSessionContext(
         }
 
         console.error(
-            `[tw debug] Root keystore missing at ${keystorePath}; falling back to session profile.`,
+            `[nubl debug] Root keystore missing at ${keystorePath}; falling back to session profile.`,
         )
         const sessionProfilePath = join(dirname(keystorePath), 'session.json')
         const loadedSessionKeystore = await deps.readSessionKeystoreFile(sessionProfilePath)
@@ -1097,7 +1097,7 @@ export async function executeAccountSwap(
 
         throw new AccountSwapError(
             'PASSWORD_REQUIRED',
-            'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
+            'Password required. Use --password-stdin, NUBL_PASSWORD, or run in interactive TTY.',
         )
     }
 
@@ -1687,11 +1687,11 @@ function debugSignerFallback(
     command: 'account_swap',
     details: { reason: string; sessionName: string },
 ): void {
-    if (process.env.TW_DAEMON_DEBUG !== '1') {
+    if (process.env.NUBL_DAEMON_DEBUG !== '1') {
         return
     }
 
-    console.error(`[tw ${command}] daemon signer fallback ${JSON.stringify(details)}`)
+    console.error(`[nubl ${command}] daemon signer fallback ${JSON.stringify(details)}`)
 }
 
 function toAccountSwapError(error: unknown, context: { keystorePath: string }): AccountSwapError {

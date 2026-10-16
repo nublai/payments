@@ -4,7 +4,7 @@
     "license": "MIT",
     "bin": {
         "wallet": "./dist/cli.js",
-        "tw": "./dist/cli.js"
+        "nubl": "./dist/cli.js"
     },
     "files": [
         "dist"
