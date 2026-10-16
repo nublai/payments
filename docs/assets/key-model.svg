@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="200" viewBox="0 0 900 200" role="img" aria-label="Root key, session key, and actions that need a typed confirmation phrase">
+  <title>Key model</title>
+  <rect width="900" height="200" fill="#fafafa"/>
+  <g fill="#ffffff" stroke="#222222" stroke-width="1.5">
+    <rect x="20" y="24" width="270" height="152" rx="8"/>
+    <rect x="315" y="24" width="270" height="152" rx="8"/>
+    <rect x="610" y="24" width="270" height="152" rx="8"/>
+  </g>
+  <g fill="#111111" font-family="ui-sans-serif, system-ui, sans-serif" text-anchor="middle">
+    <text x="155" y="64" font-size="18" font-weight="600">Root key</text>
+    <text x="155" y="92" font-size="14">Human</text>
+    <text x="155" y="122" font-size="13">Creates the account</text>
+    <text x="155" y="142" font-size="13">and can revoke approvals</text>
+    <text x="450" y="64" font-size="18" font-weight="600">Session key</text>
+    <text x="450" y="92" font-size="14">Agent</text>
+    <text x="450" y="122" font-size="13">USDC transfer and escrow</text>
+    <text x="450" y="142" font-size="13">10 USDC per day</text>
+    <text x="745" y="64" font-size="18" font-weight="600">Confirmation phrase</text>
+    <text x="745" y="92" font-size="14">Interactive terminal</text>
+    <text x="745" y="122" font-size="13">Send, export, and other</text>
+    <text x="745" y="142" font-size="13">risky actions</text>
+  </g>
+</svg>

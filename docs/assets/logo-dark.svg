@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="60" viewBox="0 0 220 60" role="img" aria-label="nubl">
+  <title>nubl</title>
+  <g fill="#f4f4f5" fill-rule="evenodd">
+    <path d="M8 50V27c0-9 7-15 16-15s16 6 16 15v23h-8V28c0-5-3.4-9-8-9s-8 4-8 9v22H8z"/>
+    <path d="M62 12v21c0 9 7 15 16 15s16-6 16-15V12h-8v20c0 5-3.4 9-8 9s-8-4-8-9V12h-8z"/>
+    <path d="M116 8v42h8V37.2c2.6 3.4 6.6 5.3 11.4 5.3 9.2 0 16.6-7.2 16.6-16.5S144.6 9.5 135.4 9.5c-4.8 0-8.8 1.9-11.4 5.3V8h-8zm8 18c0-5.2 4-9.2 9.2-9.2s9.2 4 9.2 9.2-4 9.2-9.2 9.2-9.2-4-9.2-9.2z"/>
+    <path d="M168 8h8v42h-8V8z"/>
+  </g>
+</svg>
