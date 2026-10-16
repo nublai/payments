@@ -1,0 +1,19 @@
+# Contracts
+
+`@nubl/contracts` is the Solidity in `packages/contracts`. Tests are `forge test` or `bun run test` from that package. Deploy with `./scripts/sh/deploy.sh`. See [Deployment](/deployment).
+
+| Contract | Role |
+| --- | --- |
+| `Account` | EIP-7702 account. An EOA delegates to it. It holds keys, checks the EIP-712 signature, and uses a 2D nonce (192-bit sequence key, 64-bit sequence). |
+| `Orchestrator` | Verifies a signed `Intent`, runs the calls, and pays the relayer from the intent's fee fields. Domain name `Orchestrator`, version `0.5.5`. |
+| `GuardedExecutor` | Call allowlists and per-token spend periods (`minute` through `forever`) for a key. The root key and a super-admin key skip the guard. |
+| `Escrow` | Holds tokens until an oracle settles them or the deadline allows a refund. |
+| `SimpleFunder` | Relayer gas funding. The owner calls `setGasWallet` and `setOrchestrators`. |
+| `SimpleSettler` | Settlement writes the session key is allowed to submit. |
+| `LayerZeroSettler` | Cross-chain settlement through LayerZero v2. |
+| `Simulator` | Gas simulation for orchestrator calls. |
+| `MultiSigSigner` | Multisig signer used by the deploy. |
+
+A spend limit covers tokens the account holds directly, for a key whose `canExecute` list does not itself grant a standing right over those tokens. Standing rights (an ERC-20 allowance, a Permit2 allowance, an NFT operator approval, a vault share, a signature checker) are outside that meter. The root key can revoke them. The wallet does not refuse a payment session when an allowlisted target already holds one.
+
+`increaseAllowance` (`0x39509351`) is charged and the allowance is reset to zero after the batch. The wallet treats that selector as full access on any token.

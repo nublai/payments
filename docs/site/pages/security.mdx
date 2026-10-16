@@ -1,0 +1,55 @@
+# Security model
+
+The root key is the keystore owner. It authorizes session keys. A session key is what `send`, escrow, and the daemon sign with. New accounts get a narrow session, not a wildcard: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`), `refund` (`0x6023fda5`), and `settle` (`0xe7f921a2`), SimpleSettler `write` (`0x84523a30`), and 10 USDC per day. `write` and `settle` are included because escrow settle submits both from this session. A chain with no known USDC or Escrow address fails closed.
+
+`account create` and `account delegate` still require `CREATE FULL ACCESS SESSION` on an interactive terminal, even though the session they install is narrow. MCP cannot type it.
+
+The on-chain spend limit meters tokens the account holds. It does not see a standing approval the account already granted to some other contract. The root key can revoke those approvals. The wallet does not scan for them.
+
+A legacy wildcard session is full access. `account status` warns. From `packages/wallet`, `bun ./src/cli.ts session rotate --narrow` replaces it with the narrow default and revokes the old key. That rotation requires `ROTATE FULL ACCESS SESSION`.
+
+`NUBL_PASSWORD` unlocks the keystore. It is not a confirmation. `NUBL_EXPORT_PASSWORD` does not skip a key export. Confirmation is a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). MCP and any non-TTY `nubl` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase. That is a human at this terminal. `--mcp` still refuses when the server process is attached to a pseudo-terminal.
+
+## Phrases
+
+| Phrase | When |
+| --- | --- |
+| `CREATE FULL ACCESS SESSION` | `account create`, `account delegate`, and a `session create` or `permissions grant` that installs full access |
+| `ROTATE FULL ACCESS SESSION` | `session rotate` that installs full access, and `session rotate --narrow` |
+| `REVOKE FULL ACCESS SESSION` | `session revoke` of a full-access or unreadable session |
+| `UNLOCK FULL ACCESS SESSION` | `daemon unlock` of a session that holds a wildcard, an unlimited or max-uint spend, anything else above the narrow gate, or permissions that cannot be read. A narrow session unlocks with the password alone |
+| `SEND USDC` | `send`, `escrow create`, and `escrow refund` |
+| `EXPORT PRIVATE KEYS` | `account export --show-private` and `session export` |
+| `CREATE SWAP SESSION` | `session create <name> --swap` |
+| `AUTHORIZE PASSKEY` | `account passkey`. The `privateKey` argument is not accepted over MCP |
+| `SIGN ESCROW SETTLEMENT` | `escrow settle` when signing with an oracle private key (`--oracle-private-key` or `NUBL_ORACLE_PRIVATE_KEY`). A pre-signed `--signature` does not ask. MCP does not accept a raw oracle key |
+
+Full access is any of: `--full-access`; target `ANY_TARGET` or the account; selector `ANY_FN_SEL`; `increaseAllowance` (`0x39509351`) on any token; an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`); a spend period shorter than a day (`minute`, `hour`); a token other than that chain's USDC; a spend limit above 10 USDC; or a combined USDC spend across the account's active sessions on that chain that would pass 10 USDC per day. A forever or longer-period cap counts at its full limit. If those keys cannot be read, the phrase is required. A day-or-longer USDC limit of exactly 10 stays allowed, including when the amount is omitted on `session create`, until the combined total would pass 10.
+
+`--full-access` cannot be combined with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, `--spend-period`, or `--swap`.
+
+## Swap session
+
+Swap and bridge do not use the payment session and do not use a wildcard. Create a dedicated session and pass it with `--session`. From `packages/wallet`, after the [install](/install) builds:
+
+```bash
+bun ./src/cli.ts session create worker-swap --swap --chain base --env prod
+bun ./src/cli.ts swap --from USDC --to ETH --amount 1 --session worker-swap --env prod
+bun ./src/cli.ts bridge --token USDC --amount 1 --to-chain polygon --session worker-swap --env prod
+```
+
+`--swap` requires `CREATE SWAP SESSION` at an interactive terminal. It cannot be combined with `--full-access`, `--activate`, `--target`, `--selector`, or a spend limit. The payment session stays active.
+
+The resting `canExecute` set is the Relay router `multicall`, the approval proxy `transferAndMulticall`, and the depository `depositNative` and `depositErc20`, on Base (8453) and Polygon (137). Those are the allowlisted chains. Chain 31337 is fail-closed. No flag or env var skips the allowlist. Input-token `approve` is granted for one quote and then revoked. `transfer` is granted only when that quote includes it.
+
+The swap session gets a minute limit of 0 on native, this chain's USDC, legacy USDC when it differs, and WETH. Those 0 limits do not install the default 10 USDC per day and do not add to it. A day limit of 0 is not used, because every spend period is checked and a 0 day limit would reject the quote after the minute slot is raised. For one quote the USDC minute slot is the quoted USDC input (0 for an ETH input) plus the 5 USDC fee cap when the chain charges the Orchestrator fee in its USDC. On local chains 31337 and 41337 that added fee cap is 0, so the slot is the quoted USDC input alone. `--env dev` cannot sign payments on a published chain, including `--chain base` and Base Sepolia, because the zero fee payer is refused. The native minute slot is the quoted ETH input (0 for a USDC input).
+
+Quote install sets the key's existing expiry to two hours and restores the previous expiry on cleanup only when the on-chain expiry, permissions, and spend limits still match what install wrote. A difference leaves the key unchanged, clears the pending record, and reports what differs. A snapshot mismatch leaves the approve grant until the on-chain expiry. Spent counters, period start, and signature-checker sets are not compared.
+
+A swap key can move an NFT or a vault share if the account has approved the Relay router, the approval proxy, or the depository. Revoke those approvals with the root key. The wallet does not scan for them.
+
+Quotes are allowlisted and simulated before signing. A calldata change after confirmation is shown again. `--yes` does not skip the call-target review. It only skips refreshing a quote that went stale while the human was confirming. Swap and bridge ignore `yes` outside that interactive terminal. MCP cannot pass `yes: true`.
+
+The unlocked swap daemon signs only a relay quote. The swap daemon and the quote reviewer refuse a payment whose token or amount is outside the quote fee and the 5 USDC ceiling, or whose recipient is not the expected one.
+
+The daemon socket does not return raw session keys.
