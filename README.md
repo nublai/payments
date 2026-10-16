@@ -20,9 +20,9 @@
 
 ## Install
 
-The CLI command is `nubl`. `@nubl/wallet` is set up to publish (`publishConfig.access` is `public`) and is not on the npm registry, so this page does not use `npm i`.
+`@nubl/wallet` is set up to publish (`publishConfig.access` is `public`) and is not on the npm registry, so this page does not use `npm i`.
 
-From a checkout, build the packages the CLI imports, then run it:
+From a checkout, build the packages the CLI imports, then run it from `packages/wallet`:
 
 ```bash
 bun install
@@ -31,29 +31,18 @@ bun run --cwd packages/relayer-client build
 cd packages/wallet && bun ./src/cli.ts --help
 ```
 
+Once the package is published (or bun-linked), the command is `nubl <cmd>`.
+
 ## Quickstart
 
-`--env` is required: `prod`, `stage`, or `dev`. `--env dev` uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. `account create` asks for `CREATE FULL ACCESS SESSION`. `send` asks for `SEND USDC`. Both phrases are typed on an interactive terminal.
+Run these from `packages/wallet`, after the builds above. `--env` is required: `prod`, `stage`, or `dev`. `--env dev` uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. `account create` asks for `CREATE FULL ACCESS SESSION`. `send` asks for `SEND USDC`. Both phrases are typed on an interactive terminal.
 
 ```bash
-nubl account create --env dev
-nubl send 1 0x1111111111111111111111111111111111111111 --env dev
+bun ./src/cli.ts account create --env dev
+bun ./src/cli.ts send 1 0x1111111111111111111111111111111111111111 --env dev
 ```
 
-`nubl --mcp` starts the stdio MCP server:
-
-```json
-{
-  "mcpServers": {
-    "nubl": {
-      "command": "nubl",
-      "args": ["--mcp"]
-    }
-  }
-}
-```
-
-From a checkout, after those builds, point the client at that file:
+`bun ./src/cli.ts --mcp` from `packages/wallet` starts the stdio MCP server. Point the client at that file:
 
 ```json
 {
@@ -79,7 +68,7 @@ From a checkout, after those builds, point the client at that file:
 
 | Path | Package | What it is |
 | --- | --- | --- |
-| `packages/wallet` | `@nubl/wallet` | CLI `nubl` and the MCP server |
+| `packages/wallet` | `@nubl/wallet` | CLI and MCP server |
 | `packages/relayer-client` | `@nubl/relayer-client` | viem-style client: `prepareCalls`, `sendPreparedCalls`, `upgradeAccount`, escrow helpers |
 | `packages/contracts` | `@nubl/contracts` | Solidity: Account, Orchestrator, GuardedExecutor, Escrow, and the funder, settler, and simulator |
 | `packages/relayer` | `@nubl/relayer` | Cloudflare Worker that submits signed intents |
@@ -87,7 +76,7 @@ From a checkout, after those builds, point the client at that file:
 
 ## Security
 
-The root key stays with a person. The session key an agent uses is the narrow daily USDC session above. Sending funds, exporting keys, and the other actions in the diagram need a phrase typed on an interactive terminal; MCP and a non-TTY `nubl` are refused before they sign. Report a vulnerability through [SECURITY.md](SECURITY.md).
+The root key stays with a person. The session key an agent uses is the narrow daily USDC session above. Sending funds, exporting keys, and the other actions in the diagram need a phrase typed on an interactive terminal; MCP and a non-TTY invocation are refused before they sign. Report a vulnerability through [SECURITY.md](SECURITY.md).
 
 <p align="center">
   <img alt="Root key, session key, and the typed confirmation phrase" src="docs/assets/key-model.svg" width="720">
