@@ -1,19 +1,15 @@
 # Install and quickstart
 
-Install the wallet CLI from npm, or run it from this repo with Bun.
-
-```bash
-npm i -g @nubl/wallet
-```
-
-From a checkout of this repo:
+Run the wallet CLI from a checkout of this repo:
 
 ```bash
 cd packages/wallet
 bun ./src/cli.ts --help
 ```
 
-The published binary and the local entry both run as `nubl`. Every command that talks to a chain requires `--env prod`, `--env stage`, or `--env dev`. Omitting `--env` fails. There is no default environment.
+`@nubl/wallet` is not on npm yet. Once it is published, `npm i -g @nubl/wallet` installs the `nubl` binary. Until then, pass the same arguments to `bun ./src/cli.ts` from `packages/wallet`. Commands below are written as `nubl`.
+
+Every command that talks to a chain requires `--env prod`, `--env stage`, or `--env dev`. Omitting `--env` fails. There is no default environment.
 
 `prod` defaults to chain `base` (8453). `stage` defaults to `base-sepolia` (84532). `dev` defaults to `anvil` (31337). Override with `--chain base`, `--chain polygon`, `--chain anvil`, or `--chain base-sepolia`.
 
@@ -32,7 +28,7 @@ nubl send 1 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --env dev
 
 `account`, `session`, `daemon`, `permissions`, `escrow`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
 
-Structured output is `--format json` (also `toon`, `yaml`, `md`, or `jsonl`). `nubl daemon start --foreground` additionally treats a literal `--json` argument as JSON for the startup line it prints before it waits. Other commands do not.
+Structured output is `--format json` (also `toon`, `yaml`, `md`, or `jsonl`). `--json` is a global shorthand for `--format json` on every command.
 
 `TW_PASSWORD` supplies the keystore password. It does not confirm a send, a private-key export, a session export, a full-access session or permission change, a passkey, escrow create or refund, or an oracle-key escrow settle. Commands that accept `--password-stdin` can read the password from stdin.
 
