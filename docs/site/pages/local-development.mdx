@@ -35,4 +35,4 @@ Login, which the local payment path does not use, reads `AUTH_URL_PROD`, `AUTH_U
 
 After `make-config`, chain 31337 and 41337 read `ORCHESTRATOR_<chainId>` and `ACCOUNT_PROXY_<chainId>` from the environment or from `packages/contracts/deployments/envs/local/.env`. Those chains are not in `addresses.json`.
 
-`TW_PASSWORD` is the keystore password for non-interactive runs. It does not type the confirmation phrase. `e2e:local-payment` types `CREATE FULL ACCESS SESSION` and `SEND USDC` on a pseudo-terminal. `e2e:local-escrow` types those plus `SIGN ESCROW SETTLEMENT`. The script is the operator.
+`NUBL_PASSWORD` is the keystore password for non-interactive runs. It does not type the confirmation phrase. `e2e:local-payment` types `CREATE FULL ACCESS SESSION` and `SEND USDC` on a pseudo-terminal. `e2e:local-escrow` types those plus `SIGN ESCROW SETTLEMENT`. The script is the operator.

@@ -33,7 +33,7 @@ A prompt-injected tool call cannot type a confirmation phrase. MCP refuses the c
 - `session_revoke` of a full-access or unreadable session
 - `daemon_unlock` of a full-access or unreadable session
 - `account_passkey` when `privateKey` is supplied
-- `escrow_settle` when `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign
+- `escrow_settle` when `oraclePrivateKey` is supplied or `NUBL_ORACLE_PRIVATE_KEY` would sign
 
 `account_passkey` and `escrow_settle` still exist as tools. MCP accepts them only when they do not take a raw private key. A pre-signed `signature` on escrow settle does not use the oracle key and does not ask for the phrase.
 

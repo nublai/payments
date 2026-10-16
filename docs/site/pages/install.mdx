@@ -17,7 +17,7 @@ Every command that talks to a chain requires `--env prod`, `--env stage`, or `--
 
 ## Create an account and send
 
-`account create` writes a local keystore and delegates the account. The session it installs is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`), `refund` (`0x6023fda5`), and `settle` (`0xe7f921a2`), and SimpleSettler `write` (`0x84523a30`), with 10 USDC per day. A chain with no known USDC or Escrow address is refused. An interactive terminal must type `CREATE FULL ACCESS SESSION`. `TW_PASSWORD` does not replace that phrase.
+`account create` writes a local keystore and delegates the account. The session it installs is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`), `refund` (`0x6023fda5`), and `settle` (`0xe7f921a2`), and SimpleSettler `write` (`0x84523a30`), with 10 USDC per day. A chain with no known USDC or Escrow address is refused. An interactive terminal must type `CREATE FULL ACCESS SESSION`. `NUBL_PASSWORD` does not replace that phrase.
 
 ```bash
 nubl account create --env dev
@@ -32,7 +32,7 @@ nubl send 1 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --env dev
 
 Structured output is `--format json` (also `toon`, `yaml`, `md`, or `jsonl`). `--json` is a global shorthand for `--format json` on every command.
 
-`TW_PASSWORD` supplies the keystore password. It does not confirm a send, a private-key export, a session export, a full-access session or permission change, a passkey, escrow create or refund, or an oracle-key escrow settle. Commands that accept `--password-stdin` can read the password from stdin.
+`NUBL_PASSWORD` supplies the keystore password. It does not confirm a send, a private-key export, a session export, a full-access session or permission change, a passkey, escrow create or refund, or an oracle-key escrow settle. Commands that accept `--password-stdin` can read the password from stdin.
 
 ```bash
 nubl session list --env prod --profile agent --format json

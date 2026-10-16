@@ -8,7 +8,7 @@ The on-chain spend limit meters tokens the account holds. It does not see a stan
 
 A legacy wildcard session is full access. `account status` warns. `nubl session rotate --narrow` replaces it with the narrow default and revokes the old key. That rotation requires `ROTATE FULL ACCESS SESSION`.
 
-`TW_PASSWORD` unlocks the keystore. It is not a confirmation. `TW_EXPORT_PASSWORD` does not skip a key export. Confirmation is a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). MCP and any non-TTY `nubl` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase. That is a human at this terminal. `--mcp` still refuses when the server process is attached to a pseudo-terminal.
+`NUBL_PASSWORD` unlocks the keystore. It is not a confirmation. `NUBL_EXPORT_PASSWORD` does not skip a key export. Confirmation is a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). MCP and any non-TTY `nubl` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase. That is a human at this terminal. `--mcp` still refuses when the server process is attached to a pseudo-terminal.
 
 ## Phrases
 
@@ -22,7 +22,7 @@ A legacy wildcard session is full access. `account status` warns. `nubl session 
 | `EXPORT PRIVATE KEYS` | `account export --show-private` and `session export` |
 | `CREATE SWAP SESSION` | `session create <name> --swap` |
 | `AUTHORIZE PASSKEY` | `account passkey`. The `privateKey` argument is not accepted over MCP |
-| `SIGN ESCROW SETTLEMENT` | `escrow settle` when signing with an oracle private key (`--oracle-private-key` or `TW_ORACLE_PRIVATE_KEY`). A pre-signed `--signature` does not ask. MCP does not accept a raw oracle key |
+| `SIGN ESCROW SETTLEMENT` | `escrow settle` when signing with an oracle private key (`--oracle-private-key` or `NUBL_ORACLE_PRIVATE_KEY`). A pre-signed `--signature` does not ask. MCP does not accept a raw oracle key |
 
 Full access is any of: `--full-access`; target `ANY_TARGET` or the account; selector `ANY_FN_SEL`; `increaseAllowance` (`0x39509351`) on any token; an account admin selector (`authorize`, `revoke`, `setCanExecute`, `setSpendLimit`, `upgradeProxyAccount`); a spend period shorter than a day (`minute`, `hour`); a token other than that chain's USDC; a spend limit above 10 USDC; or a combined USDC spend across the account's active sessions on that chain that would pass 10 USDC per day. A forever or longer-period cap counts at its full limit. If those keys cannot be read, the phrase is required. A day-or-longer USDC limit of exactly 10 stays allowed, including when the amount is omitted on `session create`, until the combined total would pass 10.
 
