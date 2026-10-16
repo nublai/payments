@@ -3121,5 +3121,5 @@ await main()
 
 // Bun serves an entry module whose default export has `fetch`. incur's Cli
 // does, so `export default tw` opens an unauthenticated HTTP server on
-// [::]:3000 beside `tw --mcp`. Nothing in this repo imports that default.
-// Keep --mcp on stdio only.
+// [::]:3000 and prints "Started development server…" on the --mcp stdout
+// stream. Nothing in this repo imports that default. Keep --mcp on stdio only.

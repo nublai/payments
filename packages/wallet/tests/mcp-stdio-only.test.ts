@@ -185,6 +185,31 @@ function treeListenSockets(pid: number): ListenSocket[] {
     return sockets
 }
 
+const developmentServerText = 'Started development server'
+
+type JsonRpcMessage = {
+    jsonrpc: string
+}
+
+function nonJsonRpcStdoutLines(stdout: string): string[] {
+    const lines: string[] = []
+
+    for (const line of stdout.split('\n')) {
+        if (line === '') continue
+
+        try {
+            const message = parseJson<JsonRpcMessage>(line)
+
+            if (message.jsonrpc === '2.0') continue
+            lines.push(line)
+        } catch {
+            lines.push(line)
+        }
+    }
+
+    return lines
+}
+
 function toolNames(stdout: string): string[] {
     for (const line of stdout.split('\n')) {
         if (!line.includes('"id":2') || !line.includes('"tools"')) continue
@@ -281,7 +306,7 @@ function runMcp(): Promise<{ pid: number; stdout: string; stop: () => void }> {
     })
 }
 
-test('tw --mcp is stdio only and does not listen on a TCP port', async () => {
+test('tw --mcp stdout is JSON-RPC only and the process does not listen on TCP', async () => {
     const session = await runMcp()
 
     try {
@@ -300,12 +325,14 @@ test('tw --mcp is stdio only and does not listen on a TCP port', async () => {
         const ipv6 = await endpointResult('::1', 3000)
 
         expect({
-            banner: session.stdout.includes('Started development server'),
+            startedDevelopmentServer: session.stdout.includes(developmentServerText),
+            nonJsonRpcStdoutLines: nonJsonRpcStdoutLines(session.stdout),
             sockets: treeListenSockets(session.pid),
             ipv4,
             ipv6,
         }).toEqual({
-            banner: false,
+            startedDevelopmentServer: false,
+            nonJsonRpcStdoutLines: [],
             sockets: [],
             ipv4: 'ECONNREFUSED',
             ipv6: 'ECONNREFUSED',
