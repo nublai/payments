@@ -361,14 +361,14 @@ nubl.command(myGroup)
 Commands that need keystore decryption accept passwords through three channels (in priority order):
 
 1. `--password-stdin` — read from stdin pipe
-2. `TW_PASSWORD` env var — declared via incur's `env` schema
+2. `NUBL_PASSWORD` env var — declared via incur's `env` schema
 3. Interactive prompt via `@clack/prompts` — writes to stderr (incur controls stdout)
 
 The `passwordDeps()` helper in `cli.ts` wires all three. The `password-readline.ts` module provides the interactive prompts (password input with masking, new-password with confirmation).
 
-`TW_PASSWORD` is not a confirmation. These operations require a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). `nubl --mcp` and any non-TTY `nubl` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase; that is a human at this terminal, not a defense against a local shell. `--mcp` still refuses when the server itself is attached to a PTY.
+`NUBL_PASSWORD` is not a confirmation. These operations require a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). `nubl --mcp` and any non-TTY `nubl` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase; that is a human at this terminal, not a defense against a local shell. `--mcp` still refuses when the server itself is attached to a PTY.
 
-- `account export --show-private` and `session export` — type `EXPORT PRIVATE KEYS`. `TW_EXPORT_PASSWORD` does not skip it
+- `account export --show-private` and `session export` — type `EXPORT PRIVATE KEYS`. `NUBL_EXPORT_PASSWORD` does not skip it
 - `send`, `escrow create`, and `escrow refund` — type `SEND USDC`. Create and refund move USDC
 - `swap` and `bridge` — confirm the quote in the terminal. `--yes` / `yes: true` is ignored outside that terminal. On a TTY, `--yes` does not skip the call-target review: every target, selector, approve spender and amount, and native value is shown, and the human still confirms. `--yes` only skips refreshing a quote that went stale during that confirmation. Calls must match the relay.link allowlist in `src/lib/relay-allowlist.ts` (Base 8453 and Polygon 137). Chain 31337 is fail-closed. No flag or env var skips the allowlist. A local pseudo-terminal can still answer the confirm prompt
 - `account create` and `account delegate` — type `CREATE FULL ACCESS SESSION`. The session they install is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`) and `refund` (`0x6023fda5`), SimpleSettler `write` (`0x84523a30`), and Escrow `settle` (`0xe7f921a2`), plus 10 USDC per day. `write` and `settle` are included because `nubl escrow settle` submits both from this session. A chain with no known USDC or Escrow address fails closed. The phrase stays; MCP cannot type it

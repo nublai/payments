@@ -2,7 +2,7 @@
 
 Your keys. Your account. No signup. No login. Just run it.
 
-`nubl` is a local-first CLI for managing smart accounts, session keys, and on-chain permissions on Agentic Payments. It works for humans at the terminal and for agents over `--json` or `--mcp`.
+`nubl` is a local-first CLI for managing smart accounts, session keys, and on-chain permissions on nubl. It works for humans at the terminal and for agents over `--json` or `--mcp`.
 
 ```bash
 bunx @nubl/wallet --help
@@ -36,8 +36,8 @@ Relayer and login hosts are environment variables, not source constants. `RELAYE
 `nubl` manages a local keystore that holds your root key and session keys. Your root key creates and controls your on-chain smart account. Session keys are scoped signers — they can send transactions through the relayer without exposing your root key.
 
 ```text
-~/.config/agentic-payments/nubl/profiles/<env>/<profile>/default.keystore.json
-~/.config/agentic-payments/nubl/profiles/<env>/<profile>/sessions/<session-name>.json
+~/.config/nubl/profiles/<env>/<profile>/default.keystore.json
+~/.config/nubl/profiles/<env>/<profile>/sessions/<session-name>.json
 ```
 
 For agents, the session daemon keeps decrypted keys in memory for a bounded duration so automated workflows can sign without prompting for a password on every call.
@@ -70,7 +70,7 @@ nubl account <balance|change-password|create|delegate|export|history|nonce|statu
 nubl account create --profile agent --env prod
 nubl account create --resume --profile agent --env prod
 echo "my-password" | nubl account create --password-stdin --json --env prod
-nubl account create --keystore-path ~/.config/agentic-payments/nubl/profiles/prod/team/default.keystore.json --env prod
+nubl account create --keystore-path ~/.config/nubl/profiles/prod/team/default.keystore.json --env prod
 ```
 
 #### `account status` / `account balance` / `account nonce` / `account history`
@@ -100,7 +100,7 @@ nubl account export --profile agent --json --env prod
 nubl account export --profile agent --show-private --env prod
 ```
 
-`--show-private` prints the root and session private keys only after you type `EXPORT PRIVATE KEYS` at an interactive terminal. `TW_PASSWORD` and `--password-stdin` unlock the keystore. They do not skip that phrase. MCP and any non-TTY caller are refused.
+`--show-private` prints the root and session private keys only after you type `EXPORT PRIVATE KEYS` at an interactive terminal. `NUBL_PASSWORD` and `--password-stdin` unlock the keystore. They do not skip that phrase. MCP and any non-TTY caller are refused.
 
 #### `account change-password`
 
@@ -206,7 +206,7 @@ Agent sessions require `--force` and clean up local channel bindings as part of 
 #### `session export` / `session import`
 
 ```bash
-TW_PASSWORD="my-password" TW_EXPORT_PASSWORD="export-password" \
+NUBL_PASSWORD="my-password" NUBL_EXPORT_PASSWORD="export-password" \
   nubl session export worker-1 --profile agent --output ./worker-1.session.json --env prod
 
 echo "export-password" | nubl session export worker-1 --profile agent \
@@ -215,7 +215,7 @@ echo "export-password" | nubl session export worker-1 --profile agent \
 nubl session import ./worker-1.session.json --profile worker-1 --env prod
 ```
 
-Session export writes the session private key into the output file. It requires an interactive terminal and the phrase `EXPORT PRIVATE KEYS`. `TW_PASSWORD` and `TW_EXPORT_PASSWORD` do not skip that phrase, and MCP cannot confirm it.
+Session export writes the session private key into the output file. It requires an interactive terminal and the phrase `EXPORT PRIVATE KEYS`. `NUBL_PASSWORD` and `NUBL_EXPORT_PASSWORD` do not skip that phrase, and MCP cannot confirm it.
 
 Session-only profiles can execute `nubl send` but cannot run root-keystore management commands.
 
@@ -260,7 +260,7 @@ nubl escrow create 50 0x1111111111111111111111111111111111111111 \
 nubl escrow create 100 0x... --oracle 0x... --deadline 2d --chain base --env prod --json
 nubl escrow status 0x<64 hex chars> --env prod
 nubl escrow status 0x... --chain base --json --env prod
-TW_ORACLE_PRIVATE_KEY=0x... nubl escrow settle 0x<escrowId> \
+NUBL_ORACLE_PRIVATE_KEY=0x... nubl escrow settle 0x<escrowId> \
   --settlement-id 0x<orderId> --oracle 0x2222... --profile agent --env prod
 nubl escrow settle 0x<escrowId> --settlement-id 0x... --oracle 0x... --signature 0x... --profile agent --env prod
 nubl escrow refund 0x<escrowId> --profile agent --env prod
@@ -269,7 +269,7 @@ nubl escrow refund 0x<escrowId> --env prod --json
 
 `escrow create` and `escrow refund` move USDC and require an interactive terminal to type `SEND USDC`. `escrow create` requires `--oracle` and `--deadline`. Deadlines accept relative values like `1h`, `2d`, `30m`, `1w` or unix timestamps. Escrow flows support `--session-file` like `nubl send`.
 
-Signing with the oracle private key (`--oracle-private-key` or `TW_ORACLE_PRIVATE_KEY`) requires an interactive terminal and the phrase `SIGN ESCROW SETTLEMENT`. MCP does not accept a raw oracle private key. A pre-signed `--signature` does not use the key and does not ask for that phrase. `account passkey` likewise refuses a raw private key over MCP; run it in a terminal and type `AUTHORIZE PASSKEY`.
+Signing with the oracle private key (`--oracle-private-key` or `NUBL_ORACLE_PRIVATE_KEY`) requires an interactive terminal and the phrase `SIGN ESCROW SETTLEMENT`. MCP does not accept a raw oracle private key. A pre-signed `--signature` does not use the key and does not ask for that phrase. `account passkey` likewise refuses a raw private key over MCP; run it in a terminal and type `AUTHORIZE PASSKEY`.
 
 ## Agent & Automation Integration
 
@@ -281,12 +281,12 @@ nubl <command> --env prod --json
 
 ### Password Automation
 
-`TW_PASSWORD` supplies the keystore password. It does not confirm `send`, private-key export, session export, full-access session create or rotate, a wildcard or admin permission grant, passkey authorization, escrow create or refund, or oracle-key escrow settle. A local shell with a pseudo-terminal can type the public phrase. That is a person at this terminal, not a guarantee against a local process. `nubl --mcp` still refuses.
+`NUBL_PASSWORD` supplies the keystore password. It does not confirm `send`, private-key export, session export, full-access session create or rotate, a wildcard or admin permission grant, passkey authorization, escrow create or refund, or oracle-key escrow settle. A local shell with a pseudo-terminal can type the public phrase. That is a person at this terminal, not a guarantee against a local process. `nubl --mcp` still refuses.
 
-Use `TW_PASSWORD` to skip the password prompt:
+Use `NUBL_PASSWORD` to skip the password prompt:
 
 ```bash
-TW_PASSWORD="my-password" nubl session list --profile agent --json --env prod
+NUBL_PASSWORD="my-password" nubl session list --profile agent --json --env prod
 ```
 
 Or pipe via stdin for commands that accept `--password-stdin`:
@@ -307,4 +307,4 @@ nubl --version           # Version
 
 `nubl --mcp` registers one tool per leaf command. The ids are `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_passkey`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
 
-These calls are refused over MCP, with a message to run the command in a terminal: `account_create` and `account_delegate` (they require the phrase); `daemon_unlock` of a full-access or unreadable session; `session_rotate` with `narrow: true`; `session_revoke` of a full-access or unreadable session; `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create --swap` (type `CREATE SWAP SESSION`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, a period shorter than a day, a non-USDC token, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still shows every call target, selector, refundTo, depositor, and output recipient, and still asks you to confirm. A local pseudo-terminal can answer that prompt; that leftover is not handled here. The daemon socket does not return raw session keys.
+These calls are refused over MCP, with a message to run the command in a terminal: `account_create` and `account_delegate` (they require the phrase); `daemon_unlock` of a full-access or unreadable session; `session_rotate` with `narrow: true`; `session_revoke` of a full-access or unreadable session; `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create --swap` (type `CREATE SWAP SESSION`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, a period shorter than a day, a non-USDC token, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `NUBL_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still shows every call target, selector, refundTo, depositor, and output recipient, and still asks you to confirm. A local pseudo-terminal can answer that prompt; that leftover is not handled here. The daemon socket does not return raw session keys.

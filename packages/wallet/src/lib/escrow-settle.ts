@@ -142,7 +142,7 @@ export async function executeEscrowSettle(
         } else {
             throw new EscrowError(
                 'MISSING_ARGUMENT',
-                'Either --oracle-private-key or --signature is required for settlement. Prefer TW_ORACLE_PRIVATE_KEY env var over the flag.',
+                'Either --oracle-private-key or --signature is required for settlement. Prefer NUBL_ORACLE_PRIVATE_KEY env var over the flag.',
             )
         }
 

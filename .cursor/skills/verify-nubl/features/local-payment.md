@@ -13,7 +13,7 @@ One local agentic USDC payment on Anvil chain 31337, through the wrangler relaye
 You are on the repo root. Dependencies are installed. Anvil and the relayer are not something you start yourself when you use the e2e script. If you were driving `nubl` by hand against an already-running local stack, the commands are:
 
 ```bash
-export TW_PASSWORD="e2e-local-payment"
+export NUBL_PASSWORD="e2e-local-payment"
 cd packages/wallet
 bun ./src/cli.ts account create --env dev --keystore-path "$KEYSTORE" --format json
 bun ./src/cli.ts send 1 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --env dev --keystore-path "$KEYSTORE" --format json
@@ -29,7 +29,7 @@ From the repo root, after Launch in `SKILL.md`:
 bun run e2e:local-payment
 ```
 
-That is `bash scripts/e2e-local-payment.sh`. The script creates the keystore under a fresh `/tmp/agentic-payments-e2e.*` directory, sets `TW_PASSWORD=e2e-local-payment`, runs the two CLI commands above, mints 25 MockUSDC with `packages/wallet/scripts/fund-dev.sh`, and checks balances. You do not pass a recipient or a selector.
+That is `bash scripts/e2e-local-payment.sh`. The script creates the keystore under a fresh `/tmp/nubl-e2e.*` directory, sets `NUBL_PASSWORD=e2e-local-payment`, runs the two CLI commands above, mints 25 MockUSDC with `packages/wallet/scripts/fund-dev.sh`, and checks balances. You do not pass a recipient or a selector.
 
 Wait for exit 0 and the line `PASS local agentic payment`. The balance line just above it looks like `USDC sender <before> -> <after>; recipient <before> -> <after>`.
 

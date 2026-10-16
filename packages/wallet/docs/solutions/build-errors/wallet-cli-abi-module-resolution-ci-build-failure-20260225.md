@@ -4,8 +4,8 @@ date: 2026-02-25
 problem_type: build_error
 component: tooling
 symptoms:
-  - "GitHub Actions checks Common_CI and Integration CI failed at @agentic-payments/wallet-cli#build"
-  - "Bun bundling failed with: Could not resolve '@agentic-payments/deployments/abis'"
+  - "GitHub Actions checks Common_CI and Integration CI failed at @nubl/wallet-cli#build"
+  - "Bun bundling failed with: Could not resolve '@nubl/deployments/abis'"
   - "Local relayer-cli build/tests also failed with unresolved ABI module imports"
 root_cause: missing_tooling
 resolution_type: dependency_update
@@ -18,11 +18,11 @@ tags:
 
 ## Problem
 
-`@agentic-payments/wallet-cli` failed to build in CI because session command files imported an ABI module path that was no longer resolvable in the current workspace/package graph.
+`@nubl/wallet-cli` failed to build in CI because session command files imported an ABI module path that was no longer resolvable in the current workspace/package graph.
 
 ## Environment
 
-- Module: `packages/wallet` (`@agentic-payments/wallet-cli`)
+- Module: `packages/wallet` (`@nubl/wallet-cli`)
 - Affected Component: Package/build tooling and workspace dependency wiring
 - Date: 2026-02-25
 
@@ -32,7 +32,7 @@ tags:
   - `Common_CI` (CI workflow)
   - `Integration CI` (CI workflow)
 - Error in logs:
-  - `Could not resolve: "@agentic-payments/deployments/abis"`
+  - `Could not resolve: "@nubl/deployments/abis"`
 - Affected files:
   - `src/lib/session-create.ts`
   - `src/lib/session-rotate.ts`
@@ -40,7 +40,7 @@ tags:
 
 ## What Didn't Work
 
-**Attempted Solution 1:** Switch imports from `@agentic-payments/deployments/abis` to `@nubl/contracts/abis`.
+**Attempted Solution 1:** Switch imports from `@nubl/deployments/abis` to `@nubl/contracts/abis`.
 
 - **Why it failed:** `packages/wallet/package.json` did not declare `@nubl/contracts` as a dependency, so module resolution still failed at build time.
 
@@ -52,7 +52,7 @@ Use the canonical ABI export path and ensure the package dependency graph includ
 
 ```ts
 // Before
-import { accountAbi } from "@agentic-payments/deployments/abis";
+import { accountAbi } from "@nubl/deployments/abis";
 
 // After
 import { accountAbi } from "@nubl/contracts/abis";
@@ -90,7 +90,7 @@ bun run --cwd packages/wallet test
 ## Why This Works
 
 1. ABI imports are now aligned with the canonical package export (`@nubl/contracts/abis`) used elsewhere in the repo.
-2. The consuming package (`@agentic-payments/wallet-cli`) explicitly depends on `@nubl/contracts`, so Bun can resolve the module during bundling.
+2. The consuming package (`@nubl/wallet-cli`) explicitly depends on `@nubl/contracts`, so Bun can resolve the module during bundling.
 3. Lockfile regeneration ensures CI and local environments resolve the same graph.
 
 ## Prevention

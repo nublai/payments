@@ -8,8 +8,8 @@
   - @nubl/contracts@7.3.1
   - @nubl/proto@7.3.1
   - @nubl/relayer-client@7.3.1
-  - @agentic-payments/sdk@7.3.1
-  - @agentic-payments/utils@7.3.1
+  - @nubl/sdk@7.3.1
+  - @nubl/utils@7.3.1
 
 ## 7.3.0
 
@@ -23,8 +23,8 @@
   - @nubl/contracts@7.3.0
   - @nubl/proto@7.3.0
   - @nubl/relayer-client@7.3.0
-  - @agentic-payments/sdk@7.3.0
-  - @agentic-payments/utils@7.3.0
+  - @nubl/sdk@7.3.0
+  - @nubl/utils@7.3.0
 
 ## 7.2.0
 
@@ -38,8 +38,8 @@
   - @nubl/contracts@7.2.0
   - @nubl/proto@7.2.0
   - @nubl/relayer-client@7.2.0
-  - @agentic-payments/sdk@7.2.0
-  - @agentic-payments/utils@7.2.0
+  - @nubl/sdk@7.2.0
+  - @nubl/utils@7.2.0
 
 ## 7.1.0
 
@@ -89,7 +89,7 @@
 
 ### Major Changes
 
-- #885 `359ca49` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@nubl/wallet` and keep `agentic-payments-wallet`/`nubl` binaries so Bun users can run it via `bunx @nubl/wallet`.
+- #885 `359ca49` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@nubl/wallet` and keep the `nubl` binary so Bun users can run it via `bunx @nubl/wallet`.
 
 ### Patch Changes
 
@@ -133,7 +133,7 @@
 
 ### Minor Changes
 
-- #794 `82926e9` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Wallet CLI (`agentic-payments-wallet` / `nubl`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
+- #794 `82926e9` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Wallet CLI (`nubl`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
 
 ### Patch Changes
 
@@ -173,10 +173,10 @@
 
 ### Minor Changes
 
-- #670 `03ff3f0` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
+- #670 `03ff3f0` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @nubl/deployments, remove @nubl/generated, gut ethers v5 contract layer from @nubl/web3
 
 ### Patch Changes
 
 - Updated dependencies [`03ff3f0`]:
-  - @agentic-payments/deployments@3.3.0
+  - @nubl/deployments@3.3.0
   - @nubl/relayer-client@3.3.0

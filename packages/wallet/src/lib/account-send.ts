@@ -356,7 +356,7 @@ export async function resolveAccountSendPassword(
 
     throw new AccountSendError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
     )
 }
 
@@ -392,7 +392,7 @@ export async function executeAccountSend(
 
         throw new AccountSendError(
             'PASSWORD_REQUIRED',
-            'Password required. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
+            'Password required. Use --password-stdin, NUBL_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
         )
     }
 
@@ -736,7 +736,7 @@ function debugSignerFallback(
     command: 'account_send',
     details: { reason: string; sessionName: string },
 ): void {
-    if (process.env.TW_DAEMON_DEBUG !== '1') {
+    if (process.env.NUBL_DAEMON_DEBUG !== '1') {
         return
     }
 

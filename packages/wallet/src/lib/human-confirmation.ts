@@ -4,7 +4,7 @@ import { PromptCancelledError } from './password-readline'
 /**
  * Confirmation for operations a prompt-injected MCP client or a non-TTY `nubl`
  * must not be able to complete by itself. The phrase is read from an
- * interactive terminal. `TW_PASSWORD`, `--yes`, and raw private-key arguments
+ * interactive terminal. `NUBL_PASSWORD`, `--yes`, and raw private-key arguments
  * are not accepted as substitutes.
  */
 export class HumanConfirmationError extends Error {

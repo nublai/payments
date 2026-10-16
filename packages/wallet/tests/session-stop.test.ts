@@ -3,7 +3,7 @@ import { executeSessionStop, type SessionStopDeps } from '../src/lib/session-sto
 import { typedMock } from './helpers/typed-mock'
 
 test('executeSessionStop does not unlink pid/socket when process does not exit after SIGTERM', async () => {
-    process.env.TW_AGENT_SOCK = '/tmp/nubl-session-stop-nonexit.sock'
+    process.env.NUBL_AGENT_SOCK = '/tmp/nubl-session-stop-nonexit.sock'
 
     const unlinkMock = typedMock<SessionStopDeps['unlink']>(async () => {})
 
@@ -24,7 +24,7 @@ test('executeSessionStop does not unlink pid/socket when process does not exit a
 })
 
 test('executeSessionStop reports cleanup unlink errors on stale pid/socket cleanup', async () => {
-    process.env.TW_AGENT_SOCK = '/tmp/nubl-session-stop-stale.sock'
+    process.env.NUBL_AGENT_SOCK = '/tmp/nubl-session-stop-stale.sock'
 
     const unlinkMock = typedMock<SessionStopDeps['unlink']>(async (path) => {
         if (String(path).endsWith('.pid')) {

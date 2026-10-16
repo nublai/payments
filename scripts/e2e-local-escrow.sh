@@ -152,7 +152,7 @@ echo "Relayer pid $RELAYER_PID"
 echo "Building @nubl/relayer-client..."
 (cd "$ROOT/packages/relayer-client" && bun run build)
 
-WORKDIR="$(mktemp -d /tmp/agentic-payments-e2e-escrow.XXXXXX)"
+WORKDIR="$(mktemp -d /tmp/nubl-e2e-escrow.XXXXXX)"
 KEYSTORE="$WORKDIR/account.json"
 # Anvil account #1. Receives USDC when the escrow is settled.
 SELLER="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
@@ -160,8 +160,8 @@ SELLER="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 ORACLE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 ORACLE="$(cast wallet address --private-key "$ORACLE_KEY")"
 USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-export TW_PASSWORD="e2e-local-payment"
-export TW_ORACLE_PRIVATE_KEY="$ORACLE_KEY"
+export NUBL_PASSWORD="e2e-local-payment"
+export NUBL_ORACLE_PRIVATE_KEY="$ORACLE_KEY"
 
 echo "Creating and delegating account..."
 # account create installs the narrow default session and still requires the phrase.

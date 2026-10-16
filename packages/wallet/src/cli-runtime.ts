@@ -113,7 +113,7 @@ function summarizeActiveResource(resource: unknown): HandleSummary {
 }
 
 export function scheduleActiveHandleDumpIfRequested(label: string): void {
-    if (process.env.TW_DEBUG_HANDLES !== '1') {
+    if (process.env.NUBL_DEBUG_HANDLES !== '1') {
         return
     }
 

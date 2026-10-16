@@ -690,7 +690,7 @@ function runCli(
             env: {
                 ...process.env,
                 HOME: mkdtempSync(join(tmpdir(), 'nubl-home-')),
-                TW_PASSWORD: PASSWORD,
+                NUBL_PASSWORD: PASSWORD,
                 PATH: `/tmp/node22/bin:${process.env.HOME}/.bun/bin:${process.env.PATH ?? ''}`,
                 ...env,
             },
@@ -1060,7 +1060,7 @@ test('MCP send is refused before the relayer is contacted', async () => {
                     env: {
                         ...process.env,
                         HOME: mkdtempSync(join(tmpdir(), 'nubl-mcp-home-')),
-                        TW_PASSWORD: PASSWORD,
+                        NUBL_PASSWORD: PASSWORD,
                         PATH: `/tmp/node22/bin:${process.env.HOME}/.bun/bin:${process.env.PATH ?? ''}`,
                         ...devEnv(url),
                     },

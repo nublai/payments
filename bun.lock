@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "agentic-payments",
+      "name": "nubl",
       "devDependencies": {
         "@oxlint/plugins": "1.86.0",
         "@types/node": "^20.14.8",

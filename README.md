@@ -1,4 +1,4 @@
-# Agentic Payments
+# nubl
 
 Smart accounts, a relayer, and a local wallet CLI for agent-initiated payments. This tree is the payments surface only.
 

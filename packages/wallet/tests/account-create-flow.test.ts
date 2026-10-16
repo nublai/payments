@@ -103,25 +103,25 @@ function makeSessionKeystore(
 
 test('getDefaultKeystorePath keeps prod path stable', () => {
     const path = getDefaultKeystorePath('prod')
-    expect(path).toContain('/.config/agentic-payments/nubl/profiles/default/default.keystore.json')
+    expect(path).toContain('/.config/nubl/profiles/default/default.keystore.json')
     expect(path).not.toContain('/profiles/prod/')
 })
 
 test('getDefaultKeystorePath namespaces non-prod envs', () => {
     expect(getDefaultKeystorePath('stage')).toContain(
-        '/.config/agentic-payments/nubl/profiles/stage/default/default.keystore.json',
+        '/.config/nubl/profiles/stage/default/default.keystore.json',
     )
     expect(getDefaultKeystorePath('dev')).toContain(
-        '/.config/agentic-payments/nubl/profiles/dev/default/default.keystore.json',
+        '/.config/nubl/profiles/dev/default/default.keystore.json',
     )
 })
 
 test('getDefaultKeystorePath uses --profile for prod and non-prod', () => {
     expect(getDefaultKeystorePath('prod', 'alice')).toContain(
-        '/.config/agentic-payments/nubl/profiles/alice/default.keystore.json',
+        '/.config/nubl/profiles/alice/default.keystore.json',
     )
     expect(getDefaultKeystorePath('stage', 'alice')).toContain(
-        '/.config/agentic-payments/nubl/profiles/stage/alice/default.keystore.json',
+        '/.config/nubl/profiles/stage/alice/default.keystore.json',
     )
 })
 

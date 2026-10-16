@@ -358,7 +358,7 @@ export async function resolveSessionCreatePassword(
     if (deps.isInteractive) return deps.promptForExistingPassword()
     throw new SessionCreateError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, or run in interactive TTY.',
     )
 }
 
