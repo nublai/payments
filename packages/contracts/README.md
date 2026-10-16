@@ -89,7 +89,7 @@ Only configured tokens are metered because of bytecode headroom under the 24,576
 
 ## Deployment
 
-From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` chooses the chain and RPC.
+From `packages/contracts`. There is no Makefile. `./scripts/sh/deploy.sh` chooses the chain and RPC. Base Sepolia stage launch: [docs/runbooks/base-sepolia-launch.md](../../docs/runbooks/base-sepolia-launch.md).
 
 | Command | Chain | Context | RPC |
 | --- | --- | --- | --- |
