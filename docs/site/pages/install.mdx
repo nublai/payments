@@ -9,7 +9,7 @@ bun run --cwd packages/relayer-client build
 cd packages/wallet && bun ./src/cli.ts --help
 ```
 
-`@nubl/wallet` is not on npm yet. Commands below are `bun ./src/cli.ts <cmd>` from `packages/wallet`, after the builds above. Once it is published (or bun-linked), the command is `nubl <cmd>`.
+`@nubl/wallet` is not on npm yet. Commands below are `bun ./src/cli.ts <cmd>` from `packages/wallet`, after the builds above. Once the package is published, the command is `nubl <cmd>`. `bun link` from `packages/wallet` puts that command on `PATH` after `bun run build` in that package.
 
 Every command that talks to a chain requires `--env prod`, `--env stage`, or `--env dev`. Omitting `--env` fails. There is no default environment.
 
