@@ -42,7 +42,9 @@ bun install
 bun run e2e:local-payment
 ```
 
-That script starts Anvil, deploys, exports `packages/contracts/deployments/envs/local/.env`, starts the relayer, creates an account, mints MockUSDC with `packages/wallet/scripts/fund-dev.sh`, and sends 1 USDC. It types the confirmation phrases. Ports 8545, 8546, and 8787 must be free. Needs Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22.
+That script starts Anvil, deploys, exports `packages/contracts/deployments/envs/local/.env`, starts the relayer, creates an account, mints MockUSDC with `packages/wallet/scripts/fund-dev.sh`, and sends 1 USDC. It types the confirmation phrases. Ports 8545, 8546, and 8787 must be free. Needs Anvil, cast, forge, bun, curl, python3, bc, lsof, and ss, and Node >= 22. The e2e scripts call `ss` to see whether those ports are open. `packages/relayer/scripts/dev.sh`, which they start, exits if `lsof` is missing.
+
+`--env dev` signs only on local chains 31337 and 41337. Its fee ceiling is zero there. `--env dev` on a published chain, including `--chain base` and Base Sepolia, refuses to sign. Use `--env stage` for Base Sepolia and `--env prod` for Base.
 
 `bun ./src/cli.ts --mcp` from `packages/wallet`, after the install builds, starts the stdio MCP server. Point the client at that file:
 

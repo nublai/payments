@@ -40,7 +40,7 @@ Swap, bridge, and login have no local end-to-end script: `bun ./src/cli.ts swap`
 
 ## Environment variables
 
-Local `e2e:local-payment` does not need any external relayer or login host. Dev uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. Prod and stage relayer URLs are not in source. Set `RELAYER_URL_PROD` and `RELAYER_URL_STAGE` to an `https` worker origin (loopback `http` is still accepted). `--env dev` may use plain `http` for a loopback host, or for local chain 31337/41337 when that chain's orchestrator is not in the deployments JSON. Dev against a published orchestrator, including Base Sepolia, requires `https` unless the host is loopback. Login, which the local payment path does not use, reads `AUTH_URL_PROD`, `AUTH_URL_STAGE`, or `AUTH_URL_DEV`. If unset, `bun ./src/cli.ts login` says so instead of printing a URL.
+Local `e2e:local-payment` does not need any external relayer or login host. `--env dev` is local Anvil only. Its default chain is `anvil`, and the zero fee ceiling is signed only on chain ids 31337 and 41337. `--env dev` on a published chain, including `--chain base` and Base Sepolia, refuses to sign: that env pays with the zero address, and off those two chain ids the payer and payment token must not be zero. Use `--env stage` for Base Sepolia and `--env prod` for Base. Dev uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. Prod and stage relayer URLs are not in source. Set `RELAYER_URL_PROD` and `RELAYER_URL_STAGE` to an `https` worker origin (loopback `http` is still accepted). `--env dev` may use plain `http` for a loopback host, or for local chain 31337/41337 when that chain's orchestrator is not in the deployments JSON. Login, which the local payment path does not use, reads `AUTH_URL_PROD`, `AUTH_URL_STAGE`, or `AUTH_URL_DEV`. If unset, `bun ./src/cli.ts login` says so instead of printing a URL.
 
 ## EIP-712
 
@@ -48,7 +48,7 @@ Before it signs, the wallet recomputes the EIP-712 `Intent` digest and signs tha
 
 ## Local payment and deploys
 
-From the repo root, with Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH`:
+From the repo root, with Anvil, cast, forge, bun, curl, python3, bc, lsof, and ss, and Node >= 22 on `PATH`:
 
 ```bash
 bun install
