@@ -8,6 +8,8 @@
         "packages/*"
     ],
     "scripts": {
+        "docs:dev": "bun install --cwd docs/site --frozen-lockfile && bun run --cwd docs/site dev",
+        "docs:build": "bun install --cwd docs/site --frozen-lockfile && bun run --cwd docs/site build",
         "e2e:local-payment": "bash scripts/e2e-local-payment.sh",
         "e2e:local-escrow": "bash scripts/e2e-local-escrow.sh",
         "lint": "oxlint",

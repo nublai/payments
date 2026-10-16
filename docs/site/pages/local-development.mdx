@@ -1,0 +1,38 @@
+# Local development
+
+Toolchain: Node >= 22, Bun `1.3.3`, Foundry `1.5.1`, and `anvil`, `cast`, `forge`, `curl`, `python3`, `bc`, `lsof`, and `ss` on `PATH`. `bc` mints in `packages/wallet/scripts/fund-dev.sh`. The local scripts use `ss` to see whether ports 8545, 8546, and 8787 are free. `packages/relayer/scripts/dev.sh` exits if `lsof` is missing, and uses it to see whether port 8787 is taken.
+
+From the repo root:
+
+```bash
+bun install
+bun run e2e:local-payment
+```
+
+Ports 8545, 8546, and 8787 must be free. The script starts Anvil on 31337 (port 8545) and 41337 (port 8546), runs `packages/contracts` `deploy:local` and `make-config`, and exports each `NAME=0x…` line from `packages/contracts/deployments/envs/local/.env`. It starts the wrangler relayer, creates an account with `bun ./src/cli.ts account create --env dev` from `packages/wallet`, mints MockUSDC with `packages/wallet/scripts/fund-dev.sh <account> 25`, and sends 1 USDC with `bun ./src/cli.ts send 1 <recipient> --env dev`. It stops the Anvil and wrangler processes it started.
+
+The other local script is:
+
+```bash
+bun run e2e:local-escrow
+```
+
+Local `e2e:local-payment` does not need an external relayer or login host. Swap, bridge, and login have no local end-to-end script.
+
+## Relayer and login hosts
+
+Dev uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. `RELAYER_URL_PROD` and `RELAYER_URL_STAGE` are not in source. Set each to an `https` worker origin. Loopback `http` is still accepted.
+
+`--env dev` defaults to local Anvil. Override with `--chain base`, `--chain polygon`, `--chain anvil`, or `--chain base-sepolia`. Plain `http` is accepted for a loopback host, or for local chain 31337 or 41337 when that chain's orchestrator is not in the deployments JSON. `--env dev` cannot sign payments on a published chain, including `--chain base` and Base Sepolia, because the zero fee payer is refused off those chain ids. Use `--env stage` for Base Sepolia and `--env prod` for Base.
+
+Login, which the local payment path does not use, reads `AUTH_URL_PROD`, `AUTH_URL_STAGE`, or `AUTH_URL_DEV`. If unset, `bun ./src/cli.ts login` from `packages/wallet` says so instead of printing a URL.
+
+## Swap and bridge hosts
+
+`bun ./src/cli.ts swap` and `bun ./src/cli.ts bridge` from `packages/wallet` call relay.link: `https://api.testnets.relay.link` when `--env` is `dev`, and `https://api.relay.link` otherwise. Quotes are allowlisted and simulated before signing. A calldata change after confirmation is shown again. See [Security model](/security).
+
+## Local contract addresses
+
+After `make-config`, chain 31337 and 41337 read `ORCHESTRATOR_<chainId>` and `ACCOUNT_PROXY_<chainId>` from the environment or from `packages/contracts/deployments/envs/local/.env`. Those chains are not in `addresses.json`.
+
+`NUBL_PASSWORD` is the keystore password for non-interactive runs. It does not type the confirmation phrase. `e2e:local-payment` types `CREATE FULL ACCESS SESSION` and `SEND USDC` on a pseudo-terminal. `e2e:local-escrow` types those plus `SIGN ESCROW SETTLEMENT`. The script is the operator.
