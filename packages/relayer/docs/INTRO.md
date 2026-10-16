@@ -129,7 +129,7 @@ When an agent is created:
 3. **Users grant your agent access**: When a user wants to use your agent, they authorize your agent's Account as a session key on their own Account, with spending limits they control
 4. **Agents and users are peers**: Both are Accounts interacting with the same system—the only difference is who (or what) controls the private key
 
-This unified model means there's no "second-class citizen" treatment for agents. They're full participants in Agentic Payments, with the same capabilities and protections as human users—just operating under permissions granted by the accounts they serve.
+This unified model means there's no "second-class citizen" treatment for agents. They're full participants in nubl, with the same capabilities and protections as human users—just operating under permissions granted by the accounts they serve.
 
 ## Key Features
 

@@ -1,5 +1,5 @@
 ---
-name: verify-agentic-payments
+name: verify-nubl
 description: >-
   Thin runner for the wallet CLI (nubl, bun ./src/cli.ts) and the local Anvil
   scripts bun run e2e:local-payment and bun run e2e:local-escrow. Use it to
@@ -7,7 +7,7 @@ description: >-
   it for swap, bridge, or login, and do not reimplement the scripts.
 ---
 
-# Verify Agentic Payments
+# Verify nubl
 
 This skill does not start a second harness. It checks the machine, then runs the repo scripts `scripts/e2e-local-payment.sh` and `scripts/e2e-local-escrow.sh`. Those scripts start Anvil, deploy, start wrangler, drive `nubl`, and tear down what they started.
 
@@ -37,7 +37,7 @@ Read-only. It does not install, deploy, or start Anvil, wrangler, or the wallet.
 From the repo root, with the same `PATH` as Launch:
 
 ```bash
-bash .cursor/skills/verify-agentic-payments/scripts/doctor.sh
+bash .cursor/skills/verify-nubl/scripts/doctor.sh
 ```
 
 Exit 0 prints one `DOCTOR PASS` line. Exit 1 prints one or more `DOCTOR FAIL` lines. The doctor fails when:
@@ -85,7 +85,7 @@ Escrow proof, both required:
 - the line `PASS local escrow`
 - the `ASSERT` line the script prints before that, shaped `ASSERT escrow status finalized tx <settle-tx>; seller USDC <before> -> <after>; create tx <create-tx>`
 
-The scripts also write untracked files under `/tmp` (`e2e-anvil-31337.log`, `e2e-anvil-41337.log`, `e2e-escrow-anvil-31337.log`, `e2e-escrow-anvil-41337.log`, `relayer.log`, and a `mktemp` directory named `agentic-payments-e2e.*` or `agentic-payments-e2e-escrow.*`). Those logs stay untracked. They are not the proof. The proof is the script output.
+The scripts also write untracked files under `/tmp` (`e2e-anvil-31337.log`, `e2e-anvil-41337.log`, `e2e-escrow-anvil-31337.log`, `e2e-escrow-anvil-41337.log`, `relayer.log`, and a `mktemp` directory named `nubl-e2e.*` or `nubl-e2e-escrow.*`). Those logs stay untracked. They are not the proof. The proof is the script output.
 
 ## Cleanup
 
@@ -98,7 +98,7 @@ Cleanup does not delete evidence logs. `/tmp` anvil logs, `/tmp/relayer.log`, th
 One helper, the doctor. It must stay executable.
 
 ```bash
-bash .cursor/skills/verify-agentic-payments/scripts/doctor.sh
+bash .cursor/skills/verify-nubl/scripts/doctor.sh
 ```
 
 No other helpers. Feature notes are under `features/`.

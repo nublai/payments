@@ -5,13 +5,13 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { SessionDaemonClient } from '../src/lib/session-daemon-client'
 
-const originalSocket = process.env.TW_AGENT_SOCK
+const originalSocket = process.env.NUBL_AGENT_SOCK
 
 afterEach(async () => {
     if (originalSocket) {
-        process.env.TW_AGENT_SOCK = originalSocket
+        process.env.NUBL_AGENT_SOCK = originalSocket
     } else {
-        delete process.env.TW_AGENT_SOCK
+        delete process.env.NUBL_AGENT_SOCK
     }
 })
 
@@ -21,7 +21,7 @@ async function withSocketServer(
 ): Promise<void> {
     const dir = await mkdtemp(join(tmpdir(), 'nubl-daemon-client-test-'))
     const socketPath = join(dir, 'daemon.sock')
-    process.env.TW_AGENT_SOCK = socketPath
+    process.env.NUBL_AGENT_SOCK = socketPath
 
     const server = net.createServer(handler)
     await new Promise<void>((resolve, reject) => {

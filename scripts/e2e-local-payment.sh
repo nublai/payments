@@ -129,11 +129,11 @@ fi
 echo "Building @nubl/relayer-client..."
 (cd "$ROOT/packages/relayer-client" && bun run build)
 
-WORKDIR="$(mktemp -d /tmp/agentic-payments-e2e.XXXXXX)"
+WORKDIR="$(mktemp -d /tmp/nubl-e2e.XXXXXX)"
 KEYSTORE="$WORKDIR/account.json"
 RECIPIENT="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-export TW_PASSWORD="e2e-local-payment"
+export NUBL_PASSWORD="e2e-local-payment"
 
 echo "Creating and delegating account..."
 # account create installs the narrow default session and still requires the phrase.

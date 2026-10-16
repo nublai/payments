@@ -1,6 +1,6 @@
 # Contributing
 
-This repo is the Agentic Payments stack: `packages/contracts`, `packages/relayer`, `packages/relayer-client`, `packages/wallet` (`nubl`), and `packages/proto`.
+This repo is the nubl stack: `packages/contracts`, `packages/relayer`, `packages/relayer-client`, `packages/wallet` (`nubl`), and `packages/proto`.
 
 ## Setup
 

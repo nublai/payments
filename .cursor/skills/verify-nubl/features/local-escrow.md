@@ -7,12 +7,12 @@ One local USDC escrow on Anvil chain 31337: create, status, settle, then the sel
 - Create a local account and delegate it. That address is the buyer.
 - Create a 1 USDC escrow to seller `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (Anvil account #1), oracle the Anvil deployer (account #0), deadline `1h`.
 - Read on-chain status `created`.
-- Settle with the script's `TW_ORACLE_PRIVATE_KEY` (the public Anvil default key, the same one local deploy uses).
+- Settle with the script's `NUBL_ORACLE_PRIVATE_KEY` (the public Anvil default key, the same one local deploy uses).
 - Assert status `finalized` and that the seller's USDC balance rose by 1000000.
 
 ## How to get to it (user POV)
 
-You are on the repo root. The stack is already up only if you are driving `nubl` by hand. The e2e script brings the stack up for you. By hand, from `packages/wallet`, with `TW_PASSWORD` set and `TW_ORACLE_PRIVATE_KEY` set to the Anvil deployer key:
+You are on the repo root. The stack is already up only if you are driving `nubl` by hand. The e2e script brings the stack up for you. By hand, from `packages/wallet`, with `NUBL_PASSWORD` set and `NUBL_ORACLE_PRIVATE_KEY` set to the Anvil deployer key:
 
 ```bash
 bun ./src/cli.ts account create --env dev --keystore-path "$KEYSTORE" --format json
@@ -21,7 +21,7 @@ bun ./src/cli.ts escrow status "$ESCROW_ID" --env dev
 bun ./src/cli.ts escrow settle "$ESCROW_ID" --settlement-id "$ORDER_ID" --oracle "$ORACLE" --env dev --keystore-path "$KEYSTORE" --format json
 ```
 
-`nubl escrow create` takes the amount and the seller. `--oracle` and `--deadline` are required. `nubl escrow settle` needs the escrow id, `--settlement-id` (the order id from create), and `--oracle`. Prefer `TW_ORACLE_PRIVATE_KEY` over putting the key on the command line. Always pass `--env dev`.
+`nubl escrow create` takes the amount and the seller. `--oracle` and `--deadline` are required. `nubl escrow settle` needs the escrow id, `--settlement-id` (the order id from create), and `--oracle`. Prefer `NUBL_ORACLE_PRIVATE_KEY` over putting the key on the command line. Always pass `--env dev`.
 
 After settle, status is `finalized` and the seller balance is 1000000 base units higher than before create. That is the assertion you are looking for.
 
@@ -33,7 +33,7 @@ From the repo root, after Launch in `SKILL.md`:
 bun run e2e:local-escrow
 ```
 
-That is `bash scripts/e2e-local-escrow.sh`. The script exports every `NAME=0x…` address line from `packages/contracts/deployments/envs/local/.env`, sets `TW_PASSWORD` and `TW_ORACLE_PRIVATE_KEY`, runs the CLI commands above, and checks balances. You do not pass selectors.
+That is `bash scripts/e2e-local-escrow.sh`. The script exports every `NAME=0x…` address line from `packages/contracts/deployments/envs/local/.env`, sets `NUBL_PASSWORD` and `NUBL_ORACLE_PRIVATE_KEY`, runs the CLI commands above, and checks balances. You do not pass selectors.
 
 Wait for exit 0 and the line `PASS local escrow`. The line just above it starts with `ASSERT escrow status finalized` and includes the seller USDC balances and the create tx.
 

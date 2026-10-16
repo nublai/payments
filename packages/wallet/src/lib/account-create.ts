@@ -182,7 +182,7 @@ function assertValidProfileName(name: string): void {
 
 export function getDefaultKeystorePath(env: EnvName, name = 'default'): string {
     assertValidProfileName(name)
-    const base = [homedir(), '.config', 'agentic-payments', 'nubl', 'profiles']
+    const base = [homedir(), '.config', 'nubl', 'profiles']
 
     if (name === 'default') {
         if (env === 'prod') {
@@ -367,7 +367,7 @@ export async function resolveAccountCreatePassword(
 
     throw new AccountCreateError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
     )
 }
 

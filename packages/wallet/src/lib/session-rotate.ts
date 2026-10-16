@@ -520,7 +520,7 @@ const MARKER_MAC_KDF = {
     hashLength: 32,
 } as const
 
-const MARKER_MAC_DOMAIN = 'towns-rotation-marker-v1'
+const MARKER_MAC_DOMAIN = 'nubl-rotation-marker-v1'
 
 const ROTATION_FRESHNESS_NAME = 'rotation-freshness'
 

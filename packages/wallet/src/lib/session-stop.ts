@@ -147,7 +147,7 @@ export async function executeSessionStop(
 }
 
 function debugSessionStop(message: string, details?: { path: string; message: string }): void {
-    if (process.env.TW_DAEMON_DEBUG !== '1') {
+    if (process.env.NUBL_DAEMON_DEBUG !== '1') {
         return
     }
 

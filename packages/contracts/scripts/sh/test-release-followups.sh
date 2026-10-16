@@ -160,8 +160,8 @@ if missing:
 PY
 }
 
-# Towns leftover: package exports and build must not ship config/deployments.json.
-towns_config_export_removed() {
+# Removed config: package exports and build must not ship config/deployments.json.
+legacy_config_export_removed() {
     python3 - <<'PY'
 import json
 import pathlib
@@ -174,12 +174,12 @@ if "./config/deployments.json" in exports:
     sys.exit(1)
 leftover = pathlib.Path("deployments/config/deployments.json")
 if leftover.exists():
-    print("leftover Towns deployments/config/deployments.json is still present", file=sys.stderr)
+    print("leftover deployments/config/deployments.json is still present", file=sys.stderr)
     sys.exit(1)
 for name in ("build", "build:contracts"):
     script = pkg["scripts"][name]
     if "deployments/config" in script or "config/deployments.json" in script:
-        print(f"{name} still copies leftover Towns config: {script}", file=sys.stderr)
+        print(f"{name} still copies leftover config: {script}", file=sys.stderr)
         sys.exit(1)
 PY
 }
@@ -230,7 +230,7 @@ release_addresses_documented() {
             echo "missing never-deployed note in $doc" >&2
             return 1
         fi
-        if ! grep -q "inherited from the Towns deployment and are not ours" "$doc"; then
+        if ! grep -q "inherited from the previous deployment and are not ours" "$doc"; then
             echo "missing inherited-address note in $doc" >&2
             return 1
         fi
@@ -758,18 +758,18 @@ PY
     fi
 }
 
-# Red's selective-deploy PoC. A Towns orchestrator.json with no matching code
+# Red's selective-deploy PoC. A stale orchestrator.json with no matching code
 # must not be the Account constructor argument. Mismatched code at the CREATE2
 # address must revert.
 selective_json_must_match_release() {
     local port=18547
     local rpc="http://127.0.0.1:${port}"
     local pk="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-    local towns="0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8"
+    local stale="0xcf96B5228f656f26f83B8f1240fAD544C17ac7a8"
     local orch account wrong
     orch="$(cast to-check-sum-address "$(create2_release_address "$(release_initcode Orchestrator)")")"
     account="$(cast to-check-sum-address "$(create2_release_address "$(release_initcode Account "$orch")")")"
-    wrong="$(cast to-check-sum-address "$(create2_release_address "$(release_initcode Account "$towns")")")"
+    wrong="$(cast to-check-sum-address "$(create2_release_address "$(release_initcode Account "$stale")")")"
     local dir="$PROJECT_ROOT/deployments/envs/prod/8453"
     local tmp pid code size deployed
     tmp="$(mktemp -d)"
@@ -804,11 +804,11 @@ selective_json_must_match_release() {
     local multicall
     multicall="$(tr -d '[:space:]' < "$PROJECT_ROOT/scripts/sol/common/bytecodes/multicall3.txt")"
     cast rpc anvil_setCode "0xcA11bde05977b3631167028862bE2a173976CA11" "$multicall" --rpc-url "$rpc" >/dev/null
-    python3 - "$dir" "$towns" <<'PY'
+    python3 - "$dir" "$stale" <<'PY'
 import json, sys
 from pathlib import Path
-path, towns = Path(sys.argv[1]), sys.argv[2]
-(path / "orchestrator.json").write_text(json.dumps({"address": towns}) + "\n")
+path, stale = Path(sys.argv[1]), sys.argv[2]
+(path / "orchestrator.json").write_text(json.dumps({"address": stale}) + "\n")
 PY
     cast rpc anvil_setCode "$orch" "0x600160005260206000f3" --rpc-url "$rpc" >/dev/null
     set +e
@@ -831,7 +831,7 @@ PY
     fi
     size="$(cast codesize "$wrong" --rpc-url "$rpc")"
     if [[ "$size" != "0" ]]; then
-        echo "Towns orchestrator was used as the Account constructor (codesize $size at $wrong)" >&2
+        echo "stale orchestrator was used as the Account constructor (codesize $size at $wrong)" >&2
         return 1
     fi
     kill "$pid" 2>/dev/null || true
@@ -851,11 +851,11 @@ PY
         return 1
     fi
     cast rpc anvil_setCode "0xcA11bde05977b3631167028862bE2a173976CA11" "$multicall" --rpc-url "$rpc" >/dev/null
-    python3 - "$dir" "$towns" <<'PY'
+    python3 - "$dir" "$stale" <<'PY'
 import json, sys
 from pathlib import Path
-path, towns = Path(sys.argv[1]), sys.argv[2]
-(path / "orchestrator.json").write_text(json.dumps({"address": towns}) + "\n")
+path, stale = Path(sys.argv[1]), sys.argv[2]
+(path / "orchestrator.json").write_text(json.dumps({"address": stale}) + "\n")
 PY
     set +e
     RPC_8453="$rpc" "$SCRIPT_DIR/deploy.sh" \
@@ -871,17 +871,17 @@ PY
         return 1
     fi
     if ! grep -q "Ignoring deployment file; on-chain code does not match the release artifact" "$tmp/deploy.out"; then
-        echo "selective deploy did not ignore the Towns orchestrator file" >&2
+        echo "selective deploy did not ignore the stale orchestrator file" >&2
         tail -50 "$tmp/deploy.out" >&2
         return 1
     fi
     if grep -q "Found existing (file): orchestrator" "$tmp/deploy.out"; then
-        echo "selective deploy used the Towns orchestrator file" >&2
+        echo "selective deploy used the stale orchestrator file" >&2
         return 1
     fi
     size="$(cast codesize "$wrong" --rpc-url "$rpc")"
     if [[ "$size" != "0" ]]; then
-        echo "Account landed at the Towns-constructor address $wrong (codesize $size)" >&2
+        echo "Account landed at the stale-constructor address $wrong (codesize $size)" >&2
         return 1
     fi
     size="$(cast codesize "$account" --rpc-url "$rpc")"
@@ -1441,7 +1441,7 @@ if bytecode_flags_refused; then pass "bytecode-changing forge flags are refused"
 if metadata_fields_required; then pass "release metadata fields are required"; else fail "release metadata fields are required"; fi
 if release_tests_in_ci; then pass "CI runs release forge test"; else fail "CI runs release forge test"; fi
 if package_scripts_run_check; then pass "build:contracts and generate run the size check"; else fail "build:contracts and generate run the size check"; fi
-if towns_config_export_removed; then pass "Towns config/deployments.json export is gone"; else fail "Towns config/deployments.json export is gone"; fi
+if legacy_config_export_removed; then pass "config/deployments.json export is gone"; else fail "config/deployments.json export is gone"; fi
 if symlink_refused; then pass "deploy.sh refuses a symlink"; else fail "deploy.sh refuses a symlink"; fi
 if release_addresses_documented; then pass "docs list release CREATE2 addresses"; else fail "docs list release CREATE2 addresses"; fi
 if dry_run_does_not_write_deployments; then

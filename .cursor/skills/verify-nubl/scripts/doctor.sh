@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only checks for verify-agentic-payments. Does not install, deploy, or start processes.
+# Read-only checks for verify-nubl. Does not install, deploy, or start processes.
 set -u
 
 fail=0

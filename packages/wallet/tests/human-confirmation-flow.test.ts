@@ -241,7 +241,7 @@ beforeAll(async () => {
     await writeSessionKeystoreFile(resolveSessionKeystorePath(keystorePath), session)
 })
 
-test('non-TTY account export with TW_PASSWORD does not print private keys', async () => {
+test('non-TTY account export with NUBL_PASSWORD does not print private keys', async () => {
     const result = await runCli(
         [
             'account',
@@ -253,7 +253,7 @@ test('non-TTY account export with TW_PASSWORD does not print private keys', asyn
             '--keystore-path',
             keystorePath,
         ],
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(result.status).not.toBe(0)
@@ -268,7 +268,7 @@ test('MCP account_export showPrivate does not print private keys', async () => {
     const output = await callMcpTool(
         'account_export',
         { env: 'dev', showPrivate: true, keystorePath },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('PRIVATE_EXPORT_CONFIRMATION_REQUIRED')
@@ -279,13 +279,13 @@ test('MCP account_export showPrivate does not print private keys', async () => {
     expect(output).not.toContain('rootPrivateKey')
 })
 
-test('non-TTY send with TW_PASSWORD cannot proceed without human confirmation', async () => {
+test('non-TTY send with NUBL_PASSWORD cannot proceed without human confirmation', async () => {
     const sink = await listenOn8545()
 
     try {
         const result = await runCli(
             ['send', '1', recipient, '--env', 'dev', '--keystore-path', keystorePath, '--json'],
-            { TW_PASSWORD: password, HOME: home },
+            { NUBL_PASSWORD: password, HOME: home },
         )
 
         expect(result.status).not.toBe(0)
@@ -310,7 +310,7 @@ test('MCP send cannot proceed without human confirmation', async () => {
             env: 'dev',
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -331,7 +331,7 @@ test('MCP swap yes true cannot proceed without human confirmation', async () => 
             yes: true,
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -351,7 +351,7 @@ test('MCP bridge yes true cannot proceed without human confirmation', async () =
             yes: true,
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -376,7 +376,7 @@ test('non-TTY swap --yes cannot skip confirmation', async () => {
             '--keystore-path',
             keystorePath,
         ],
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(result.status).not.toBe(0)
@@ -389,7 +389,7 @@ test('MCP session_create fullAccess cannot proceed without human confirmation', 
     const output = await callMcpTool(
         'session_create',
         { sessionName: 'worker-admin', env: 'dev', fullAccess: true, keystorePath },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -402,7 +402,7 @@ test('MCP session_rotate fullAccess cannot proceed without human confirmation', 
     const output = await callMcpTool(
         'session_rotate',
         { env: 'dev', fullAccess: true, keystorePath },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -467,7 +467,7 @@ test('MCP escrow_settle oraclePrivateKey cannot proceed without human confirmati
             env: 'dev',
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -476,7 +476,7 @@ test('MCP escrow_settle oraclePrivateKey cannot proceed without human confirmati
     expect(output).not.toContain(rootPrivateKey)
 })
 
-test('non-TTY escrow settle with TW_ORACLE_PRIVATE_KEY cannot sign without human confirmation', async () => {
+test('non-TTY escrow settle with NUBL_ORACLE_PRIVATE_KEY cannot sign without human confirmation', async () => {
     const result = await runCli(
         [
             'escrow',
@@ -493,8 +493,8 @@ test('non-TTY escrow settle with TW_ORACLE_PRIVATE_KEY cannot sign without human
             '--json',
         ],
         {
-            TW_PASSWORD: password,
-            TW_ORACLE_PRIVATE_KEY:
+            NUBL_PASSWORD: password,
+            NUBL_ORACLE_PRIVATE_KEY:
                 '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
             HOME: home,
         },
@@ -514,7 +514,7 @@ const anySelector = '0x32323232'
 
 const maxSpendRaw = (2n ** 256n - 1n).toString()
 
-test('MCP session_export with TW_PASSWORD does not write a decryptable session key', async () => {
+test('MCP session_export with NUBL_PASSWORD does not write a decryptable session key', async () => {
     const outputPath = join(home, 'stolen.session.json')
 
     const output = await callMcpTool(
@@ -527,8 +527,8 @@ test('MCP session_export with TW_PASSWORD does not write a decryptable session k
             keystorePath,
         },
         {
-            TW_PASSWORD: password,
-            TW_EXPORT_PASSWORD: 'attacker-chosen-export-password',
+            NUBL_PASSWORD: password,
+            NUBL_EXPORT_PASSWORD: 'attacker-chosen-export-password',
             HOME: home,
         },
     )
@@ -552,7 +552,7 @@ test('MCP session_create wildcard permissions cannot proceed without the full-ac
             spendLimitRaw: maxSpendRaw,
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -579,7 +579,7 @@ test('non-TTY session_create wildcard permissions cannot proceed without the ful
             keystorePath,
             '--json',
         ],
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(result.status).not.toBe(0)
@@ -600,7 +600,7 @@ test('MCP session_rotate wildcard permissions cannot proceed without the full-ac
             spendLimitRaw: maxSpendRaw,
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -626,7 +626,7 @@ test('non-TTY session_rotate wildcard permissions cannot proceed without the ful
             keystorePath,
             '--json',
         ],
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(result.status).not.toBe(0)
@@ -646,7 +646,7 @@ test('MCP permissions_grant wildcard call cannot proceed without the full-access
             env: 'dev',
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -673,7 +673,7 @@ test('non-TTY permissions_grant wildcard call cannot proceed without the full-ac
             keystorePath,
             '--json',
         ],
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(result.status).not.toBe(0)
@@ -695,7 +695,7 @@ test('MCP escrow_create cannot move USDC without human confirmation', async () =
             yes: true,
             confirmationPhrase: 'SEND USDC',
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -712,7 +712,7 @@ test('MCP escrow_refund cannot move USDC without human confirmation', async () =
             env: 'dev',
             keystorePath,
         },
-        { TW_PASSWORD: password, HOME: home },
+        { NUBL_PASSWORD: password, HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -730,7 +730,7 @@ test('MCP account_create cannot install a wildcard session without the phrase', 
             env: 'dev',
             keystorePath: freshKeystore,
         },
-        { TW_PASSWORD: password, HOME: freshHome },
+        { NUBL_PASSWORD: password, HOME: freshHome },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -749,7 +749,7 @@ test('MCP account_delegate cannot install a wildcard session without the phrase'
             env: 'dev',
             keystorePath,
         },
-        { TW_PASSWORD: 'wrong-password', HOME: home },
+        { NUBL_PASSWORD: 'wrong-password', HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -763,8 +763,8 @@ test('MCP account_delegate cannot install a wildcard session without the phrase'
 test('daemon socket refuses unlock of an unreadable session and does not return the raw key', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-daemon-'))
     const socketPath = join(dir, 'session.sock')
-    const previous = process.env.TW_AGENT_SOCK
-    process.env.TW_AGENT_SOCK = socketPath
+    const previous = process.env.NUBL_AGENT_SOCK
+    process.env.NUBL_AGENT_SOCK = socketPath
     const { runSessionDaemon } = await import('../src/lib/session-daemon')
     const { SessionDaemonClient } = await import('../src/lib/session-daemon-client')
     const daemon = await runSessionDaemon()
@@ -781,7 +781,7 @@ test('daemon socket refuses unlock of an unreadable session and does not return 
                 keystorePath,
                 '--json',
             ],
-            { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
+            { NUBL_PASSWORD: password, HOME: home, NUBL_AGENT_SOCK: socketPath },
         )
 
         expect(unlock.status).not.toBe(0)
@@ -797,9 +797,9 @@ test('daemon socket refuses unlock of an unreadable session and does not return 
         await daemon.stop()
 
         if (previous === undefined) {
-            delete process.env.TW_AGENT_SOCK
+            delete process.env.NUBL_AGENT_SOCK
         } else {
-            process.env.TW_AGENT_SOCK = previous
+            process.env.NUBL_AGENT_SOCK = previous
         }
     }
 })
@@ -813,7 +813,7 @@ test('MCP session_create minute period with no amount requires confirmation befo
             spendPeriod: 'minute',
             keystorePath,
         },
-        { TW_PASSWORD: 'wrong-password', HOME: home },
+        { NUBL_PASSWORD: 'wrong-password', HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -834,7 +834,7 @@ test('MCP session_create hour period at 10 USDC requires confirmation before dec
             spendLimit: '10',
             keystorePath,
         },
-        { TW_PASSWORD: 'wrong-password', HOME: home },
+        { NUBL_PASSWORD: 'wrong-password', HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -863,7 +863,7 @@ test('MCP permissions_grant raw 10000000 per minute on a non-USDC token requires
                 env: 'dev',
                 keystorePath,
             },
-            { TW_PASSWORD: 'wrong-password', HOME: home },
+            { NUBL_PASSWORD: 'wrong-password', HOME: home },
         )
 
         const labeled = `${label}\n${output}`
@@ -906,8 +906,8 @@ const orchestratorIntent: DaemonTypedData = {
 }
 
 async function startDaemon(socketPath: string) {
-    const previous = process.env.TW_AGENT_SOCK
-    process.env.TW_AGENT_SOCK = socketPath
+    const previous = process.env.NUBL_AGENT_SOCK
+    process.env.NUBL_AGENT_SOCK = socketPath
     const { runSessionDaemon } = await import('../src/lib/session-daemon')
     const { SessionDaemonClient } = await import('../src/lib/session-daemon-client')
     const daemon = await runSessionDaemon()
@@ -917,8 +917,8 @@ async function startDaemon(socketPath: string) {
         stop: async () => {
             await daemon.stop()
 
-            if (previous === undefined) delete process.env.TW_AGENT_SOCK
-            else process.env.TW_AGENT_SOCK = previous
+            if (previous === undefined) delete process.env.NUBL_AGENT_SOCK
+            else process.env.NUBL_AGENT_SOCK = previous
         },
     }
 }
@@ -993,7 +993,7 @@ test('non-TTY daemon unlock of an unreadable session cannot sign an Orchestrator
                 keystorePath,
                 '--json',
             ],
-            { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
+            { NUBL_PASSWORD: password, HOME: home, NUBL_AGENT_SOCK: socketPath },
         )
 
         expect(unlock.status).not.toBe(0)
@@ -1028,7 +1028,7 @@ test('MCP daemon_unlock of an unreadable session cannot sign an Orchestrator int
                 env: 'dev',
                 keystorePath,
             },
-            { TW_PASSWORD: password, HOME: home, TW_AGENT_SOCK: socketPath },
+            { NUBL_PASSWORD: password, HOME: home, NUBL_AGENT_SOCK: socketPath },
         )
 
         expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1053,7 +1053,7 @@ test('MCP session_create increaseAllowance on USDC requires confirmation before 
             selector: increaseAllowance,
             keystorePath,
         },
-        { TW_PASSWORD: 'wrong-password', HOME: home },
+        { NUBL_PASSWORD: 'wrong-password', HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1073,7 +1073,7 @@ test('MCP permissions_grant increaseAllowance on USDC requires confirmation befo
             env: 'dev',
             keystorePath,
         },
-        { TW_PASSWORD: 'wrong-password', HOME: home },
+        { NUBL_PASSWORD: 'wrong-password', HOME: home },
     )
 
     expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1094,7 +1094,7 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
                 env: 'dev',
                 keystorePath,
             },
-            { TW_PASSWORD: 'wrong-password', HOME: home },
+            { NUBL_PASSWORD: 'wrong-password', HOME: home },
         )
 
         expect(first).not.toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1115,7 +1115,7 @@ test('a second 10 USDC daily session_create requires confirmation and the first 
                 env: 'dev',
                 keystorePath,
             },
-            { TW_PASSWORD: 'wrong-password', HOME: home },
+            { NUBL_PASSWORD: 'wrong-password', HOME: home },
         )
 
         expect(second).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1134,7 +1134,7 @@ test('MCP session rotate --narrow and session revoke are refused without the phr
             narrow: true,
             keystorePath,
         },
-        { TW_PASSWORD: 'wrong-password', HOME: home },
+        { NUBL_PASSWORD: 'wrong-password', HOME: home },
     )
 
     expect(rotate).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1149,7 +1149,7 @@ test('MCP session rotate --narrow and session revoke are refused without the phr
             env: 'dev',
             keystorePath,
         },
-        { TW_PASSWORD: 'wrong-password', HOME: home },
+        { NUBL_PASSWORD: 'wrong-password', HOME: home },
     )
 
     expect(revoke).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1464,7 +1464,7 @@ async function expectUnlockRequiresPhrase(
 ) {
     const chainServer = chain === 'down' ? undefined : await serveJson(8545, chainResponder(chain))
     const relayerServer = await serveJson(0, relayerResponder(relayer))
-    const env = { TW_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
+    const env = { NUBL_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
     const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-chain-'))
     const socketPath = join(dir, 'session.sock')
     const daemon = await startDaemon(socketPath)
@@ -1481,7 +1481,7 @@ async function expectUnlockRequiresPhrase(
                 keystorePath,
                 '--json',
             ],
-            { ...env, TW_AGENT_SOCK: socketPath },
+            { ...env, NUBL_AGENT_SOCK: socketPath },
         )
 
         expect(unlock.status).not.toBe(0)
@@ -1496,7 +1496,7 @@ async function expectUnlockRequiresPhrase(
         const output = await callMcpTool(
             'daemon_unlock',
             { sessionName: 'default', env: 'dev', keystorePath },
-            { ...env, TW_AGENT_SOCK: socketPath },
+            { ...env, NUBL_AGENT_SOCK: socketPath },
         )
 
         expect(output).toContain('HUMAN_CONFIRMATION_REQUIRED')
@@ -1532,7 +1532,7 @@ test('an unreachable chain RPC requires the unlock phrase even when getKeys is n
 test('an honest narrow key read from chain unlocks with the password only', async () => {
     const chainServer = await serveJson(8545, chainResponder([narrowOnChain]))
     const relayerServer = await serveJson(0, relayerResponder(relayerKeys(wildcardRelayerPermissions)))
-    const env = { TW_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
+    const env = { NUBL_PASSWORD: password, HOME: home, RELAYER_URL_DEV: relayerServer.url }
     const dir = mkdtempSync(join(tmpdir(), 'nubl-h3-narrow-'))
     const socketPath = join(dir, 'session.sock')
 
@@ -1551,7 +1551,7 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
                 keystorePath,
                 '--json',
             ],
-            { ...env, TW_AGENT_SOCK: socketPath },
+            { ...env, NUBL_AGENT_SOCK: socketPath },
         )
 
         expect(unlock.output).not.toContain('UNLOCK FULL ACCESS SESSION')
@@ -1582,7 +1582,7 @@ test('an honest narrow key read from chain unlocks with the password only', asyn
         const output = await callMcpTool(
             'daemon_unlock',
             { sessionName: 'default', env: 'dev', keystorePath },
-            { ...env, TW_AGENT_SOCK: mcpSocket },
+            { ...env, NUBL_AGENT_SOCK: mcpSocket },
         )
 
         expect(output).not.toContain('UNLOCK FULL ACCESS SESSION')

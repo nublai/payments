@@ -11,12 +11,12 @@ async function withLegacyContactsFile<T>(
     },
     run: () => Promise<T>,
 ): Promise<T> {
-    const contactsPath = join(homedir(), '.config', 'agentic-payments', 'nubl', 'contacts.json')
+    const contactsPath = join(homedir(), '.config', 'nubl', 'contacts.json')
     let previousContents: string | null = null
 
     try {
         previousContents = await readFile(contactsPath, 'utf8').catch(() => null)
-        await mkdir(join(homedir(), '.config', 'agentic-payments', 'nubl'), { recursive: true })
+        await mkdir(join(homedir(), '.config', 'nubl'), { recursive: true })
         await writeFile(contactsPath, `${JSON.stringify(contents)}\n`, 'utf8')
 
         return await run()
