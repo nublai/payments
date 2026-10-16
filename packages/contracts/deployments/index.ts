@@ -1,40 +1,35 @@
-import deployments from './addresses.json'
-import { type Address } from 'viem'
+import addressesJson from './addresses.json'
+import { type Address, isAddress } from 'viem'
 
 export type ChainDeployment = {
   chainId?: number
-  addresses: Record<string, Address>
+  addresses: Record<string, string>
 }
 
-function contextDeployments(context: string): Record<string, ChainDeployment> | undefined {
-  for (const [key, chains] of Object.entries(deployments)) {
-    if (key !== context) continue
+export type ContextDeployments = Record<string, ChainDeployment>
 
-    if (chains === undefined || chains === null) return undefined
+export type DeploymentBook = Record<string, ContextDeployments>
 
-    // SAFETY: make-config writes { [chainId]: { addresses: Record<string, 0x-address> } }.
-    return chains as Record<string, ChainDeployment>
-  }
+export type Deployments = DeploymentBook
 
-  return undefined
+const deployments: DeploymentBook = addressesJson
+
+function contextDeployments(context: string): ContextDeployments | undefined {
+  if (!Object.hasOwn(deployments, context)) return undefined
+
+  return deployments[context]
 }
 
 function chainDeployment(
-  ctx: Record<string, ChainDeployment>,
+  ctx: ContextDeployments,
   chainId: number
 ): ChainDeployment | undefined {
-  for (const [key, value] of Object.entries(ctx)) {
-    if (Number(key) === chainId) {
-      return value
-    }
-  }
+  const key = String(chainId)
 
-  return undefined
+  if (!Object.hasOwn(ctx, key)) return undefined
+
+  return ctx[key]
 }
-
-export type ContextDeployments = Record<number, ChainDeployment>
-
-export type Deployments = Record<string, ContextDeployments>
 
 export interface ContractAddresses {
   orchestrator: Address
@@ -64,14 +59,10 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 function isDeployedAddress(value: string | undefined): value is Address {
   if (value === undefined) return false
-  const normalized = value.trim().toLowerCase()
 
-  // Reject only empty and zero sentinels. Callers such as the relayer
-  // capabilities mock use non-address placeholders (for example "0xAccount"),
-  // and Boolean(value) used to accept those.
-  if (normalized.length === 0 || normalized === '0x' || normalized === '0x0') return false
+  if (!isAddress(value, { strict: false })) return false
 
-  return normalized !== ZERO_ADDRESS
+  return value.toLowerCase() !== ZERO_ADDRESS
 }
 
 function hasRequiredAddresses(
@@ -99,7 +90,9 @@ export function getAddress(
   chainId: number,
   contract: string
 ): Address | undefined {
-  return getDeployment(context, chainId)?.addresses[contract]
+  const value = getDeployment(context, chainId)?.addresses[contract]
+
+  return isDeployedAddress(value) ? value : undefined
 }
 
 // Get all addresses for a context/chain

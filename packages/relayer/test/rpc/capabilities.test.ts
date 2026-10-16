@@ -62,14 +62,14 @@ const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
 
 // Installed into the prod/8453 deployments JSON below, and kept in env.
 const ADDRESSES_8453 = {
-    ACCOUNT_8453: '0xAccount',
-    ACCOUNT_PROXY_8453: '0xAccountProxy',
+    ACCOUNT_8453: '0x1234567890123456789012345678901234567890',
+    ACCOUNT_PROXY_8453: '0x2345678901234567890123456789012345678901',
     ORCHESTRATOR_8453: '0x3456789012345678901234567890123456789012',
-    SIMPLE_FUNDER_8453: '0xSimpleFunder',
-    SIMULATOR_8453: '0xSimulator',
-    SIMPLE_SETTLER_8453: '0xSimpleSettler',
-    ESCROW_8453: '0xEscrow',
-    MULTI_SIG_SIGNER_8453: '0xMultiSigSigner',
+    SIMPLE_FUNDER_8453: '0x4567890123456789012345678901234567890123',
+    SIMULATOR_8453: '0x5678901234567890123456789012345678901234',
+    SIMPLE_SETTLER_8453: '0x6789012345678901234567890123456789012345',
+    ESCROW_8453: '0x7890123456789012345678901234567890123456',
+    MULTI_SIG_SIGNER_8453: '0x8901234567890123456789012345678901234567',
 }
 
 function createMockEnv(): Env {
@@ -79,12 +79,12 @@ function createMockEnv(): Env {
         RELAYER_COUNT: '3',
         MAX_PENDING_PER_SIGNER: '16',
         MAX_PENDING_TOTAL: '1000',
-        ACCOUNT: '0xAccount',
-        ACCOUNT_PROXY: '0xAccountProxy',
+        ACCOUNT: '0x1234567890123456789012345678901234567890',
+        ACCOUNT_PROXY: '0x2345678901234567890123456789012345678901',
         ORCHESTRATOR: '0x3456789012345678901234567890123456789012',
-        SIMPLE_FUNDER: '0xSimpleFunder',
-        SIMULATOR: '0xSimulator',
-        // Unsuffixed placeholders stay incomplete, so an unknown chain still skips.
+        SIMPLE_FUNDER: '0x4567890123456789012345678901234567890123',
+        SIMULATOR: '0x5678901234567890123456789012345678901234',
+        // Unsuffixed keys omit settler/escrow/signer, so an unknown chain still skips.
         ...ADDRESSES_8453,
         SIGNER_POOL: signerPoolNamespace({
             idFromName: vi.fn().mockReturnValue('pool-id'),

@@ -1,11 +1,8 @@
 import {
     deployments,
-    type ChainDeployment,
     getAddressesFromEnv,
     getAddressesFromEnvForChain,
 } from '@nubl/contracts/deployments'
-
-type DeploymentBook = Record<string, Record<string, ChainDeployment>>
 
 /**
  * Writes test addresses into the bundled deployments JSON for one published
@@ -25,17 +22,16 @@ export function installDeployment(
 
     if (!addresses) throw new Error(`test env has no addresses for ${context}/${chainId}`)
 
-    // SAFETY: tests mutate the bundled addresses.json object; make-config shape.
-    const book = deployments as DeploymentBook
-    const byChain = (book[context] ??= {})
+    const byChain = (deployments[context] ??= {})
     const key = String(chainId)
     const previous = byChain[key]
+
     byChain[key] = { addresses: { ...addresses } }
 
     return () => {
         if (previous === undefined) delete byChain[key]
         else byChain[key] = previous
 
-        if (Object.keys(byChain).length === 0) delete book[context]
+        if (Object.keys(byChain).length === 0) delete deployments[context]
     }
 }

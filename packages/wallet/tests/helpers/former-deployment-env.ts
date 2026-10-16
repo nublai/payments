@@ -71,10 +71,8 @@ const STAGE: Record<PublishedChainId, PublishedAddresses> = {
 
 const PUBLISHED_CONTEXTS = ['prod', 'stage', 'dev'] as const
 
-type DeploymentBook = Record<string, Record<string, { addresses: Record<string, string> }>>
-
 function installChains(
-    book: DeploymentBook,
+    book: typeof deployments,
     chains: Record<PublishedChainId, PublishedAddresses>,
 ): () => void {
     const restores: Array<() => void> = []
@@ -99,11 +97,9 @@ function installChains(
 }
 
 export function installFormerProdDeployments(): () => void {
-    // SAFETY: tests mutate the bundled addresses.json object; make-config shape.
-    return installChains(deployments as DeploymentBook, FORMER)
+    return installChains(deployments, FORMER)
 }
 
 export function installFormerStageDeployments(): () => void {
-    // SAFETY: tests mutate the bundled addresses.json object; make-config shape.
-    return installChains(deployments as DeploymentBook, STAGE)
+    return installChains(deployments, STAGE)
 }
