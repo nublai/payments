@@ -1,0 +1,43 @@
+# Install and quickstart
+
+Install the wallet CLI from npm, or run it from this repo with Bun.
+
+```bash
+npm i -g @nubl/wallet
+```
+
+From a checkout of this repo:
+
+```bash
+cd packages/wallet
+bun ./src/cli.ts --help
+```
+
+The published binary and the local entry both run as `nubl`. Every command that talks to a chain requires `--env prod`, `--env stage`, or `--env dev`. Omitting `--env` fails. There is no default environment.
+
+`prod` defaults to chain `base` (8453). `stage` defaults to `base-sepolia` (84532). `dev` defaults to `anvil` (31337). Override with `--chain base`, `--chain polygon`, `--chain anvil`, or `--chain base-sepolia`.
+
+## Create an account and send
+
+`account create` writes a local keystore and delegates the account. The session it installs is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`), `refund` (`0x6023fda5`), and `settle` (`0xe7f921a2`), and SimpleSettler `write` (`0x84523a30`), with 10 USDC per day. A chain with no known USDC or Escrow address is refused. An interactive terminal must type `CREATE FULL ACCESS SESSION`. `TW_PASSWORD` does not replace that phrase.
+
+```bash
+nubl account create --env dev
+nubl send 1 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --env dev
+```
+
+`send` takes the USDC amount, then the recipient address or ENS name. An interactive terminal must type `SEND USDC`.
+
+## Commands
+
+`account`, `session`, `daemon`, `permissions`, `escrow`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
+
+Structured output is `--format json` (also `toon`, `yaml`, `md`, or `jsonl`). `nubl daemon start --foreground` additionally treats a literal `--json` argument as JSON for the startup line it prints before it waits. Other commands do not.
+
+`TW_PASSWORD` supplies the keystore password. It does not confirm a send, a private-key export, a session export, a full-access session or permission change, a passkey, escrow create or refund, or an oracle-key escrow settle. Commands that accept `--password-stdin` can read the password from stdin.
+
+```bash
+nubl session list --env prod --profile agent --format json
+```
+
+`nubl --help` lists commands. `nubl send --help` lists one command. `nubl --llms` prints the machine-readable manifest. `nubl --version` prints the version. `nubl --mcp` starts the stdio MCP server. See [MCP](/mcp) and [Security model](/security).

@@ -1,0 +1,49 @@
+# Relayer
+
+`@nubl/relayer` is a Cloudflare Worker. It submits signed intents. Local dev is `packages/relayer/scripts/dev.sh` (wrangler), which listens on port 8787.
+
+The first account upgrade is sponsored unless `PAID_UPGRADE_ENABLED` is exactly `true`. Any other value, including unset, leaves the paid path off. The limits below apply to the USDC-paid first upgrade.
+
+## Limits
+
+Per 600 seconds (`PAID_UPGRADE_WINDOW_SECONDS`):
+
+| Bucket | Limit | What counts |
+| --- | --- | --- |
+| Address | 3 | prepares and sends |
+| IP | 8 | prepares and sends |
+| IPv6 /56 | 8 | prepares and sends |
+| Chain | 60 | sends only. Prepares do not count |
+
+`PAID_UPGRADE_GLOBAL_LIMIT` overrides the chain send limit. A missing client IP is refused unless `CONTEXT` is `local`. On local, a missing IP uses the `unknown` bucket.
+
+## Gas budget
+
+One chain may spend 2,000,000 gas on paid-upgrade broadcasts per UTC day. `PAID_UPGRADE_DAILY_GAS_BUDGET` overrides that. An unreadable budget refuses the broadcast.
+
+Each in-flight broadcast holds 500,000 gas. The signed type-4 gas limit cannot exceed that hold. A quote whose estimate is higher is refused. A replacement of a stale paid-upgrade broadcast goes through the same cap. The receipt settles the hold down to `gasUsed`, which cannot exceed the signed limit.
+
+## Fees
+
+The signed USDC ceiling is 5 USDC, 6-decimal base units (`5000000`). `PAID_UPGRADE_MAX_PAYMENT` overrides it in base units. The value signed into `paymentMaxAmount` is the quoted fee plus 5% (500 bps), rounded up, and at least 0.001 USDC (`1000` base units). A quote, or that quote plus the margin, above 5 USDC is refused.
+
+## Environment
+
+Stage and prod require `FEE_RECIPIENT`. Startup refuses the worker when `CONTEXT` is anything other than `local` and `FEE_RECIPIENT` is missing, not an address, or the zero address. Local may omit it. The broadcasting signer is the local fallback.
+
+`QUOTE_SIGNING_SECRET` is required when `CONTEXT` is not `local`. Set it with `wrangler secret put`. Do not commit it.
+
+Other worker settings used by this path:
+
+| Variable | Role |
+| --- | --- |
+| `CONTEXT` | `local`, `stage`, or `prod`. Unset defaults to prod in code. |
+| `PAID_UPGRADE_ENABLED` | Paid upgrades run only when this is exactly `true`. |
+| `PAID_UPGRADE_MAX_PAYMENT` | Ceiling in fee-token base units. Unset is 5 USDC. |
+| `PAID_UPGRADE_GLOBAL_LIMIT` | Paid-upgrade sends per chain per 10 minutes. Unset is 60. |
+| `PAID_UPGRADE_DAILY_GAS_BUDGET` | Gas units per chain per UTC day. Unset is 2,000,000. |
+| `RELAYER_MNEMONIC` | HD wallet mnemonic for the signer pool. |
+| `CHAIN_IDS` | Comma-separated chain ids the worker serves. |
+| `RPC_<chainId>` | RPC for that chain. `RPC_URL` is the fallback. |
+
+Wallet-side host variables (`RELAYER_URL_DEV`, `RELAYER_URL_STAGE`, `RELAYER_URL_PROD`) are in [Local development](/local-development). Prod and stage relayer URLs are not in source.

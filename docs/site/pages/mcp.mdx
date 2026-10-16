@@ -1,0 +1,42 @@
+# MCP
+
+`nubl --mcp` is an incur stdio server. It registers one tool per leaf command. The tool id is the command path joined with `_`.
+
+Register the server with an agent from the CLI:
+
+```bash
+nubl mcp add
+nubl mcp add --agent cursor
+nubl mcp add --command "nubl --mcp"
+nubl mcp add --no-global
+```
+
+`--agent` selects one agent. `--command` overrides the command the agent runs. `--no-global` installs into the project instead of the user config.
+
+A prompt-injected tool call cannot type a confirmation phrase. MCP refuses the calls below before it prints keys, contacts RPC, or produces a signature. Run those in an interactive terminal.
+
+## Tool ids
+
+`account_balance`, `account_change-password`, `account_create`, `account_delegate`, `account_export`, `account_history`, `account_nonce`, `account_passkey`, `account_status`, `address`, `bridge`, `daemon_lock`, `daemon_start`, `daemon_status`, `daemon_stop`, `daemon_unlock`, `escrow_create`, `escrow_refund`, `escrow_settle`, `escrow_status`, `login`, `logout`, `permissions_grant`, `permissions_list`, `permissions_revoke`, `permissions_show`, `send`, `session_create`, `session_export`, `session_import`, `session_list`, `session_revoke`, `session_rotate`, `swap`.
+
+## Refused over MCP
+
+- `account_create` and `account_delegate` (they require the phrase)
+- `send`
+- `escrow_create` and `escrow_refund`
+- `account_export` when `showPrivate` is set
+- `session_export`
+- `swap` and `bridge`, including `yes: true`
+- `session_create` when `swap` is set (`CREATE SWAP SESSION`)
+- `session_create`, `session_rotate`, and `permissions_grant` when they install full access: the full-access flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, a period shorter than a day, a non-USDC token, `increaseAllowance`, or a USDC spend above 10 per day, including a combined total across the account's active sessions
+- `session_rotate` with `narrow: true`
+- `session_revoke` of a full-access or unreadable session
+- `daemon_unlock` of a full-access or unreadable session
+- `account_passkey` when `privateKey` is supplied
+- `escrow_settle` when `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign
+
+`account_passkey` and `escrow_settle` still exist as tools. MCP accepts them only when they do not take a raw private key. A pre-signed `signature` on escrow settle does not use the oracle key and does not ask for the phrase.
+
+On an interactive terminal, `swap` and `bridge` `--yes` still prints the quote and every call: target, function name, selector, approve spender and amount, `refundTo`, `nftRecipient`, depositor, and value. The human still confirms. `--yes` only skips refreshing a quote that went stale during that confirmation. MCP and any non-interactive caller cannot pass `yes` to skip it. A local pseudo-terminal can type a phrase. That is a human at that terminal. `--mcp` still refuses when the server itself is attached to a pseudo-terminal.
+
+The session daemon socket does not return raw keys. `getSessionSecrets` is refused.

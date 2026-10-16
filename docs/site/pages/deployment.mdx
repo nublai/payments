@@ -1,0 +1,22 @@
+# Deployment
+
+Contract deploys run from `packages/contracts`. Base Sepolia (stage) uses `RPC_84532`. Base mainnet (prod) uses `RPC_8453`.
+
+```bash
+cd packages/contracts
+./scripts/sh/deploy.sh stage
+./scripts/sh/deploy.sh prod
+```
+
+Outside local, `deploy.sh` requires an owner that is not the deployer or the funder, and it refuses a relayer mnemonic unless `--skip-relayer` is set. Relayer gas-wallet setup is owner-only. The stage and prod steps, including dry-run, resume refusal, and the owner `setGasWallet` / `setOrchestrators` calls, are in the launch runbook: [`docs/runbooks/base-sepolia-launch.md`](https://github.com/nublai/payments/blob/main/docs/runbooks/base-sepolia-launch.md).
+
+The stage relayer reads `deployments/envs/stage/`. The worker reads `@nubl/contracts` `dist/`, so `make-config` and `bun run --cwd packages/contracts build` happen before a worker deploy. From `packages/relayer`:
+
+```bash
+wrangler deploy --env stage
+wrangler deploy --env prod
+```
+
+`FEE_RECIPIENT` is required for stage and prod. Set it with `wrangler secret put FEE_RECIPIENT --env stage` (and `--env prod`). Do not commit the address. Point the CLI at the worker with `RELAYER_URL_STAGE` or `RELAYER_URL_PROD`.
+
+This docs site is static files from `vocs build`. Hosting it is separate from these deploys.

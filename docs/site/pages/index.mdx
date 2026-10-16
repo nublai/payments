@@ -1,0 +1,32 @@
+# Introduction
+
+Smart accounts, a relayer, and a local wallet CLI for agent-initiated payments. This tree is the payments surface only.
+
+An agent talks to the `nubl` CLI. The CLI holds keys on the machine that runs it, enforces session limits, and asks a human to type a confirmation phrase before risky actions. It signs an EIP-712 `Intent`. The relayer, a Cloudflare Worker, submits that intent and pays gas. The account pays the relayer fee in USDC. On Base the intent runs through the Orchestrator into an EIP-7702 `Account`, then to a recipient or an escrow.
+
+```
+agent → nubl → signed Intent → relayer → Orchestrator → Account (EIP-7702) → recipient or escrow
+```
+
+## Packages
+
+| Package | Name | Role |
+| --- | --- | --- |
+| `packages/wallet` | `@nubl/wallet` | Local CLI binary `nubl`. Account, session, daemon, permissions, escrow, send, swap, and bridge. |
+| `packages/relayer-client` | `@nubl/relayer-client` | viem-style client: `prepareCalls`, `sendPreparedCalls`, `upgradeAccount`, and escrow helpers. |
+| `packages/contracts` | `@nubl/contracts` | Solidity, Foundry tests, and deploy scripts. |
+| `packages/relayer` | `@nubl/relayer` | Cloudflare Worker that submits signed intents. |
+| `packages/proto` | `@nubl/proto` | `BearerTokenSchema`, `WalletSessionTokenSchema`, `ExportedDeviceSchema`, and the `ExportedDevice` type, from `schema/payments.proto`. |
+
+Workspace manager is Bun `1.3.3`. Contract tests use Foundry `1.5.1`.
+
+## Where to go next
+
+- [Install and quickstart](/install)
+- [MCP](/mcp)
+- [Security model](/security)
+- [Relayer](/relayer)
+- [Signing](/signing)
+- [Contracts](/contracts)
+- [Local development](/local-development)
+- [Deployment](/deployment)

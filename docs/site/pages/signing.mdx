@@ -1,0 +1,33 @@
+# Signing
+
+Before it signs, the wallet recomputes the EIP-712 `Intent` digest and signs that rebuilt typed data. It does not sign the relayer's typed data as returned.
+
+The domain is `Orchestrator`, version `0.5.5`, with only `name`, `version`, `chainId`, and `verifyingContract`.
+
+The type string matches the Orchestrator:
+
+```text
+Intent(bool multichain,address eoa,Call[] calls,uint256 nonce,address payer,address paymentToken,uint256 paymentMaxAmount,uint256 combinedGas,bytes[] encodedPreCalls,bytes[] encodedFundTransfers,address settler,uint256 expiry)Call(address to,uint256 value,bytes data)
+```
+
+`paymentAmount` and `paymentRecipient` are not in the type hash. The digest binds the requested calls, the nonce read from the account, a wallet-chosen expiry, and the fee caps. The quote that will be executed has to match that same intent. Relayer HTTP calls use `redirect: manual` and refuse a 3xx.
+
+## Expiry and gas
+
+The expiry is one hour (`3600` seconds) from the wallet clock. It is never `0`. An unset expiry is refused.
+
+Combined gas must sit under a ceiling computed from the calls themselves. A wallet RPC `eth_estimateGas` can raise that ceiling, and a failed estimate leaves the local ceiling in place. The RPC result cannot raise the signed ceiling above twice the local formula.
+
+## Fee cap
+
+The default policy is a zero ceiling when `--env` is `dev`, or when the chain id is 31337 or 41337. Every other case pays from the account, in that chain's USDC, with a 5 USDC ceiling (`5000000` base units).
+
+Off that zero-fee policy, the signed `paymentMaxAmount` is the accepted quote plus 5% (500 bps), rounded up, and at least 0.001 USDC. A quote, or that quote plus the margin, above 5 USDC is refused. A zero, missing, or non-numeric quote is refused off the zero-fee policy instead of falling back to the 5 USDC ceiling. Local zero-fee quotes sign a cap of 0.
+
+The command result includes `feeCap.token`, `feeCap.symbol` (`USDC` or `none`), `feeCap.amountUsdc`, and `feeCap.expiresIn` set to `1h`, in the human output and in `--format json`.
+
+## Account create and delegate
+
+Account create and delegate authorize only the account proxy for that chain, at the EOA nonce from the wallet RPC (`eth_getTransactionCount`), and sign a `SignedCall` rebuilt from the keys the wallet asked to authorize. The relayer payload is refused on any mismatch.
+
+Local Anvil is not in `addresses.json`. Chains 31337 and 41337 read `ORCHESTRATOR_<chainId>` and `ACCOUNT_PROXY_<chainId>` from the environment or from `packages/contracts/deployments/envs/local/.env` after `make-config`. A published chain, including Base Sepolia, comes from the deployments JSON only.
