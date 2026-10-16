@@ -59,7 +59,7 @@ DEFAULT_LOCAL_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae7
 usage() {
     local status="${1:-1}"
     cat <<'EOF'
-Usage: $0 [environment] [options]
+Usage: ./scripts/sh/deploy.sh [environment] [options]
 
 Environments (shortcuts):
   local          Deploy to local Anvil (chains 31337,41337)
@@ -118,25 +118,25 @@ Compiler:
 
 Examples:
   # Local development
-  $0 local
+  ./scripts/sh/deploy.sh local
 
   # Stage (Base Sepolia) with keystore. The password is prompted.
-  $0 stage --owner 0x... --account deployer
+  ./scripts/sh/deploy.sh stage --owner 0x... --account deployer
 
   # Prod with Ledger and verification
-  $0 prod --ledger "m/44'/60'/0'/0/0" --verify
+  ./scripts/sh/deploy.sh prod --ledger "m/44'/60'/0'/0/0" --verify
 
   # Deploy to Optimism
-  $0 --chain 10 --contracts SimpleSettler --account deployer
+  ./scripts/sh/deploy.sh --chain 10 --contracts SimpleSettler --account deployer
 
   # Deploy to multiple chains
-  $0 --chain 10,42161 --contracts Orchestrator --account deployer
+  ./scripts/sh/deploy.sh --chain 10,42161 --contracts Orchestrator --account deployer
 
   # Custom configuration
-  $0 --chain 8453 --funder 0x123... --owner 0x456... --skip-relayer --account deployer
+  ./scripts/sh/deploy.sh --chain 8453 --funder 0x123... --owner 0x456... --skip-relayer --account deployer
 
   # Deploy specific contracts without relayer setup
-  $0 stage --owner 0x... --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
+  ./scripts/sh/deploy.sh stage --owner 0x... --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
 
 EOF
     exit "$status"

@@ -33,6 +33,12 @@ else
     pass "help does not contain --password"
 fi
 
+if ! grep -qF '$0' "$out"; then
+    pass "help does not contain \$0"
+else
+    fail "help does not contain \$0"
+fi
+
 if [[ "$failures" -ne 0 ]]; then
     echo "deploy.sh --help output:" >&2
     cat "$out" >&2
