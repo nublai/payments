@@ -19,10 +19,15 @@ Every command that talks to a chain requires `--env prod`, `--env stage`, or `--
 
 `account create` writes a local keystore and delegates the account. The session it installs is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`), `refund` (`0x6023fda5`), and `settle` (`0xe7f921a2`), and SimpleSettler `write` (`0x84523a30`), with 10 USDC per day. A chain with no known USDC or Escrow address is refused. An interactive terminal must type `CREATE FULL ACCESS SESSION`. `NUBL_PASSWORD` does not replace that phrase.
 
+`account create --env dev` and `send` are not a local quickstart by themselves. Create reads chain 31337 addresses from the environment, and those keys are not in `addresses.json`. Send fails when the new account has no USDC.
+
+From the repo root, the local create-and-send is:
+
 ```bash
-bun ./src/cli.ts account create --env dev
-bun ./src/cli.ts send 1 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --env dev
+bun run e2e:local-payment
 ```
+
+Ports 8545, 8546, and 8787 must be free. The script starts Anvil, runs `deploy:local` and `make-config`, then exports each `NAME=0x…` line from `packages/contracts/deployments/envs/local/.env`. It starts the relayer, runs `bun ./src/cli.ts account create --env dev` from `packages/wallet`, mints with `packages/wallet/scripts/fund-dev.sh <account> 25`, and runs `bun ./src/cli.ts send 1 <recipient> --env dev`. It types `CREATE FULL ACCESS SESSION` and `SEND USDC`. See [Local development](/local-development).
 
 `send` takes the USDC amount, then the recipient address or ENS name. An interactive terminal must type `SEND USDC`.
 

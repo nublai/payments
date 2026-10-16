@@ -9,7 +9,7 @@ bun install
 bun run e2e:local-payment
 ```
 
-Ports 8545, 8546, and 8787 must be free. The script starts Anvil on 31337 (port 8545) and 41337 (port 8546), runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `bun ./src/cli.ts account create --env dev`, mints MockUSDC, and sends 1 USDC with `bun ./src/cli.ts send 1 <recipient> --env dev`. It stops the Anvil and wrangler processes it started.
+Ports 8545, 8546, and 8787 must be free. The script starts Anvil on 31337 (port 8545) and 41337 (port 8546), runs `packages/contracts` `deploy:local` and `make-config`, and exports each `NAME=0x…` line from `packages/contracts/deployments/envs/local/.env`. It starts the wrangler relayer, creates an account with `bun ./src/cli.ts account create --env dev` from `packages/wallet`, mints MockUSDC with `packages/wallet/scripts/fund-dev.sh <account> 25`, and sends 1 USDC with `bun ./src/cli.ts send 1 <recipient> --env dev`. It stops the Anvil and wrangler processes it started.
 
 The other local script is:
 
