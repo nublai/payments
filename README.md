@@ -31,7 +31,7 @@ bun run --cwd packages/relayer-client build
 cd packages/wallet && bun ./src/cli.ts --help
 ```
 
-Once the package is published (or bun-linked), the command is `nubl <cmd>`.
+Once the package is published, the command is `nubl <cmd>`. `bun link` from `packages/wallet` puts that command on `PATH` after `bun run build` in that package.
 
 ## Quickstart
 
