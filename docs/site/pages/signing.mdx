@@ -20,7 +20,7 @@ Combined gas must sit under a ceiling computed from the calls themselves. A wall
 
 ## Fee cap
 
-The default policy is a zero ceiling when `--env` is `dev`, or when the chain id is 31337 or 41337. Every other case pays from the account, in that chain's USDC, with a 5 USDC ceiling (`5000000` base units).
+The zero fee ceiling is signed only on local chains 31337 and 41337. `--env dev` is that local path. On a published chain, `--env dev` still selects a zero payer and a zero payment token, and signing refuses that pair. Use `--env prod` for Base and Polygon, and `--env stage` for Base Sepolia. Those pay from the account, in that chain's USDC, with a 5 USDC ceiling (`5000000` base units).
 
 Off that zero-fee policy, the signed `paymentMaxAmount` is the accepted quote plus 5% (500 bps), rounded up, and at least 0.001 USDC. A quote, or that quote plus the margin, above 5 USDC is refused. A zero, missing, or non-numeric quote is refused off the zero-fee policy instead of falling back to the 5 USDC ceiling. Local zero-fee quotes sign a cap of 0.
 
