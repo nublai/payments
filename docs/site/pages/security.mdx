@@ -6,7 +6,7 @@ The root key is the keystore owner. It authorizes session keys. A session key is
 
 The on-chain spend limit meters tokens the account holds. It does not see a standing approval the account already granted to some other contract. The root key can revoke those approvals. The wallet does not scan for them.
 
-A legacy wildcard session is full access. `account status` warns. `nubl session rotate --narrow` replaces it with the narrow default and revokes the old key. That rotation requires `ROTATE FULL ACCESS SESSION`.
+A legacy wildcard session is full access. `account status` warns. From `packages/wallet`, `bun ./src/cli.ts session rotate --narrow` replaces it with the narrow default and revokes the old key. That rotation requires `ROTATE FULL ACCESS SESSION`.
 
 `NUBL_PASSWORD` unlocks the keystore. It is not a confirmation. `NUBL_EXPORT_PASSWORD` does not skip a key export. Confirmation is a phrase typed on an interactive terminal (`stdin` and `stdout` both TTYs). MCP and any non-TTY `nubl` are refused before keys are printed, RPC is contacted, or a signature is produced. A local pseudo-terminal can type the phrase. That is a human at this terminal. `--mcp` still refuses when the server process is attached to a pseudo-terminal.
 
@@ -30,12 +30,12 @@ Full access is any of: `--full-access`; target `ANY_TARGET` or the account; sele
 
 ## Swap session
 
-Swap and bridge do not use the payment session and do not use a wildcard. Create a dedicated session and pass it with `--session`:
+Swap and bridge do not use the payment session and do not use a wildcard. Create a dedicated session and pass it with `--session`. From `packages/wallet`, after the [install](/install) builds:
 
 ```bash
-nubl session create worker-swap --swap --chain base --env prod
-nubl swap --from USDC --to ETH --amount 1 --session worker-swap --env prod
-nubl bridge --token USDC --amount 1 --to-chain polygon --session worker-swap --env prod
+bun ./src/cli.ts session create worker-swap --swap --chain base --env prod
+bun ./src/cli.ts swap --from USDC --to ETH --amount 1 --session worker-swap --env prod
+bun ./src/cli.ts bridge --token USDC --amount 1 --to-chain polygon --session worker-swap --env prod
 ```
 
 `--swap` requires `CREATE SWAP SESSION` at an interactive terminal. It cannot be combined with `--full-access`, `--activate`, `--target`, `--selector`, or a spend limit. The payment session stays active.

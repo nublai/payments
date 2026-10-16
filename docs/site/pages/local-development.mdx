@@ -9,7 +9,7 @@ bun install
 bun run e2e:local-payment
 ```
 
-Ports 8545, 8546, and 8787 must be free. The script starts Anvil on 31337 (port 8545) and 41337 (port 8546), runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `nubl account create --env dev`, mints MockUSDC, and sends 1 USDC with `nubl send 1 <recipient> --env dev`. It stops the Anvil and wrangler processes it started.
+Ports 8545, 8546, and 8787 must be free. The script starts Anvil on 31337 (port 8545) and 41337 (port 8546), runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `bun ./src/cli.ts account create --env dev`, mints MockUSDC, and sends 1 USDC with `bun ./src/cli.ts send 1 <recipient> --env dev`. It stops the Anvil and wrangler processes it started.
 
 The other local script is:
 
@@ -25,11 +25,11 @@ Dev uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. `RELAYER_URL_P
 
 `--env dev` may use plain `http` for a loopback host, or for local chain 31337 or 41337 when that chain's orchestrator is not in the deployments JSON. Dev against a published orchestrator, including Base Sepolia, requires `https` unless the host is loopback.
 
-Login, which the local payment path does not use, reads `AUTH_URL_PROD`, `AUTH_URL_STAGE`, or `AUTH_URL_DEV`. If unset, `nubl login` says so instead of printing a URL.
+Login, which the local payment path does not use, reads `AUTH_URL_PROD`, `AUTH_URL_STAGE`, or `AUTH_URL_DEV`. If unset, `bun ./src/cli.ts login` from `packages/wallet` says so instead of printing a URL.
 
 ## Swap and bridge hosts
 
-`nubl swap` and `nubl bridge` call relay.link: `https://api.testnets.relay.link` when `--env` is `dev`, and `https://api.relay.link` otherwise. Quotes are allowlisted and simulated before signing. A calldata change after confirmation is shown again. See [Security model](/security).
+`bun ./src/cli.ts swap` and `bun ./src/cli.ts bridge` from `packages/wallet` call relay.link: `https://api.testnets.relay.link` when `--env` is `dev`, and `https://api.relay.link` otherwise. Quotes are allowlisted and simulated before signing. A calldata change after confirmation is shown again. See [Security model](/security).
 
 ## Local contract addresses
 

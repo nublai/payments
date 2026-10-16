@@ -9,7 +9,7 @@ bun run --cwd packages/relayer-client build
 cd packages/wallet && bun ./src/cli.ts --help
 ```
 
-`@nubl/wallet` is not on npm yet. Once it is published, `npm i -g @nubl/wallet` installs the `nubl` binary. Until then, pass the same arguments to `bun ./src/cli.ts` from `packages/wallet`. Commands below are written as `nubl`.
+`@nubl/wallet` is not on npm yet. Commands below are `bun ./src/cli.ts <cmd>` from `packages/wallet`, after the builds above. Once it is published (or bun-linked), the command is `nubl <cmd>`.
 
 Every command that talks to a chain requires `--env prod`, `--env stage`, or `--env dev`. Omitting `--env` fails. There is no default environment.
 
@@ -20,8 +20,8 @@ Every command that talks to a chain requires `--env prod`, `--env stage`, or `--
 `account create` writes a local keystore and delegates the account. The session it installs is narrow: this chain's USDC `transfer` (`0xa9059cbb`) and `approve` (`0x095ea7b3`), Escrow `escrow` (`0x657061bf`), `refund` (`0x6023fda5`), and `settle` (`0xe7f921a2`), and SimpleSettler `write` (`0x84523a30`), with 10 USDC per day. A chain with no known USDC or Escrow address is refused. An interactive terminal must type `CREATE FULL ACCESS SESSION`. `NUBL_PASSWORD` does not replace that phrase.
 
 ```bash
-nubl account create --env dev
-nubl send 1 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --env dev
+bun ./src/cli.ts account create --env dev
+bun ./src/cli.ts send 1 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --env dev
 ```
 
 `send` takes the USDC amount, then the recipient address or ENS name. An interactive terminal must type `SEND USDC`.
@@ -35,7 +35,7 @@ Structured output is `--format json` (also `toon`, `yaml`, `md`, or `jsonl`). `-
 `NUBL_PASSWORD` supplies the keystore password. It does not confirm a send, a private-key export, a session export, a full-access session or permission change, a passkey, escrow create or refund, or an oracle-key escrow settle. Commands that accept `--password-stdin` can read the password from stdin.
 
 ```bash
-nubl session list --env prod --profile agent --format json
+bun ./src/cli.ts session list --env prod --profile agent --format json
 ```
 
-`nubl --help` lists commands. `nubl send --help` lists one command. `nubl --llms` prints the machine-readable manifest. `nubl --version` prints the version. `nubl --mcp` starts the stdio MCP server. See [MCP](/mcp) and [Security model](/security).
+`bun ./src/cli.ts --help` lists commands. `bun ./src/cli.ts send --help` lists one command. `bun ./src/cli.ts --llms` prints the machine-readable manifest. `bun ./src/cli.ts --version` prints the version. `bun ./src/cli.ts --mcp` starts the stdio MCP server. See [MCP](/mcp) and [Security model](/security).

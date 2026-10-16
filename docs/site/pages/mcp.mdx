@@ -1,14 +1,25 @@
 # MCP
 
-`nubl --mcp` is an incur stdio server. It registers one tool per leaf command. The tool id is the command path joined with `_`.
+`bun ./src/cli.ts --mcp` from `packages/wallet` is an incur stdio server. It registers one tool per leaf command. The tool id is the command path joined with `_`. After the [install](/install) builds, point a client at that file:
 
-Register the server with an agent from the CLI:
+```json
+{
+  "mcpServers": {
+    "nubl": {
+      "command": "bun",
+      "args": ["/path/to/payments/packages/wallet/src/cli.ts", "--mcp"]
+    }
+  }
+}
+```
+
+Register the server with an agent from `packages/wallet`:
 
 ```bash
-nubl mcp add
-nubl mcp add --agent cursor
-nubl mcp add --command "nubl --mcp"
-nubl mcp add --no-global
+bun ./src/cli.ts mcp add
+bun ./src/cli.ts mcp add --agent cursor
+bun ./src/cli.ts mcp add --command "bun /path/to/payments/packages/wallet/src/cli.ts --mcp"
+bun ./src/cli.ts mcp add --no-global
 ```
 
 `--agent` selects one agent. `--command` overrides the command the agent runs. `--no-global` installs into the project instead of the user config.
