@@ -22,11 +22,13 @@
 
 The CLI command is `nubl`. `@nubl/wallet` is set up to publish (`publishConfig.access` is `public`) and is not on the npm registry, so this page does not use `npm i`.
 
-From a checkout:
+From a checkout, build the packages the CLI imports, then run it:
 
 ```bash
 bun install
-bun ./packages/wallet/src/cli.ts --help
+bun run --cwd packages/contracts build
+bun run --cwd packages/relayer-client build
+cd packages/wallet && bun ./src/cli.ts --help
 ```
 
 ## Quickstart
@@ -51,7 +53,7 @@ nubl send 1 0x1111111111111111111111111111111111111111 --env dev
 }
 ```
 
-From a checkout, before `nubl` is on `PATH`, the same server is `bun ./packages/wallet/src/cli.ts --mcp`.
+From a checkout, after those builds, `cd packages/wallet && bun ./src/cli.ts --mcp` is the same server.
 
 ## Features
 
