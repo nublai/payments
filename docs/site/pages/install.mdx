@@ -1,10 +1,12 @@
 # Install and quickstart
 
-Run the wallet CLI from a checkout of this repo:
+Run the wallet CLI from a checkout of this repo. From the repo root:
 
 ```bash
-cd packages/wallet
-bun ./src/cli.ts --help
+bun install
+bun run --cwd packages/contracts build
+bun run --cwd packages/relayer-client build
+cd packages/wallet && bun ./src/cli.ts --help
 ```
 
 `@nubl/wallet` is not on npm yet. Once it is published, `npm i -g @nubl/wallet` installs the `nubl` binary. Until then, pass the same arguments to `bun ./src/cli.ts` from `packages/wallet`. Commands below are written as `nubl`.
