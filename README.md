@@ -53,7 +53,18 @@ nubl send 1 0x1111111111111111111111111111111111111111 --env dev
 }
 ```
 
-From a checkout, after those builds, `cd packages/wallet && bun ./src/cli.ts --mcp` is the same server.
+From a checkout, after those builds, point the client at that file:
+
+```json
+{
+  "mcpServers": {
+    "nubl": {
+      "command": "bun",
+      "args": ["/path/to/payments/packages/wallet/src/cli.ts", "--mcp"]
+    }
+  }
+}
+```
 
 ## Features
 
