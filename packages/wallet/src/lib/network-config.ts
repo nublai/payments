@@ -153,11 +153,11 @@ export function chainsForEnv(env: EnvName): ChainName[] {
 
 /**
  * RPC used for permission reads.
- * `TW_TEST_RPC_<chain>` redirects a chain only when NODE_ENV is test.
+ * `NUBL_TEST_RPC_<chain>` redirects a chain only when NODE_ENV is test.
  */
 export function rpcUrlForChain(chain: ChainName): string {
     if (process.env.NODE_ENV === 'test') {
-        const override = process.env[`TW_TEST_RPC_${chain}`]?.trim()
+        const override = process.env[`NUBL_TEST_RPC_${chain}`]?.trim()
 
         if (override) return override
     }

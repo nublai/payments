@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One local agentic payment: Anvil -> contracts deploy:local -> wrangler relayer -> wallet CLI.
 #
-# Uses the repo's deploy and relayer scripts and the real `tw` CLI
+# Uses the repo's deploy and relayer scripts and the real `nubl` CLI
 # (`bun ./src/cli.ts`). Does not deploy a second protocol.
 #
 # Requires: anvil, cast, forge, bun, curl, python3, bc (fund-dev.sh), and Node >= 22
@@ -129,18 +129,18 @@ fi
 echo "Building @nubl/relayer-client..."
 (cd "$ROOT/packages/relayer-client" && bun run build)
 
-WORKDIR="$(mktemp -d /tmp/agentic-payments-e2e.XXXXXX)"
+WORKDIR="$(mktemp -d /tmp/nubl-e2e.XXXXXX)"
 KEYSTORE="$WORKDIR/account.json"
 RECIPIENT="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-export TW_PASSWORD="e2e-local-payment"
+export NUBL_PASSWORD="e2e-local-payment"
 
 echo "Creating and delegating account..."
 # account create installs the narrow default session and still requires the phrase.
 # This script is the operator: it allocates a terminal and types the phrase.
 CREATE_JSON="$(
   cd "$ROOT/packages/wallet"
-  python3 "$ROOT/scripts/tw-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
+  python3 "$ROOT/scripts/nubl-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
     bun ./src/cli.ts account create \
     --env dev \
     --keystore-path "$KEYSTORE" \
@@ -162,11 +162,11 @@ BEFORE_SENDER="$(balance_of "$DELEGATED")"
 BEFORE_RECIP="$(balance_of "$RECIPIENT")"
 
 echo "Sending 1 USDC..."
-# send requires a human to type SEND USDC on a TTY. MCP and a non-TTY tw cannot
+# send requires a human to type SEND USDC on a TTY. MCP and a non-TTY nubl cannot
 # do that. This script is the operator: it allocates a terminal and types the phrase.
 SEND_JSON="$(
   cd "$ROOT/packages/wallet"
-  python3 "$ROOT/scripts/tw-tty-confirm.py" "SEND USDC" \
+  python3 "$ROOT/scripts/nubl-tty-confirm.py" "SEND USDC" \
     bun ./src/cli.ts send 1 "$RECIPIENT" \
     --env dev \
     --keystore-path "$KEYSTORE" \

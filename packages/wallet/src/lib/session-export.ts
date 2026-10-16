@@ -178,7 +178,7 @@ export async function resolveSessionExportPasswords(
     if (!password) {
         throw new SessionExportError(
             'PASSWORD_REQUIRED',
-            'Current keystore password required. Use --password-stdin, TW_PASSWORD, or interactive TTY.',
+            'Current keystore password required. Use --password-stdin, NUBL_PASSWORD, or interactive TTY.',
         )
     }
 
@@ -192,7 +192,7 @@ export async function resolveSessionExportPasswords(
     if (!exportPassword) {
         throw new SessionExportError(
             'PASSWORD_REQUIRED',
-            'Export password required. Use --export-password-stdin, TW_EXPORT_PASSWORD, or interactive TTY.',
+            'Export password required. Use --export-password-stdin, NUBL_EXPORT_PASSWORD, or interactive TTY.',
         )
     }
 

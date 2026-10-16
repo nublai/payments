@@ -150,14 +150,14 @@ async function waitForRpc(): Promise<void> {
     throw new Error('anvil did not start')
 }
 
-function runTw(args: string[], timeoutMs = 90_000): Promise<{ code: number; stdout: string; stderr: string }> {
+function runNubl(args: string[], timeoutMs = 90_000): Promise<{ code: number; stdout: string; stderr: string }> {
     return new Promise((resolvePromise, reject) => {
         // account passkey now requires the AUTHORIZE PASSKEY phrase on a TTY.
         // The assertions below are unchanged; this only supplies that phrase.
         const child = spawn(
             'python3',
             [
-                resolve(walletDir, '../../scripts/tw-tty-confirm.py'),
+                resolve(walletDir, '../../scripts/nubl-tty-confirm.py'),
                 'AUTHORIZE PASSKEY',
                 'bun',
                 'src/cli.ts',
@@ -372,7 +372,7 @@ async function verifyThroughCli(input: {
     const ownerKey = generatePrivateKey()
     await rpc('anvil_setBalance', [privateKeyToAccount(ownerKey).address, '0x3635C9ADC5DEA00000'])
 
-    const result = await runTw([
+    const result = await runNubl([
         '--json',
         'account',
         'passkey',

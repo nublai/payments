@@ -123,7 +123,7 @@ function quote(): RelayQuoteResponse {
     }
 }
 
-function reviewTw(input: { token: Address; amount: bigint; recipient: Address; feeAmount: bigint }) {
+function reviewNubl(input: { token: Address; amount: bigint; recipient: Address; feeAmount: bigint }) {
     reviewRelayQuote(quote(), {
         sourceChainId: 8453,
         destinationChainId: 8453,
@@ -180,27 +180,27 @@ test('swap daemon refuses a payment recipient other than the expected one', () =
     ).toThrow(/Payment recipient/)
 })
 
-test('tw quote reviewer refuses a payment token other than the quote fee', () => {
-    expect(() => reviewTw({ token: OTHER, amount: FEE, recipient: EXPECTED, feeAmount: FEE })).toThrow(
+test('nubl quote reviewer refuses a payment token other than the quote fee', () => {
+    expect(() => reviewNubl({ token: OTHER, amount: FEE, recipient: EXPECTED, feeAmount: FEE })).toThrow(
         /Payment token/,
     )
 })
 
-test('tw quote reviewer refuses a payment amount over the quote fee', () => {
+test('nubl quote reviewer refuses a payment amount over the quote fee', () => {
     expect(() =>
-        reviewTw({ token: USDC, amount: FEE + 1n, recipient: EXPECTED, feeAmount: FEE }),
+        reviewNubl({ token: USDC, amount: FEE + 1n, recipient: EXPECTED, feeAmount: FEE }),
     ).toThrow(/over the quote fee/)
 })
 
-test('tw quote reviewer refuses a payment amount over 5 USDC', () => {
+test('nubl quote reviewer refuses a payment amount over 5 USDC', () => {
     const over = PAID_FEE_CAP + 1n
-    expect(() => reviewTw({ token: USDC, amount: over, recipient: EXPECTED, feeAmount: over })).toThrow(
+    expect(() => reviewNubl({ token: USDC, amount: over, recipient: EXPECTED, feeAmount: over })).toThrow(
         /5 USDC/,
     )
 })
 
-test('tw quote reviewer refuses a payment recipient other than the expected one', () => {
-    expect(() => reviewTw({ token: USDC, amount: FEE, recipient: WRONG, feeAmount: FEE })).toThrow(
+test('nubl quote reviewer refuses a payment recipient other than the expected one', () => {
+    expect(() => reviewNubl({ token: USDC, amount: FEE, recipient: WRONG, feeAmount: FEE })).toThrow(
         /Payment recipient/,
     )
 })
@@ -212,5 +212,5 @@ test('a payment equal to the quote fee and the expected recipient is signed', ()
             recipient: EXPECTED,
         }),
     ).not.toThrow()
-    expect(() => reviewTw({ token: USDC, amount: FEE, recipient: EXPECTED, feeAmount: FEE })).not.toThrow()
+    expect(() => reviewNubl({ token: USDC, amount: FEE, recipient: EXPECTED, feeAmount: FEE })).not.toThrow()
 })

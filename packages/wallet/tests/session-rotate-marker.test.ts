@@ -465,7 +465,7 @@ test('plain resume of a full-access marker tells the user to rerun with --resume
                     ),
                 }),
             ),
-        ).rejects.toThrow(/tw session rotate --resume --full-access/)
+        ).rejects.toThrow(/nubl session rotate --resume --full-access/)
         expect(signed).toEqual([])
         expect(signTypedData).not.toHaveBeenCalled()
         expect(sendPreparedCalls).not.toHaveBeenCalled()
@@ -552,7 +552,7 @@ test('rotation marker stays after a bundle wait timeout and tells the user to re
 
         expect(caught).toMatchObject({
             code: 'ROTATION_SUBMITTED',
-            recoveryCommand: 'tw session rotate --resume',
+            recoveryCommand: 'nubl session rotate --resume',
         })
         expect(caught).toBeInstanceOf(Error)
 
@@ -639,7 +639,7 @@ test('rotation without --resume refuses an existing marker and does not authoriz
                     ),
                 }),
             ),
-        ).rejects.toThrow(/tw session rotate --resume/)
+        ).rejects.toThrow(/nubl session rotate --resume/)
         expect(signed).toEqual([])
         expect(signTypedData).not.toHaveBeenCalled()
         expect(sendPreparedCalls).not.toHaveBeenCalled()

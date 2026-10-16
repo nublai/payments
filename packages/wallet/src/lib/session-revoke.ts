@@ -271,7 +271,7 @@ export async function executeSessionRevoke(
                     'SESSION_REVOKE_FAILED',
                     'Cannot revoke active session without a replacement. Create another session first.',
                     {
-                        recoveryCommand: 'tw session create <session-name> --json',
+                        recoveryCommand: 'nubl session create <session-name> --json',
                     },
                 )
             }
@@ -504,7 +504,7 @@ export async function executeSessionRevoke(
             throw new SessionRevokeError(
                 'SESSION_REVOCATION_UNVERIFIED',
                 'On-chain revoke confirmation was not verifiable yet.',
-                { recoveryCommand: 'tw session list --on-chain --json' },
+                { recoveryCommand: 'nubl session list --on-chain --json' },
             )
         }
 

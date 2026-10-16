@@ -146,7 +146,7 @@ const spendPeriodSchema = z
 const permissionTypeSchema = z.enum(['call', 'spend']).describe('Permission type: call or spend')
 
 const passwordEnv = z.object({
-    TW_PASSWORD: z.string().optional().describe('Keystore password'),
+    NUBL_PASSWORD: z.string().optional().describe('Keystore password'),
 })
 
 // ---------------------------------------------------------------------------
@@ -335,7 +335,7 @@ async function refuseUnboundedSessionForQuote(
     if (wildcard) {
         throw new AccountSwapError(
             'QUOTE_FAILED',
-            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Create a dedicated swap session with \`tw session create <name> --swap\` and pass it with --session <name>.`,
+            `${kind} refuses a wildcard session. The spend guard does not bind ANY_TARGET or ANY_FN_SEL. Create a dedicated swap session with \`nubl session create <name> --swap\` and pass it with --session <name>.`,
         )
     }
 }
@@ -545,7 +545,7 @@ function resolveSpendLimitInput(input: {
 
 // ============================ ROOT CLI ====================================
 
-const tw = Cli.create('tw', {
+const nubl = Cli.create('nubl', {
     description: 'Wallet CLI — manage smart accounts, session keys, and permissions.',
     version: readVersionSync(),
     sync: {
@@ -802,7 +802,7 @@ account.command('create', {
                 json: false,
                 help: false,
             },
-            passwordDeps(env.TW_PASSWORD),
+            passwordDeps(env.NUBL_PASSWORD),
         )
 
         return executeAccountCreate({
@@ -862,7 +862,7 @@ account.command('delegate', {
                 help: false,
             },
             {
-                ...passwordDeps(env.TW_PASSWORD),
+                ...passwordDeps(env.NUBL_PASSWORD),
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
                         readlineExistingPassword(
@@ -882,7 +882,7 @@ account.command('delegate', {
     },
 })
 
-tw.command('send', {
+nubl.command('send', {
     description:
         'Send USDC with the session key. An interactive terminal must type "SEND USDC". MCP and non-interactive callers cannot confirm.',
     args: z.object({
@@ -932,7 +932,7 @@ tw.command('send', {
             keystorePath: options.keystorePath,
             sessionFile: options.sessionFile,
             sessionName: options.session,
-            password: env.TW_PASSWORD,
+            password: env.NUBL_PASSWORD,
             resolvePassword: () =>
                 resolveAccountSendPassword(
                     {
@@ -948,7 +948,7 @@ tw.command('send', {
                         help: false,
                     },
                     {
-                        ...passwordDeps(env.TW_PASSWORD),
+                        ...passwordDeps(env.NUBL_PASSWORD),
                         promptForExistingPassword: () =>
                             handlePromptCancellation(
                                 readlineExistingPassword(
@@ -961,7 +961,7 @@ tw.command('send', {
     },
 })
 
-tw.command('swap', {
+nubl.command('swap', {
     description: 'Swap tokens on the same chain via relay.link',
     options: z.object({
         from: z.string().describe('Source token (ETH, USDC)'),
@@ -1020,7 +1020,7 @@ tw.command('swap', {
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
                 sessionName: options.session,
-                password: env.TW_PASSWORD,
+                password: env.NUBL_PASSWORD,
                 resolvePassword: () =>
                     resolveAccountSwapPassword(
                         {
@@ -1028,7 +1028,7 @@ tw.command('swap', {
                             passwordStdin: options.passwordStdin ?? false,
                         },
                         {
-                            ...passwordDeps(env.TW_PASSWORD),
+                            ...passwordDeps(env.NUBL_PASSWORD),
                             promptForExistingPassword: () =>
                                 handlePromptCancellation(
                                     readlineExistingPassword(
@@ -1071,7 +1071,7 @@ tw.command('swap', {
     },
 })
 
-tw.command('bridge', {
+nubl.command('bridge', {
     description: 'Bridge tokens cross-chain via relay.link',
     options: z.object({
         token: z.string().describe('Token to bridge (ETH, USDC)'),
@@ -1159,7 +1159,7 @@ tw.command('bridge', {
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
                 sessionName: options.session,
-                password: env.TW_PASSWORD,
+                password: env.NUBL_PASSWORD,
                 resolvePassword: () =>
                     resolveAccountSwapPassword(
                         {
@@ -1167,7 +1167,7 @@ tw.command('bridge', {
                             passwordStdin: options.passwordStdin ?? false,
                         },
                         {
-                            ...passwordDeps(env.TW_PASSWORD),
+                            ...passwordDeps(env.NUBL_PASSWORD),
                             promptForExistingPassword: () =>
                                 handlePromptCancellation(
                                     readlineExistingPassword(
@@ -1220,7 +1220,7 @@ account.command('export', {
             .boolean()
             .optional()
             .describe(
-                'Include private keys. Requires typing EXPORT PRIVATE KEYS in an interactive terminal. TW_PASSWORD does not skip that prompt, and MCP cannot confirm it.',
+                'Include private keys. Requires typing EXPORT PRIVATE KEYS in an interactive terminal. NUBL_PASSWORD does not skip that prompt, and MCP cannot confirm it.',
             ),
         passwordStdin: passwordStdinSchema,
     }),
@@ -1268,7 +1268,7 @@ account.command('export', {
                 showPrivate: options.showPrivate ?? false,
                 help: false,
             },
-            passwordDeps(env.TW_PASSWORD),
+            passwordDeps(env.NUBL_PASSWORD),
         )
 
         return executeAccountExport({
@@ -1321,7 +1321,7 @@ account.command('change-password', {
                 help: false,
             },
             {
-                envPassword: env.TW_PASSWORD,
+                envPassword: env.NUBL_PASSWORD,
                 readPasswordLinesFromStdin,
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
@@ -1574,7 +1574,7 @@ session.command('create', {
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
-                ...passwordDeps(env.TW_PASSWORD),
+                ...passwordDeps(env.NUBL_PASSWORD),
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
                         readlineExistingPassword(
@@ -1622,7 +1622,7 @@ session.command('create', {
 
 session.command('export', {
     description:
-        'Export a session keystore as a portable file. Requires typing EXPORT PRIVATE KEYS in an interactive terminal. TW_PASSWORD and TW_EXPORT_PASSWORD do not skip that phrase, and MCP cannot confirm it.',
+        'Export a session keystore as a portable file. Requires typing EXPORT PRIVATE KEYS in an interactive terminal. NUBL_PASSWORD and NUBL_EXPORT_PASSWORD do not skip that phrase, and MCP cannot confirm it.',
     args: z.object({
         sessionName: z.string().describe('Session name to export'),
     }),
@@ -1636,8 +1636,8 @@ session.command('export', {
         exportPasswordStdin: z.boolean().optional().describe('Read export password from stdin'),
     }),
     env: z.object({
-        TW_PASSWORD: z.string().optional().describe('Keystore password'),
-        TW_EXPORT_PASSWORD: z.string().optional().describe('Password for exported session file'),
+        NUBL_PASSWORD: z.string().optional().describe('Keystore password'),
+        NUBL_EXPORT_PASSWORD: z.string().optional().describe('Password for exported session file'),
     }),
     output: z.object({
         type: z.string(),
@@ -1659,8 +1659,8 @@ session.command('export', {
                 exportPasswordStdin: options.exportPasswordStdin,
             },
             {
-                envPassword: env.TW_PASSWORD,
-                envExportPassword: env.TW_EXPORT_PASSWORD,
+                envPassword: env.NUBL_PASSWORD,
+                envExportPassword: env.NUBL_EXPORT_PASSWORD,
                 readPasswordFromStdin,
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
@@ -1912,7 +1912,7 @@ session.command('rotate', {
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
-                ...passwordDeps(env.TW_PASSWORD),
+                ...passwordDeps(env.NUBL_PASSWORD),
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
                         readlineExistingPassword(
@@ -1998,7 +1998,7 @@ session.command('revoke', {
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
-                ...passwordDeps(env.TW_PASSWORD),
+                ...passwordDeps(env.NUBL_PASSWORD),
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
                         readlineExistingPassword(
@@ -2119,7 +2119,7 @@ daemon.command('unlock', {
                 passwordStdin: options.passwordStdin ?? false,
             },
             {
-                ...passwordDeps(env.TW_PASSWORD),
+                ...passwordDeps(env.NUBL_PASSWORD),
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
                         readlineExistingPassword(
@@ -2363,7 +2363,7 @@ permissions.command('grant', {
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
-                ...passwordDeps(env.TW_PASSWORD),
+                ...passwordDeps(env.NUBL_PASSWORD),
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
                         readlineExistingPassword(
@@ -2534,7 +2534,7 @@ permissions.command('revoke', {
         const password = await resolveSessionCreatePassword(
             { passwordStdin: options.passwordStdin ?? false },
             {
-                ...passwordDeps(env.TW_PASSWORD),
+                ...passwordDeps(env.NUBL_PASSWORD),
                 promptForExistingPassword: () =>
                     handlePromptCancellation(
                         readlineExistingPassword(
@@ -2645,7 +2645,7 @@ escrow.command('create', {
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
-                password: env.TW_PASSWORD,
+                password: env.NUBL_PASSWORD,
                 resolvePassword: () =>
                     resolveAccountSendPassword(
                         {
@@ -2659,7 +2659,7 @@ escrow.command('create', {
                             help: false,
                         },
                         {
-                            ...passwordDeps(env.TW_PASSWORD),
+                            ...passwordDeps(env.NUBL_PASSWORD),
                             promptForExistingPassword: () =>
                                 handlePromptCancellation(
                                     readlineExistingPassword(
@@ -2728,14 +2728,14 @@ escrow.command('settle', {
         settlementId: z
             .string()
             .describe(
-                'Settlement ID (bytes32 order ID used at creation). Obtain from create flow or tw escrow status.',
+                'Settlement ID (bytes32 order ID used at creation). Obtain from create flow or nubl escrow status.',
             ),
         oracle: z.string().describe('Oracle address that signs the settlement'),
         oraclePrivateKey: z
             .string()
             .optional()
             .describe(
-                'Oracle private key to sign settlement. Not accepted as an MCP argument. A human must type SIGN ESCROW SETTLEMENT in an interactive terminal. Prefer TW_ORACLE_PRIVATE_KEY so the key is not in the process list.',
+                'Oracle private key to sign settlement. Not accepted as an MCP argument. A human must type SIGN ESCROW SETTLEMENT in an interactive terminal. Prefer NUBL_ORACLE_PRIVATE_KEY so the key is not in the process list.',
             ),
         signature: z
             .string()
@@ -2749,7 +2749,7 @@ escrow.command('settle', {
         passwordStdin: passwordStdinSchema,
     }),
     env: passwordEnv.extend({
-        TW_ORACLE_PRIVATE_KEY: z
+        NUBL_ORACLE_PRIVATE_KEY: z
             .string()
             .optional()
             .describe('Oracle private key (prefer over --oracle-private-key)'),
@@ -2775,7 +2775,7 @@ escrow.command('settle', {
                 env: 'dev',
             },
             description:
-                'Settle from a terminal with TW_ORACLE_PRIVATE_KEY. Type SIGN ESCROW SETTLEMENT. MCP cannot pass the oracle key.',
+                'Settle from a terminal with NUBL_ORACLE_PRIVATE_KEY. Type SIGN ESCROW SETTLEMENT. MCP cannot pass the oracle key.',
         },
     ],
     async run({ args, options, env, error: reportError }) {
@@ -2786,7 +2786,7 @@ escrow.command('settle', {
             })
         }
 
-        const oracleKey = options.oraclePrivateKey ?? env.TW_ORACLE_PRIVATE_KEY
+        const oracleKey = options.oraclePrivateKey ?? env.NUBL_ORACLE_PRIVATE_KEY
 
         if (oracleKey && !options.signature) {
             await confirmHuman(
@@ -2808,7 +2808,7 @@ escrow.command('settle', {
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
-                password: env.TW_PASSWORD,
+                password: env.NUBL_PASSWORD,
                 resolvePassword: () =>
                     resolveAccountSendPassword(
                         {
@@ -2822,7 +2822,7 @@ escrow.command('settle', {
                             help: false,
                         },
                         {
-                            ...passwordDeps(env.TW_PASSWORD),
+                            ...passwordDeps(env.NUBL_PASSWORD),
                             promptForExistingPassword: () =>
                                 handlePromptCancellation(
                                     readlineExistingPassword(
@@ -2885,7 +2885,7 @@ escrow.command('refund', {
                 name: options.profile,
                 keystorePath: options.keystorePath,
                 sessionFile: options.sessionFile,
-                password: env.TW_PASSWORD,
+                password: env.NUBL_PASSWORD,
                 resolvePassword: () =>
                     resolveAccountSendPassword(
                         {
@@ -2899,7 +2899,7 @@ escrow.command('refund', {
                             help: false,
                         },
                         {
-                            ...passwordDeps(env.TW_PASSWORD),
+                            ...passwordDeps(env.NUBL_PASSWORD),
                             promptForExistingPassword: () =>
                                 handlePromptCancellation(
                                     readlineExistingPassword(
@@ -2920,7 +2920,7 @@ escrow.command('refund', {
 })
 
 // Top-level address command
-tw.command('address', {
+nubl.command('address', {
     description: 'Show funding address with optional QR/link output',
     options: z.object({
         env: envSchema,
@@ -2974,7 +2974,7 @@ tw.command('address', {
     },
 })
 
-tw.command('login', {
+nubl.command('login', {
     description: 'Authenticate via browser and install a session-only login profile',
     options: z.object({
         env: envSchema,
@@ -3035,7 +3035,7 @@ tw.command('login', {
                             : (options.passwordStdin ?? false),
                     },
                     {
-                        ...passwordDeps(env.TW_PASSWORD),
+                        ...passwordDeps(env.NUBL_PASSWORD),
                         promptForExistingPassword: () =>
                             handlePromptCancellation(
                                 readlineExistingPassword(
@@ -3061,7 +3061,7 @@ tw.command('login', {
     },
 })
 
-tw.command('logout', {
+nubl.command('logout', {
     description: 'Remove local login profile session key (does not revoke on-chain authorization)',
     options: z.object({
         env: envSchema,
@@ -3090,15 +3090,15 @@ tw.command('logout', {
 })
 
 // Mount command groups
-tw.command(account)
+nubl.command(account)
 
-tw.command(session)
+nubl.command(session)
 
-tw.command(daemon)
+nubl.command(daemon)
 
-tw.command(permissions)
+nubl.command(permissions)
 
-tw.command(escrow)
+nubl.command(escrow)
 
 async function main(): Promise<void> {
     let exitCode = 0
@@ -3106,7 +3106,7 @@ async function main(): Promise<void> {
     // tear that server down before a client can list or call tools.
     const mcp = process.argv.includes('--mcp')
 
-    await tw.serve(process.argv.slice(2), {
+    await nubl.serve(process.argv.slice(2), {
         exit: (code) => {
             exitCode = code
             updateCliProcessExitCode(code)
@@ -3119,4 +3119,4 @@ async function main(): Promise<void> {
 
 await main()
 
-export default tw
+export default nubl

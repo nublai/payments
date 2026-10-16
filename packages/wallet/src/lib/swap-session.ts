@@ -194,7 +194,7 @@ export function planSwapSessionUse(input: {
     for (const entry of relay) {
         if (have.has(pairKey(entry.target, entry.selector))) continue
         throw new SwapSessionRejected(
-            `This session's canExecute is missing ${entry.contractName} ${entry.functionName} (${entry.selector}). Create a dedicated swap session with \`tw session create <name> --swap --chain ${chainLabel}\` and pass it with --session <name>.`,
+            `This session's canExecute is missing ${entry.contractName} ${entry.functionName} (${entry.selector}). Create a dedicated swap session with \`nubl session create <name> --swap --chain ${chainLabel}\` and pass it with --session <name>.`,
         )
     }
 
