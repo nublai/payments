@@ -3119,4 +3119,7 @@ async function main(): Promise<void> {
 
 await main()
 
-export default nubl
+// Bun serves an entry module whose default export has `fetch`. incur's Cli
+// does, so `export default nubl` opens an unauthenticated HTTP server on
+// [::]:3000 and prints "Started development server…" on the --mcp stdout
+// stream. Nothing in this repo imports that default. Keep --mcp on stdio only.
