@@ -21,7 +21,7 @@ bun run e2e:local-payment
 
 Needs Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH`. Ports 8545, 8546, and 8787 must be free. The script starts both Anvil chains, runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `tw account create --env dev`, mints MockUSDC, and sends 1 USDC with `tw send`. It stops the Anvil and wrangler processes it started.
 
-Any `tw` command with `--env dev` needs that local relayer already running. The script above starts the stack and then stops it, so run the script itself rather than those commands on their own. Omitting `--env` is an error. Pass `--env prod`, `--env stage`, or `--env dev`.
+Any `tw` command with `--env dev` needs that local relayer already running. The script above starts the stack and then stops it, so run the script itself rather than those commands on their own. Omitting `--env` is an error. Pass `--env prod`, `--env stage`, or `--env dev`. `--env stage` defaults to Base Sepolia (`base-sepolia`, 84532) and needs `RELAYER_URL_STAGE`. First-deploy steps: [docs/runbooks/base-sepolia-launch.md](../../docs/runbooks/base-sepolia-launch.md).
 
 No custody service. No API key. Everything runs locally with encrypted keystores.
 
