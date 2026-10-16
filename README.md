@@ -35,14 +35,16 @@ Once the package is published (or bun-linked), the command is `nubl <cmd>`.
 
 ## Quickstart
 
-Run these from `packages/wallet`, after the builds above. `--env` is required: `prod`, `stage`, or `dev`. `--env dev` uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. `account create` asks for `CREATE FULL ACCESS SESSION`. `send` asks for `SEND USDC`. Both phrases are typed on an interactive terminal.
+A local account and a 1 USDC send, from the repo root:
 
 ```bash
-bun ./src/cli.ts account create --env dev
-bun ./src/cli.ts send 1 0x1111111111111111111111111111111111111111 --env dev
+bun install
+bun run e2e:local-payment
 ```
 
-`bun ./src/cli.ts --mcp` from `packages/wallet` starts the stdio MCP server. Point the client at that file:
+That script starts Anvil, deploys, exports `packages/contracts/deployments/envs/local/.env`, starts the relayer, creates an account, mints MockUSDC with `packages/wallet/scripts/fund-dev.sh`, and sends 1 USDC. It types the confirmation phrases. Ports 8545, 8546, and 8787 must be free. Needs Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22.
+
+`bun ./src/cli.ts --mcp` from `packages/wallet`, after the install builds, starts the stdio MCP server. Point the client at that file:
 
 ```json
 {
