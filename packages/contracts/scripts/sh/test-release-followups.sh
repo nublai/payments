@@ -1183,8 +1183,15 @@ run_deploy_anvil_84532() {
         "$@"
 }
 
+# Tracked edits and untracked stage/84532 writes. After the placeholder
+# prune, a broadcast creates files git diff cannot see.
+deployments_status() {
+    git -C "$REPO_ROOT" status --porcelain -- packages/contracts/deployments
+}
+
 restore_84532_deployments() {
     git -C "$REPO_ROOT" checkout -- packages/contracts/deployments
+    git -C "$REPO_ROOT" clean -fd -- packages/contracts/deployments/envs/stage/84532
     rm -rf \
         "$PROJECT_ROOT/broadcast/DeployUnified.s.sol/84532" \
         "$PROJECT_ROOT/cache/DeployUnified.s.sol/84532" \
@@ -1199,9 +1206,9 @@ dry_run_does_not_write_deployments() {
     local rpc="http://127.0.0.1:${port}"
     local tmp pid code
     tmp="$(mktemp -d)"
-    if ! git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
+    if [[ -n "$(deployments_status)" ]]; then
         echo "packages/contracts/deployments is already dirty" >&2
-        git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
+        deployments_status >&2
         rm -rf "$tmp"
         return 1
     fi
@@ -1242,9 +1249,9 @@ dry_run_does_not_write_deployments() {
         tail -40 "$tmp/out" >&2
         return 1
     fi
-    if ! git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
+    if [[ -n "$(deployments_status)" ]]; then
         echo "dry-run wrote packages/contracts/deployments" >&2
-        git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
+        deployments_status >&2
         return 1
     fi
 
@@ -1266,14 +1273,14 @@ dry_run_does_not_write_deployments() {
         tail -40 "$tmp/broadcast.out" >&2
         return 1
     fi
-    if git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
+    if [[ -z "$(deployments_status)" ]]; then
         echo "broadcast did not write packages/contracts/deployments" >&2
         return 1
     fi
     restore_84532_deployments
-    if ! git -C "$REPO_ROOT" diff --exit-code -- packages/contracts/deployments >/dev/null; then
+    if [[ -n "$(deployments_status)" ]]; then
         echo "non-local 84532 deploy left packages/contracts/deployments dirty" >&2
-        git -C "$REPO_ROOT" diff -- packages/contracts/deployments >&2
+        deployments_status >&2
         return 1
     fi
 }
