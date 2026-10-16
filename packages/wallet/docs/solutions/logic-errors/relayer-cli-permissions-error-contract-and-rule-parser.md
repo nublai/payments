@@ -18,9 +18,9 @@ status: "solved"
 
 # Problem
 
-Two correctness regressions were found in the new `tw permissions` command group:
+Two correctness regressions were found in the new `nubl permissions` command group:
 
-1. `tw permissions grant <key-ref> --json` without `--type` returned `UNKNOWN` with a generic message instead of a typed usage error (`MISSING_ARGUMENT`).
+1. `nubl permissions grant <key-ref> --json` without `--type` returned `UNKNOWN` with a generic message instead of a typed usage error (`MISSING_ARGUMENT`).
 2. `parseRuleId("spend:any:<period>")` accepted `any` and mapped it to `0x3232...` (the call wildcard target constant), which is not valid spend token semantics.
 
 # Symptoms
@@ -44,7 +44,7 @@ Router validation in `permissions grant` threw a generic `Error` for missing `--
 
 Changed `permissions grant` router branch to throw:
 
-- `new PermissionsError('MISSING_ARGUMENT', 'Usage requires --type <call|spend>. Run tw permissions grant --help.')`
+- `new PermissionsError('MISSING_ARGUMENT', 'Usage requires --type <call|spend>. Run nubl permissions grant --help.')`
 
 This restores stable JSON contract behavior and usage-level exit semantics.
 

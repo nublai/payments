@@ -42,7 +42,7 @@ afterEach(async () => {
 })
 
 test('daemon load/list/sign/expiry lifecycle works', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-test-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()
@@ -182,7 +182,7 @@ function orchestratorIntent(user: Address, data: Hex): DaemonTypedData {
 }
 
 test('a phrase-confirmed swap session signs only a relay quote', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-swap-daemon-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-swap-daemon-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
@@ -247,7 +247,7 @@ test('a phrase-confirmed swap session signs only a relay quote', async () => {
 })
 
 test('a phrase-confirmed session refuses a typed-data domain that does not match the session chain and orchestrator', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-domain-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-domain-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
@@ -454,7 +454,7 @@ test('a phrase-confirmed session refuses a typed-data domain that does not match
 })
 
 test('a phrase-confirmed session refuses a Call-shaped payload with primaryType Call', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-primary-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-primary-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
@@ -500,7 +500,7 @@ test('a phrase-confirmed session refuses a Call-shaped payload with primaryType 
 })
 
 test('daemon drops oversized payload without newline', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-session-daemon-test-'))
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-session-daemon-test-'))
     process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
     const daemon = await runSessionDaemon()
 

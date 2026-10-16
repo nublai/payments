@@ -48,7 +48,7 @@ const SIMPLE_SETTLER_WRITE_SELECTOR: Hex = '0x84523a30'
 
 /**
  * Narrow default session. `write` and `settle` are included because
- * `tw escrow settle` submits SimpleSettler.write and Escrow.settle from this key.
+ * `nubl escrow settle` submits SimpleSettler.write and Escrow.settle from this key.
  * A chain with no known USDC or Escrow address throws. There is no wildcard fallback.
  */
 export function getDefaultSessionPermissions(
@@ -182,7 +182,7 @@ function assertValidProfileName(name: string): void {
 
 export function getDefaultKeystorePath(env: EnvName, name = 'default'): string {
     assertValidProfileName(name)
-    const base = [homedir(), '.config', 'agentic-payments', 'tw', 'profiles']
+    const base = [homedir(), '.config', 'agentic-payments', 'nubl', 'profiles']
 
     if (name === 'default') {
         if (env === 'prod') {
@@ -265,7 +265,7 @@ function getDefaultDeps(): AccountCreateDeps {
 }
 
 function buildResumeCommand(keystorePath: string): string {
-    return `tw account create --resume --keystore-path ${JSON.stringify(keystorePath)}`
+    return `nubl account create --resume --keystore-path ${JSON.stringify(keystorePath)}`
 }
 
 async function defaultPathExists(path: string): Promise<boolean> {

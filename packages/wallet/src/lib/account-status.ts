@@ -388,7 +388,7 @@ export async function executeAccountStatus(
                         checks,
                         'session.permissions.callWildcard',
                         'warn',
-                        'This session holds full access (ANY_TARGET or ANY_FN_SEL). The daemon can spend it once unlocked. Fix it with `tw session rotate --narrow` and type ROTATE FULL ACCESS SESSION, or `tw session revoke <name> --force` and type REVOKE FULL ACCESS SESSION.',
+                        'This session holds full access (ANY_TARGET or ANY_FN_SEL). The daemon can spend it once unlocked. Fix it with `nubl session rotate --narrow` and type ROTATE FULL ACCESS SESSION, or `nubl session revoke <name> --force` and type REVOKE FULL ACCESS SESSION.',
                         {
                             actual: callSelectors,
                         },
@@ -417,7 +417,7 @@ export async function executeAccountStatus(
                         checks,
                         'session.permissions.spendAboveDaily',
                         'warn',
-                        'This session holds a USDC spend above 10 per day. The daemon can spend it once unlocked. Fix it with `tw session rotate --narrow` and type ROTATE FULL ACCESS SESSION, or `tw session revoke <name> --force` and type REVOKE FULL ACCESS SESSION.',
+                        'This session holds a USDC spend above 10 per day. The daemon can spend it once unlocked. Fix it with `nubl session rotate --narrow` and type ROTATE FULL ACCESS SESSION, or `nubl session revoke <name> --force` and type REVOKE FULL ACCESS SESSION.',
                     )
                 }
 
@@ -433,7 +433,7 @@ export async function executeAccountStatus(
                             checks,
                             'session.permissions.spendToken',
                             'warn',
-                            `Session key spend permission for expected USDC token is missing. Run tw session create without --full-access to grant default USDC spend permissions, or run tw permissions grant --type spend --token ${expectedPermissions.spend.token}.`,
+                            `Session key spend permission for expected USDC token is missing. Run nubl session create without --full-access to grant default USDC spend permissions, or run nubl permissions grant --type spend --token ${expectedPermissions.spend.token}.`,
                             {
                                 expected: expectedPermissions.spend.token,
                                 actual: spendPermissions.map((entry) => entry.token),

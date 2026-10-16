@@ -4,9 +4,9 @@ date: 2026-03-06
 problem_type: integration_issue
 component: swap-bridge-commands
 symptoms:
-  - "`tw account swap` initially failed at relayer submission with `Unauthorized` / `BAD_SIGNATURE` even though quotes and session permissions looked correct"
-  - "`tw account swap --from ETH --to USDC` failed with `Simulation failed` while `USDC -> ETH` succeeded"
-  - "`tw account swap --env stage` failed during quote fetch with `An error occurred while validating the request`"
+  - "`nubl account swap` initially failed at relayer submission with `Unauthorized` / `BAD_SIGNATURE` even though quotes and session permissions looked correct"
+  - "`nubl account swap --from ETH --to USDC` failed with `Simulation failed` while `USDC -> ETH` succeeded"
+  - "`nubl account swap --env stage` failed during quote fetch with `An error occurred while validating the request`"
   - "Bridging to Polygon required extra account readiness work before any fill could succeed"
   - "Several failure modes surfaced as generic remote errors even when the real issue was local input, permission, or environment mismatch"
 root_cause: integration_contract_and_preflight_gaps
@@ -29,7 +29,7 @@ tags:
 
 ## Problem
 
-We added `tw account swap` and `tw account bridge` on top of relay.link quotes plus relayer execution. The happy path was straightforward, but real end-to-end validation exposed several cross-system failure modes:
+We added `nubl account swap` and `nubl account bridge` on top of relay.link quotes plus relayer execution. The happy path was straightforward, but real end-to-end validation exposed several cross-system failure modes:
 
 - relay.link quote routing had to match our environment and chain model
 - relayer HTTP auth had to be enabled for `wallet_sendPreparedCalls`
@@ -179,7 +179,7 @@ This was the right boundary for the error. The problem is not “relayer simulat
 
 ### Symptom
 
-`tw account swap --env stage` failed at quote fetch with:
+`nubl account swap --env stage` failed at quote fetch with:
 
 - `Failed to get swap quote: An error occurred while validating the request`
 

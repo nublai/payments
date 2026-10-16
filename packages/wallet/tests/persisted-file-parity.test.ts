@@ -243,12 +243,12 @@ test('readAgentChannelRegistry keeps extras, accepts string arrays, and maps ENO
 })
 
 test('hasLegacyRecipientAlias matches main on valid, malformed, and extra-field files', async () => {
-    const contactsPath = join(homedir(), '.config', 'agentic-payments', 'tw', 'contacts.json')
+    const contactsPath = join(homedir(), '.config', 'agentic-payments', 'nubl', 'contacts.json')
     let previous: string | null = null
 
     try {
         previous = await readFile(contactsPath, 'utf8').catch(() => null)
-        await mkdir(join(homedir(), '.config', 'agentic-payments', 'tw'), { recursive: true })
+        await mkdir(join(homedir(), '.config', 'agentic-payments', 'nubl'), { recursive: true })
 
         await writeFile(
             contactsPath,

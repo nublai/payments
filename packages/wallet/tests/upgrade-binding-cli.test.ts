@@ -678,7 +678,7 @@ function runCli(
             phrase ? 'python3' : 'bun',
             phrase
                 ? [
-                      resolve(walletDir, '../../scripts/tw-tty-confirm.py'),
+                      resolve(walletDir, '../../scripts/nubl-tty-confirm.py'),
                       phrase,
                       'bun',
                       'src/cli.ts',
@@ -689,7 +689,7 @@ function runCli(
             cwd: walletDir,
             env: {
                 ...process.env,
-                HOME: mkdtempSync(join(tmpdir(), 'tw-home-')),
+                HOME: mkdtempSync(join(tmpdir(), 'nubl-home-')),
                 TW_PASSWORD: PASSWORD,
                 PATH: `/tmp/node22/bin:${process.env.HOME}/.bun/bin:${process.env.PATH ?? ''}`,
                 ...env,
@@ -702,7 +702,7 @@ function runCli(
 
         const timer = setTimeout(() => {
             child.kill('SIGTERM')
-            reject(new Error(`tw timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`))
+            reject(new Error(`nubl timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`))
         }, timeoutMs)
 
         child.stdout.setEncoding('utf8')
@@ -754,7 +754,7 @@ function locked<T>(fn: () => Promise<T>): Promise<T> {
 let sharedDir = ''
 
 beforeAll(async () => {
-    sharedDir = mkdtempSync(join(tmpdir(), 'tw-h5-profile-'))
+    sharedDir = mkdtempSync(join(tmpdir(), 'nubl-h5-profile-'))
     const keystore = join(sharedDir, 'account.json')
     await withServer('honest-upgrade', 0, 31337, LOCAL_ORCH, LOCAL_PROXY, async (_server, url) => {
         const result = await runCli(
@@ -788,7 +788,7 @@ beforeAll(async () => {
 afterAll(() => {})
 
 function profileCopy(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'tw-h5-copy-'))
+    const dir = mkdtempSync(join(tmpdir(), 'nubl-h5-copy-'))
     cpSync(sharedDir, dir, { recursive: true })
 
     return join(dir, 'account.json')
@@ -867,7 +867,7 @@ function assertNoSubmit(server: MockRelayer, result: { status: number; stdout: s
 }
 
 test('account create on prod refuses because contracts are not deployed', async () => {
-    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-prod-')), 'account.json')
+    const keystore = join(mkdtempSync(join(tmpdir(), 'nubl-h5-prod-')), 'account.json')
 
     const result = await runCli(
         [
@@ -894,7 +894,7 @@ test('account create on prod refuses because contracts are not deployed', async 
 }, 30_000)
 
 test('account create refuses an attacker delegation from getCapabilities', async () => {
-    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
+    const keystore = join(mkdtempSync(join(tmpdir(), 'nubl-h5-create-')), 'account.json')
     const { server, result } = await runCreate('bad-capabilities', keystore)
     assertNoSubmit(server, result)
     expect(server.methods, server.methods.join(',')).not.toContain('wallet_prepareUpgradeAccount')
@@ -902,7 +902,7 @@ test('account create refuses an attacker delegation from getCapabilities', async
 }, 90_000)
 
 test('account create refuses an authorization for the wrong chain', async () => {
-    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
+    const keystore = join(mkdtempSync(join(tmpdir(), 'nubl-h5-create-')), 'account.json')
     const { server, result } = await runCreate('bad-chain', keystore)
     assertNoSubmit(server, result)
     expect(result.status).not.toBe(0)
@@ -910,7 +910,7 @@ test('account create refuses an authorization for the wrong chain', async () => 
 }, 90_000)
 
 test('account create refuses an authorization for the wrong nonce', async () => {
-    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
+    const keystore = join(mkdtempSync(join(tmpdir(), 'nubl-h5-create-')), 'account.json')
     const { server, result } = await runCreate('bad-nonce', keystore)
     assertNoSubmit(server, result)
     expect(result.status).not.toBe(0)
@@ -918,7 +918,7 @@ test('account create refuses an authorization for the wrong nonce', async () => 
 }, 90_000)
 
 test('account create refuses an attacker call in the upgrade SignedCall', async () => {
-    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
+    const keystore = join(mkdtempSync(join(tmpdir(), 'nubl-h5-create-')), 'account.json')
     const { server, result } = await runCreate('bad-call', keystore)
     assertNoSubmit(server, result)
     expect(result.status).not.toBe(0)
@@ -926,7 +926,7 @@ test('account create refuses an attacker call in the upgrade SignedCall', async 
 }, 90_000)
 
 test('account create signs an honest upgrade payload', async () => {
-    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
+    const keystore = join(mkdtempSync(join(tmpdir(), 'nubl-h5-create-')), 'account.json')
     const { server, result } = await runCreate('honest-upgrade', keystore)
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
     expect(server.methods).toContain('wallet_upgradeAccount')
@@ -965,7 +965,7 @@ test('account delegate signs an honest upgrade payload', async () => {
 }, 90_000)
 
 test('account create and delegate use the sponsored upgrade and never send accountUpgrade', async () => {
-    const keystore = join(mkdtempSync(join(tmpdir(), 'tw-h5-create-')), 'account.json')
+    const keystore = join(mkdtempSync(join(tmpdir(), 'nubl-h5-create-')), 'account.json')
     const runs = [await runCreate('honest-upgrade', keystore), await runDelegate('honest-upgrade')]
 
     for (const { server, result } of runs) {
@@ -1059,7 +1059,7 @@ test('MCP send is refused before the relayer is contacted', async () => {
                     cwd: walletDir,
                     env: {
                         ...process.env,
-                        HOME: mkdtempSync(join(tmpdir(), 'tw-mcp-home-')),
+                        HOME: mkdtempSync(join(tmpdir(), 'nubl-mcp-home-')),
                         TW_PASSWORD: PASSWORD,
                         PATH: `/tmp/node22/bin:${process.env.HOME}/.bun/bin:${process.env.PATH ?? ''}`,
                         ...devEnv(url),

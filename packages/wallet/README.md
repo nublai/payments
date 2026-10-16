@@ -1,8 +1,8 @@
-# tw — Wallet CLI
+# nubl — Wallet CLI
 
 Your keys. Your account. No signup. No login. Just run it.
 
-`tw` is a local-first CLI for managing smart accounts, session keys, and on-chain permissions on Agentic Payments. It works for humans at the terminal and for agents over `--json` or `--mcp`.
+`nubl` is a local-first CLI for managing smart accounts, session keys, and on-chain permissions on Agentic Payments. It works for humans at the terminal and for agents over `--json` or `--mcp`.
 
 ```bash
 bunx @nubl/wallet --help
@@ -19,25 +19,25 @@ bun install
 bun run e2e:local-payment
 ```
 
-Needs Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH`. Ports 8545, 8546, and 8787 must be free. The script starts both Anvil chains, runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `tw account create --env dev`, mints MockUSDC, and sends 1 USDC with `tw send`. It stops the Anvil and wrangler processes it started.
+Needs Anvil, cast, forge, bun, curl, python3, bc, and Node >= 22 on `PATH`. Ports 8545, 8546, and 8787 must be free. The script starts both Anvil chains, runs `packages/contracts` `deploy:local` and `make-config`, starts the wrangler relayer, creates an account with `nubl account create --env dev`, mints MockUSDC, and sends 1 USDC with `nubl send`. It stops the Anvil and wrangler processes it started.
 
-Any `tw` command with `--env dev` needs that local relayer already running. The script above starts the stack and then stops it, so run the script itself rather than those commands on their own. Omitting `--env` is an error. Pass `--env prod`, `--env stage`, or `--env dev`. `--env stage` defaults to Base Sepolia (`base-sepolia`, 84532) and needs `RELAYER_URL_STAGE`. First-deploy steps: [docs/runbooks/base-sepolia-launch.md](../../docs/runbooks/base-sepolia-launch.md).
+Any `nubl` command with `--env dev` needs that local relayer already running. The script above starts the stack and then stops it, so run the script itself rather than those commands on their own. Omitting `--env` is an error. Pass `--env prod`, `--env stage`, or `--env dev`. `--env stage` defaults to Base Sepolia (`base-sepolia`, 84532) and needs `RELAYER_URL_STAGE`. First-deploy steps: [docs/runbooks/base-sepolia-launch.md](../../docs/runbooks/base-sepolia-launch.md).
 
 No custody service. No API key. Everything runs locally with encrypted keystores.
 
-Relayer and login hosts are environment variables, not source constants. `RELAYER_URL_DEV` overrides local `http://127.0.0.1:8787`. `RELAYER_URL_STAGE` and `RELAYER_URL_PROD` are required for those environments and must be `https` unless the host is loopback. `--env dev` may use plain `http` for a loopback host, or for local chain 31337/41337 when that chain's orchestrator is not in the deployments JSON. Dev against a published orchestrator, including Base Sepolia, requires `https` unless the host is loopback. `tw login` reads `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD` and errors when the one for the selected env is unset. Local sends do not use login. Swap, bridge, and login have no local end-to-end script: `tw swap` and `tw bridge` call relay.link (`https://api.testnets.relay.link` on dev, `https://api.relay.link` otherwise), and login needs the `AUTH_URL_*` variable for the selected environment.
+Relayer and login hosts are environment variables, not source constants. `RELAYER_URL_DEV` overrides local `http://127.0.0.1:8787`. `RELAYER_URL_STAGE` and `RELAYER_URL_PROD` are required for those environments and must be `https` unless the host is loopback. `--env dev` may use plain `http` for a loopback host, or for local chain 31337/41337 when that chain's orchestrator is not in the deployments JSON. Dev against a published orchestrator, including Base Sepolia, requires `https` unless the host is loopback. `nubl login` reads `AUTH_URL_DEV`, `AUTH_URL_STAGE`, or `AUTH_URL_PROD` and errors when the one for the selected env is unset. Local sends do not use login. Swap, bridge, and login have no local end-to-end script: `nubl swap` and `nubl bridge` call relay.link (`https://api.testnets.relay.link` on dev, `https://api.relay.link` otherwise), and login needs the `AUTH_URL_*` variable for the selected environment.
 
-`tw` recomputes the EIP-712 `Intent` digest before signing (`Orchestrator` / `0.5.5`, the orchestrator as verifying contract, the requested calls, the nonce, a one-hour expiry, and the fee caps) and signs that rebuilt typed data. It refuses a relayer typed data, digest, or quote mismatch, an expiry of `0` or past the one-hour TTL, and combined gas above the wallet's own estimate. An RPC gas estimate cannot raise that ceiling above twice the local formula. Off local chains the signed fee cap is the accepted quote plus 5% (at least 0.001 USDC). A quote or quote-plus-margin above 5 USDC is refused, and a zero, missing, or non-numeric quote is refused instead of falling back to that ceiling. Send, swap, bridge, session, permissions, and escrow commands print `feeCap` (token, USDC amount, `expiresIn: 1h`) for humans and for `--json`. Local chain 31337 takes the orchestrator from `ORCHESTRATOR_31337` and the account proxy from `ACCOUNT_PROXY_31337` (environment or `packages/contracts/deployments/envs/local/.env`). `account create` and `account delegate` authorize only that proxy, at the EOA nonce from the wallet RPC, and refuse a `getCapabilities` delegation that differs. Relayer redirects are refused.
+`nubl` recomputes the EIP-712 `Intent` digest before signing (`Orchestrator` / `0.5.5`, the orchestrator as verifying contract, the requested calls, the nonce, a one-hour expiry, and the fee caps) and signs that rebuilt typed data. It refuses a relayer typed data, digest, or quote mismatch, an expiry of `0` or past the one-hour TTL, and combined gas above the wallet's own estimate. An RPC gas estimate cannot raise that ceiling above twice the local formula. Off local chains the signed fee cap is the accepted quote plus 5% (at least 0.001 USDC). A quote or quote-plus-margin above 5 USDC is refused, and a zero, missing, or non-numeric quote is refused instead of falling back to that ceiling. Send, swap, bridge, session, permissions, and escrow commands print `feeCap` (token, USDC amount, `expiresIn: 1h`) for humans and for `--json`. Local chain 31337 takes the orchestrator from `ORCHESTRATOR_31337` and the account proxy from `ACCOUNT_PROXY_31337` (environment or `packages/contracts/deployments/envs/local/.env`). `account create` and `account delegate` authorize only that proxy, at the EOA nonce from the wallet RPC, and refuse a `getCapabilities` delegation that differs. Relayer redirects are refused.
 
 ---
 
 ## How It Works
 
-`tw` manages a local keystore that holds your root key and session keys. Your root key creates and controls your on-chain smart account. Session keys are scoped signers — they can send transactions through the relayer without exposing your root key.
+`nubl` manages a local keystore that holds your root key and session keys. Your root key creates and controls your on-chain smart account. Session keys are scoped signers — they can send transactions through the relayer without exposing your root key.
 
 ```text
-~/.config/agentic-payments/tw/profiles/<env>/<profile>/default.keystore.json
-~/.config/agentic-payments/tw/profiles/<env>/<profile>/sessions/<session-name>.json
+~/.config/agentic-payments/nubl/profiles/<env>/<profile>/default.keystore.json
+~/.config/agentic-payments/nubl/profiles/<env>/<profile>/sessions/<session-name>.json
 ```
 
 For agents, the session daemon keeps decrypted keys in memory for a bounded duration so automated workflows can sign without prompting for a password on every call.
@@ -49,17 +49,17 @@ For agents, the session daemon keeps decrypted keys in memory for a bounded dura
 ### Root Command Surface
 
 ```text
-tw address
-tw bridge
-tw daemon <lock|start|status|stop|unlock>
-tw login
-tw logout
-tw permissions <grant|list|revoke|show>
-tw send
-tw session <create|export|import|list|revoke|rotate>
-tw swap
-tw escrow <create|refund|settle|status>
-tw account <balance|change-password|create|delegate|export|history|nonce|status>
+nubl address
+nubl bridge
+nubl daemon <lock|start|status|stop|unlock>
+nubl login
+nubl logout
+nubl permissions <grant|list|revoke|show>
+nubl send
+nubl session <create|export|import|list|revoke|rotate>
+nubl swap
+nubl escrow <create|refund|settle|status>
+nubl account <balance|change-password|create|delegate|export|history|nonce|status>
 ```
 
 ### Account
@@ -67,22 +67,22 @@ tw account <balance|change-password|create|delegate|export|history|nonce|status>
 #### `account create`
 
 ```bash
-tw account create --profile agent --env prod
-tw account create --resume --profile agent --env prod
-echo "my-password" | tw account create --password-stdin --json --env prod
-tw account create --keystore-path ~/.config/agentic-payments/tw/profiles/prod/team/default.keystore.json --env prod
+nubl account create --profile agent --env prod
+nubl account create --resume --profile agent --env prod
+echo "my-password" | nubl account create --password-stdin --json --env prod
+nubl account create --keystore-path ~/.config/agentic-payments/nubl/profiles/prod/team/default.keystore.json --env prod
 ```
 
 #### `account status` / `account balance` / `account nonce` / `account history`
 
 ```bash
-tw account status --profile agent --json --env prod
-tw account balance --profile agent --env prod
-tw account balance --profile agent --chain polygon --env prod
-tw account nonce --profile agent --env prod
-tw account history --profile agent --env prod
-tw account history --address 0x... --limit 10 --offset 20 --env prod
-tw account history --chain base,polygon --json --env prod
+nubl account status --profile agent --json --env prod
+nubl account balance --profile agent --env prod
+nubl account balance --profile agent --chain polygon --env prod
+nubl account nonce --profile agent --env prod
+nubl account history --profile agent --env prod
+nubl account history --address 0x... --limit 10 --offset 20 --env prod
+nubl account history --chain base,polygon --json --env prod
 ```
 
 `--limit` defaults to 20 (max 100). `offset + limit` must be <= 1000.
@@ -90,14 +90,14 @@ tw account history --chain base,polygon --json --env prod
 #### `account delegate`
 
 ```bash
-echo "my-password" | tw account delegate --chain polygon --profile agent --password-stdin --env prod
+echo "my-password" | nubl account delegate --chain polygon --profile agent --password-stdin --env prod
 ```
 
 #### `account export`
 
 ```bash
-tw account export --profile agent --json --env prod
-tw account export --profile agent --show-private --env prod
+nubl account export --profile agent --json --env prod
+nubl account export --profile agent --show-private --env prod
 ```
 
 `--show-private` prints the root and session private keys only after you type `EXPORT PRIVATE KEYS` at an interactive terminal. `TW_PASSWORD` and `--password-stdin` unlock the keystore. They do not skip that phrase. MCP and any non-TTY caller are refused.
@@ -105,19 +105,19 @@ tw account export --profile agent --show-private --env prod
 #### `account change-password`
 
 ```bash
-tw account change-password --profile agent --env prod
-printf "old\nnew\n" | tw account change-password --current-password-stdin --new-password-stdin --json --env prod
+nubl account change-password --profile agent --env prod
+printf "old\nnew\n" | nubl account change-password --current-password-stdin --new-password-stdin --json --env prod
 ```
 
 ### Address
 
-`tw address` is the top-level funding command and supersedes the old `account address` path.
+`nubl address` is the top-level funding command and supersedes the old `account address` path.
 
 ```bash
-tw address --env prod
-tw address --link --amount 100 --env prod
-tw address --qr --amount 100 --env prod
-tw address --token 0x... --amount 1 --decimals 18 --link --env prod
+nubl address --env prod
+nubl address --link --amount 100 --env prod
+nubl address --qr --amount 100 --env prod
+nubl address --token 0x... --amount 1 --decimals 18 --link --env prod
 ```
 
 ### Transfers and Quotes
@@ -125,10 +125,10 @@ tw address --token 0x... --amount 1 --decimals 18 --link --env prod
 #### `send`
 
 ```bash
-tw send 1 0x1111111111111111111111111111111111111111 --env prod
-tw send 2.5 vitalik.eth --chain base --env prod
-tw send 1 0x... --profile agent --session worker-2 --env prod
-tw send 1 0x... --chain base --session-file ./worker-1.session.json --env prod
+nubl send 1 0x1111111111111111111111111111111111111111 --env prod
+nubl send 2.5 vitalik.eth --chain base --env prod
+nubl send 1 0x... --profile agent --session worker-2 --env prod
+nubl send 1 0x... --chain base --session-file ./worker-1.session.json --env prod
 ```
 
 `send` asks an interactive terminal to type `SEND USDC` before it talks to the relayer. There is no `--yes` flag. MCP and non-interactive callers cannot confirm it. `--session` and `--session-file` are mutually exclusive. Recipients must be an address or `.eth` ENS name; contact aliases are no longer supported.
@@ -140,13 +140,13 @@ Powered by [relay.link](https://relay.link). The quote is signed only when every
 Swap and bridge do not use the payment session. Create a dedicated session and pass it explicitly:
 
 ```bash
-tw session create swap --swap --chain base --env prod
-tw swap --from USDC --to ETH --amount 50 --chain base --session swap --env prod
+nubl session create swap --swap --chain base --env prod
+nubl swap --from USDC --to ETH --amount 50 --chain base --session swap --env prod
 ```
 
 That session's on-chain `canExecute` is the Relay router `multicall` (`0xcd6e13f7`), the approval proxy `transferAndMulticall` (`0xf9e4bab4`), and the depository `depositNative` (`0x49290c1c`) and `depositErc20` (`0xe8017952`). It is not `ANY_TARGET`, not `ANY_FN_SEL`, and not a super-admin. The payment session stays the active key, so `send` and escrow keep their narrow calls. `--swap` does not accept `--activate`.
 
-The input token is not known when the session is created, so the key does not get a standing `approve`. For one quote, the root key grants `approve` on that token (and `transfer` only when the quote's outer calls include it), then revokes the grant in the same cleanup as the minute spend limit. A crash leaves the grant in the pending quote file; the next `tw` command that opens the keystore revokes it. The same install sets the key's existing `Account.Key.expiry` to two hours (two Orchestrator intent lifetimes) when the key does not already expire sooner. Recovery writes the previous expiry back only when the on-chain key still has the expiry, permissions, and spend limits the install wrote. If any of those differ, the key is left unchanged, the pending record is cleared, and the command reports what differs. A snapshot mismatch leaves the approve grant and the raised minute limit live until the on-chain expiry. Install bounded that expiry to now+7200, so the window is the same as a process that dies before cleanup. That window is not a longer one only if no root authorize sets a later expiry, and a later expiry includes 0, which means the key never expires. The expiry is a time bound, not a revoke: `authorize` on an existing key rewrites only the key fields (public key, expiry, type, super-admin), so a later root `authorize` of this key keeps the leftover grant and minute limit live under the new expiry. Spent counters, period start, and signature-checker sets are not compared. If the process dies and the keystore is never opened again, the approve grant and the raised minute limit stay until that expiry, and then the key can no longer sign. That uses the expiry field the account already stores. It does not change contract code, storage layout, or bytecode, and it does not need a redeploy. The extra gas is one root `authorize` when the quote is installed and one when the previous expiry is restored.
+The input token is not known when the session is created, so the key does not get a standing `approve`. For one quote, the root key grants `approve` on that token (and `transfer` only when the quote's outer calls include it), then revokes the grant in the same cleanup as the minute spend limit. A crash leaves the grant in the pending quote file; the next `nubl` command that opens the keystore revokes it. The same install sets the key's existing `Account.Key.expiry` to two hours (two Orchestrator intent lifetimes) when the key does not already expire sooner. Recovery writes the previous expiry back only when the on-chain key still has the expiry, permissions, and spend limits the install wrote. If any of those differ, the key is left unchanged, the pending record is cleared, and the command reports what differs. A snapshot mismatch leaves the approve grant and the raised minute limit live until the on-chain expiry. Install bounded that expiry to now+7200, so the window is the same as a process that dies before cleanup. That window is not a longer one only if no root authorize sets a later expiry, and a later expiry includes 0, which means the key never expires. The expiry is a time bound, not a revoke: `authorize` on an existing key rewrites only the key fields (public key, expiry, type, super-admin), so a later root `authorize` of this key keeps the leftover grant and minute limit live under the new expiry. Spent counters, period start, and signature-checker sets are not compared. If the process dies and the keystore is never opened again, the approve grant and the raised minute limit stay until that expiry, and then the key can no longer sign. That uses the expiry field the account already stores. It does not change contract code, storage layout, or bytecode, and it does not need a redeploy. The extra gas is one root `authorize` when the quote is installed and one when the previous expiry is restored.
 
 `--swap` requires `CREATE SWAP SESSION`, typed at an interactive terminal. `CREATE FULL ACCESS SESSION` stays the phrase for a wildcard, an account admin, and a non-USDC spend. MCP and any non-interactive caller cannot supply either phrase. The swap session gets a minute limit of 0 on native, this chain's USDC, legacy USDC when it differs, and WETH. Those 0 limits do not install the default 10 USDC/day budget and do not add to it (`0` per minute is `0` per day). A day limit of 0 is not used, because every spend period is checked and a 0 day limit would reject the quote after the minute slot is raised. For one quote the USDC minute slot is the quoted USDC input (0 for an ETH input) plus the 5 USDC fee cap (`PAID_FEE_CAP`) when the chain charges the Orchestrator fee in its USDC; on local fee chains (env `dev`, or chain 31337 or 41337) the fee cap is 0, so the slot is the quoted USDC input alone. The native minute slot is the quoted ETH input (0 for a USDC input).
 
@@ -154,20 +154,20 @@ Before the session is authorized, and again immediately before the quote is sign
 
 A swap key can move an NFT or a vault share if the account has approved the Relay router, the approval proxy, or the depository. Revoke those approvals with the root key. The wallet does not scan for them.
 
-Once the swap session is unlocked, its daemon signs only a single-chain Orchestrator 0.5.5 intent whose calls pass the relay quote reviewer. It refuses with `SwapSignRefused`: `MULTICHAIN_INTENT` for `multichain`, fund transfers, or a non-zero `settler`; `PRE_CALLS` for any pre-call; `FUNDS_OUT` for an ERC-20 `transfer` or `transferFrom` on any target, or native value sent to a non-Relay target; and `SETTLER_CALL` for a call to a deployed SimpleSettler. The payment token and amount must be that chain's USDC, bounded by the quote fee and the 5 USDC ceiling, and the payment recipient must be the expected one. `paymentAmount` and `paymentRecipient` are not in the intent hash: the reviewer refuses a message that already names a different token, amount, or recipient, and a filler can still replace the recipient after the signature. It does not sign other typed data, and it does not sign messages. Order binding and the output floor still happen in `tw swap` and `tw bridge` before that signature is requested.
+Once the swap session is unlocked, its daemon signs only a single-chain Orchestrator 0.5.5 intent whose calls pass the relay quote reviewer. It refuses with `SwapSignRefused`: `MULTICHAIN_INTENT` for `multichain`, fund transfers, or a non-zero `settler`; `PRE_CALLS` for any pre-call; `FUNDS_OUT` for an ERC-20 `transfer` or `transferFrom` on any target, or native value sent to a non-Relay target; and `SETTLER_CALL` for a call to a deployed SimpleSettler. The payment token and amount must be that chain's USDC, bounded by the quote fee and the 5 USDC ceiling, and the payment recipient must be the expected one. `paymentAmount` and `paymentRecipient` are not in the intent hash: the reviewer refuses a message that already names a different token, amount, or recipient, and a filler can still replace the recipient after the signature. It does not sign other typed data, and it does not sign messages. Order binding and the output floor still happen in `nubl swap` and `nubl bridge` before that signature is requested.
 
-Residuals: the root key can approve a Relay target after the read and before inclusion (TOCTOU). An ERC-20 this wallet cannot name is not read. A lying RPC that reports zero allowances is not detected. Unknown tokens are capped at 0 only for the quote when the account already holds a balance and the key has no spend period for them. If recovery never runs, the quote grant remains usable until the two-hour key expiry. A deposit signed through the daemon is checked for shape and inner selectors; the relay order id is checked by `tw` before it asks the daemon to sign.
+Residuals: the root key can approve a Relay target after the read and before inclusion (TOCTOU). An ERC-20 this wallet cannot name is not read. A lying RPC that reports zero allowances is not detected. Unknown tokens are capped at 0 only for the quote when the account already holds a balance and the key has no spend period for them. If recovery never runs, the quote grant remains usable until the two-hour key expiry. A deposit signed through the daemon is checked for shape and inner selectors; the relay order id is checked by `nubl` before it asks the daemon to sign.
 
 ```bash
-tw swap --from ETH --to USDC --amount 0.1 --chain base --env prod
-tw swap --from USDC --to ETH --amount 50 --chain base --yes --env prod
+nubl swap --from ETH --to USDC --amount 0.1 --chain base --env prod
+nubl swap --from USDC --to ETH --amount 50 --chain base --yes --env prod
 ```
 
 #### `bridge`
 
 ```bash
-tw bridge --token USDC --amount 100 --to-chain polygon --env prod
-tw bridge --token ETH --amount 0.5 --to-chain base --recipient 0x... --yes --env prod
+nubl bridge --token USDC --amount 100 --to-chain polygon --env prod
+nubl bridge --token ETH --amount 0.5 --to-chain base --recipient 0x... --yes --env prod
 ```
 
 `--yes` does not skip the call-target review. It is refused over MCP and when the process is not a TTY. On a TTY it only skips refreshing a quote that went stale while you were confirming. A refreshed quote whose calls, refund address, deposit id, or recipients changed is confirmed again.
@@ -179,26 +179,26 @@ Session keys are scoped signers that can act on behalf of your account without e
 #### `session create`
 
 ```bash
-echo "my-password" | tw session create worker-1 --profile agent --password-stdin --json --env prod
-echo "my-password" | tw session create worker-2 --profile agent --activate --password-stdin --env prod
-tw session create worker-admin --profile agent --full-access --env prod
-echo "my-password" | tw session create worker-1 --profile agent --resume --password-stdin --json --env prod
-echo "my-password" | tw session create alice --profile agent --agent --password-stdin --env prod
+echo "my-password" | nubl session create worker-1 --profile agent --password-stdin --json --env prod
+echo "my-password" | nubl session create worker-2 --profile agent --activate --password-stdin --env prod
+nubl session create worker-admin --profile agent --full-access --env prod
+echo "my-password" | nubl session create worker-1 --profile agent --resume --password-stdin --json --env prod
+echo "my-password" | nubl session create alice --profile agent --agent --password-stdin --env prod
 ```
 
-`--full-access` is mutually exclusive with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, `--spend-period`, and `--swap`. Creating or rotating a session, or granting a permission, asks an interactive terminal to type `CREATE FULL ACCESS SESSION` (`ROTATE FULL ACCESS SESSION` for `session rotate`) when the request is full access: the flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector, a period shorter than a day, a token other than that chain's USDC, or a spend limit above 10 USDC. MCP and non-interactive callers cannot confirm it. Omitting `--target` and `--selector` allows USDC `transfer` only, with a 10 USDC daily spend, and does not need that phrase. `increaseAllowance` (`0x39509351`) on any token is full access. A second session whose USDC spend, added to the account's other active sessions on that chain, would pass 10 USDC per day also requires the phrase. A forever or longer-period cap counts at its full limit. If those keys cannot be read, the phrase is required. `account create` and `account delegate` install a narrow session (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day) and still require the same phrase. A chain with no known USDC or Escrow address is refused. `daemon unlock` of a wildcard, unlimited, or unreadable session requires `UNLOCK FULL ACCESS SESSION` before the password. `tw session rotate --narrow` replaces a legacy wildcard session with that narrow set after `ROTATE FULL ACCESS SESSION`. `session revoke` of a full-access or unreadable session requires `REVOKE FULL ACCESS SESSION`. `account status` warns when a wildcard is present and says the daemon can spend it once unlocked. Swap and bridge need `tw session create <name> --swap --chain <chain>`, then `--session <name>`. That flag is a dedicated session, not an extension of the payment key, and it is not `--full-access`. It requires `CREATE SWAP SESSION` at an interactive terminal. It does not install 10 USDC/day.
+`--full-access` is mutually exclusive with `--target`, `--selector`, `--spend-limit`, `--spend-limit-raw`, `--spend-period`, and `--swap`. Creating or rotating a session, or granting a permission, asks an interactive terminal to type `CREATE FULL ACCESS SESSION` (`ROTATE FULL ACCESS SESSION` for `session rotate`) when the request is full access: the flag, target `ANY_TARGET` or the account, selector `ANY_FN_SEL` or an account admin selector, a period shorter than a day, a token other than that chain's USDC, or a spend limit above 10 USDC. MCP and non-interactive callers cannot confirm it. Omitting `--target` and `--selector` allows USDC `transfer` only, with a 10 USDC daily spend, and does not need that phrase. `increaseAllowance` (`0x39509351`) on any token is full access. A second session whose USDC spend, added to the account's other active sessions on that chain, would pass 10 USDC per day also requires the phrase. A forever or longer-period cap counts at its full limit. If those keys cannot be read, the phrase is required. `account create` and `account delegate` install a narrow session (USDC transfer and approve, escrow, refund, settler write, escrow settle, 10 USDC per day) and still require the same phrase. A chain with no known USDC or Escrow address is refused. `daemon unlock` of a wildcard, unlimited, or unreadable session requires `UNLOCK FULL ACCESS SESSION` before the password. `nubl session rotate --narrow` replaces a legacy wildcard session with that narrow set after `ROTATE FULL ACCESS SESSION`. `session revoke` of a full-access or unreadable session requires `REVOKE FULL ACCESS SESSION`. `account status` warns when a wildcard is present and says the daemon can spend it once unlocked. Swap and bridge need `nubl session create <name> --swap --chain <chain>`, then `--session <name>`. That flag is a dedicated session, not an extension of the payment key, and it is not `--full-access`. It requires `CREATE SWAP SESSION` at an interactive terminal. It does not install 10 USDC/day.
 
 #### `session list` / `session rotate` / `session revoke`
 
 ```bash
-tw session list --profile agent --json --env prod
-tw session list --profile agent --on-chain --json --env prod
-echo "my-password" | tw session rotate --profile agent --password-stdin --json --env prod
-echo "my-password" | tw session rotate --profile agent --new-name worker-3 --password-stdin --env prod
-echo "my-password" | tw session rotate --profile agent --resume --password-stdin --json --env prod
-echo "my-password" | tw session revoke worker-1 --profile agent --password-stdin --json --env prod
-echo "my-password" | tw session revoke worker-2 --profile agent --force --password-stdin --env prod
-echo "my-password" | tw session revoke worker-2 --profile agent --resume --password-stdin --json --env prod
+nubl session list --profile agent --json --env prod
+nubl session list --profile agent --on-chain --json --env prod
+echo "my-password" | nubl session rotate --profile agent --password-stdin --json --env prod
+echo "my-password" | nubl session rotate --profile agent --new-name worker-3 --password-stdin --env prod
+echo "my-password" | nubl session rotate --profile agent --resume --password-stdin --json --env prod
+echo "my-password" | nubl session revoke worker-1 --profile agent --password-stdin --json --env prod
+echo "my-password" | nubl session revoke worker-2 --profile agent --force --password-stdin --env prod
+echo "my-password" | nubl session revoke worker-2 --profile agent --resume --password-stdin --json --env prod
 ```
 
 Agent sessions require `--force` and clean up local channel bindings as part of revocation.
@@ -207,45 +207,45 @@ Agent sessions require `--force` and clean up local channel bindings as part of 
 
 ```bash
 TW_PASSWORD="my-password" TW_EXPORT_PASSWORD="export-password" \
-  tw session export worker-1 --profile agent --output ./worker-1.session.json --env prod
+  nubl session export worker-1 --profile agent --output ./worker-1.session.json --env prod
 
-echo "export-password" | tw session export worker-1 --profile agent \
+echo "export-password" | nubl session export worker-1 --profile agent \
   --output ./worker-1.session.json --export-password-stdin --env prod
 
-tw session import ./worker-1.session.json --profile worker-1 --env prod
+nubl session import ./worker-1.session.json --profile worker-1 --env prod
 ```
 
 Session export writes the session private key into the output file. It requires an interactive terminal and the phrase `EXPORT PRIVATE KEYS`. `TW_PASSWORD` and `TW_EXPORT_PASSWORD` do not skip that phrase, and MCP cannot confirm it.
 
-Session-only profiles can execute `tw send` but cannot run root-keystore management commands.
+Session-only profiles can execute `nubl send` but cannot run root-keystore management commands.
 
 ### Daemon
 
 The daemon holds decrypted session keys in memory so automated workflows can sign without re-entering passwords.
 
 ```bash
-tw daemon start --json
-tw daemon start --foreground --json
-echo "my-password" | tw daemon unlock worker-1 --profile agent --password-stdin --duration 15m --json --env prod
-tw daemon lock worker-1 --json
-tw daemon status --json
-tw daemon stop --json
+nubl daemon start --json
+nubl daemon start --foreground --json
+echo "my-password" | nubl daemon unlock worker-1 --profile agent --password-stdin --duration 15m --json --env prod
+nubl daemon lock worker-1 --json
+nubl daemon status --json
+nubl daemon stop --json
 ```
 
-`tw daemon start` is idempotent. Key material stays in daemon memory only; encrypted files remain unchanged. The socket does not return raw session keys. `getSessionSecrets` is refused. `sign` and `signMessage` still run against keys that were unlocked.
+`nubl daemon start` is idempotent. Key material stays in daemon memory only; encrypted files remain unchanged. The socket does not return raw session keys. `getSessionSecrets` is refused. `sign` and `signMessage` still run against keys that were unlocked.
 
 ### Permissions
 
 Fine-grained on-chain permission rules for session keys.
 
 ```bash
-tw permissions list --profile agent --json --env prod
-tw permissions show agent-key --profile agent --json --env prod
-tw permissions show --key-hash 0xaaa... --profile agent --json --env prod
-echo "my-password" | tw permissions grant agent-key --type call --target any --selector any --profile agent --password-stdin --json --env prod
-echo "my-password" | tw permissions grant agent-key --type spend --token USDC --spend-limit 100 --period day --profile agent --password-stdin --json --env prod
-echo "my-password" | tw permissions revoke agent-key --rule call:0x...:0xa9059cbb --profile agent --password-stdin --json --env prod
-echo "my-password" | tw permissions revoke agent-key --all --profile agent --password-stdin --json --env prod
+nubl permissions list --profile agent --json --env prod
+nubl permissions show agent-key --profile agent --json --env prod
+nubl permissions show --key-hash 0xaaa... --profile agent --json --env prod
+echo "my-password" | nubl permissions grant agent-key --type call --target any --selector any --profile agent --password-stdin --json --env prod
+echo "my-password" | nubl permissions grant agent-key --type spend --token USDC --spend-limit 100 --period day --profile agent --password-stdin --json --env prod
+echo "my-password" | nubl permissions revoke agent-key --rule call:0x...:0xa9059cbb --profile agent --password-stdin --json --env prod
+echo "my-password" | nubl permissions revoke agent-key --all --profile agent --password-stdin --json --env prod
 ```
 
 Use `--spend-limit-raw` for base units instead of human amounts.
@@ -255,19 +255,19 @@ Use `--spend-limit-raw` for base units instead of human amounts.
 USDC escrow: lock funds as buyer with a seller and oracle; settle (oracle signs) or refund after deadline.
 
 ```bash
-tw escrow create 50 0x1111111111111111111111111111111111111111 \
+nubl escrow create 50 0x1111111111111111111111111111111111111111 \
   --oracle 0x2222222222222222222222222222222222222222 --deadline 24h --env prod
-tw escrow create 100 0x... --oracle 0x... --deadline 2d --chain base --env prod --json
-tw escrow status 0x<64 hex chars> --env prod
-tw escrow status 0x... --chain base --json --env prod
-TW_ORACLE_PRIVATE_KEY=0x... tw escrow settle 0x<escrowId> \
+nubl escrow create 100 0x... --oracle 0x... --deadline 2d --chain base --env prod --json
+nubl escrow status 0x<64 hex chars> --env prod
+nubl escrow status 0x... --chain base --json --env prod
+TW_ORACLE_PRIVATE_KEY=0x... nubl escrow settle 0x<escrowId> \
   --settlement-id 0x<orderId> --oracle 0x2222... --profile agent --env prod
-tw escrow settle 0x<escrowId> --settlement-id 0x... --oracle 0x... --signature 0x... --profile agent --env prod
-tw escrow refund 0x<escrowId> --profile agent --env prod
-tw escrow refund 0x<escrowId> --env prod --json
+nubl escrow settle 0x<escrowId> --settlement-id 0x... --oracle 0x... --signature 0x... --profile agent --env prod
+nubl escrow refund 0x<escrowId> --profile agent --env prod
+nubl escrow refund 0x<escrowId> --env prod --json
 ```
 
-`escrow create` and `escrow refund` move USDC and require an interactive terminal to type `SEND USDC`. `escrow create` requires `--oracle` and `--deadline`. Deadlines accept relative values like `1h`, `2d`, `30m`, `1w` or unix timestamps. Escrow flows support `--session-file` like `tw send`.
+`escrow create` and `escrow refund` move USDC and require an interactive terminal to type `SEND USDC`. `escrow create` requires `--oracle` and `--deadline`. Deadlines accept relative values like `1h`, `2d`, `30m`, `1w` or unix timestamps. Escrow flows support `--session-file` like `nubl send`.
 
 Signing with the oracle private key (`--oracle-private-key` or `TW_ORACLE_PRIVATE_KEY`) requires an interactive terminal and the phrase `SIGN ESCROW SETTLEMENT`. MCP does not accept a raw oracle private key. A pre-signed `--signature` does not use the key and does not ask for that phrase. `account passkey` likewise refuses a raw private key over MCP; run it in a terminal and type `AUTHORIZE PASSKEY`.
 
@@ -276,35 +276,35 @@ Signing with the oracle private key (`--oracle-private-key` or `TW_ORACLE_PRIVAT
 Every command supports `--json` for machine-readable output. Treat JSON output schemas as the stable contract.
 
 ```bash
-tw <command> --env prod --json
+nubl <command> --env prod --json
 ```
 
 ### Password Automation
 
-`TW_PASSWORD` supplies the keystore password. It does not confirm `send`, private-key export, session export, full-access session create or rotate, a wildcard or admin permission grant, passkey authorization, escrow create or refund, or oracle-key escrow settle. A local shell with a pseudo-terminal can type the public phrase. That is a person at this terminal, not a guarantee against a local process. `tw --mcp` still refuses.
+`TW_PASSWORD` supplies the keystore password. It does not confirm `send`, private-key export, session export, full-access session create or rotate, a wildcard or admin permission grant, passkey authorization, escrow create or refund, or oracle-key escrow settle. A local shell with a pseudo-terminal can type the public phrase. That is a person at this terminal, not a guarantee against a local process. `nubl --mcp` still refuses.
 
 Use `TW_PASSWORD` to skip the password prompt:
 
 ```bash
-TW_PASSWORD="my-password" tw session list --profile agent --json --env prod
+TW_PASSWORD="my-password" nubl session list --profile agent --json --env prod
 ```
 
 Or pipe via stdin for commands that accept `--password-stdin`:
 
 ```bash
-echo "my-password" | tw session rotate --profile agent --password-stdin --json --env prod
+echo "my-password" | nubl session rotate --profile agent --password-stdin --json --env prod
 ```
 
 ### Discovery
 
 ```bash
-tw --help              # All commands
-tw send --help         # Command-specific help
-tw --llms              # Machine-readable command manifest
-tw --mcp               # Run as MCP server (tool ids below)
-tw --version           # Version
+nubl --help              # All commands
+nubl send --help         # Command-specific help
+nubl --llms              # Machine-readable command manifest
+nubl --mcp               # Run as MCP server (tool ids below)
+nubl --version           # Version
 ```
 
-`tw --mcp` registers one tool per leaf command. The ids are `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_passkey`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
+`nubl --mcp` registers one tool per leaf command. The ids are `account_balance`, `account_nonce`, `account_history`, `account_status`, `account_create`, `account_delegate`, `account_passkey`, `account_export`, `account_change-password`, `session_create`, `session_export`, `session_import`, `session_list`, `session_rotate`, `session_revoke`, `daemon_start`, `daemon_stop`, `daemon_unlock`, `daemon_lock`, `daemon_status`, `permissions_list`, `permissions_show`, `permissions_grant`, `permissions_revoke`, `escrow_create`, `escrow_status`, `escrow_settle`, `escrow_refund`, `send`, `swap`, `bridge`, `address`, `login`, `logout`.
 
 These calls are refused over MCP, with a message to run the command in a terminal: `account_create` and `account_delegate` (they require the phrase); `daemon_unlock` of a full-access or unreadable session; `session_rotate` with `narrow: true`; `session_revoke` of a full-access or unreadable session; `send`; `escrow_create` and `escrow_refund`; `account_export` with `showPrivate`; `session_export`; `swap` and `bridge` (including `yes: true`); `session_create --swap` (type `CREATE SWAP SESSION`); `session_create`, `session_rotate`, and `permissions_grant` when they install full access (the flag, `ANY_TARGET`, the account, `ANY_FN_SEL`, an account admin selector, a period shorter than a day, a non-USDC token, or a spend above 10 USDC); `account_passkey` when a `privateKey` is supplied; `escrow_settle` when an `oraclePrivateKey` is supplied or `TW_ORACLE_PRIVATE_KEY` would sign. A prompt-injected tool call cannot type the confirmation phrase. On an interactive terminal, `swap` and `bridge` `--yes` still shows every call target, selector, refundTo, depositor, and output recipient, and still asks you to confirm. A local pseudo-terminal can answer that prompt; that leftover is not handled here. The daemon socket does not return raw session keys.

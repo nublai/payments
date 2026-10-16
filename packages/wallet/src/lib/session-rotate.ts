@@ -660,7 +660,7 @@ function unverifiedMarkerRecovery(
 ): string {
     const markerPath = join(rotationDir(rootKeystorePath, sessionsDir), intent.fileName)
 
-    return `Marker: ${markerPath}. To recover after you check the chain with \`tw session list --on-chain\`: delete ${markerPath}, run \`tw session create <name> --activate\`, then optionally \`tw session revoke ${intent.newSessionName}\`.`
+    return `Marker: ${markerPath}. To recover after you check the chain with \`nubl session list --on-chain\`: delete ${markerPath}, run \`nubl session create <name> --activate\`, then optionally \`nubl session revoke ${intent.newSessionName}\`.`
 }
 
 /** Accepts the current sidecar value or its successor; see writeBoundRotationIntent. */
@@ -992,10 +992,10 @@ async function executeExtraCleanups(input: {
 function partialRotationError(chain: ChainName, failed: ChainName[]): SessionRotateError {
     return new SessionRotateError(
         'ROTATION_PARTIAL',
-        `Session rotation submitted on ${chain}, but cleanup failed on ${failed.join(', ')}. The new session file was kept. Resume with \`tw session rotate --resume\`.`,
+        `Session rotation submitted on ${chain}, but cleanup failed on ${failed.join(', ')}. The new session file was kept. Resume with \`nubl session rotate --resume\`.`,
         {
             details: { chains: failed },
-            recoveryCommand: 'tw session rotate --resume',
+            recoveryCommand: 'nubl session rotate --resume',
         },
     )
 }
@@ -1023,9 +1023,9 @@ function rotationSubmittedError(bundleId: string | undefined, timedOut = false):
 
     return new SessionRotateError(
         'ROTATION_SUBMITTED',
-        `Session rotation ${which}was submitted, but ${why}. The new session file was kept. Resume with \`tw session rotate --resume\`.`,
+        `Session rotation ${which}was submitted, but ${why}. The new session file was kept. Resume with \`nubl session rotate --resume\`.`,
         {
-            recoveryCommand: 'tw session rotate --resume',
+            recoveryCommand: 'nubl session rotate --resume',
             details: bundleId ? { bundleId } : undefined,
         },
     )
@@ -1039,7 +1039,7 @@ function requireRotateFullAccessPhrase(
     if (!fullAccess || confirmed) return
 
     const rerun = resumed
-        ? ' Re-run `tw session rotate --resume --full-access` and type the phrase when prompted.'
+        ? ' Re-run `nubl session rotate --resume --full-access` and type the phrase when prompted.'
         : ''
 
     throw new HumanConfirmationError(
@@ -1385,8 +1385,8 @@ export async function executeSessionRotate(
         if (intent && !options.resume) {
             throw new SessionRotateError(
                 'ROTATION_IN_PROGRESS',
-                'A session rotation is already in progress. Resume with `tw session rotate --resume`, or remove the marker with `tw session rotate --abandon` after you check the chain.',
-                { recoveryCommand: 'tw session rotate --resume' },
+                'A session rotation is already in progress. Resume with `nubl session rotate --resume`, or remove the marker with `nubl session rotate --abandon` after you check the chain.',
+                { recoveryCommand: 'nubl session rotate --resume' },
             )
         }
 
@@ -1500,7 +1500,7 @@ export async function executeSessionRotate(
                 throw new SessionRotateError(
                     'ROTATION_VERIFICATION_FAILED',
                     `The new session file ${intent.newSessionName} is missing, so this rotation cannot sign. On-chain, the new key is ${newText} and the old key is ${oldText}. ${next}`,
-                    { recoveryCommand: 'tw session rotate --resume' },
+                    { recoveryCommand: 'nubl session rotate --resume' },
                 )
             }
 
@@ -1590,7 +1590,7 @@ export async function executeSessionRotate(
                     throw new SessionRotateError(
                         'ROTATION_VERIFICATION_FAILED',
                         'The previous session file is missing, so this rotation cannot finish cleanup. The marker was kept. Nothing was signed.',
-                        { recoveryCommand: 'tw session rotate --resume' },
+                        { recoveryCommand: 'nubl session rotate --resume' },
                     )
                 }
 
@@ -1637,7 +1637,7 @@ export async function executeSessionRotate(
                 throw new SessionRotateError(
                     'ROTATION_VERIFICATION_FAILED',
                     'Rotation confirmation failed on-chain verification.',
-                    { recoveryCommand: 'tw session list --on-chain --json' },
+                    { recoveryCommand: 'nubl session list --on-chain --json' },
                 )
             }
 
@@ -1645,7 +1645,7 @@ export async function executeSessionRotate(
                 throw new SessionRotateError(
                     'ROTATION_VERIFICATION_FAILED',
                     'The previous session key is still authorized on chain. The session file was kept. Nothing was signed.',
-                    { recoveryCommand: 'tw session rotate --resume' },
+                    { recoveryCommand: 'nubl session rotate --resume' },
                 )
             }
 
@@ -1738,8 +1738,8 @@ export async function executeSessionRotate(
             if (!(hasNew && !hasOld)) {
                 throw new SessionRotateError(
                     'ROTATION_SUBMITTED',
-                    'Session rotation may already be submitted, but getKeys does not show the new key as the only authorized key. Nothing was signed. Resume with `tw session rotate --resume`.',
-                    { recoveryCommand: 'tw session rotate --resume' },
+                    'Session rotation may already be submitted, but getKeys does not show the new key as the only authorized key. Nothing was signed. Resume with `nubl session rotate --resume`.',
+                    { recoveryCommand: 'nubl session rotate --resume' },
                 )
             }
 
@@ -2161,7 +2161,7 @@ export async function executeSessionRotate(
             const intentError = finalStatus?.receipt?.intentError as Hex | undefined
             throw new SessionRotateError(
                 'ROTATION_FAILED',
-                `${finalStatus?.error ?? 'Session rotation did not complete successfully.'} The rotation marker was kept. After you check the chain, remove it with \`tw session rotate --abandon\`.`,
+                `${finalStatus?.error ?? 'Session rotation did not complete successfully.'} The rotation marker was kept. After you check the chain, remove it with \`nubl session rotate --abandon\`.`,
                 {
                     details: {
                         statusCode: finalStatus?.statusCode,
@@ -2290,7 +2290,7 @@ export async function executeSessionRotate(
             throw new SessionRotateError(
                 'ROTATION_VERIFICATION_FAILED',
                 'Rotation confirmation failed on-chain verification.',
-                { recoveryCommand: 'tw session list --on-chain --json' },
+                { recoveryCommand: 'nubl session list --on-chain --json' },
             )
         }
 

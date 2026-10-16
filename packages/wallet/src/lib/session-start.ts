@@ -174,5 +174,5 @@ function debugSessionStart(message: string, details?: { pid: number }): void {
     }
 
     const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
-    console.error(`[tw daemon start] ${message}${suffix}`)
+    console.error(`[nubl daemon start] ${message}${suffix}`)
 }

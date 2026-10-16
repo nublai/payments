@@ -19,7 +19,7 @@ export async function readlineExistingPassword(prompt: string): Promise<string> 
 
 export async function readlineNewPassword(): Promise<string> {
     const pw = await password({
-        message: 'Enter a password for your tw keystore:',
+        message: 'Enter a password for your nubl keystore:',
         output: process.stderr,
     })
 

@@ -46,7 +46,7 @@
 ### Minor Changes
 
 - #896 `cd9a8ae` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - 1. **Session-key ETH/USDC UX improvements**
-  - Added `--session <name>` to `tw account send` (no need to activate/export first).
+  - Added `--session <name>` to `nubl account send` (no need to activate/export first).
   - Preserved actionable errors for `--session` resolution failures.
   - Kept `--session` and `--session-file` mutually exclusive.
   2. **`--full-access` safety + clarity**
@@ -89,7 +89,7 @@
 
 ### Major Changes
 
-- #885 `359ca49` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@nubl/wallet` and keep `agentic-payments-wallet`/`tw` binaries so Bun users can run it via `bunx @nubl/wallet`.
+- #885 `359ca49` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Rename the CLI package to `@nubl/wallet` and keep `agentic-payments-wallet`/`nubl` binaries so Bun users can run it via `bunx @nubl/wallet`.
 
 ### Patch Changes
 
@@ -133,7 +133,7 @@
 
 ### Minor Changes
 
-- #794 `82926e9` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Wallet CLI (`agentic-payments-wallet` / `tw`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
+- #794 `82926e9` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Initial release of Wallet CLI (`agentic-payments-wallet` / `nubl`). Includes account creation and management, session key lifecycle, permission grants and revocation, delegation, balance queries, and transaction sending — all from the terminal with encrypted local keystore storage.
 
 ### Patch Changes
 
@@ -161,7 +161,7 @@
 
 ### Minor Changes
 
-- #759 `d1652ec` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add root `tw address` alias with funding-oriented output options, including `--link`, `--qr`, `--amount`, `--token`, and `--decimals`, plus schema/help/docs updates and regression coverage.
+- #759 `d1652ec` Thanks [@giuseppecrj](https://github.com/giuseppecrj)! - Add root `nubl address` alias with funding-oriented output options, including `--link`, `--qr`, `--amount`, `--token`, and `--decimals`, plus schema/help/docs updates and regression coverage.
 
 ### Patch Changes
 

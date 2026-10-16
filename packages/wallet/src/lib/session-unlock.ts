@@ -277,7 +277,7 @@ export async function executeSessionUnlock(
     if (response === null) {
         throw new SessionUnlockError(
             'DAEMON_UNAVAILABLE',
-            'Session daemon is not running. Run `tw daemon start` first.',
+            'Session daemon is not running. Run `nubl daemon start` first.',
         )
     }
 
