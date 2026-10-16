@@ -42,8 +42,12 @@ SIMPLE_FUNDER="$(python3 -c 'import json; print(json.load(open("deployments/envs
 ORCH="$(python3 -c 'import json; print(json.load(open("deployments/envs/stage/84532/orchestrator.json"))["address"])')"
 COUNT="${RELAYER_COUNT:-1}"
 
-# --mnemonic is a file path here (Foundry also accepts a phrase; do not put the phrase on argv)
-MNEMONIC_FILE=./relayer.mnemonic
+# --mnemonic is a file path (Foundry also accepts a phrase; do not put the phrase on argv).
+# Keep the file outside the repo; ./relayer.mnemonic is not gitignored.
+MNEMONIC_FILE="${HOME}/.secrets/relayer.mnemonic"
+mkdir -p "${HOME}/.secrets"
+# write the mnemonic into $MNEMONIC_FILE first
+chmod 600 "$MNEMONIC_FILE"
 SIGNERS=()
 for i in $(seq 0 $((COUNT - 1))); do
   SIGNERS+=("$(cast wallet address --mnemonic "$MNEMONIC_FILE" --mnemonic-derivation-path "m/44'/60'/0'/0/${i}")")
@@ -75,6 +79,7 @@ bun run --cwd packages/contracts make-config
 # commit deployments/envs/stage/84532/*.json and deployments/addresses.json
 # (not the gitignored envs/stage/.env files)
 bun run --cwd packages/contracts build
+bun run --cwd packages/relayer-client build
 wrangler queues create relayer-monitor-queue-stage   # first time; skip if it already exists
 cd packages/relayer
 wrangler deploy --env stage
