@@ -147,10 +147,10 @@ export async function executeSessionStop(
 }
 
 function debugSessionStop(message: string, details?: { path: string; message: string }): void {
-    if (process.env.TW_DAEMON_DEBUG !== '1') {
+    if (process.env.NUBL_DAEMON_DEBUG !== '1') {
         return
     }
 
     const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
-    console.error(`[tw daemon stop] ${message}${suffix}`)
+    console.error(`[nubl daemon stop] ${message}${suffix}`)
 }

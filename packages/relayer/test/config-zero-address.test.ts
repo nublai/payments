@@ -16,7 +16,7 @@ const envJson = (context: string, chainId: number, contract: string) =>
     )
 
 // Same keys the deleted envs/{dev,stage,prod}/.env files exported. The values
-// stand in for the old Towns addresses those files held.
+// stand in for the old addresses those files held.
 const suffixed8453 = {
     ACCOUNT_8453: '0x1000000000000000000000000000000000000001',
     ACCOUNT_PROXY_8453: '0x1000000000000000000000000000000000000002',

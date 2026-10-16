@@ -4,7 +4,7 @@ date: 2026-02-25
 problem_type: logic_error
 component: tooling
 symptoms:
-  - "`tw --env dev <command> --json` could be routed as unknown command because `dev` was treated as the command token"
+  - "`nubl --env dev <command> --json` could be routed as unknown command because `dev` was treated as the command token"
   - "`run()` called `rendered.waitUntilExit()` without `await`, allowing early return and potential unhandled async failures"
   - "JSON error sanitization rewrote URL-like strings (for example `https://...`) into malformed output while redacting paths"
 root_cause: logic_error

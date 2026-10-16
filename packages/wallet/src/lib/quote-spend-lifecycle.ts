@@ -708,7 +708,7 @@ async function resolveRecoveryPassword(options?: {
     if (options?.password) return options.password
 
     if (options?.resolvePassword) return options.resolvePassword()
-    const env = process.env.TW_PASSWORD?.trim() || process.env.RELAYER_CLI_PASSWORD?.trim()
+    const env = process.env.NUBL_PASSWORD?.trim() || process.env.RELAYER_CLI_PASSWORD?.trim()
 
     if (env) return env
 
@@ -719,7 +719,7 @@ async function resolveRecoveryPassword(options?: {
     }
 
     throw new Error(
-        'A pending quote spend limit is still installed. Re-run with TW_PASSWORD so the root key can restore it.',
+        'A pending quote spend limit is still installed. Re-run with NUBL_PASSWORD so the root key can restore it.',
     )
 }
 

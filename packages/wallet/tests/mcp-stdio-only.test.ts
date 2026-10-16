@@ -279,7 +279,7 @@ function runMcp(): Promise<{ pid: number; stdout: string; stop: () => void }> {
 }
 
 test.serial(
-    'tw --mcp stdout is JSON-RPC only',
+    'nubl --mcp stdout is JSON-RPC only',
     async () => {
         const session = await runMcp()
 
@@ -307,7 +307,7 @@ test.serial(
 // /proc/net/tcp is Linux-only. skipIf reports a skip on other platforms
 // instead of treating a missing scan as a pass.
 test.skipIf(process.platform !== 'linux').serial(
-    'tw --mcp has no TCP listen socket (skipped off Linux: /proc/net/tcp is unavailable)',
+    'nubl --mcp has no TCP listen socket (skipped off Linux: /proc/net/tcp is unavailable)',
     async () => {
         const session = await runMcp()
 

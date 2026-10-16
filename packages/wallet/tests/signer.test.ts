@@ -30,13 +30,13 @@ const TEST_PRIVATE_KEY =
 const MISMATCH_PRIVATE_KEY =
     '0x8b3a350cf5c34c9194caeec40f2ce7f2d875a63f4f4e7e9c95e5d72f9f6f6d88' as const
 
-const originalSocket = process.env.TW_AGENT_SOCK
+const originalSocket = process.env.NUBL_AGENT_SOCK
 
 afterEach(() => {
     if (originalSocket) {
-        process.env.TW_AGENT_SOCK = originalSocket
+        process.env.NUBL_AGENT_SOCK = originalSocket
     } else {
-        delete process.env.TW_AGENT_SOCK
+        delete process.env.NUBL_AGENT_SOCK
     }
 })
 
@@ -105,7 +105,7 @@ function makeSessionKeystore(sessionAddress: string): RelayerSessionKeystoreV2 {
 }
 
 test('resolveSessionSigner returns direct signer when daemon unavailable', async () => {
-    delete process.env.TW_AGENT_SOCK
+    delete process.env.NUBL_AGENT_SOCK
 
     const directSign = mock(async () => '0xabc' as const)
 
@@ -124,8 +124,8 @@ test('resolveSessionSigner returns direct signer when daemon unavailable', async
 })
 
 test('resolveSessionSigner uses daemon signer when key is loaded', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-signer-test-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-signer-test-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
@@ -164,8 +164,8 @@ test('resolveSessionSigner uses daemon signer when key is loaded', async () => {
 })
 
 test('resolveSessionSigner falls back to direct signer when daemon key address mismatches', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-signer-test-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-signer-test-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()
@@ -203,8 +203,8 @@ test('resolveSessionSigner falls back to direct signer when daemon key address m
 })
 
 test('resolveSessionSigner throws SESSION_EXPIRED and daemon errors from daemon mode', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'tw-signer-test-'))
-    process.env.TW_AGENT_SOCK = join(dir, 'session-daemon.sock')
+    const dir = await mkdtemp(join(tmpdir(), 'nubl-signer-test-'))
+    process.env.NUBL_AGENT_SOCK = join(dir, 'session-daemon.sock')
 
     const daemon = await runSessionDaemon()
     const client = new SessionDaemonClient()

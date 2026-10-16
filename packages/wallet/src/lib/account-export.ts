@@ -92,11 +92,11 @@ export async function assertCanExportPrivateKeys(input: {
     }
 
     // A password source is not confirmation. MCP stdio and any non-TTY caller
-    // cannot type the phrase, including when TW_PASSWORD or --password-stdin is set.
+    // cannot type the phrase, including when NUBL_PASSWORD or --password-stdin is set.
     if (input.mcp || !input.isInteractive) {
         throw new AccountExportError(
             'PRIVATE_EXPORT_CONFIRMATION_REQUIRED',
-            `PRIVATE_EXPORT_CONFIRMATION_REQUIRED: Private key export requires an interactive terminal. Type "${PRIVATE_EXPORT_CONFIRMATION_PHRASE}" when prompted. TW_PASSWORD and --password-stdin do not skip this confirmation, and MCP callers cannot confirm it.`,
+            `PRIVATE_EXPORT_CONFIRMATION_REQUIRED: Private key export requires an interactive terminal. Type "${PRIVATE_EXPORT_CONFIRMATION_PHRASE}" when prompted. NUBL_PASSWORD and --password-stdin do not skip this confirmation, and MCP callers cannot confirm it.`,
         )
     }
 
@@ -137,7 +137,7 @@ export async function resolveAccountExportPassword(
 
     throw new AccountExportError(
         'PASSWORD_REQUIRED',
-        'Password required to export private keys. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
+        'Password required to export private keys. Use --password-stdin, NUBL_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
     )
 }
 

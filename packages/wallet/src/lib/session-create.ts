@@ -358,7 +358,7 @@ export async function resolveSessionCreatePassword(
     if (deps.isInteractive) return deps.promptForExistingPassword()
     throw new SessionCreateError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, or run in interactive TTY.',
     )
 }
 
@@ -427,8 +427,8 @@ export async function executeSessionCreate(
         if (!accountAddress) {
             throw new SessionCreateError(
                 'SESSION_NOT_DELEGATED',
-                'Account is not delegated yet. Run `tw account create --resume` first.',
-                { recoveryCommand: 'tw account create --resume --password-stdin --json' },
+                'Account is not delegated yet. Run `nubl account create --resume` first.',
+                { recoveryCommand: 'nubl account create --resume --password-stdin --json' },
             )
         }
 
@@ -444,7 +444,7 @@ export async function executeSessionCreate(
             throw new SessionCreateError(
                 'SESSION_NAME_CONFLICT',
                 `Session already exists: ${sessionName}`,
-                { recoveryCommand: `tw session create ${sessionName} --resume --json` },
+                { recoveryCommand: `nubl session create ${sessionName} --resume --json` },
             )
         }
 
@@ -790,7 +790,7 @@ export async function executeSessionCreate(
                         intentError,
                         intentErrorName: intentError ? decodeIntentError(intentError) : undefined,
                     },
-                    recoveryCommand: `tw session create ${sessionName} --resume --json`,
+                    recoveryCommand: `nubl session create ${sessionName} --resume --json`,
                 },
             )
         }
@@ -831,7 +831,7 @@ export async function executeSessionCreate(
             throw new SessionCreateError(
                 'SESSION_AUTHORIZATION_FAILED',
                 `Session ${sessionName} was not found on-chain after confirmation (verification may be delayed).`,
-                { recoveryCommand: 'tw session list --on-chain --json' },
+                { recoveryCommand: 'nubl session list --on-chain --json' },
             )
         }
 

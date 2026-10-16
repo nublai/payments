@@ -100,7 +100,7 @@
 
 ### Patch Changes
 
-- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@agentic-payments/deployments` package; migrate all consumers to `@nubl/contracts/deployments` and `@nubl/contracts/abis`. Add `./config/deployments.json` export to contracts.
+- #722 `8594d4c` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Remove `@nubl/deployments` package; migrate all consumers to `@nubl/contracts/deployments` and `@nubl/contracts/abis`. Add `./config/deployments.json` export to contracts.
 
 - Updated dependencies [`8594d4c`]:
   - @nubl/contracts@3.4.0
@@ -111,19 +111,19 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @agentic-payments/deployments@3.3.1
+  - @nubl/deployments@3.3.1
   - @nubl/relayer@3.3.1
 
 ## 3.3.0
 
 ### Minor Changes
 
-- #670 `03ff3f0` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @agentic-payments/deployments, remove @agentic-payments/generated, gut ethers v5 contract layer from @agentic-payments/web3
+- #670 `03ff3f0` Thanks [@miguel-nascimento](https://github.com/miguel-nascimento)! - Create @nubl/deployments, remove @nubl/generated, gut ethers v5 contract layer from @nubl/web3
 
 ### Patch Changes
 
 - Updated dependencies [`03ff3f0`]:
-  - @agentic-payments/deployments@3.3.0
+  - @nubl/deployments@3.3.0
   - @nubl/relayer@3.3.0
 
 ## 3.2.0

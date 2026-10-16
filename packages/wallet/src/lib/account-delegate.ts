@@ -183,7 +183,7 @@ export async function resolveAccountDelegatePassword(
 
     throw new AccountDelegateError(
         'PASSWORD_REQUIRED',
-        'Password required. Use --password-stdin, TW_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
+        'Password required. Use --password-stdin, NUBL_PASSWORD, RELAYER_CLI_PASSWORD, or run in interactive TTY.',
     )
 }
 

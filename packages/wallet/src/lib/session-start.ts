@@ -169,10 +169,10 @@ export async function executeSessionStart(
 }
 
 function debugSessionStart(message: string, details?: { pid: number }): void {
-    if (process.env.TW_DAEMON_DEBUG !== '1') {
+    if (process.env.NUBL_DAEMON_DEBUG !== '1') {
         return
     }
 
     const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
-    console.error(`[tw daemon start] ${message}${suffix}`)
+    console.error(`[nubl daemon start] ${message}${suffix}`)
 }

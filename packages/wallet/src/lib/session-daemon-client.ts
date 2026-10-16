@@ -462,6 +462,6 @@ export class SessionDaemonClient {
         }
 
         const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`
-        console.error(`[tw daemon client] ${method}: ${reason}${suffix}`)
+        console.error(`[nubl daemon client] ${method}: ${reason}${suffix}`)
     }
 }

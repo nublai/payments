@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One local USDC escrow: same Anvil, deploy:local, and wrangler relayer as
-# e2e-local-payment.sh, then the real `tw` CLI (`bun ./src/cli.ts`).
+# e2e-local-payment.sh, then the real `nubl` CLI (`bun ./src/cli.ts`).
 #
 # Creates an escrow, checks on-chain status, and settles it with the Anvil
 # deployer key. SimpleSettler.write accepts only that owner's signature
@@ -152,7 +152,7 @@ echo "Relayer pid $RELAYER_PID"
 echo "Building @nubl/relayer-client..."
 (cd "$ROOT/packages/relayer-client" && bun run build)
 
-WORKDIR="$(mktemp -d /tmp/agentic-payments-e2e-escrow.XXXXXX)"
+WORKDIR="$(mktemp -d /tmp/nubl-e2e-escrow.XXXXXX)"
 KEYSTORE="$WORKDIR/account.json"
 # Anvil account #1. Receives USDC when the escrow is settled.
 SELLER="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
@@ -160,14 +160,14 @@ SELLER="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 ORACLE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 ORACLE="$(cast wallet address --private-key "$ORACLE_KEY")"
 USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-export TW_PASSWORD="e2e-local-payment"
-export TW_ORACLE_PRIVATE_KEY="$ORACLE_KEY"
+export NUBL_PASSWORD="e2e-local-payment"
+export NUBL_ORACLE_PRIVATE_KEY="$ORACLE_KEY"
 
 echo "Creating and delegating account..."
 # account create installs the narrow default session and still requires the phrase.
 CREATE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
+  run_out python3 "$ROOT/scripts/nubl-tty-confirm.py" "CREATE FULL ACCESS SESSION" \
     bun ./src/cli.ts account create \
     --env dev \
     --keystore-path "$KEYSTORE" \
@@ -192,7 +192,7 @@ echo "Creating 1 USDC escrow..."
 # escrow create locks USDC and requires SEND USDC on a TTY.
 ESCROW_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SEND USDC" \
+  run_out python3 "$ROOT/scripts/nubl-tty-confirm.py" "SEND USDC" \
     bun ./src/cli.ts escrow create 1 "$SELLER" \
     --oracle "$ORACLE" \
     --deadline 1h \
@@ -249,7 +249,7 @@ echo "Settling escrow..."
 # This script is the operator: it allocates a terminal and types the phrase.
 SETTLE_JSON="$(
   cd "$ROOT/packages/wallet"
-  run_out python3 "$ROOT/scripts/tw-tty-confirm.py" "SIGN ESCROW SETTLEMENT" \
+  run_out python3 "$ROOT/scripts/nubl-tty-confirm.py" "SIGN ESCROW SETTLEMENT" \
     bun ./src/cli.ts escrow settle "$ESCROW_ID" \
     --settlement-id "$ORDER_ID" \
     --oracle "$ORACLE" \
