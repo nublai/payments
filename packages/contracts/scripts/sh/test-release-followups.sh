@@ -1283,6 +1283,10 @@ dry_run_does_not_write_deployments() {
         deployments_status >&2
         return 1
     fi
+    if [[ -e "$PROJECT_ROOT/deployments/envs/stage/84532/orchestrator.json" ]]; then
+        echo "restore left stage/84532/orchestrator.json" >&2
+        return 1
+    fi
 }
 
 # Release profile write access is deployments/ only. Foundry 1.5 has no
