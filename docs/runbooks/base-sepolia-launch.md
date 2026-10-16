@@ -44,14 +44,14 @@ COUNT="${RELAYER_COUNT:-1}"
 
 # --mnemonic is a file path (Foundry also accepts a phrase; do not put the phrase on argv).
 # Keep the file outside the repo; ./relayer.mnemonic is not gitignored.
+# umask 077 so the file is never group/other-readable. Paste the mnemonic, then Ctrl-D.
 MNEMONIC_FILE="${HOME}/.secrets/relayer.mnemonic"
-mkdir -p "${HOME}/.secrets"
-# write the mnemonic into $MNEMONIC_FILE first
-chmod 600 "$MNEMONIC_FILE"
+(umask 077; mkdir -p "${HOME}/.secrets"; cat > "$MNEMONIC_FILE")
 SIGNERS=()
 for i in $(seq 0 $((COUNT - 1))); do
   SIGNERS+=("$(cast wallet address --mnemonic "$MNEMONIC_FILE" --mnemonic-derivation-path "m/44'/60'/0'/0/${i}")")
 done
+rm "$MNEMONIC_FILE"   # last use; deploy.sh --skip-relayer and wrangler secret put do not read this file
 (
   IFS=,
   cast send "$SIMPLE_FUNDER" "setGasWallet(address[],bool)" "[${SIGNERS[*]}]" true \
@@ -111,10 +111,11 @@ wrangler secret delete CONTEXT --env stage
 
 ## 7. Wallet CLI
 
-From `packages/wallet` (`tw` is this CLI after a package build; this tree runs the source):
+From the repo root (`tw` is this CLI after a package build; this tree runs the source):
 
 ```bash
 export RELAYER_URL_STAGE=https://<worker-host>
+cd packages/wallet
 bun ./src/cli.ts address --env stage
 ```
 
