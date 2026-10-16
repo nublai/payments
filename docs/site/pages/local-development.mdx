@@ -23,7 +23,7 @@ Local `e2e:local-payment` does not need an external relayer or login host. Swap,
 
 Dev uses `http://127.0.0.1:8787` unless `RELAYER_URL_DEV` is set. `RELAYER_URL_PROD` and `RELAYER_URL_STAGE` are not in source. Set each to an `https` worker origin. Loopback `http` is still accepted.
 
-`--env dev` is local chains 31337 and 41337. Plain `http` is accepted for a loopback relayer, and for those chains when the orchestrator is not in the deployments JSON. A published chain uses `--env prod` (Base and Polygon) or `--env stage` (Base Sepolia). Those relayer URLs must be `https` unless the host is loopback. `--env dev` on a published chain refuses to sign.
+`--env dev` defaults to local Anvil. Override with `--chain base`, `--chain polygon`, `--chain anvil`, or `--chain base-sepolia`. Plain `http` is accepted for a loopback host, or for local chain 31337 or 41337 when that chain's orchestrator is not in the deployments JSON. `--env dev` cannot sign payments on a published chain, including `--chain base` and Base Sepolia, because the zero fee payer is refused off those chain ids. Use `--env stage` for Base Sepolia and `--env prod` for Base.
 
 Login, which the local payment path does not use, reads `AUTH_URL_PROD`, `AUTH_URL_STAGE`, or `AUTH_URL_DEV`. If unset, `bun ./src/cli.ts login` from `packages/wallet` says so instead of printing a URL.
 

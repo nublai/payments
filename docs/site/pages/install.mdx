@@ -13,7 +13,7 @@ cd packages/wallet && bun ./src/cli.ts --help
 
 Every command that talks to a chain requires `--env prod`, `--env stage`, or `--env dev`. Omitting `--env` fails. There is no default environment.
 
-`prod` is Base (`base`, 8453) and Polygon (`polygon`, 137). `stage` is Base Sepolia (`base-sepolia`, 84532). `dev` is local Anvil only: `anvil` (31337) and chain 41337. `--env dev` on a published chain refuses to sign.
+`prod` defaults to chain `base` (8453). `stage` defaults to `base-sepolia` (84532). `dev` defaults to local Anvil (`anvil`, 31337). Override with `--chain base`, `--chain polygon`, `--chain anvil`, or `--chain base-sepolia`. The zero fee ceiling is signed only on chain ids 31337 and 41337. `--env dev` cannot sign payments on a published chain, including `--chain base` and Base Sepolia, because that env pays with the zero address, and off those two chain ids the payer and payment token must not be zero. Use `--env stage` for Base Sepolia and `--env prod` for Base.
 
 ## Create an account and send
 
