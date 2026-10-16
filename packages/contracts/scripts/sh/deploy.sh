@@ -57,7 +57,8 @@ DEFAULT_LOCAL_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae7
 # USAGE
 # =============================================================================
 usage() {
-    cat << EOF
+    local status="${1:-1}"
+    cat <<'EOF'
 Usage: $0 [environment] [options]
 
 Environments (shortcuts):
@@ -75,8 +76,7 @@ Options:
   --context <name>         Deployment context for output dir (default: derived from chain)
 
 Authentication (one required for non-local):
-  --account <name>         Use keystore account
-  --password <pass>        Password for keystore account
+  --account <name>         Use keystore account (password is prompted)
   --ledger <path>          Use Ledger with HD path
   --private-key <key>      Use private key directly
   --sender <addr>          Sender address (for simulations or with unlocked accounts)
@@ -120,11 +120,8 @@ Examples:
   # Local development
   $0 local
 
-  # Stage (Base Sepolia) with keystore (interactive password prompt)
+  # Stage (Base Sepolia) with keystore. The password is prompted.
   $0 stage --owner 0x... --account deployer
-
-  # Stage with keystore and password
-  $0 stage --owner 0x... --account deployer --password "mypassword"
 
   # Prod with Ledger and verification
   $0 prod --ledger "m/44'/60'/0'/0/0" --verify
@@ -142,7 +139,7 @@ Examples:
   $0 stage --owner 0x... --contracts SimpleFunder,SimpleSettler --skip-relayer --account deployer
 
 EOF
-    exit 1
+    exit "$status"
 }
 
 # =============================================================================
@@ -180,7 +177,7 @@ case "${1:-}" in
         ENV_SHORTCUT=""
         ;;
     -h|--help|help)
-        usage
+        usage 0
         ;;
     *)
         echo -e "${RED}Unknown environment or option: $1${NC}"
@@ -279,7 +276,7 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
         --help|-h)
-            usage
+            usage 0
             ;;
         *)
             echo -e "${RED}Unknown option: ${1%%=*}${NC}"
